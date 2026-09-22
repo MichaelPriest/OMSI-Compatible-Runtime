@@ -628,7 +628,9 @@ public sealed class OmsiScriptRuntime
                 case "sgn":
                     Unary(
                         stack,
-                        Math.Sign);
+                        static value =>
+                            (double)Math.Sign(
+                                value));
                     break;
 
                 case "trunc":
