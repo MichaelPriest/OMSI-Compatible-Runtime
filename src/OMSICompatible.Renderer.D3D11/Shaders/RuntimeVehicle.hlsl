@@ -8,6 +8,12 @@ cbuffer RuntimeModel : register(b1)
     row_major float4x4 World;
 };
 
+cbuffer RuntimeMaterial : register(b2)
+{
+    float AlphaScale;
+    float3 MaterialPadding;
+};
+
 Texture2D DiffuseTexture : register(t0);
 Texture2D TransMapTexture : register(t1);
 SamplerState DiffuseSampler : register(s0);
@@ -54,11 +60,16 @@ VertexOutput VSMain(VertexInput input)
 float4 SampleDiffuse(
     VertexOutput input)
 {
-    return
+    float4 sampled =
         DiffuseTexture.Sample(
             DiffuseSampler,
             input.Uv) *
         input.Color;
+
+    sampled.a *=
+        AlphaScale;
+
+    return sampled;
 }
 
 float ResolveTransMapAlpha(
@@ -85,7 +96,13 @@ float ResolveTransMapAlpha(
 float4 PSColor(
     VertexOutput input) : SV_TARGET
 {
-    return input.Color;
+    float4 color =
+        input.Color;
+
+    color.a *=
+        AlphaScale;
+
+    return color;
 }
 
 float4 PSTextured(
@@ -121,7 +138,8 @@ float4 PSAlphaCutoutTransMap(
 
     float alpha =
         ResolveTransMapAlpha(input) *
-        input.Color.a;
+        input.Color.a *
+        AlphaScale;
 
     clip(
         alpha -
@@ -139,7 +157,8 @@ float4 PSAlphaBlendTransMap(
 
     sampled.a =
         ResolveTransMapAlpha(input) *
-        input.Color.a;
+        input.Color.a *
+        AlphaScale;
 
     return sampled;
 }
