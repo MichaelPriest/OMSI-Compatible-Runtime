@@ -50,7 +50,7 @@ internal static class Program
         }
 
         var globalSummary = GlobalConfigProbe.ReadSummary(selectedMap);
-        var world = WorldLoader.Load(selectedMap);
+        var world = WorldLoader.Load(contentRoot, selectedMap);
 
         Console.WriteLine();
         Console.WriteLine($"Selected map: {world.Name}");
@@ -59,7 +59,8 @@ internal static class Program
         Console.WriteLine($"Objects: {world.Objects.Count:N0}");
         Console.WriteLine($"Splines: {world.Splines.Count:N0}");
         Console.WriteLine($"Placement parse issues: {world.PlacementParseIssueCount:N0}");
-        Console.WriteLine($"Distinct referenced assets: {world.Assets.Count:N0}");
+        Console.WriteLine($"Primary dependencies: {world.Dependencies.RequiredCount:N0}");
+        Console.WriteLine($"Missing primary dependencies: {world.Dependencies.MissingCount:N0}");
 
         if (world.Bounds is not null)
         {
@@ -69,17 +70,18 @@ internal static class Program
                 $"({world.Bounds.WidthInTiles}x{world.Bounds.HeightInTiles})");
         }
 
-        var assetCounts = world.Assets
-            .GroupBy(static asset => asset.Kind)
-            .OrderBy(static group => group.Key)
-            .ToArray();
-
-        if (assetCounts.Length > 0)
+        if (world.Dependencies.MissingCount > 0)
         {
-            Console.WriteLine("Referenced assets:");
-            foreach (var group in assetCounts)
+            Console.WriteLine("Missing primary dependencies:");
+            foreach (var dependency in world.Dependencies.Missing.Take(20))
             {
-                Console.WriteLine($"  {group.Key}: {group.Count():N0}");
+                Console.WriteLine($"  [{dependency.Kind}] {dependency.SourcePath}");
+            }
+
+            if (world.Dependencies.MissingCount > 20)
+            {
+                Console.WriteLine(
+                    $"  ... and {world.Dependencies.MissingCount - 20:N0} more");
             }
         }
 

@@ -1,11 +1,15 @@
+using OmsiCompat.Core;
 using OmsiCompat.Map;
 
 namespace OMSICompatible.World;
 
 public static class WorldLoader
 {
-    public static WorldDefinition Load(OmsiMapInfo map)
+    public static WorldDefinition Load(
+        OmsiContentRoot contentRoot,
+        OmsiMapInfo map)
     {
+        ArgumentNullException.ThrowIfNull(contentRoot);
         ArgumentNullException.ThrowIfNull(map);
 
         var sourceTiles = MapTileDiscovery.Discover(map);
@@ -97,6 +101,11 @@ public static class WorldLoader
             .SelectMany(static tile => tile.Splines)
             .ToArray();
 
+        var dependencies = WorldAssetResolver.ResolvePrimaryDependencies(
+            contentRoot,
+            objects,
+            splines);
+
         return new WorldDefinition(
             map.FolderName,
             map.DirectoryPath,
@@ -104,6 +113,7 @@ public static class WorldLoader
             assets,
             objects,
             splines,
+            dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             bounds);
     }

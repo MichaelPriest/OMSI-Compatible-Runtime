@@ -74,5 +74,6 @@ public sealed record WorldDefinition(
     IReadOnlyList<WorldAssetReference> Assets,
     IReadOnlyList<WorldObjectPlacement> Objects,
     IReadOnlyList<WorldSplinePlacement> Splines,
+    WorldDependencyReport Dependencies,
     int PlacementParseIssueCount,
     WorldBounds? Bounds);
