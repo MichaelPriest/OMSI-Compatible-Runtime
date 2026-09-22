@@ -2,6 +2,13 @@ using System.Numerics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
+internal enum RuntimeDriveGear
+{
+    Reverse = -1,
+    Neutral = 0,
+    Drive = 1
+}
+
 internal sealed class RuntimeDriveVehicle
 {
     private const float RideHeight = 0.45f;
@@ -25,6 +32,21 @@ internal sealed class RuntimeDriveVehicle
     public float SpeedMetersPerSecond { get; private set; }
 
     public float SteeringInput { get; private set; }
+
+    public float BrakeLevel { get; private set; }
+
+    public float AcceleratorLevel { get; private set; }
+
+    public bool ElectricalSystemEnabled { get; private set; }
+
+    public bool EngineRunning { get; private set; }
+
+    public bool ParkingBrakeEngaged { get; private set; }
+
+    public bool StopBrakeEngaged { get; private set; }
+
+    public RuntimeDriveGear Gear { get; private set; } =
+        RuntimeDriveGear.Neutral;
 
     public float SpeedKph =>
         SpeedMetersPerSecond * 3.6f;
@@ -91,12 +113,64 @@ internal sealed class RuntimeDriveVehicle
 
         SpeedMetersPerSecond = 0.0f;
         SteeringInput = 0.0f;
+        BrakeLevel = 0.0f;
+        AcceleratorLevel = 0.0f;
+
+        ElectricalSystemEnabled = false;
+        EngineRunning = false;
+        ParkingBrakeEngaged = true;
+        StopBrakeEngaged = false;
+        Gear = RuntimeDriveGear.Neutral;
     }
 
-    public void Update(
-        float driveInput,
-        float steeringInput,
-        bool handBrake,
+    public void ToggleElectricalSystem()
+    {
+        ElectricalSystemEnabled =
+            !ElectricalSystemEnabled;
+
+        if (!ElectricalSystemEnabled)
+        {
+            EngineRunning = false;
+        }
+    }
+
+    public void ToggleEngine()
+    {
+        if (EngineRunning)
+        {
+            EngineRunning = false;
+            return;
+        }
+
+        if (ElectricalSystemEnabled)
+        {
+            EngineRunning = true;
+        }
+    }
+
+    public void SelectGear(RuntimeDriveGear gear)
+    {
+        Gear = gear;
+    }
+
+    public void ToggleParkingBrake()
+    {
+        ParkingBrakeEngaged =
+            !ParkingBrakeEngaged;
+    }
+
+    public void ToggleStopBrake()
+    {
+        StopBrakeEngaged =
+            !StopBrakeEngaged;
+    }
+
+    public void UpdateOmsiControls(
+        bool acceleratorHeld,
+        bool brakeIncreaseHeld,
+        bool brakeReleaseHeld,
+        float steeringDirection,
+        bool centerSteeringHeld,
         float deltaSeconds)
     {
         deltaSeconds = Math.Clamp(
@@ -104,54 +178,108 @@ internal sealed class RuntimeDriveVehicle
             0.0f,
             0.1f);
 
-        steeringInput = Math.Clamp(
-            steeringInput,
-            -1.0f,
-            1.0f);
-
-        SteeringInput =
-            MoveTowards(
-                SteeringInput,
-                steeringInput,
-                3.5f * deltaSeconds);
-
-        var requestedDirection =
-            Math.Sign(driveInput);
-
-        var acceleration =
-            requestedDirection == 0
-                ? 0.0f
-                : requestedDirection *
-                  (requestedDirection < 0
-                      ? 2.1f
-                      : 3.0f);
-
-        if (requestedDirection != 0 &&
-            Math.Sign(SpeedMetersPerSecond) != 0 &&
-            Math.Sign(SpeedMetersPerSecond) !=
-            requestedDirection)
+        if (brakeIncreaseHeld)
         {
-            acceleration =
-                requestedDirection * 6.0f;
+            BrakeLevel = Math.Clamp(
+                BrakeLevel +
+                1.15f * deltaSeconds,
+                0.0f,
+                1.0f);
         }
 
+        if (brakeReleaseHeld)
+        {
+            BrakeLevel = MoveTowards(
+                BrakeLevel,
+                0.0f,
+                1.45f * deltaSeconds);
+        }
+
+        if (acceleratorHeld)
+        {
+            // OMSI keyboard driving releases the held service brake
+            // again when the accelerator is applied.
+            BrakeLevel = MoveTowards(
+                BrakeLevel,
+                0.0f,
+                3.0f * deltaSeconds);
+        }
+
+        var canApplyPower =
+            ElectricalSystemEnabled &&
+            EngineRunning &&
+            Gear != RuntimeDriveGear.Neutral &&
+            !ParkingBrakeEngaged &&
+            !StopBrakeEngaged;
+
+        AcceleratorLevel = MoveTowards(
+            AcceleratorLevel,
+            acceleratorHeld &&
+            canApplyPower
+                ? 1.0f
+                : 0.0f,
+            2.8f * deltaSeconds);
+
+        if (centerSteeringHeld)
+        {
+            SteeringInput = MoveTowards(
+                SteeringInput,
+                0.0f,
+                4.5f * deltaSeconds);
+        }
+        else if (Math.Abs(steeringDirection) > 0.01f)
+        {
+            SteeringInput = Math.Clamp(
+                SteeringInput +
+                steeringDirection *
+                1.8f *
+                deltaSeconds,
+                -1.0f,
+                1.0f);
+        }
+
+        var requestedDirection =
+            (int)Gear;
+
+        var propulsion =
+            requestedDirection *
+            AcceleratorLevel *
+            (requestedDirection < 0
+                ? 2.0f
+                : 3.1f);
+
         SpeedMetersPerSecond +=
-            acceleration *
+            propulsion *
             deltaSeconds;
 
-        var rollingDrag =
-            handBrake
-                ? 10.0f
-                : requestedDirection == 0
-                    ? 1.15f
-                    : 0.22f;
+        var effectiveBrake =
+            Math.Clamp(
+                BrakeLevel +
+                (StopBrakeEngaged ? 0.55f : 0.0f) +
+                (ParkingBrakeEngaged ? 1.0f : 0.0f),
+                0.0f,
+                1.0f);
+
+        var brakeStrength =
+            effectiveBrake *
+            8.5f;
 
         SpeedMetersPerSecond =
             MoveTowards(
                 SpeedMetersPerSecond,
                 0.0f,
-                rollingDrag *
+                brakeStrength *
                 deltaSeconds);
+
+        if (AcceleratorLevel <= 0.001f)
+        {
+            SpeedMetersPerSecond =
+                MoveTowards(
+                    SpeedMetersPerSecond,
+                    0.0f,
+                    0.22f *
+                    deltaSeconds);
+        }
 
         SpeedMetersPerSecond = Math.Clamp(
             SpeedMetersPerSecond,
