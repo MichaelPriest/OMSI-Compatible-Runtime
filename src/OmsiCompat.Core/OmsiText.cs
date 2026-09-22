@@ -35,17 +35,13 @@ public static class OmsiText
     {
         return ReadAllText(path)
             .Replace(
-                "
-",
-                "
-",
+                "\r\n",
+                "\n",
                 StringComparison.Ordinal)
             .Replace(
-                '',
-                '
-')
-            .Split('
-');
+                '\r',
+                '\n')
+            .Split('\n');
     }
 
     private static (
@@ -123,8 +119,8 @@ public static class OmsiText
         {
             // OMSI legacy files are commonly distributed as
             // Windows-1252/ANSI. Latin-1 preserves the original
-            // single-byte values deterministically even without
-            // requiring an external code-page provider.
+            // single-byte values deterministically until the
+            // dedicated code-page layer is introduced.
             return (
                 Encoding.Latin1,
                 0);
