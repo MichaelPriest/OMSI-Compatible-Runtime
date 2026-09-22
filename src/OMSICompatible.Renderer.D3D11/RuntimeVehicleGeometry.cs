@@ -5,41 +5,200 @@ namespace OMSICompatible.Renderer.D3D11;
 
 internal static class RuntimeVehicleGeometry
 {
-    public static RuntimeVehicleVertex[] BuildBusProxy()
+    private const string VehicleAssetKey =
+        "__runtime_player_vehicle__";
+
+    public static RuntimeObjectGeometry Build(
+        RuntimeVehicleInfo? vehicle)
+    {
+        if (vehicle is null ||
+            vehicle.Meshes.Count == 0)
+        {
+            return BuildBusProxy();
+        }
+
+        var asset =
+            new RuntimeSceneryAssetInfo(
+                UsesAbsoluteHeight: true,
+                RenderType: null,
+                Meshes: vehicle.Meshes,
+                Tree: null);
+
+        var instance =
+            new RuntimeObjectInfo(
+                TileX: 0,
+                TileY: 0,
+                AssetPath: VehicleAssetKey,
+                X: 0,
+                Y: 0,
+                Z: 0,
+                HeadingDegrees: 0,
+                PitchDegrees: 0,
+                BankDegrees: 0,
+                ExtraValues:
+                    Array.Empty<string>());
+
+        var geometry =
+            RuntimeObjectGeometryBuilder.Build(
+                Array.Empty<RuntimeTileInfo>(),
+                [instance],
+                new Dictionary<
+                    string,
+                    RuntimeSceneryAssetInfo>(
+                    StringComparer.OrdinalIgnoreCase)
+                {
+                    [VehicleAssetKey] = asset
+                });
+
+        return geometry.Vertices.Length > 0
+            ? geometry
+            : BuildBusProxy();
+    }
+
+    private static RuntimeObjectGeometry
+        BuildBusProxy()
     {
         const float halfWidth = 1.25f;
         const float halfLength = 5.25f;
         const float bottom = 0.0f;
         const float top = 3.15f;
 
-        var p000 = new Vector3(-halfWidth, bottom, -halfLength);
-        var p100 = new Vector3(halfWidth, bottom, -halfLength);
-        var p010 = new Vector3(-halfWidth, top, -halfLength);
-        var p110 = new Vector3(halfWidth, top, -halfLength);
+        var p000 =
+            new Vector3(
+                -halfWidth,
+                bottom,
+                -halfLength);
 
-        var p001 = new Vector3(-halfWidth, bottom, halfLength);
-        var p101 = new Vector3(halfWidth, bottom, halfLength);
-        var p011 = new Vector3(-halfWidth, top, halfLength);
-        var p111 = new Vector3(halfWidth, top, halfLength);
+        var p100 =
+            new Vector3(
+                halfWidth,
+                bottom,
+                -halfLength);
+
+        var p010 =
+            new Vector3(
+                -halfWidth,
+                top,
+                -halfLength);
+
+        var p110 =
+            new Vector3(
+                halfWidth,
+                top,
+                -halfLength);
+
+        var p001 =
+            new Vector3(
+                -halfWidth,
+                bottom,
+                halfLength);
+
+        var p101 =
+            new Vector3(
+                halfWidth,
+                bottom,
+                halfLength);
+
+        var p011 =
+            new Vector3(
+                -halfWidth,
+                top,
+                halfLength);
+
+        var p111 =
+            new Vector3(
+                halfWidth,
+                top,
+                halfLength);
 
         var body =
-            new Color4(0.78f, 0.22f, 0.08f, 1.0f);
+            new Color4(
+                0.78f,
+                0.22f,
+                0.08f,
+                1.0f);
+
         var roof =
-            new Color4(0.82f, 0.82f, 0.84f, 1.0f);
+            new Color4(
+                0.82f,
+                0.82f,
+                0.84f,
+                1.0f);
+
         var front =
-            new Color4(0.93f, 0.46f, 0.10f, 1.0f);
+            new Color4(
+                0.93f,
+                0.46f,
+                0.10f,
+                1.0f);
 
         var vertices =
-            new List<RuntimeVehicleVertex>(36);
+            new List<RuntimeObjectVertex>(36);
 
-        Quad(p000, p100, p110, p010, body, vertices);
-        Quad(p101, p001, p011, p111, front, vertices);
-        Quad(p001, p000, p010, p011, body, vertices);
-        Quad(p100, p101, p111, p110, body, vertices);
-        Quad(p010, p110, p111, p011, roof, vertices);
-        Quad(p001, p101, p100, p000, body, vertices);
+        Quad(
+            p000,
+            p100,
+            p110,
+            p010,
+            body,
+            vertices);
 
-        return vertices.ToArray();
+        Quad(
+            p101,
+            p001,
+            p011,
+            p111,
+            front,
+            vertices);
+
+        Quad(
+            p001,
+            p000,
+            p010,
+            p011,
+            body,
+            vertices);
+
+        Quad(
+            p100,
+            p101,
+            p111,
+            p110,
+            body,
+            vertices);
+
+        Quad(
+            p010,
+            p110,
+            p111,
+            p011,
+            roof,
+            vertices);
+
+        Quad(
+            p001,
+            p101,
+            p100,
+            p000,
+            body,
+            vertices);
+
+        return new RuntimeObjectGeometry(
+            vertices.ToArray(),
+            [
+                new RuntimeObjectBatch(
+                    0,
+                    (uint)vertices.Count,
+                    null,
+                    false)
+            ],
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            false);
     }
 
     private static void Quad(
@@ -48,31 +207,53 @@ internal static class RuntimeVehicleGeometry
         Vector3 c,
         Vector3 d,
         Color4 color,
-        ICollection<RuntimeVehicleVertex> output)
+        ICollection<RuntimeObjectVertex> output)
     {
-        output.Add(new RuntimeVehicleVertex(a, color));
-        output.Add(new RuntimeVehicleVertex(b, color));
-        output.Add(new RuntimeVehicleVertex(c, color));
+        Add(
+            a,
+            color,
+            new Vector2(0, 1),
+            output);
 
-        output.Add(new RuntimeVehicleVertex(a, color));
-        output.Add(new RuntimeVehicleVertex(c, color));
-        output.Add(new RuntimeVehicleVertex(d, color));
+        Add(
+            b,
+            color,
+            new Vector2(1, 1),
+            output);
+
+        Add(
+            c,
+            color,
+            new Vector2(1, 0),
+            output);
+
+        Add(
+            a,
+            color,
+            new Vector2(0, 1),
+            output);
+
+        Add(
+            c,
+            color,
+            new Vector2(1, 0),
+            output);
+
+        Add(
+            d,
+            color,
+            new Vector2(0, 0),
+            output);
     }
-}
 
-
-internal readonly struct RuntimeVehicleVertex
-{
-    public const uint SizeInBytes = 28;
-
-    public RuntimeVehicleVertex(
+    private static void Add(
         Vector3 position,
-        Color4 color)
-    {
-        Position = position;
-        Color = color;
-    }
-
-    public readonly Vector3 Position;
-    public readonly Color4 Color;
+        Color4 color,
+        Vector2 uv,
+        ICollection<RuntimeObjectVertex> output) =>
+        output.Add(
+            new RuntimeObjectVertex(
+                position,
+                color,
+                uv));
 }
