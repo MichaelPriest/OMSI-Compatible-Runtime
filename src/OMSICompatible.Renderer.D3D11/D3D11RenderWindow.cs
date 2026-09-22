@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using OmsiCompat.Scripting;
 using Vortice.D3DCompiler;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -43,6 +44,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly System.Windows.Forms.Timer _renderTimer;
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
+    private readonly OmsiScriptRuntime? _scriptRuntime;
     private readonly HashSet<Keys> _pressedKeys = [];
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
 
@@ -160,9 +162,12 @@ public sealed class D3D11RenderWindow : Form
 
     private FeatureLevel _featureLevel;
 
-    public D3D11RenderWindow(RuntimeWindowInfo windowInfo)
+    public D3D11RenderWindow(
+        RuntimeWindowInfo windowInfo,
+        OmsiScriptRuntime? scriptRuntime = null)
     {
         _windowInfo = windowInfo;
+        _scriptRuntime = scriptRuntime;
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
             windowInfo.Vehicle?.Physics);
@@ -479,6 +484,7 @@ public sealed class D3D11RenderWindow : Form
         try
         {
             InitializeGraphics();
+            InitializeVehicleScripts();
             UpdateCaption();
             _renderTimer.Start();
         }
@@ -2348,50 +2354,114 @@ public sealed class D3D11RenderWindow : Form
                     _mouseDriveBrake,
                     _mouseDriveSteering,
                     deltaSeconds);
-
-                return;
             }
+            else
+            {
+                var steeringDirection =
+                    (_pressedKeys.Contains(Keys.NumPad6) ? 1.0f : 0.0f) -
+                    (_pressedKeys.Contains(Keys.NumPad4) ? 1.0f : 0.0f);
 
-            var steeringDirection =
-                (_pressedKeys.Contains(Keys.NumPad6) ? 1.0f : 0.0f) -
-                (_pressedKeys.Contains(Keys.NumPad4) ? 1.0f : 0.0f);
+                _vehicle.UpdateOmsiControls(
+                    acceleratorHeld:
+                        _pressedKeys.Contains(Keys.NumPad8),
+                    brakeIncreaseHeld:
+                        _pressedKeys.Contains(Keys.NumPad2),
+                    brakeReleaseHeld:
+                        _pressedKeys.Contains(Keys.Add),
+                    steeringDirection:
+                        steeringDirection,
+                    centerSteeringHeld:
+                        _pressedKeys.Contains(Keys.NumPad5),
+                    deltaSeconds:
+                        deltaSeconds);
+            }
+        }
+        else
+        {
+            var forward =
+                (_pressedKeys.Contains(Keys.W) ? 1.0f : 0.0f) -
+                (_pressedKeys.Contains(Keys.S) ? 1.0f : 0.0f);
 
-            _vehicle.UpdateOmsiControls(
-                acceleratorHeld:
-                    _pressedKeys.Contains(Keys.NumPad8),
-                brakeIncreaseHeld:
-                    _pressedKeys.Contains(Keys.NumPad2),
-                brakeReleaseHeld:
-                    _pressedKeys.Contains(Keys.Add),
-                steeringDirection:
-                    steeringDirection,
-                centerSteeringHeld:
-                    _pressedKeys.Contains(Keys.NumPad5),
-                deltaSeconds:
-                    deltaSeconds);
+            var right =
+                (_pressedKeys.Contains(Keys.D) ? 1.0f : 0.0f) -
+                (_pressedKeys.Contains(Keys.A) ? 1.0f : 0.0f);
 
+            var up =
+                (_pressedKeys.Contains(Keys.E) ? 1.0f : 0.0f) -
+                (_pressedKeys.Contains(Keys.Q) ? 1.0f : 0.0f);
+
+            _camera.Move(
+                forward,
+                right,
+                up,
+                deltaSeconds,
+                _pressedKeys.Contains(Keys.ShiftKey),
+                _pressedKeys.Contains(Keys.ControlKey));
+        }
+
+        UpdateVehicleScripts(
+            deltaSeconds,
+            now);
+    }
+
+    private void InitializeVehicleScripts()
+    {
+        if (_scriptRuntime is null)
+        {
             return;
         }
 
-        var forward =
-            (_pressedKeys.Contains(Keys.W) ? 1.0f : 0.0f) -
-            (_pressedKeys.Contains(Keys.S) ? 1.0f : 0.0f);
+        UpdateScriptHostVariables(
+            0.0,
+            0.0);
 
-        var right =
-            (_pressedKeys.Contains(Keys.D) ? 1.0f : 0.0f) -
-            (_pressedKeys.Contains(Keys.A) ? 1.0f : 0.0f);
+        _scriptRuntime.ExecuteInit();
+    }
 
-        var up =
-            (_pressedKeys.Contains(Keys.E) ? 1.0f : 0.0f) -
-            (_pressedKeys.Contains(Keys.Q) ? 1.0f : 0.0f);
+    private void UpdateVehicleScripts(
+        double deltaSeconds,
+        double absoluteSeconds)
+    {
+        if (_scriptRuntime is null)
+        {
+            return;
+        }
 
-        _camera.Move(
-            forward,
-            right,
-            up,
+        UpdateScriptHostVariables(
             deltaSeconds,
-            _pressedKeys.Contains(Keys.ShiftKey),
-            _pressedKeys.Contains(Keys.ControlKey));
+            absoluteSeconds);
+
+        _scriptRuntime.ExecuteFrame();
+    }
+
+    private void UpdateScriptHostVariables(
+        double deltaSeconds,
+        double absoluteSeconds)
+    {
+        if (_scriptRuntime is null)
+        {
+            return;
+        }
+
+        _scriptRuntime.SetSystem(
+            "Timegap",
+            deltaSeconds);
+        _scriptRuntime.SetSystem(
+            "GetTime",
+            absoluteSeconds);
+
+        _scriptRuntime.SetLocal(
+            "Throttle",
+            _vehicle.AcceleratorLevel);
+        _scriptRuntime.SetLocal(
+            "Brake",
+            _vehicle.BrakeLevel);
+        _scriptRuntime.SetLocal(
+            "Velocity",
+            _vehicle.SpeedKph);
+        _scriptRuntime.SetLocal(
+            "Velocity_Ground",
+            _vehicle.SpeedKph);
     }
 
     private void OnRuntimeKeyDown(
