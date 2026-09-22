@@ -19,12 +19,17 @@ try
         Path.Combine(
             vehicleDirectory,
             "script");
+    var programDirectory =
+        Path.Combine(
+            root,
+            "program");
 
     Directory.CreateDirectory(mapDirectory);
     Directory.CreateDirectory(sceneryDirectory);
     Directory.CreateDirectory(splineDirectory);
     Directory.CreateDirectory(vehicleDirectory);
     Directory.CreateDirectory(vehicleScriptDirectory);
+    Directory.CreateDirectory(programDirectory);
 
     File.WriteAllText(
         Path.Combine(mapDirectory, "global.cfg"),
@@ -93,6 +98,52 @@ try
 
     File.WriteAllText(
         Path.Combine(
+            programDirectory,
+            "varlist_roadvehicle.txt"),
+        Lines(
+            "Throttle",
+            "Brake",
+            "Velocity"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            programDirectory,
+            "stringvarlist_roadvehicle.txt"),
+        Lines(
+            "number",
+            "act_route"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            programDirectory,
+            "varlist_system.txt"),
+        Lines(
+            "Timegap",
+            "GetTime"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            programDirectory,
+            "callbacklist_roadvehicle.txt"),
+        Lines(
+            "GetRouteIndex",
+            "GetTTDelay"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            programDirectory,
+            "callbacklist_scripttex.txt"),
+        Lines(
+            "STNewTex",
+            "STTextOut"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
             vehicleScriptDirectory,
             "main.osc"),
         Lines(
@@ -109,6 +160,25 @@ try
             "(F.L.engine_curve)",
             "(S.L.engine_output)",
             "(M.L.helper)",
+            "(L.S.GetTime)",
+            "(L.L.horn_timer)",
+            "3",
+            "+",
+            ">",
+            "{if}",
+            "0",
+            "(S.L.horn_timer)",
+            "{endif}",
+            "{end}",
+            "{trigger:collision}",
+            "(L.L.horn_timer)",
+            "0",
+            "=",
+            "{if}",
+            "(T.L.ev_AI_Horn)",
+            "(L.S.GetTime)",
+            "(S.L.horn_timer)",
+            "{endif}",
             "{end}",
             "{macro:helper}",
             "(C.L.engine_idle)",
@@ -123,7 +193,8 @@ try
         Lines(
             "engine_speed",
             "engine_output",
-            "idle_copy"),
+            "idle_copy",
+            "horn_timer"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -272,6 +343,7 @@ try
         "Synthetic OMSI script file resolution is incorrect.");
     var scriptCatalog =
         OmsiScriptCatalogLoader.Load(
+            contentRoot,
             bus.ScriptManifest);
 
     Require(
@@ -284,8 +356,34 @@ try
         "Synthetic OMSI numeric variables were not loaded.");
     Require(
         scriptCatalog.StringVariables.Contains(
-            "IBIS_line"),
-        "Synthetic OMSI string variable was not loaded.");
+            "IBIS_line") &&
+        scriptCatalog.StringVariables.Contains(
+            "number"),
+        "Synthetic/user and predefined OMSI string variables were not loaded.");
+    Require(
+        scriptCatalog.NumericVariables.Contains(
+            "Throttle") &&
+        scriptCatalog.NumericVariables.Contains(
+            "Velocity"),
+        "Predefined roadvehicle variables were not loaded from OMSI program data.");
+    Require(
+        scriptCatalog.SystemVariables.Contains(
+            "Timegap") &&
+        scriptCatalog.SystemVariables.Contains(
+            "GetTime"),
+        "Predefined OMSI system variables were not loaded.");
+    Require(
+        scriptCatalog.VehicleCallbacks.Contains(
+            "GetRouteIndex") &&
+        scriptCatalog.VehicleCallbacks.Contains(
+            "GetTTDelay"),
+        "Predefined roadvehicle callbacks were not loaded.");
+    Require(
+        scriptCatalog.ScriptTextureCallbacks.Contains(
+            "STNewTex") &&
+        scriptCatalog.ScriptTextureCallbacks.Contains(
+            "STTextOut"),
+        "Predefined script-texture callbacks were not loaded.");
     Require(
         scriptCatalog.Constants.TryGetValue(
             "engine_idle",
@@ -341,6 +439,40 @@ try
                 "idle_copy") -
             650.0) < 0.0001,
         "OMSI script macro/constant execution failed.");
+
+    var requestedSoundTriggers =
+        new List<string>();
+
+    scriptRuntime.SoundTriggerRequested +=
+        requestedSoundTriggers.Add;
+
+    scriptRuntime.SetSystem(
+        "GetTime",
+        10.0);
+    scriptRuntime.ExecuteTrigger(
+        "collision");
+
+    Require(
+        requestedSoundTriggers.SequenceEqual(
+            ["ev_AI_Horn"]),
+        "OMSI sound trigger execution failed.");
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "horn_timer") -
+            10.0) < 0.0001,
+        "OMSI system-variable load/store inside trigger failed.");
+
+    scriptRuntime.SetSystem(
+        "GetTime",
+        14.0);
+    scriptRuntime.ExecuteFrame();
+
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "horn_timer")) < 0.0001,
+        "OMSI {if} control flow / timer reset failed.");
 
     Require(
         bus.DriverCameras.Count == 2,
