@@ -2,6 +2,7 @@ using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Vehicles;
+using OmsiCompat.Scripting;
 using OMSICompatible.World;
 
 var root = Path.Combine(
@@ -93,7 +94,22 @@ try
             "main.osc"),
         Lines(
             "{init}",
-            "0",
+            "650",
+            "(S.L.engine_speed)",
+            "{end}",
+            "{frame}",
+            "(L.L.engine_speed)",
+            "10",
+            "+",
+            "(S.L.engine_speed)",
+            "(L.L.engine_speed)",
+            "(F.L.engine_curve)",
+            "(S.L.engine_output)",
+            "(M.L.helper)",
+            "{end}",
+            "{macro:helper}",
+            "(C.L.engine_idle)",
+            "(S.L.idle_copy)",
             "{end}"),
         Encoding.Unicode);
 
@@ -101,7 +117,10 @@ try
         Path.Combine(
             vehicleScriptDirectory,
             "engine_varlist.txt"),
-        "engine_speed",
+        Lines(
+            "engine_speed",
+            "engine_output",
+            "idle_copy"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -118,7 +137,15 @@ try
         Lines(
             "[const]",
             "engine_idle",
-            "650"),
+            "650",
+            "[newcurve]",
+            "engine_curve",
+            "[pnt]",
+            "0",
+            "0",
+            "[pnt]",
+            "1000",
+            "1"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -240,6 +267,78 @@ try
         bus.ScriptManifest.ScriptFiles[0].Exists &&
         !bus.ScriptManifest.VariableLists[1].Exists,
         "Synthetic OMSI script file resolution is incorrect.");
+    var scriptCatalog =
+        OmsiScriptCatalogLoader.Load(
+            bus.ScriptManifest);
+
+    Require(
+        scriptCatalog.NumericVariables.Contains(
+            "engine_speed") &&
+        scriptCatalog.NumericVariables.Contains(
+            "engine_output") &&
+        scriptCatalog.NumericVariables.Contains(
+            "idle_copy"),
+        "Synthetic OMSI numeric variables were not loaded.");
+    Require(
+        scriptCatalog.StringVariables.Contains(
+            "IBIS_line"),
+        "Synthetic OMSI string variable was not loaded.");
+    Require(
+        scriptCatalog.Constants.TryGetValue(
+            "engine_idle",
+            out var engineIdle) &&
+        Math.Abs(
+            engineIdle -
+            650.0) < 0.0001,
+        "Synthetic OMSI constant was not loaded.");
+    Require(
+        scriptCatalog.Curves.TryGetValue(
+            "engine_curve",
+            out var engineCurve) &&
+        Math.Abs(
+            engineCurve.Evaluate(
+                500.0) -
+            0.5) < 0.0001,
+        "Synthetic OMSI curve interpolation is incorrect.");
+    Require(
+        scriptCatalog.Program.InitBlocks.Count == 1 &&
+        scriptCatalog.Program.FrameBlocks.Count == 1 &&
+        scriptCatalog.Program.Macros.ContainsKey(
+            "helper"),
+        "Synthetic OMSI script entry points were not parsed.");
+
+    var scriptRuntime =
+        new OmsiScriptRuntime(
+            scriptCatalog);
+
+    scriptRuntime.ExecuteInit();
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "engine_speed") -
+            650.0) < 0.0001,
+        "OMSI script {init} execution failed.");
+
+    scriptRuntime.ExecuteFrame();
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "engine_speed") -
+            660.0) < 0.0001,
+        "OMSI script arithmetic/local variable execution failed.");
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "engine_output") -
+            0.66) < 0.0001,
+        "OMSI script curve execution failed.");
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "idle_copy") -
+            650.0) < 0.0001,
+        "OMSI script macro/constant execution failed.");
+
     Require(
         bus.DriverCameras.Count == 2,
         "Synthetic driver cameras were not parsed.");
