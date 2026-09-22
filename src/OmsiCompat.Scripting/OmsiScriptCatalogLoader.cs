@@ -52,6 +52,10 @@ public static class OmsiScriptCatalogLoader
             new HashSet<string>(
                 StringComparer.Ordinal);
 
+        var sceneryCallbacks =
+            new HashSet<string>(
+                StringComparer.Ordinal);
+
         var scriptTextureCallbacks =
             new HashSet<string>(
                 StringComparer.Ordinal);
@@ -82,6 +86,12 @@ public static class OmsiScriptCatalogLoader
                 Path.Combine(
                     programPath,
                     "callbacklist_roadvehicle.txt"));
+
+            UnionOptionalNameFile(
+                sceneryCallbacks,
+                Path.Combine(
+                    programPath,
+                    "callbacklist_scenobj.txt"));
 
             UnionOptionalNameFile(
                 scriptTextureCallbacks,
@@ -125,6 +135,7 @@ public static class OmsiScriptCatalogLoader
             strings,
             systemVariables,
             vehicleCallbacks,
+            sceneryCallbacks,
             scriptTextureCallbacks,
             constants,
             curves,

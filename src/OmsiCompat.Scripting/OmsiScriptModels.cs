@@ -92,6 +92,7 @@ public sealed record OmsiScriptCatalog(
     IReadOnlySet<string> StringVariables,
     IReadOnlySet<string> SystemVariables,
     IReadOnlySet<string> VehicleCallbacks,
+    IReadOnlySet<string> SceneryCallbacks,
     IReadOnlySet<string> ScriptTextureCallbacks,
     IReadOnlyDictionary<string, double> Constants,
     IReadOnlyDictionary<string, OmsiScriptCurve> Curves,

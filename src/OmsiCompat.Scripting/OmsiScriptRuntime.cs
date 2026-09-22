@@ -165,6 +165,16 @@ public sealed class OmsiScriptRuntime
     public event Action<string>?
         DebugMessageRequested;
 
+    public event Action<string>?
+        UnhandledSystemMacro;
+
+    public OmsiSystemMacroHandler?
+        SystemMacroHandler
+    {
+        get;
+        set;
+    }
+
     public void ExecuteInit()
     {
         foreach (var block in
@@ -502,6 +512,41 @@ public sealed class OmsiScriptRuntime
                             ? curve.Evaluate(
                                 input)
                             : 0.0);
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
+                    "(M.V.",
+                    out var systemMacroName))
+            {
+                var knownMacro =
+                    _catalog.VehicleCallbacks.Contains(
+                        systemMacroName) ||
+                    _catalog.SceneryCallbacks.Contains(
+                        systemMacroName) ||
+                    _catalog.ScriptTextureCallbacks.Contains(
+                        systemMacroName);
+
+                var handled =
+                    knownMacro &&
+                    SystemMacroHandler?.Invoke(
+                        systemMacroName,
+                        new OmsiScriptCallbackContext(
+                            () => stack.Top,
+                            stack.Pop,
+                            stack.Push,
+                            () => stringStack.Top,
+                            stringStack.Pop,
+                            stringStack.Push)) ==
+                    true;
+
+                if (!handled)
+                {
+                    UnhandledSystemMacro?.Invoke(
+                        systemMacroName);
+                }
+
                 continue;
             }
 
