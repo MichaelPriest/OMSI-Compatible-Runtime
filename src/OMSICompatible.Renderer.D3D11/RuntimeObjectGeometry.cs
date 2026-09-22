@@ -19,7 +19,9 @@ internal sealed record RuntimeObjectBatch(
     Matrix4x4? StaticTransform = null,
     string? AlphaScaleVariable = null,
     string? LightMapTexturePath = null,
-    string? LightMapVariable = null);
+    string? LightMapVariable = null,
+    string? MaterialChangeTexturePath = null,
+    string? MaterialChangeVariable = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -63,7 +65,9 @@ internal static class RuntimeObjectGeometryBuilder
         Matrix4x4? StaticTransform = null,
         string? AlphaScaleVariable = null,
         string? LightMapTexturePath = null,
-        string? LightMapVariable = null);
+        string? LightMapVariable = null,
+        string? MaterialChangeTexturePath = null,
+        string? MaterialChangeVariable = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -302,7 +306,9 @@ internal static class RuntimeObjectGeometryBuilder
                     key.StaticTransform,
                     key.AlphaScaleVariable,
                     key.LightMapTexturePath,
-                    key.LightMapVariable));
+                    key.LightMapVariable,
+                    key.MaterialChangeTexturePath,
+                    key.MaterialChangeVariable));
         }
 
         return new RuntimeObjectGeometry(
@@ -389,7 +395,9 @@ internal static class RuntimeObjectGeometryBuilder
                     worldTransform,
                     material?.AlphaScaleVariable,
                     material?.LightMapTexturePath,
-                    material?.LightMapVariable);
+                    material?.LightMapVariable,
+                    material?.MaterialChangeTexturePath,
+                    material?.MaterialChangeVariable);
 
             var output =
                 GetBatch(
