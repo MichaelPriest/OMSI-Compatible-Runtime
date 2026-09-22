@@ -157,6 +157,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11DepthStencilView? _activeDepthStencilView;
     private Matrix4x4? _viewProjectionOverride;
     private bool _reflectionRenderingEnabled;
+    private bool _showDiagnostics;
 
     private FeatureLevel _featureLevel;
 
@@ -2276,6 +2277,15 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Driver)
+        {
+            return _vehicle.CreateFallbackDriverViewProjection(
+                _windowInfo.Vehicle?.DriverPosition,
+                aspect,
+                _terrainGeometry);
+        }
+
+        if (_vehicleViewMode ==
                 RuntimeVehicleViewMode.Passenger &&
             _windowInfo.Vehicle?.PassengerCameras.Count > 0)
         {
@@ -2464,6 +2474,16 @@ public sealed class D3D11RenderWindow : Form
         {
             _reflectionRenderingEnabled =
                 !_reflectionRenderingEnabled;
+
+            UpdateCaption();
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        if (e.KeyCode == Keys.F10)
+        {
+            _showDiagnostics =
+                !_showDiagnostics;
 
             UpdateCaption();
             e.SuppressKeyPress = true;
@@ -2878,6 +2898,28 @@ public sealed class D3D11RenderWindow : Form
 
     private void UpdateCaption()
     {
+        var vehicleName =
+            _windowInfo.Vehicle?.DisplayName ??
+            "Sem ônibus";
+
+        var vehicleView =
+            _vehicleViewMode switch
+            {
+                RuntimeVehicleViewMode.Passenger =>
+                    "F2 passageiro",
+                RuntimeVehicleViewMode.Exterior =>
+                    "F3 externa",
+                _ =>
+                    "F1 motorista"
+            };
+
+        if (!_showDiagnostics)
+        {
+            Text =
+                $"OMSI Compatible Runtime — {_windowInfo.WorldName} — {vehicleName} — {vehicleView}";
+            return;
+        }
+
         var sceneryBudget =
             _objectGeometry.HitVertexBudget
                 ? " · object-budget"
@@ -2904,24 +2946,13 @@ public sealed class D3D11RenderWindow : Form
                 ? "MOUSE: ←/→ steer · ↑ throttle · ↓ brake · RMB exit"
                 : "KEYBOARD: Num8 throttle · Num2 brake · Num+ release · Num4/6 steer · Num5 center · O mouse";
 
-        var vehicleView =
-            _vehicleViewMode switch
-            {
-                RuntimeVehicleViewMode.Passenger =>
-                    "F2 passenger",
-                RuntimeVehicleViewMode.Exterior =>
-                    "F3 exterior",
-                _ =>
-                    "F1 cockpit"
-            };
-
         var control = _driveMode
             ? $"OMSI DRIVE · {vehicleView} · {_vehicle.SpeedKph:0} km/h · gear {gear} · " +
               $"E:{(_vehicle.ElectricalSystemEnabled ? "ON" : "OFF")} " +
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · Insert schedule · Home tickets · F4 free cam · F9 mirrors · D/N/R · E/M · Num. park · Tab free cam"
+              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · Insert schedule · Home tickets · F4 free cam · F9 mirrors · F10 debug · D/N/R · E/M · Num. park · Tab free cam"
             : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · F1/F2/F3 OMSI view · Tab OMSI drive";
 
         Text =
