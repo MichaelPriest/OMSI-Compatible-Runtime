@@ -609,6 +609,43 @@ public static class OmsiVehicleModelReader
             }
 
             if (section.Name.Equals(
+                    "matl_envmap",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                material.EnvMapSource =
+                    values
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+
+                if (values.Length >= 2 &&
+                    TrySingle(
+                        values[1],
+                        out var envStrength))
+                {
+                    material.EnvMapStrength =
+                        envStrength;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_envmap_mask",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                material.EnvMapMaskSource =
+                    Values(section)
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+                continue;
+            }
+
+            if (section.Name.Equals(
                     "matl_lightmap",
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -1008,6 +1045,9 @@ public static class OmsiVehicleModelReader
         public string? LightMapVariable { get; set; }
         public string? MaterialChangeVariable { get; set; }
         public string? MaterialChangeMapSource { get; set; }
+        public string? EnvMapSource { get; set; }
+        public double EnvMapStrength { get; set; }
+        public string? EnvMapMaskSource { get; set; }
 
         public OmsiVehicleMaterialOverride Build() =>
             new(
@@ -1022,6 +1062,9 @@ public static class OmsiVehicleModelReader
                 LightMapSource,
                 LightMapVariable,
                 MaterialChangeVariable,
-                MaterialChangeMapSource);
+                MaterialChangeMapSource,
+                EnvMapSource,
+                EnvMapStrength,
+                EnvMapMaskSource);
     }
 }
