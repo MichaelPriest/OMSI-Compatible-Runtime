@@ -159,7 +159,9 @@ try
             "(S.L.mesh_alpha)",
             "0.75",
             "(S.L.lights_stand)",
-            "650"
+            "1",
+            "(S.L.cockpit_light_test)",
+            "650",
             "(S.L.engine_speed)",
             "{end}",
             "{frame}",
@@ -227,7 +229,8 @@ try
             "parsed_number",
             "mesh_visible",
             "mesh_alpha",
-            "lights_stand"),
+            "lights_stand",
+            "cockpit_light_test"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -279,6 +282,13 @@ try
             "[matl_lightmap]",
             "panel_lm.bmp",
             "lights_stand",
+            "[matl_change]",
+            "regen.tga",
+            "0",
+            "cockpit_light_test",
+            "[matl_item]",
+            "[matl_nightmap]",
+            "panel_n.bmp",
             "[newanim]",
             "origin_from_mesh",
             "origin_rot_y",
@@ -309,6 +319,12 @@ try
         Path.Combine(
             vehicleModelDirectory,
             "panel_lm.bmp"),
+        [0x42, 0x4D, 0x00, 0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleModelDirectory,
+            "panel_n.bmp"),
         [0x42, 0x4D, 0x00, 0x00]);
 
     File.WriteAllText(
@@ -470,6 +486,13 @@ try
         Path.GetFileName(
             vehicleAsset.Meshes[0].Materials[0].LightMapTexturePath!) ==
             "panel_lm.bmp" &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeVariable ==
+            "cockpit_light_test" &&
+        !string.IsNullOrWhiteSpace(
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeTexturePath) &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeTexturePath!) ==
+            "panel_n.bmp" &&
         vehicleAsset.Meshes[1].Animations.Count == 0 &&
         Math.Abs(
             vehicleAsset.Meshes[0].SourceTransform.M41 -
