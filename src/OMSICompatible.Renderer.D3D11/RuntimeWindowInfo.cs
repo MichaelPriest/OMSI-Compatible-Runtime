@@ -88,7 +88,9 @@ public sealed record RuntimeO3dMaterialInfo(
     bool NoZCheck,
     string? AlphaScaleVariable = null,
     string? LightMapTexturePath = null,
-    string? LightMapVariable = null);
+    string? LightMapVariable = null,
+    string? MaterialChangeTexturePath = null,
+    string? MaterialChangeVariable = null);
 
 public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
