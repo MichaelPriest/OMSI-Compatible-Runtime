@@ -667,7 +667,7 @@ internal sealed class RuntimeApplicationContext :
                 entryPoint.WorldX,
                 entryPoint.WorldY,
                 entryPoint.WorldZ,
-                entryPoint.HeadingDegrees);
+                -entryPoint.HeadingDegrees);
 
         return new RuntimeWindowInfo(
             world.Name,
