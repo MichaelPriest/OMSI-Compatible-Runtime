@@ -609,6 +609,31 @@ public static class OmsiVehicleModelReader
             }
 
             if (section.Name.Equals(
+                    "matl_bumpmap",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                material.BumpMapSource =
+                    values
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+
+                if (values.Length >= 2 &&
+                    TrySingle(
+                        values[1],
+                        out var bumpStrength))
+                {
+                    material.BumpMapStrength =
+                        bumpStrength;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
                     "matl_envmap",
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -1048,6 +1073,8 @@ public static class OmsiVehicleModelReader
         public string? EnvMapSource { get; set; }
         public double EnvMapStrength { get; set; }
         public string? EnvMapMaskSource { get; set; }
+        public string? BumpMapSource { get; set; }
+        public double BumpMapStrength { get; set; }
 
         public OmsiVehicleMaterialOverride Build() =>
             new(
@@ -1065,6 +1092,8 @@ public static class OmsiVehicleModelReader
                 MaterialChangeMapSource,
                 EnvMapSource,
                 EnvMapStrength,
-                EnvMapMaskSource);
+                EnvMapMaskSource,
+                BumpMapSource,
+                BumpMapStrength);
     }
 }
