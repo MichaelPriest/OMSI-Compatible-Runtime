@@ -591,6 +591,7 @@ public static class WorldLoader
                             ConvertTransform(
                                 mesh.Transform),
                             geometry.Positions,
+                            geometry.Normals,
                             geometry.Uvs,
                             geometry.Indices,
                             geometry.TriangleMaterialIndices,
@@ -726,6 +727,7 @@ public static class WorldLoader
             false,
             errorCode,
             ConvertTransform(transform),
+            Array.Empty<float>(),
             Array.Empty<float>(),
             Array.Empty<float>(),
             Array.Empty<uint>(),
