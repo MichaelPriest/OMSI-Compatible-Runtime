@@ -1,3 +1,4 @@
+using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OMSICompatible.World;
@@ -22,7 +23,8 @@ try
             "[map]",
             "0",
             "0",
-            "tile_0_0.map"));
+            "tile_0_0.map"),
+        Encoding.Unicode);
 
     File.WriteAllText(
         Path.Combine(mapDirectory, "tile_0_0.map"),
@@ -52,7 +54,8 @@ try
             "100",
             "0",
             "1.5",
-            "2.5"));
+            "2.5"),
+        Encoding.Unicode);
 
     // This tile exists on disk but is intentionally not declared in global.cfg.
     File.WriteAllText(
@@ -68,11 +71,13 @@ try
 
     File.WriteAllText(
         Path.Combine(sceneryDirectory, "object.sco"),
-        Lines("[friendlyname]", "Synthetic Object"));
+        Lines("[friendlyname]", "Synthetic Object"),
+        Encoding.Unicode);
 
     File.WriteAllText(
         Path.Combine(splineDirectory, "road.sli"),
-        Lines("[friendlyname]", "Synthetic Road"));
+        Lines("[friendlyname]", "Synthetic Road"),
+        Encoding.Unicode);
 
     if (!OmsiContentRoot.TryCreate(
             root,
