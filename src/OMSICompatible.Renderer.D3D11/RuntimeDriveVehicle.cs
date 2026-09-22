@@ -74,6 +74,10 @@ internal sealed class RuntimeDriveVehicle
 
     public float SteeringInput { get; private set; }
 
+    public float SteeringAngleRadians =>
+        SteeringInput *
+        _maximumSteeringRadians;
+
     public float BrakeLevel { get; private set; }
 
     public float AcceleratorLevel { get; private set; }
