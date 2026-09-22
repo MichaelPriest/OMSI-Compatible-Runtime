@@ -1,6 +1,8 @@
 cbuffer RuntimeCamera : register(b0)
 {
     row_major float4x4 ViewProjection;
+    float3 CameraPosition;
+    float CameraPadding;
 };
 
 cbuffer RuntimeModel : register(b1)
@@ -13,13 +15,17 @@ cbuffer RuntimeMaterial : register(b2)
     float AlphaScale;
     float LightMapStrength;
     float MaterialChangeStrength;
-    float MaterialPadding;
+    float EnvMapStrength;
+    float EnvMapMaskEnabled;
+    float3 MaterialPadding;
 };
 
 Texture2D DiffuseTexture : register(t0);
 Texture2D TransMapTexture : register(t1);
 Texture2D LightMapTexture : register(t2);
 Texture2D MaterialChangeTexture : register(t3);
+Texture2D EnvMapTexture : register(t4);
+Texture2D EnvMapMaskTexture : register(t5);
 SamplerState DiffuseSampler : register(s0);
 
 struct VertexInput
@@ -36,6 +42,7 @@ struct VertexOutput
     float4 Color : COLOR;
     float2 Uv : TEXCOORD;
     float3 WorldNormal : TEXCOORD1;
+    float3 WorldPosition : TEXCOORD2;
 };
 
 VertexOutput VSMain(VertexInput input)
@@ -66,7 +73,82 @@ VertexOutput VSMain(VertexInput input)
                 input.Normal,
                 (float3x3)World));
 
+    output.WorldPosition =
+        worldPosition.xyz;
+
     return output;
+}
+
+float ResolveEnvMapMask(
+    VertexOutput input)
+{
+    if (EnvMapMaskEnabled <= 0.0f)
+    {
+        return 1.0f;
+    }
+
+    float3 mask =
+        EnvMapMaskTexture.Sample(
+            DiffuseSampler,
+            input.Uv).rgb;
+
+    return saturate(
+        dot(
+            mask,
+            float3(
+                0.333333f,
+                0.333333f,
+                0.333333f)));
+}
+
+float4 ApplyEnvMap(
+    float4 color,
+    VertexOutput input)
+{
+    if (EnvMapStrength <= 0.0f)
+    {
+        return color;
+    }
+
+    float3 normal =
+        normalize(
+            input.WorldNormal);
+
+    float3 viewDir =
+        normalize(
+            input.WorldPosition -
+            CameraPosition);
+
+    float2 envUv =
+        clamp(
+            (viewDir + normal).xy *
+                0.5f +
+            0.5f,
+            0.01f,
+            0.99f);
+
+    float3 env =
+        EnvMapTexture.Sample(
+            DiffuseSampler,
+            envUv).rgb;
+
+    float mask =
+        ResolveEnvMapMask(
+            input);
+
+    float strength =
+        saturate(
+            color.a *
+            EnvMapStrength *
+            mask);
+
+    color.rgb =
+        lerp(
+            color.rgb,
+            env,
+            strength);
+
+    return color;
 }
 
 float4 SampleDiffuse(
@@ -77,9 +159,6 @@ float4 SampleDiffuse(
             DiffuseSampler,
             input.Uv) *
         input.Color;
-
-    sampled.a *=
-        AlphaScale;
 
     if (LightMapStrength > 0.0f)
     {
@@ -98,6 +177,14 @@ float4 SampleDiffuse(
                 input.Uv).rgb *
             MaterialChangeStrength;
     }
+
+    sampled =
+        ApplyEnvMap(
+            sampled,
+            input);
+
+    sampled.a *=
+        AlphaScale;
 
     return sampled;
 }
@@ -129,9 +216,6 @@ float4 PSColor(
     float4 color =
         input.Color;
 
-    color.a *=
-        AlphaScale;
-
     if (LightMapStrength > 0.0f)
     {
         color.rgb +=
@@ -149,6 +233,14 @@ float4 PSColor(
                 input.Uv).rgb *
             MaterialChangeStrength;
     }
+
+    color =
+        ApplyEnvMap(
+            color,
+            input);
+
+    color.a *=
+        AlphaScale;
 
     return color;
 }
