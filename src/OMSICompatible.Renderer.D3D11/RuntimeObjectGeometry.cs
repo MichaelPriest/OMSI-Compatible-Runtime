@@ -12,7 +12,8 @@ internal sealed record RuntimeObjectBatch(
     bool AlphaBlend = false,
     string? TransMapTexturePath = null,
     bool NoZWrite = false,
-    bool NoZCheck = false);
+    bool NoZCheck = false,
+    IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -49,7 +50,8 @@ internal static class RuntimeObjectGeometryBuilder
         bool AlphaBlend = false,
         string? TransMapTexturePath = null,
         bool NoZWrite = false,
-        bool NoZCheck = false);
+        bool NoZCheck = false,
+        IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -281,7 +283,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.AlphaBlend,
                     key.TransMapTexturePath,
                     key.NoZWrite,
-                    key.NoZCheck));
+                    key.NoZCheck,
+                    key.VisibilityConditions));
         }
 
         return new RuntimeObjectGeometry(
@@ -361,7 +364,8 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.AlphaMode == 2,
                     material?.TransMapTexturePath,
                     material?.NoZWrite ?? false,
-                    material?.NoZCheck ?? false);
+                    material?.NoZCheck ?? false,
+                    mesh.VisibilityConditions);
 
             var output =
                 GetBatch(
