@@ -93,14 +93,39 @@ public static class OmsiVehicleAssetLoader
             var materials = geometry.Materials
                 .Select((material, materialIndex) =>
                 {
-                    var materialOverride = mesh.MaterialOverrides
-                        .Where(item => item.MaterialIndex == materialIndex)
-                        .OrderByDescending(item =>
-                            string.Equals(
-                                Path.GetFileName(item.TextureName),
-                                Path.GetFileName(material.TextureName),
-                                StringComparison.OrdinalIgnoreCase))
-                        .FirstOrDefault();
+                    var matchingOverrides =
+                        mesh.MaterialOverrides
+                            .Where(
+                                item =>
+                                    item.MaterialIndex ==
+                                    materialIndex)
+                            .OrderByDescending(
+                                item =>
+                                    string.Equals(
+                                        Path.GetFileName(
+                                            item.TextureName),
+                                        Path.GetFileName(
+                                            material.TextureName),
+                                        StringComparison.OrdinalIgnoreCase))
+                            .ToArray();
+
+                    var materialOverride =
+                        matchingOverrides
+                            .FirstOrDefault(
+                                static item =>
+                                    string.IsNullOrWhiteSpace(
+                                        item.MaterialChangeVariable)) ??
+                        matchingOverrides
+                            .FirstOrDefault();
+
+                    var materialChangeOverride =
+                        matchingOverrides
+                            .FirstOrDefault(
+                                static item =>
+                                    !string.IsNullOrWhiteSpace(
+                                        item.MaterialChangeVariable) &&
+                                    !string.IsNullOrWhiteSpace(
+                                        item.MaterialChangeMapSource));
 
                     string? texturePath = null;
                     if (!string.IsNullOrWhiteSpace(material.TextureName))
@@ -166,6 +191,23 @@ public static class OmsiVehicleAssetLoader
                             out lightMapPath);
                     }
 
+                    string? materialChangePath = null;
+                    var materialChangeSource =
+                        materialChangeOverride?
+                            .MaterialChangeMapSource;
+
+                    if (!string.IsNullOrWhiteSpace(
+                            materialChangeSource))
+                    {
+                        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+                            contentRoot.RootPath,
+                            bus.DirectoryPath,
+                            model.SourcePath,
+                            meshPath,
+                            materialChangeSource,
+                            out materialChangePath);
+                    }
+
                     var alphaMode =
                         materialOverride?.AlphaMode ??
                         (material.DiffuseA < 0.999f
@@ -191,7 +233,10 @@ public static class OmsiVehicleAssetLoader
                         materialOverride?.NoZCheck ?? false,
                         materialOverride?.AlphaScaleVariable,
                         lightMapPath,
-                        materialOverride?.LightMapVariable);
+                        materialOverride?.LightMapVariable,
+                        materialChangePath,
+                        materialChangeOverride?
+                            .MaterialChangeVariable);
                 })
                 .ToArray();
 
