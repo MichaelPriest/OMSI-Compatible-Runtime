@@ -243,7 +243,296 @@ public static class OmsiSceneryObjectReader
                 ? null
                 : renderTypeValue.Trim(),
             meshes.ToArray(),
+            ReadMaterialOverrides(document),
             ReadTree(document));
+    }
+
+    private static IReadOnlyList<OmsiSceneryMaterialOverride>
+        ReadMaterialOverrides(
+            OmsiSectionDocument document)
+    {
+        var result =
+            new List<OmsiSceneryMaterialOverride>();
+
+        var meshOrdinal = -1;
+        MaterialOverrideBuilder? current = null;
+
+        foreach (var section in document.Sections)
+        {
+            if (section.Name.Equals(
+                    "mesh",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                meshOrdinal++;
+                current = null;
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_change",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                current = null;
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                current = null;
+
+                if (meshOrdinal < 0)
+                {
+                    continue;
+                }
+
+                var values =
+                    Data(section)
+                        .Select(static line => line.Value)
+                        .ToArray();
+
+                if (values.Length < 2 ||
+                    string.IsNullOrWhiteSpace(values[0]) ||
+                    !int.TryParse(
+                        values[1],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var materialIndex) ||
+                    materialIndex < 0)
+                {
+                    continue;
+                }
+
+                current =
+                    new MaterialOverrideBuilder(
+                        meshOrdinal,
+                        values[0].Trim().Trim('"'),
+                        materialIndex);
+
+                continue;
+            }
+
+            if (current is null)
+            {
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_alpha",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var value =
+                    Data(section)
+                        .FirstOrDefault()
+                        ?.Value;
+
+                if (int.TryParse(
+                        value,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var alphaMode) &&
+                    alphaMode is >= 0 and <= 2)
+                {
+                    current.AlphaMode = alphaMode;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_transmap",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var value =
+                    Data(section)
+                        .FirstOrDefault()
+                        ?.Value
+                        ?.Trim()
+                        .Trim('"');
+
+                current.TransMapSource =
+                    string.IsNullOrWhiteSpace(value)
+                        ? null
+                        : value;
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_noZwrite",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                current.NoZWrite = true;
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_noZcheck",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                current.NoZCheck = true;
+            }
+        }
+
+        // Builders are emitted after the scan so commands following [matl]
+        // are associated with the correct mesh/material.
+        meshOrdinal = -1;
+        current = null;
+
+        foreach (var section in document.Sections)
+        {
+            if (section.Name.Equals(
+                    "mesh",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                meshOrdinal++;
+                current = null;
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_change",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                current = null;
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Data(section)
+                        .Select(static line => line.Value)
+                        .ToArray();
+
+                if (meshOrdinal < 0 ||
+                    values.Length < 2 ||
+                    string.IsNullOrWhiteSpace(values[0]) ||
+                    !int.TryParse(
+                        values[1],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var materialIndex) ||
+                    materialIndex < 0)
+                {
+                    current = null;
+                    continue;
+                }
+
+                current =
+                    new MaterialOverrideBuilder(
+                        meshOrdinal,
+                        values[0].Trim().Trim('"'),
+                        materialIndex);
+
+                result.Add(
+                    current.ToImmutable());
+
+                continue;
+            }
+
+            if (current is null ||
+                result.Count == 0)
+            {
+                continue;
+            }
+
+            var index = result.Count - 1;
+            var last = result[index];
+
+            if (section.Name.Equals(
+                    "matl_alpha",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var value =
+                    Data(section)
+                        .FirstOrDefault()
+                        ?.Value;
+
+                if (int.TryParse(
+                        value,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var alphaMode) &&
+                    alphaMode is >= 0 and <= 2)
+                {
+                    current.AlphaMode = alphaMode;
+                    result[index] =
+                        current.ToImmutable();
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_transmap",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var value =
+                    Data(section)
+                        .FirstOrDefault()
+                        ?.Value
+                        ?.Trim()
+                        .Trim('"');
+
+                current.TransMapSource =
+                    string.IsNullOrWhiteSpace(value)
+                        ? null
+                        : value;
+
+                result[index] =
+                    current.ToImmutable();
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_noZwrite",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                current.NoZWrite = true;
+                result[index] =
+                    current.ToImmutable();
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_noZcheck",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                current.NoZCheck = true;
+                result[index] =
+                    current.ToImmutable();
+            }
+        }
+
+        return result;
+    }
+
+    private sealed class MaterialOverrideBuilder(
+        int meshOrdinal,
+        string textureName,
+        int materialIndex)
+    {
+        public int MeshOrdinal { get; } = meshOrdinal;
+        public string TextureName { get; } = textureName;
+        public int MaterialIndex { get; } = materialIndex;
+        public int? AlphaMode { get; set; }
+        public string? TransMapSource { get; set; }
+        public bool NoZWrite { get; set; }
+        public bool NoZCheck { get; set; }
+
+        public OmsiSceneryMaterialOverride ToImmutable() =>
+            new(
+                MeshOrdinal,
+                TextureName,
+                MaterialIndex,
+                AlphaMode,
+                TransMapSource,
+                NoZWrite,
+                NoZCheck);
     }
 
     private static OmsiSceneryTreeDefinition? ReadTree(
