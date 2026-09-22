@@ -146,6 +146,8 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11InputLayout? _vehicleInputLayout;
     private ID3D11SamplerState? _vehicleSampler;
     private ID3D11BlendState? _vehicleAlphaBlendState;
+    private ID3D11DepthStencilState? _vehicleDepthReadState;
+    private ID3D11DepthStencilState? _vehicleDepthDisabledState;
     private RuntimeObjectGeometry _vehicleExteriorGeometry =
         RuntimeObjectGeometry.Empty;
     private RuntimeObjectGeometry _vehicleInteriorGeometry =
@@ -1224,6 +1226,14 @@ public sealed class D3D11RenderWindow : Form
             _device.CreateBlendState(
                 BlendDescription.NonPremultiplied);
 
+        _vehicleDepthReadState =
+            _device.CreateDepthStencilState(
+                DepthStencilDescription.DepthRead);
+
+        _vehicleDepthDisabledState =
+            _device.CreateDepthStencilState(
+                DepthStencilDescription.None);
+
         _vehicleModelBuffer =
             _device.CreateConstantBuffer<
                 RuntimeModelConstants>();
@@ -1234,7 +1244,7 @@ public sealed class D3D11RenderWindow : Form
 
         CreateReflectionResources();
 
-        foreach (var texturePath in
+        var vehicleTexturePaths =
             _vehicleExteriorGeometry.Batches
                 .Concat(
                     _vehicleInteriorGeometry.Batches)
@@ -1253,7 +1263,11 @@ public sealed class D3D11RenderWindow : Form
                     static path =>
                         path!)
                 .Distinct(
-                    StringComparer.OrdinalIgnoreCase))
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        foreach (var texturePath in
+            vehicleTexturePaths)
         {
             if (_objectTextureCache.ContainsKey(
                     texturePath) ||
@@ -1280,10 +1294,65 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
+        AppendVehicleTextureDiagnostics(
+            vehicleTexturePaths);
+
         _vehicle.Reset(
             _windowInfo.Splines,
             _terrainGeometry,
             _windowInfo.Spawn);
+    }
+
+    private void AppendVehicleTextureDiagnostics(
+        IReadOnlyList<string> vehicleTexturePaths)
+    {
+        try
+        {
+            var logPath =
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-load.log");
+
+            var failed =
+                vehicleTexturePaths
+                    .Where(
+                        _failedObjectTexturePaths.Contains)
+                    .ToArray();
+
+            var batches =
+                _vehicleExteriorGeometry.Batches
+                    .Concat(
+                        _vehicleInteriorGeometry.Batches)
+                    .ToArray();
+
+            var lines =
+                new List<string>
+                {
+                    "",
+                    "vehicleTextures:",
+                    $"required={vehicleTexturePaths.Count}",
+                    $"failed={failed.Length}",
+                    $"alphaBatches={batches.Count(static batch => batch.AlphaCutout || batch.AlphaBlend)}",
+                    $"noZWriteBatches={batches.Count(static batch => batch.NoZWrite)}",
+                    $"noZCheckBatches={batches.Count(static batch => batch.NoZCheck)}"
+                };
+
+            foreach (var failedPath in
+                     failed.Take(40))
+            {
+                lines.Add(
+                    $"failedTexture={failedPath}");
+            }
+
+            File.AppendAllLines(
+                logPath,
+                lines);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[vehicle-texture] unable to append diagnostics: {ex.Message}");
+        }
     }
 
     private void AppendVehicleGeometryDiagnostics()
@@ -2305,6 +2374,13 @@ public sealed class D3D11RenderWindow : Form
                     ? _vehicleAlphaBlendState
                     : null);
 
+            _deviceContext.OMSetDepthStencilState(
+                batch.NoZCheck
+                    ? _vehicleDepthDisabledState
+                    : batch.NoZWrite
+                        ? _vehicleDepthReadState
+                        : null);
+
             _deviceContext.PSUnsetShaderResource(
                 0);
 
@@ -2344,6 +2420,12 @@ public sealed class D3D11RenderWindow : Form
             }
             else
             {
+                if (batch.AlphaCutout ||
+                    batch.AlphaBlend)
+                {
+                    continue;
+                }
+
                 _deviceContext.PSSetShader(
                     _vehicleColorPixelShader);
             }
@@ -2354,6 +2436,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _deviceContext.OMSetBlendState(null);
+        _deviceContext.OMSetDepthStencilState(null);
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.RSSetState(null);
@@ -3248,6 +3331,8 @@ public sealed class D3D11RenderWindow : Form
             _reflectionDepthTexture?.Dispose();
             _reflectionDepthTexture = null;
 
+            _vehicleDepthDisabledState?.Dispose();
+            _vehicleDepthReadState?.Dispose();
             _vehicleAlphaBlendState?.Dispose();
             _vehicleSampler?.Dispose();
             _vehicleInputLayout?.Dispose();
