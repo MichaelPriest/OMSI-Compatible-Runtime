@@ -11,7 +11,8 @@ public sealed record OmsiVehicleMaterial(
     int AlphaMode,
     string? TransMapTexturePath,
     bool NoZWrite,
-    bool NoZCheck);
+    bool NoZCheck,
+    string? AlphaScaleVariable);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
