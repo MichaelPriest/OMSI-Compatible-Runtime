@@ -1,5 +1,22 @@
 namespace OmsiCompat.Vehicles;
 
+public sealed record OmsiVehicleFreeTexture(
+    string SourceTextureName,
+    string VariableName);
+
+public sealed record OmsiVehicleTextTexture(
+    int Index,
+    string StringVariable,
+    string FontName,
+    int Width,
+    int Height,
+    bool FullColor,
+    byte Red,
+    byte Green,
+    byte Blue,
+    int? Alignment,
+    bool? GridAligned);
+
 public sealed record OmsiVehicleMaterialOverride(
     string TextureName,
     int MaterialIndex,
@@ -17,7 +34,9 @@ public sealed record OmsiVehicleMaterialOverride(
     double EnvMapStrength,
     string? EnvMapMaskSource,
     string? BumpMapSource,
-    double BumpMapStrength);
+    double BumpMapStrength,
+    IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
+    int? TextTextureIndex);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
@@ -74,4 +93,5 @@ public sealed record OmsiVehicleMeshReference(
 
 public sealed record OmsiVehicleModel(
     string SourcePath,
-    IReadOnlyList<OmsiVehicleMeshReference> Meshes);
+    IReadOnlyList<OmsiVehicleMeshReference> Meshes,
+    IReadOnlyList<OmsiVehicleTextTexture> TextTextures);
