@@ -713,7 +713,29 @@ internal sealed class RuntimeApplicationContext :
                                             new RuntimeVehicleVisibilityConditionInfo(
                                                 condition.VariableName,
                                                 condition.Value))
-                                    .ToArray()))
+                                    .ToArray(),
+                                mesh.Animations
+                                    .Select(
+                                        static animation =>
+                                            new RuntimeVehicleAnimationInfo(
+                                                animation.Kind ==
+                                                    OmsiVehicleAnimationKind.Translation
+                                                    ? RuntimeVehicleAnimationKind.Translation
+                                                    : RuntimeVehicleAnimationKind.Rotation,
+                                                animation.VariableName,
+                                                animation.Delta,
+                                                animation.OriginFromMesh,
+                                                animation.OriginX,
+                                                animation.OriginY,
+                                                animation.OriginZ,
+                                                animation.OriginRotationX,
+                                                animation.OriginRotationY,
+                                                animation.OriginRotationZ,
+                                                animation.Offset,
+                                                animation.MaxSpeed,
+                                                animation.Delay))
+                                    .ToArray(),
+                                mesh.SourceTransform))
                     .ToArray(),
                 vehicle.Bus.DriverCameras
                     .Select(
