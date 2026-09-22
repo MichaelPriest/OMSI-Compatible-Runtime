@@ -28,3 +28,6 @@ jobs:
 
       - name: Build x64
         run: dotnet build OMSI-Compatible-Runtime.slnx -c Release --no-restore
+
+      - name: Run synthetic world smoke test
+        run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
