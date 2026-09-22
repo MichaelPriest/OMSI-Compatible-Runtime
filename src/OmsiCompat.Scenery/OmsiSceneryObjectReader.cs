@@ -238,6 +238,11 @@ public static class OmsiSceneryObjectReader
                     section.Name.Equals(
                         "absheight",
                         StringComparison.OrdinalIgnoreCase)),
+            document.Sections.Any(
+                static section =>
+                    section.Name.Equals(
+                        "onlyeditor",
+                        StringComparison.OrdinalIgnoreCase)),
             string.IsNullOrWhiteSpace(
                 renderTypeValue)
                 ? null
