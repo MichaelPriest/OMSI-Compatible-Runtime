@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="../OmsiCompat.Core/OmsiCompat.Core.csproj" />
     <ProjectReference Include="../OmsiCompat.Map/OmsiCompat.Map.csproj" />
+    <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
   </ItemGroup>
 </Project>

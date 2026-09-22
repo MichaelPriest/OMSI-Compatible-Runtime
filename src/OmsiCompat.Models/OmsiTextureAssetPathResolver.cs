@@ -16,6 +16,48 @@ public static class OmsiTextureAssetPathResolver
             ],
             StringComparer.OrdinalIgnoreCase);
 
+    public static bool TryResolveVehicleTexture(
+        string omsiRoot,
+        string vehicleDirectory,
+        string modelConfigPath,
+        string meshFullPath,
+        string textureName,
+        out string fullPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(omsiRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(vehicleDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelConfigPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshFullPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(textureName);
+
+        fullPath = string.Empty;
+
+        var vehiclesRoot =
+            Path.GetFullPath(Path.Combine(omsiRoot, "Vehicles"));
+
+        var modelDirectory =
+            Path.GetDirectoryName(Path.GetFullPath(modelConfigPath))
+            ?? vehicleDirectory;
+
+        var meshDirectory =
+            Path.GetDirectoryName(Path.GetFullPath(meshFullPath))
+            ?? modelDirectory;
+
+        return TryResolve(
+            vehiclesRoot,
+            textureName,
+            [
+                vehicleDirectory,
+                Path.Combine(vehicleDirectory, "Texture"),
+                modelDirectory,
+                Path.Combine(modelDirectory, "Texture"),
+                meshDirectory,
+                Path.Combine(meshDirectory, "Texture"),
+                Path.GetFullPath(Path.Combine(meshDirectory, "..", "Texture"))
+            ],
+            out fullPath);
+    }
+
     public static bool TryResolveGroundTexture(
         string omsiRoot,
         string mapDirectory,
