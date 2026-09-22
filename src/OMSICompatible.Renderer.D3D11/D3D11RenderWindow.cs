@@ -68,7 +68,16 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11Buffer? _terrainCameraBuffer;
     private ID3D11VertexShader? _terrainVertexShader;
     private ID3D11PixelShader? _terrainPixelShader;
+    private ID3D11PixelShader? _terrainTexturedPixelShader;
+    private ID3D11PixelShader? _terrainBaseDetailPixelShader;
+    private ID3D11PixelShader? _terrainLayerPixelShader;
+    private ID3D11PixelShader? _terrainLayerDetailPixelShader;
+    private ID3D11PixelShader? _terrainLightmapPixelShader;
     private ID3D11InputLayout? _terrainInputLayout;
+    private ID3D11SamplerState? _terrainTextureSampler;
+    private ID3D11SamplerState? _terrainMaskSampler;
+    private ID3D11BlendState? _terrainAlphaBlendState;
+    private ID3D11BlendState? _terrainAdditiveBlendState;
     private ID3D11RasterizerState? _terrainRasterizerState;
     private RuntimeTerrainGeometry _terrainGeometry =
         RuntimeTerrainGeometry.Empty;
@@ -338,18 +347,22 @@ public sealed class D3D11RenderWindow : Form
 
         _terrainGeometry =
             RuntimeTerrainGeometryBuilder.Build(
-                _windowInfo.Tiles);
+                _windowInfo.Tiles,
+                _windowInfo.GroundTextures);
 
         if (_terrainGeometry.Vertices.Length == 0)
         {
             return;
         }
 
-        _terrainVertexBuffer = _device.CreateBuffer(
-            _terrainGeometry.Vertices.AsSpan(),
-            BindFlags.VertexBuffer);
+        _terrainVertexBuffer =
+            _device.CreateBuffer(
+                _terrainGeometry.Vertices.AsSpan(),
+                BindFlags.VertexBuffer);
 
-        var shaderFile = ShaderPath("RuntimeTerrain.hlsl");
+        var shaderFile =
+            ShaderPath(
+                "RuntimeTerrain.hlsl");
 
         ReadOnlyMemory<byte> vertexShaderByteCode =
             Compiler.CompileFromFile(
@@ -357,22 +370,90 @@ public sealed class D3D11RenderWindow : Form
                 "VSMain",
                 "vs_4_0");
 
-        ReadOnlyMemory<byte> pixelShaderByteCode =
+        ReadOnlyMemory<byte> colorPixelShaderByteCode =
             Compiler.CompileFromFile(
                 shaderFile,
-                "PSMain",
+                "PSColor",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> texturedPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSTextured",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> baseDetailPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSBaseDetail",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> layerPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSLayer",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> layerDetailPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSLayerDetail",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> lightmapPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSLightmap",
                 "ps_4_0");
 
         _terrainVertexShader =
             _device.CreateVertexShader(
                 vertexShaderByteCode.Span);
+
         _terrainPixelShader =
             _device.CreatePixelShader(
-                pixelShaderByteCode.Span);
+                colorPixelShaderByteCode.Span);
+
+        _terrainTexturedPixelShader =
+            _device.CreatePixelShader(
+                texturedPixelShaderByteCode.Span);
+
+        _terrainBaseDetailPixelShader =
+            _device.CreatePixelShader(
+                baseDetailPixelShaderByteCode.Span);
+
+        _terrainLayerPixelShader =
+            _device.CreatePixelShader(
+                layerPixelShaderByteCode.Span);
+
+        _terrainLayerDetailPixelShader =
+            _device.CreatePixelShader(
+                layerDetailPixelShaderByteCode.Span);
+
+        _terrainLightmapPixelShader =
+            _device.CreatePixelShader(
+                lightmapPixelShaderByteCode.Span);
+
         _terrainInputLayout =
             _device.CreateInputLayout(
-                CreateInputElements(),
+                CreateTerrainInputElements(),
                 vertexShaderByteCode.Span);
+
+        _terrainTextureSampler =
+            _device.CreateSamplerState(
+                SamplerDescription.LinearWrap);
+
+        _terrainMaskSampler =
+            _device.CreateSamplerState(
+                SamplerDescription.LinearClamp);
+
+        _terrainAlphaBlendState =
+            _device.CreateBlendState(
+                BlendDescription.NonPremultiplied);
+
+        _terrainAdditiveBlendState =
+            _device.CreateBlendState(
+                BlendDescription.Additive);
 
         _terrainCameraBuffer =
             _device.CreateConstantBuffer<
@@ -385,7 +466,8 @@ public sealed class D3D11RenderWindow : Form
         _terrainVertexCount =
             (uint)_terrainGeometry.Vertices.Length;
 
-        _camera.Reset(_terrainGeometry);
+        _camera.Reset(
+            _terrainGeometry);
     }
 
     private void CreateSplineResources()
@@ -429,7 +511,9 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.SceneryAssets);
 
         if (_objectGeometry.Vertices.Length == 0 &&
-            _splineGeometry.Vertices.Length == 0)
+            _splineGeometry.Vertices.Length == 0 &&
+            _terrainGeometry.TexturedBatchCount == 0 &&
+            _terrainGeometry.MaskedLayerCount == 0)
         {
             return;
         }
@@ -532,6 +616,86 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
+        foreach (var texturePath in
+            _terrainGeometry.Batches
+                .SelectMany(
+                    static batch =>
+                        new[]
+                        {
+                            batch.TexturePath,
+                            batch.DetailTexturePath
+                        })
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Select(
+                    static path =>
+                        path!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase))
+        {
+            if (_objectTextureCache.ContainsKey(
+                    texturePath))
+            {
+                continue;
+            }
+
+            var texture =
+                _objectTextureLoader.TryLoad(
+                    texturePath);
+
+            if (texture is not null)
+            {
+                _objectTextureCache[
+                    texturePath] =
+                    texture;
+            }
+            else
+            {
+                _failedObjectTexturePaths.Add(
+                    texturePath);
+            }
+        }
+
+        foreach (var maskPath in
+            _terrainGeometry.Batches
+                .Select(
+                    static batch =>
+                        batch.MaskTexturePath)
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Select(
+                    static path =>
+                        path!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase))
+        {
+            if (_objectTextureCache.ContainsKey(
+                    maskPath))
+            {
+                continue;
+            }
+
+            var mask =
+                _objectTextureLoader.TryLoadAlphaMask(
+                    maskPath);
+
+            if (mask is not null)
+            {
+                _objectTextureCache[
+                    maskPath] =
+                    mask;
+            }
+            else
+            {
+                _failedObjectTexturePaths.Add(
+                    maskPath);
+            }
+        }
+
         _objectVertexCount =
             (uint)_objectGeometry.Vertices.Length;
     }
@@ -604,6 +768,41 @@ public sealed class D3D11RenderWindow : Form
             0,
             Format.R32G32B32A32_Float,
             12,
+            0)
+    ];
+
+    private static InputElementDescription[]
+        CreateTerrainInputElements() =>
+    [
+        new InputElementDescription(
+            "POSITION",
+            0,
+            Format.R32G32B32_Float,
+            0,
+            0),
+        new InputElementDescription(
+            "COLOR",
+            0,
+            Format.R32G32B32A32_Float,
+            12,
+            0),
+        new InputElementDescription(
+            "TEXCOORD",
+            0,
+            Format.R32G32_Float,
+            28,
+            0),
+        new InputElementDescription(
+            "TEXCOORD",
+            1,
+            Format.R32G32_Float,
+            36,
+            0),
+        new InputElementDescription(
+            "TEXCOORD",
+            2,
+            Format.R32G32_Float,
+            44,
             0)
     ];
 
@@ -878,7 +1077,14 @@ public sealed class D3D11RenderWindow : Form
             _terrainCameraBuffer is null ||
             _terrainVertexShader is null ||
             _terrainPixelShader is null ||
-            _terrainInputLayout is null)
+            _terrainTexturedPixelShader is null ||
+            _terrainBaseDetailPixelShader is null ||
+            _terrainLayerPixelShader is null ||
+            _terrainLayerDetailPixelShader is null ||
+            _terrainLightmapPixelShader is null ||
+            _terrainInputLayout is null ||
+            _terrainTextureSampler is null ||
+            _terrainMaskSampler is null)
         {
             return;
         }
@@ -889,8 +1095,10 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
+
         _deviceContext.IASetInputLayout(
             _terrainInputLayout);
+
         _deviceContext.IASetVertexBuffer(
             0,
             _terrainVertexBuffer,
@@ -898,8 +1106,7 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.VSSetShader(
             _terrainVertexShader);
-        _deviceContext.PSSetShader(
-            _terrainPixelShader);
+
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
@@ -922,10 +1129,124 @@ public sealed class D3D11RenderWindow : Form
             0,
             _terrainCameraBuffer);
 
-        _deviceContext.Draw(
-            _terrainVertexCount,
-            0);
+        _deviceContext.PSSetSampler(
+            0,
+            _terrainTextureSampler);
 
+        _deviceContext.PSSetSampler(
+            1,
+            _terrainMaskSampler);
+
+        foreach (var batch in
+            _terrainGeometry.Batches)
+        {
+            if (batch.VertexCount == 0)
+            {
+                continue;
+            }
+
+            RuntimeGpuTexture? texture = null;
+            RuntimeGpuTexture? mask = null;
+            RuntimeGpuTexture? detail = null;
+
+            var hasTexture =
+                batch.TexturePath is
+                    { Length: > 0 } texturePath &&
+                _objectTextureCache.TryGetValue(
+                    texturePath,
+                    out texture);
+
+            var hasMask =
+                batch.MaskTexturePath is
+                    { Length: > 0 } maskPath &&
+                _objectTextureCache.TryGetValue(
+                    maskPath,
+                    out mask);
+
+            var hasDetail =
+                batch.DetailTexturePath is
+                    { Length: > 0 } detailPath &&
+                _objectTextureCache.TryGetValue(
+                    detailPath,
+                    out detail);
+
+            _deviceContext.PSUnsetShaderResource(0);
+            _deviceContext.PSUnsetShaderResource(1);
+            _deviceContext.PSUnsetShaderResource(2);
+            _deviceContext.OMSetBlendState(null);
+
+            if (batch.AdditiveLightmap &&
+                hasTexture)
+            {
+                _deviceContext.OMSetBlendState(
+                    _terrainAdditiveBlendState);
+
+                _deviceContext.PSSetShader(
+                    _terrainLightmapPixelShader);
+
+                _deviceContext.PSSetShaderResource(
+                    0,
+                    texture!.View);
+            }
+            else if (hasMask &&
+                     hasTexture)
+            {
+                _deviceContext.OMSetBlendState(
+                    _terrainAlphaBlendState);
+
+                _deviceContext.PSSetShader(
+                    hasDetail
+                        ? _terrainLayerDetailPixelShader
+                        : _terrainLayerPixelShader);
+
+                _deviceContext.PSSetShaderResource(
+                    0,
+                    texture!.View);
+
+                _deviceContext.PSSetShaderResource(
+                    1,
+                    mask!.View);
+
+                if (hasDetail)
+                {
+                    _deviceContext.PSSetShaderResource(
+                        2,
+                        detail!.View);
+                }
+            }
+            else if (hasTexture)
+            {
+                _deviceContext.PSSetShader(
+                    hasDetail
+                        ? _terrainBaseDetailPixelShader
+                        : _terrainTexturedPixelShader);
+
+                _deviceContext.PSSetShaderResource(
+                    0,
+                    texture!.View);
+
+                if (hasDetail)
+                {
+                    _deviceContext.PSSetShaderResource(
+                        2,
+                        detail!.View);
+                }
+            }
+            else
+            {
+                _deviceContext.PSSetShader(
+                    _terrainPixelShader);
+            }
+
+            _deviceContext.Draw(
+                batch.VertexCount,
+                batch.StartVertex);
+        }
+
+        _deviceContext.OMSetBlendState(null);
+        _deviceContext.PSUnsetShaderResource(0);
+        _deviceContext.PSUnsetShaderResource(1);
+        _deviceContext.PSUnsetShaderResource(2);
         _deviceContext.RSSetState(null);
     }
 
@@ -1578,7 +1899,7 @@ public sealed class D3D11RenderWindow : Form
                 : string.Empty;
 
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicle.Gear switch
@@ -1628,7 +1949,16 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext?.Flush();
 
             _terrainRasterizerState?.Dispose();
+            _terrainAdditiveBlendState?.Dispose();
+            _terrainAlphaBlendState?.Dispose();
+            _terrainMaskSampler?.Dispose();
+            _terrainTextureSampler?.Dispose();
             _terrainInputLayout?.Dispose();
+            _terrainLightmapPixelShader?.Dispose();
+            _terrainLayerDetailPixelShader?.Dispose();
+            _terrainLayerPixelShader?.Dispose();
+            _terrainBaseDetailPixelShader?.Dispose();
+            _terrainTexturedPixelShader?.Dispose();
             _terrainPixelShader?.Dispose();
             _terrainVertexShader?.Dispose();
             _terrainCameraBuffer?.Dispose();
