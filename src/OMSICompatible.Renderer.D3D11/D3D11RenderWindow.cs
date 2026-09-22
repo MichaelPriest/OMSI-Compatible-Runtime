@@ -428,15 +428,19 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Objects,
                 _windowInfo.SceneryAssets);
 
-        if (_objectGeometry.Vertices.Length == 0)
+        if (_objectGeometry.Vertices.Length == 0 &&
+            _splineGeometry.Vertices.Length == 0)
         {
             return;
         }
 
-        _objectVertexBuffer =
-            _device.CreateBuffer(
-                _objectGeometry.Vertices.AsSpan(),
-                BindFlags.VertexBuffer);
+        if (_objectGeometry.Vertices.Length > 0)
+        {
+            _objectVertexBuffer =
+                _device.CreateBuffer(
+                    _objectGeometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+        }
 
         var shaderFile =
             ShaderPath("RuntimeObject.hlsl");
@@ -496,6 +500,8 @@ public sealed class D3D11RenderWindow : Form
 
         foreach (var texturePath in
             _objectGeometry.Batches
+                .Concat(
+                    _splineGeometry.Batches)
                 .Select(
                     static batch =>
                         batch.TexturePath)
@@ -929,9 +935,12 @@ public sealed class D3D11RenderWindow : Form
             _renderTargetView is null ||
             _splineVertexBuffer is null ||
             _terrainCameraBuffer is null ||
-            _terrainVertexShader is null ||
-            _terrainPixelShader is null ||
-            _terrainInputLayout is null ||
+            _objectVertexShader is null ||
+            _objectColorPixelShader is null ||
+            _objectTexturedPixelShader is null ||
+            _objectAlphaCutoutPixelShader is null ||
+            _objectInputLayout is null ||
+            _objectSampler is null ||
             _splineVertexCount == 0)
         {
             return;
@@ -944,26 +953,62 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
         _deviceContext.IASetInputLayout(
-            _terrainInputLayout);
+            _objectInputLayout);
         _deviceContext.IASetVertexBuffer(
             0,
             _splineVertexBuffer,
-            RuntimeTerrainVertex.SizeInBytes);
+            RuntimeObjectVertex.SizeInBytes);
 
         _deviceContext.VSSetShader(
-            _terrainVertexShader);
-        _deviceContext.PSSetShader(
-            _terrainPixelShader);
-        _deviceContext.RSSetState(
-            _terrainRasterizerState);
+            _objectVertexShader);
         _deviceContext.VSSetConstantBuffer(
             0,
             _terrainCameraBuffer);
+        _deviceContext.PSSetSampler(
+            0,
+            _objectSampler);
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
 
-        _deviceContext.Draw(
-            _splineVertexCount,
+        foreach (var batch in
+            _splineGeometry.Batches)
+        {
+            if (batch.VertexCount == 0)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(
+                    batch.TexturePath) &&
+                _objectTextureCache.TryGetValue(
+                    batch.TexturePath,
+                    out var texture))
+            {
+                _deviceContext.PSSetShader(
+                    batch.AlphaCutout
+                        ? _objectAlphaCutoutPixelShader
+                        : _objectTexturedPixelShader);
+
+                _deviceContext.PSSetShaderResource(
+                    0,
+                    texture.View);
+            }
+            else
+            {
+                _deviceContext.PSSetShader(
+                    _objectColorPixelShader);
+
+                _deviceContext.PSUnsetShaderResource(
+                    0);
+            }
+
+            _deviceContext.Draw(
+                batch.VertexCount,
+                batch.StartVertex);
+        }
+
+        _deviceContext.PSUnsetShaderResource(
             0);
-
         _deviceContext.RSSetState(null);
     }
 
@@ -1533,7 +1578,7 @@ public sealed class D3D11RenderWindow : Form
                 : string.Empty;
 
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicle.Gear switch
