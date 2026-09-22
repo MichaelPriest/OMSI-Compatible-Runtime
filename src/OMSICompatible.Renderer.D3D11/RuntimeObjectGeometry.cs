@@ -16,7 +16,8 @@ internal sealed record RuntimeObjectBatch(
     IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null,
     IReadOnlyList<RuntimeVehicleAnimationInfo>? Animations = null,
     Matrix4x4? SourceTransform = null,
-    Matrix4x4? StaticTransform = null);
+    Matrix4x4? StaticTransform = null,
+    string? AlphaScaleVariable = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -57,7 +58,8 @@ internal static class RuntimeObjectGeometryBuilder
         IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null,
         IReadOnlyList<RuntimeVehicleAnimationInfo>? Animations = null,
         Matrix4x4? SourceTransform = null,
-        Matrix4x4? StaticTransform = null);
+        Matrix4x4? StaticTransform = null,
+        string? AlphaScaleVariable = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -293,7 +295,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.VisibilityConditions,
                     key.Animations,
                     key.SourceTransform,
-                    key.StaticTransform));
+                    key.StaticTransform,
+                    key.AlphaScaleVariable));
         }
 
         return new RuntimeObjectGeometry(
@@ -377,7 +380,8 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.VisibilityConditions,
                     mesh.Animations,
                     mesh.SourceTransform,
-                    worldTransform);
+                    worldTransform,
+                    material?.AlphaScaleVariable);
 
             var output =
                 GetBatch(
