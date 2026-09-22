@@ -143,7 +143,14 @@ internal static class Program
                 tile.Coordinate.X,
                 tile.Coordinate.Y,
                 tile.Objects.Count,
-                tile.Splines.Count))
+                tile.Splines.Count,
+                tile.Terrain is null
+                    ? null
+                    : new RuntimeTerrainInfo(
+                        tile.Terrain.CellCount,
+                        tile.Terrain.Heights,
+                        tile.Terrain.MinimumHeight,
+                        tile.Terrain.MaximumHeight)))
             .ToArray();
 
         ApplicationConfiguration.Initialize();
