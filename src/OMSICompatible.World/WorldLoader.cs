@@ -506,6 +506,7 @@ public static class WorldLoader
                         dependency?.ResolvedPath,
                         false,
                         false,
+                        false,
                         null,
                         Array.Empty<WorldSceneryMeshAsset>(),
                         null);
@@ -676,6 +677,7 @@ public static class WorldLoader
                         dependency.ResolvedPath,
                         definition.Exists,
                         definition.UsesAbsoluteHeight,
+                        definition.OnlyEditor,
                         definition.RenderType,
                         meshes.ToArray(),
                         definition.Tree is null
@@ -702,6 +704,7 @@ public static class WorldLoader
                     new WorldSceneryAsset(
                         declaredPath,
                         dependency.ResolvedPath,
+                        false,
                         false,
                         false,
                         null,
