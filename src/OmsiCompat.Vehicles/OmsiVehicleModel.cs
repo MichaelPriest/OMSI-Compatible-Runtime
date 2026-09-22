@@ -27,12 +27,17 @@ public sealed record OmsiVehicleMeshTransform(
             1, 1, 1);
 }
 
+public sealed record OmsiVehicleVisibilityCondition(
+    string VariableName,
+    double Value);
+
 public sealed record OmsiVehicleMeshReference(
     int Ordinal,
     string DeclaredPath,
     OmsiVehicleMeshTransform Transform,
     int ViewpointFlag,
     double? LodThreshold,
+    IReadOnlyList<OmsiVehicleVisibilityCondition> VisibilityConditions,
     IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides);
 
 public sealed record OmsiVehicleModel(
