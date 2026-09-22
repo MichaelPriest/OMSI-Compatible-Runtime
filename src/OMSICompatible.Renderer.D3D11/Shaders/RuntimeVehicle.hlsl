@@ -17,7 +17,9 @@ cbuffer RuntimeMaterial : register(b2)
     float MaterialChangeStrength;
     float EnvMapStrength;
     float EnvMapMaskEnabled;
-    float3 MaterialPadding;
+    float BumpMapStrength;
+    float MaterialPadding0;
+    float MaterialPadding1;
 };
 
 Texture2D DiffuseTexture : register(t0);
@@ -26,6 +28,7 @@ Texture2D LightMapTexture : register(t2);
 Texture2D MaterialChangeTexture : register(t3);
 Texture2D EnvMapTexture : register(t4);
 Texture2D EnvMapMaskTexture : register(t5);
+Texture2D BumpMapTexture : register(t6);
 SamplerState DiffuseSampler : register(s0);
 
 struct VertexInput
@@ -77,6 +80,116 @@ VertexOutput VSMain(VertexInput input)
         worldPosition.xyz;
 
     return output;
+}
+
+float3 ResolveSurfaceNormal(
+    VertexOutput input)
+{
+    float3 normal =
+        ResolveSurfaceNormal(
+            input);
+
+    if (BumpMapStrength <= 0.0f)
+    {
+        return normal;
+    }
+
+    float3 dpdx =
+        ddx(
+            input.WorldPosition);
+    float3 dpdy =
+        ddy(
+            input.WorldPosition);
+
+    float2 duvdx =
+        ddx(
+            input.Uv);
+    float2 duvdy =
+        ddy(
+            input.Uv);
+
+    float determinant =
+        duvdx.x *
+            duvdy.y -
+        duvdx.y *
+            duvdy.x;
+
+    if (abs(
+            determinant) <
+        0.000001f)
+    {
+        return normal;
+    }
+
+    float inverseDeterminant =
+        1.0f /
+        determinant;
+
+    float3 tangent =
+        normalize(
+            (dpdx *
+                duvdy.y -
+             dpdy *
+                duvdx.y) *
+            inverseDeterminant);
+
+    float3 bitangent =
+        normalize(
+            (-dpdx *
+                duvdy.x +
+             dpdy *
+                duvdx.x) *
+            inverseDeterminant);
+
+    const float sampleOffset =
+        0.02f;
+
+    float heightLeft =
+        BumpMapTexture.Sample(
+            DiffuseSampler,
+            input.Uv +
+                float2(
+                    -sampleOffset,
+                    0.0f)).r;
+
+    float heightRight =
+        BumpMapTexture.Sample(
+            DiffuseSampler,
+            input.Uv +
+                float2(
+                    sampleOffset,
+                    0.0f)).r;
+
+    float heightDown =
+        BumpMapTexture.Sample(
+            DiffuseSampler,
+            input.Uv +
+                float2(
+                    0.0f,
+                    -sampleOffset)).r;
+
+    float heightUp =
+        BumpMapTexture.Sample(
+            DiffuseSampler,
+            input.Uv +
+                float2(
+                    0.0f,
+                    sampleOffset)).r;
+
+    float2 gradient =
+        float2(
+            heightRight -
+                heightLeft,
+            heightUp -
+                heightDown) *
+        BumpMapStrength;
+
+    return normalize(
+        normal +
+        tangent *
+            gradient.x +
+        bitangent *
+            gradient.y);
 }
 
 float ResolveEnvMapMask(
