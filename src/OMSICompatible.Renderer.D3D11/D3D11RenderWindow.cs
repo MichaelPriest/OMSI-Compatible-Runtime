@@ -20,6 +20,12 @@ public sealed class D3D11RenderWindow : Form
         public Matrix4x4 ViewProjection;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimeModelConstants
+    {
+        public Matrix4x4 World;
+    }
+
     private static readonly FeatureLevel[] RequestedFeatureLevels =
     [
         FeatureLevel.Level_11_1,
@@ -29,11 +35,14 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeWindowInfo _windowInfo;
     private readonly System.Windows.Forms.Timer _renderTimer;
     private readonly RuntimeFreeCamera _camera = new();
+    private readonly RuntimeDriveVehicle _vehicle;
     private readonly HashSet<Keys> _pressedKeys = [];
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
 
     private double _lastFrameTimeSeconds;
     private bool _mouseLooking;
+    private bool _driveMode = true;
+    private int _captionFrame;
     private System.Drawing.Point _lastMousePosition;
 
     private IDXGIFactory2? _factory;
@@ -66,11 +75,19 @@ public sealed class D3D11RenderWindow : Form
         RuntimeSplineGeometry.Empty;
     private uint _splineVertexCount;
 
+    private ID3D11Buffer? _vehicleVertexBuffer;
+    private ID3D11Buffer? _vehicleModelBuffer;
+    private ID3D11VertexShader? _vehicleVertexShader;
+    private ID3D11PixelShader? _vehiclePixelShader;
+    private ID3D11InputLayout? _vehicleInputLayout;
+    private uint _vehicleVertexCount;
+
     private FeatureLevel _featureLevel;
 
     public D3D11RenderWindow(RuntimeWindowInfo windowInfo)
     {
         _windowInfo = windowInfo;
+        _vehicle = new RuntimeDriveVehicle(windowInfo.Tiles);
 
         Text = $"OMSI Compatible Runtime — {windowInfo.WorldName}";
         ClientSize = new System.Drawing.Size(1280, 720);
@@ -152,6 +169,7 @@ public sealed class D3D11RenderWindow : Form
         CreateTileOverviewResources();
         CreateTerrainResources();
         CreateSplineResources();
+        CreateVehicleResources();
     }
 
     private static IDXGIAdapter1 GetHardwareAdapter(IDXGIFactory2 factory)
@@ -371,6 +389,60 @@ public sealed class D3D11RenderWindow : Form
             (uint)_splineGeometry.Vertices.Length;
     }
 
+    private void CreateVehicleResources()
+    {
+        if (_device is null)
+        {
+            throw new InvalidOperationException(
+                "D3D11 device is not initialized.");
+        }
+
+        var vertices =
+            RuntimeVehicleGeometry.BuildBusProxy();
+
+        _vehicleVertexBuffer =
+            _device.CreateBuffer(
+                vertices.AsSpan(),
+                BindFlags.VertexBuffer);
+
+        var shaderFile =
+            ShaderPath("RuntimeVehicle.hlsl");
+
+        ReadOnlyMemory<byte> vertexShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "VSMain",
+                "vs_4_0");
+
+        ReadOnlyMemory<byte> pixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSMain",
+                "ps_4_0");
+
+        _vehicleVertexShader =
+            _device.CreateVertexShader(
+                vertexShaderByteCode.Span);
+        _vehiclePixelShader =
+            _device.CreatePixelShader(
+                pixelShaderByteCode.Span);
+        _vehicleInputLayout =
+            _device.CreateInputLayout(
+                CreateInputElements(),
+                vertexShaderByteCode.Span);
+
+        _vehicleModelBuffer =
+            _device.CreateConstantBuffer<
+                RuntimeModelConstants>();
+
+        _vehicleVertexCount =
+            (uint)vertices.Length;
+
+        _vehicle.Reset(
+            _windowInfo.Splines,
+            _terrainGeometry);
+    }
+
     private static InputElementDescription[]
         CreateInputElements() =>
     [
@@ -559,8 +631,15 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         EventArgs e)
     {
-        UpdateCamera();
+        UpdateSimulation();
         RenderFrame();
+
+        _captionFrame++;
+        if (_captionFrame >= 15)
+        {
+            _captionFrame = 0;
+            UpdateCaption();
+        }
     }
 
     private void RenderFrame()
@@ -599,6 +678,7 @@ public sealed class D3D11RenderWindow : Form
         {
             DrawTerrain();
             DrawSplines();
+            DrawVehicle();
         }
         else
         {
@@ -722,6 +802,68 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(null);
     }
 
+    private void DrawVehicle()
+    {
+        if (_deviceContext is null ||
+            _renderTargetView is null ||
+            _vehicleVertexBuffer is null ||
+            _vehicleModelBuffer is null ||
+            _vehicleVertexShader is null ||
+            _vehiclePixelShader is null ||
+            _vehicleInputLayout is null ||
+            _terrainCameraBuffer is null ||
+            _vehicleVertexCount == 0)
+        {
+            return;
+        }
+
+        Span<RuntimeModelConstants> model =
+            stackalloc RuntimeModelConstants[1];
+
+        model[0] =
+            new RuntimeModelConstants
+            {
+                World =
+                    _vehicle.CreateWorldMatrix()
+            };
+
+        _vehicleModelBuffer.SetData(
+            _deviceContext,
+            model,
+            MapMode.WriteDiscard);
+
+        _deviceContext.OMSetRenderTargets(
+            _renderTargetView,
+            _depthStencilView);
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+        _deviceContext.IASetInputLayout(
+            _vehicleInputLayout);
+        _deviceContext.IASetVertexBuffer(
+            0,
+            _vehicleVertexBuffer,
+            RuntimeTerrainVertex.SizeInBytes);
+
+        _deviceContext.VSSetShader(
+            _vehicleVertexShader);
+        _deviceContext.PSSetShader(
+            _vehiclePixelShader);
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+        _deviceContext.VSSetConstantBuffer(
+            1,
+            _vehicleModelBuffer);
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+
+        _deviceContext.Draw(
+            _vehicleVertexCount,
+            0);
+
+        _deviceContext.RSSetState(null);
+    }
+
     private Matrix4x4 CreateViewProjection()
     {
         var aspect =
@@ -730,12 +872,16 @@ public sealed class D3D11RenderWindow : Form
                 ClientSize.Height,
                 1);
 
-        return _camera.CreateViewProjection(
-            aspect,
-            _terrainGeometry);
+        return _driveMode
+            ? _vehicle.CreateChaseViewProjection(
+                aspect,
+                _terrainGeometry)
+            : _camera.CreateViewProjection(
+                aspect,
+                _terrainGeometry);
     }
 
-    private void UpdateCamera()
+    private void UpdateSimulation()
     {
         var now =
             _frameClock.Elapsed.TotalSeconds;
@@ -758,6 +904,25 @@ public sealed class D3D11RenderWindow : Form
                 elapsed,
                 0.0,
                 0.1);
+
+        if (_driveMode)
+        {
+            var drive =
+                (_pressedKeys.Contains(Keys.W) ? 1.0f : 0.0f) -
+                (_pressedKeys.Contains(Keys.S) ? 1.0f : 0.0f);
+
+            var steering =
+                (_pressedKeys.Contains(Keys.D) ? 1.0f : 0.0f) -
+                (_pressedKeys.Contains(Keys.A) ? 1.0f : 0.0f);
+
+            _vehicle.Update(
+                drive,
+                steering,
+                _pressedKeys.Contains(Keys.Space),
+                deltaSeconds);
+
+            return;
+        }
 
         var forward =
             (_pressedKeys.Contains(Keys.W) ? 1.0f : 0.0f) -
@@ -786,10 +951,29 @@ public sealed class D3D11RenderWindow : Form
     {
         _pressedKeys.Add(e.KeyCode);
 
-        if (e.KeyCode == Keys.R &&
+        if (e.KeyCode == Keys.Tab)
+        {
+            _driveMode = !_driveMode;
+            e.SuppressKeyPress = true;
+            UpdateCaption();
+            return;
+        }
+
+        if ((e.KeyCode == Keys.R ||
+             e.KeyCode == Keys.F5) &&
             _terrainGeometry.Vertices.Length > 0)
         {
-            _camera.Reset(_terrainGeometry);
+            if (_driveMode)
+            {
+                _vehicle.Reset(
+                    _windowInfo.Splines,
+                    _terrainGeometry);
+            }
+            else
+            {
+                _camera.Reset(
+                    _terrainGeometry);
+            }
         }
     }
 
@@ -831,7 +1015,8 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         MouseEventArgs e)
     {
-        if (!_mouseLooking)
+        if (!_mouseLooking ||
+            _driveMode)
         {
             return;
         }
@@ -897,13 +1082,16 @@ public sealed class D3D11RenderWindow : Form
             ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0}"
             : "tile overview";
 
+        var control = _driveMode
+            ? $"DRIVE {_vehicle.SpeedKph:0} km/h · W/S drive · A/D steer · Space brake · Tab free cam"
+            : "FREE CAM · WASD move · RMB look · Q/E vertical · Tab drive";
+
         Text =
             $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
             $"{_windowInfo.TileCount:N0} tiles — " +
             $"{_windowInfo.ObjectCount:N0} objects — " +
             $"{_windowInfo.SplineCount:N0} splines — " +
-            $"{mode} — D3D11 {_featureLevel} — " +
-            "WASD move · RMB look · Q/E vertical · R reset";
+            $"{mode} — {control}";
     }
 
     protected override void Dispose(bool disposing)
@@ -925,6 +1113,12 @@ public sealed class D3D11RenderWindow : Form
             _terrainCameraBuffer?.Dispose();
             _terrainVertexBuffer?.Dispose();
             _splineVertexBuffer?.Dispose();
+
+            _vehicleInputLayout?.Dispose();
+            _vehiclePixelShader?.Dispose();
+            _vehicleVertexShader?.Dispose();
+            _vehicleModelBuffer?.Dispose();
+            _vehicleVertexBuffer?.Dispose();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
