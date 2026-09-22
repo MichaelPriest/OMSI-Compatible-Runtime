@@ -1,23 +1,27 @@
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OMSICompatible.Renderer.D3D11;
+using OMSICompatible.World;
 
-return RuntimeApp.Run(args);
+namespace OMSICompatible.Runtime;
 
-internal static class RuntimeApp
+internal static class Program
 {
-    public static int Run(string[] args)
+    [STAThread]
+    public static int Main(string[] args)
     {
         Console.WriteLine("OMSI Compatible Runtime x64");
-        Console.WriteLine("Pre-alpha World Runtime bootstrap");
+        Console.WriteLine("Pre-alpha World Runtime");
         Console.WriteLine();
 
         var contentPath = GetOption(args, "--content");
         var mapName = GetOption(args, "--map");
+        var headless = HasFlag(args, "--headless");
 
         if (!OmsiContentRoot.TryCreate(contentPath, out var contentRoot, out var contentError) || contentRoot is null)
         {
             Console.Error.WriteLine(contentError);
-            Console.Error.WriteLine("Usage: OMSICompatible.Runtime --content <path> [--map <folder>]");
+            Console.Error.WriteLine("Usage: OMSICompatible.Runtime --content <path> [--map <folder>] [--headless]");
             return 2;
         }
 
@@ -45,17 +49,60 @@ internal static class RuntimeApp
             return 3;
         }
 
-        var summary = GlobalConfigProbe.ReadSummary(selectedMap);
+        var globalSummary = GlobalConfigProbe.ReadSummary(selectedMap);
+        var world = WorldLoader.Load(selectedMap);
 
         Console.WriteLine();
-        Console.WriteLine($"Selected map: {selectedMap.FolderName}");
-        Console.WriteLine($"global.cfg: {summary.Path}");
-        Console.WriteLine($"Size: {summary.Bytes:N0} bytes");
-        Console.WriteLine($"Lines: {summary.LineCount:N0}");
-        Console.WriteLine($"Section markers: {summary.SectionMarkerCount:N0}");
-        Console.WriteLine();
-        Console.WriteLine("World renderer is not enabled in this bootstrap yet.");
+        Console.WriteLine($"Selected map: {world.Name}");
+        Console.WriteLine($"global.cfg: {globalSummary.Path}");
+        Console.WriteLine($"Tiles: {world.Tiles.Count:N0}");
 
+        if (world.Bounds is not null)
+        {
+            Console.WriteLine(
+                $"Tile bounds: {world.Bounds.MinimumX},{world.Bounds.MinimumY} -> " +
+                $"{world.Bounds.MaximumX},{world.Bounds.MaximumY} " +
+                $"({world.Bounds.WidthInTiles}x{world.Bounds.HeightInTiles})");
+        }
+
+        var sectionCounts = world.Tiles
+            .SelectMany(static tile => tile.SourceSectionCounts)
+            .GroupBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => new
+            {
+                Name = group.Key,
+                Count = group.Sum(static pair => pair.Value)
+            })
+            .OrderByDescending(static item => item.Count)
+            .ThenBy(static item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(12)
+            .ToArray();
+
+        if (sectionCounts.Length > 0)
+        {
+            Console.WriteLine("Most frequent tile sections:");
+            foreach (var section in sectionCounts)
+            {
+                Console.WriteLine($"  {section.Name}: {section.Count:N0}");
+            }
+        }
+
+        if (headless)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Headless world probe complete.");
+            return 0;
+        }
+
+        ApplicationConfiguration.Initialize();
+
+        using var window = new D3D11RenderWindow(
+            new RuntimeWindowInfo(
+                world.Name,
+                world.Tiles.Count,
+                contentRoot.RootPath));
+
+        Application.Run(window);
         return 0;
     }
 
@@ -70,5 +117,11 @@ internal static class RuntimeApp
         }
 
         return null;
+    }
+
+    private static bool HasFlag(IEnumerable<string> args, string name)
+    {
+        return args.Any(argument =>
+            string.Equals(argument, name, StringComparison.OrdinalIgnoreCase));
     }
 }
