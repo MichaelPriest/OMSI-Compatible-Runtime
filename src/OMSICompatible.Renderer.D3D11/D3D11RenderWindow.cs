@@ -163,6 +163,284 @@ public sealed class D3D11RenderWindow : Form
         ClientSizeChanged += OnClientSizeChanged;
     }
 
+    public void ApplyStreamedWorld(
+        RuntimeWindowInfo windowInfo)
+    {
+        ArgumentNullException.ThrowIfNull(
+            windowInfo);
+
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(
+                () =>
+                    ApplyStreamedWorld(
+                        windowInfo));
+            return;
+        }
+
+        _windowInfo =
+            windowInfo;
+
+        _vehicle.ReplaceTerrainTiles(
+            windowInfo.Tiles);
+
+        if (_device is null)
+        {
+            return;
+        }
+
+        var wasRunning =
+            _renderTimer.Enabled;
+
+        _renderTimer.Stop();
+
+        try
+        {
+            RebuildStreamedGeometry();
+            RefreshStreamingTextureCache();
+            UpdateCaption();
+        }
+        finally
+        {
+            if (wasRunning)
+            {
+                _renderTimer.Start();
+            }
+        }
+    }
+
+    private void RebuildStreamedGeometry()
+    {
+        if (_device is null)
+        {
+            return;
+        }
+
+        _tileVertexBuffer?.Dispose();
+        _tileVertexBuffer = null;
+
+        var tileVertices =
+            BuildTileVertices(
+                _windowInfo.Tiles);
+
+        if (tileVertices.Length > 0)
+        {
+            _tileVertexBuffer =
+                _device.CreateBuffer(
+                    tileVertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+        }
+
+        _tileVertexCount =
+            (uint)tileVertices.Length;
+
+        _terrainVertexBuffer?.Dispose();
+        _terrainVertexBuffer = null;
+
+        _terrainGeometry =
+            RuntimeTerrainGeometryBuilder.Build(
+                _windowInfo.Tiles,
+                _windowInfo.GroundTextures);
+
+        if (_terrainGeometry.Vertices.Length > 0)
+        {
+            _terrainVertexBuffer =
+                _device.CreateBuffer(
+                    _terrainGeometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+        }
+
+        _terrainVertexCount =
+            (uint)_terrainGeometry.Vertices.Length;
+
+        _splineVertexBuffer?.Dispose();
+        _splineVertexBuffer = null;
+
+        _splineGeometry =
+            RuntimeSplineGeometryBuilder.Build(
+                _windowInfo.Splines);
+
+        if (_splineGeometry.Vertices.Length > 0)
+        {
+            _splineVertexBuffer =
+                _device.CreateBuffer(
+                    _splineGeometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+        }
+
+        _splineVertexCount =
+            (uint)_splineGeometry.Vertices.Length;
+
+        _objectVertexBuffer?.Dispose();
+        _objectVertexBuffer = null;
+
+        _objectGeometry =
+            RuntimeObjectGeometryBuilder.Build(
+                _windowInfo.Tiles,
+                _windowInfo.Objects,
+                _windowInfo.SceneryAssets);
+
+        if (_objectGeometry.Vertices.Length > 0)
+        {
+            _objectVertexBuffer =
+                _device.CreateBuffer(
+                    _objectGeometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+        }
+
+        _objectVertexCount =
+            (uint)_objectGeometry.Vertices.Length;
+    }
+
+    private void RefreshStreamingTextureCache()
+    {
+        if (_device is null)
+        {
+            return;
+        }
+
+        _objectTextureLoader ??=
+            new RuntimeGpuTextureLoader(
+                _device);
+
+        var regularPaths =
+            _objectGeometry.Batches
+                .Concat(
+                    _splineGeometry.Batches)
+                .Concat(
+                    _vehicleGeometry.Batches)
+                .SelectMany(
+                    static batch =>
+                        new[]
+                        {
+                            batch.TexturePath,
+                            batch.TransMapTexturePath
+                        })
+                .Concat(
+                    _terrainGeometry.Batches
+                        .SelectMany(
+                            static batch =>
+                                new[]
+                                {
+                                    batch.TexturePath,
+                                    batch.DetailTexturePath
+                                }))
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Select(
+                    static path =>
+                        path!)
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
+
+        var maskPaths =
+            _terrainGeometry.Batches
+                .Select(
+                    static batch =>
+                        batch.MaskTexturePath)
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Select(
+                    static path =>
+                        path!)
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
+
+        var requiredPaths =
+            new HashSet<string>(
+                regularPaths,
+                StringComparer.OrdinalIgnoreCase);
+
+        requiredPaths.UnionWith(
+            maskPaths);
+
+        foreach (var cachedPath in
+            _objectTextureCache.Keys
+                .Where(
+                    path =>
+                        !requiredPaths.Contains(
+                            path))
+                .ToArray())
+        {
+            _objectTextureCache[
+                cachedPath]
+                .Dispose();
+
+            _objectTextureCache.Remove(
+                cachedPath);
+        }
+
+        _failedObjectTexturePaths.IntersectWith(
+            requiredPaths);
+
+        foreach (var texturePath in
+            regularPaths)
+        {
+            if (_objectTextureCache.ContainsKey(
+                    texturePath))
+            {
+                continue;
+            }
+
+            var texture =
+                _objectTextureLoader.TryLoad(
+                    texturePath);
+
+            if (texture is not null)
+            {
+                _objectTextureCache[
+                    texturePath] =
+                    texture;
+
+                _failedObjectTexturePaths.Remove(
+                    texturePath);
+            }
+            else
+            {
+                _failedObjectTexturePaths.Add(
+                    texturePath);
+            }
+        }
+
+        foreach (var maskPath in
+            maskPaths)
+        {
+            if (_objectTextureCache.ContainsKey(
+                    maskPath))
+            {
+                continue;
+            }
+
+            var mask =
+                _objectTextureLoader.TryLoadAlphaMask(
+                    maskPath);
+
+            if (mask is not null)
+            {
+                _objectTextureCache[
+                    maskPath] =
+                    mask;
+
+                _failedObjectTexturePaths.Remove(
+                    maskPath);
+            }
+            else
+            {
+                _failedObjectTexturePaths.Add(
+                    maskPath);
+            }
+        }
+    }
+
     private void OnWindowShown(object? sender, EventArgs e)
     {
         try
