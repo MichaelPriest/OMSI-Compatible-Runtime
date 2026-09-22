@@ -15,11 +15,15 @@ public sealed record RuntimeTileInfo(
 
 public sealed record RuntimeSplineProfilePointInfo(
     double X,
-    double Z);
+    double Z,
+    double TextureX,
+    double TextureScale);
 
 public sealed record RuntimeSplineSurfaceInfo(
     RuntimeSplineProfilePointInfo From,
-    RuntimeSplineProfilePointInfo To);
+    RuntimeSplineProfilePointInfo To,
+    string? TexturePath,
+    int AlphaMode);
 
 public sealed record RuntimeSplineInfo(
     int TileX,
