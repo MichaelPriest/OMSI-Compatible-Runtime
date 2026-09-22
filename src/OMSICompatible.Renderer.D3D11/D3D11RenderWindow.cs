@@ -32,7 +32,7 @@ public sealed class D3D11RenderWindow : Form
         FeatureLevel.Level_11_0
     ];
 
-    private readonly RuntimeWindowInfo _windowInfo;
+    private RuntimeWindowInfo _windowInfo;
     private readonly System.Windows.Forms.Timer _renderTimer;
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
@@ -47,7 +47,12 @@ public sealed class D3D11RenderWindow : Form
     private float _mouseDriveBrake;
     private float _mouseDriveSteering;
     private int _captionFrame;
+    private int? _streamingTileX;
+    private int? _streamingTileY;
     private System.Drawing.Point _lastMousePosition;
+
+    public event Action<int, int>?
+        StreamingCenterChanged;
 
     private IDXGIFactory2? _factory;
     private ID3D11Device? _device;
@@ -1166,6 +1171,7 @@ public sealed class D3D11RenderWindow : Form
         EventArgs e)
     {
         UpdateSimulation();
+        CheckStreamingCenter();
         RenderFrame();
 
         _captionFrame++;
@@ -1173,6 +1179,45 @@ public sealed class D3D11RenderWindow : Form
         {
             _captionFrame = 0;
             UpdateCaption();
+        }
+    }
+
+    private void CheckStreamingCenter()
+    {
+        if (!_driveMode ||
+            !_windowInfo.ActiveTileRadius.HasValue)
+        {
+            return;
+        }
+
+        var tileX =
+            (int)Math.Floor(
+                _vehicle.Position.X /
+                300.0f);
+
+        var tileY =
+            (int)Math.Floor(
+                _vehicle.Position.Z /
+                300.0f);
+
+        if (_streamingTileX == tileX &&
+            _streamingTileY == tileY)
+        {
+            return;
+        }
+
+        var hadCenter =
+            _streamingTileX.HasValue &&
+            _streamingTileY.HasValue;
+
+        _streamingTileX = tileX;
+        _streamingTileY = tileY;
+
+        if (hadCenter)
+        {
+            StreamingCenterChanged?.Invoke(
+                tileX,
+                tileY);
         }
     }
 
