@@ -9,19 +9,38 @@ internal static class RuntimeVehicleGeometry
         "__runtime_player_vehicle__";
 
     public static RuntimeObjectGeometry Build(
-        RuntimeVehicleInfo? vehicle)
+        RuntimeVehicleInfo? vehicle,
+        int viewpointBit)
     {
         if (vehicle is null ||
             vehicle.Meshes.Count == 0)
         {
-            return BuildBusProxy();
+            return viewpointBit == 1
+                ? BuildBusProxy()
+                : RuntimeObjectGeometry.Empty;
+        }
+
+        var selectedMeshes =
+            vehicle.Meshes
+                .Where(
+                    mesh =>
+                        IsVisibleFromViewpoint(
+                            mesh.ViewpointFlag,
+                            viewpointBit))
+                .ToArray();
+
+        if (selectedMeshes.Length == 0)
+        {
+            return viewpointBit == 1
+                ? BuildBusProxy()
+                : RuntimeObjectGeometry.Empty;
         }
 
         var asset =
             new RuntimeSceneryAssetInfo(
                 UsesAbsoluteHeight: true,
                 RenderType: null,
-                Meshes: vehicle.Meshes,
+                Meshes: selectedMeshes,
                 Tree: null);
 
         var instance =
@@ -50,9 +69,25 @@ internal static class RuntimeVehicleGeometry
                     [VehicleAssetKey] = asset
                 });
 
-        return geometry.Vertices.Length > 0
-            ? geometry
-            : BuildBusProxy();
+        if (geometry.Vertices.Length > 0)
+        {
+            return geometry;
+        }
+
+        return viewpointBit == 1
+            ? BuildBusProxy()
+            : RuntimeObjectGeometry.Empty;
+    }
+
+    private static bool IsVisibleFromViewpoint(
+        int viewpointFlag,
+        int requestedBit)
+    {
+        // OMSI [viewpoint]:
+        // 0 = always, 1 = exterior, 2 = interior, 4 = AI.
+        // Flags can be summed (3, 5, 6, 7).
+        return viewpointFlag is 0 or 7 ||
+               (viewpointFlag & requestedBit) != 0;
     }
 
     private static RuntimeObjectGeometry
