@@ -79,6 +79,7 @@ public static class OmsiVehicleAssetLoader
                     [],
                     [],
                     [],
+                    [],
                     Array.Empty<OmsiVehicleMaterial>()));
                 continue;
             }
@@ -251,6 +252,7 @@ public static class OmsiVehicleAssetLoader
                 mesh.Animations,
                 geometry.SourceTransform,
                 geometry.Positions,
+                geometry.Normals,
                 geometry.Uvs,
                 geometry.Indices,
                 geometry.TriangleMaterialIndices,
