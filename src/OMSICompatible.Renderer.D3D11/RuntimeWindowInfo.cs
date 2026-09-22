@@ -34,6 +34,49 @@ public sealed record RuntimeSplineInfo(
     double GradientEndPercent,
     IReadOnlyList<RuntimeSplineSurfaceInfo> Surfaces);
 
+public sealed record RuntimeObjectInfo(
+    int TileX,
+    int TileY,
+    string AssetPath,
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees,
+    double PitchDegrees,
+    double BankDegrees);
+
+public sealed record RuntimeObjectMeshTransformInfo(
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double RotationX,
+    double RotationY,
+    double RotationZ,
+    double ScaleX,
+    double ScaleY,
+    double ScaleZ);
+
+public sealed record RuntimeO3dMaterialInfo(
+    float DiffuseR,
+    float DiffuseG,
+    float DiffuseB,
+    float DiffuseA);
+
+public sealed record RuntimeObjectMeshInfo(
+    string DeclaredPath,
+    string? ResolvedPath,
+    string? ErrorCode,
+    RuntimeObjectMeshTransformInfo Transform,
+    float[] Positions,
+    uint[] Indices,
+    ushort[] TriangleMaterialIndices,
+    IReadOnlyList<RuntimeO3dMaterialInfo> Materials);
+
+public sealed record RuntimeSceneryAssetInfo(
+    bool UsesAbsoluteHeight,
+    string? RenderType,
+    IReadOnlyList<RuntimeObjectMeshInfo> Meshes);
+
 public sealed record RuntimeWindowInfo(
     string WorldName,
     int TileCount,
@@ -41,4 +84,6 @@ public sealed record RuntimeWindowInfo(
     int SplineCount,
     string ContentRoot,
     IReadOnlyList<RuntimeTileInfo> Tiles,
-    IReadOnlyList<RuntimeSplineInfo> Splines);
+    IReadOnlyList<RuntimeSplineInfo> Splines,
+    IReadOnlyList<RuntimeObjectInfo> Objects,
+    IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> SceneryAssets);

@@ -79,6 +79,11 @@ public sealed class D3D11RenderWindow : Form
         RuntimeSplineGeometry.Empty;
     private uint _splineVertexCount;
 
+    private ID3D11Buffer? _objectVertexBuffer;
+    private RuntimeObjectGeometry _objectGeometry =
+        RuntimeObjectGeometry.Empty;
+    private uint _objectVertexCount;
+
     private ID3D11Buffer? _vehicleVertexBuffer;
     private ID3D11Buffer? _vehicleModelBuffer;
     private ID3D11VertexShader? _vehicleVertexShader;
@@ -173,6 +178,7 @@ public sealed class D3D11RenderWindow : Form
         CreateTileOverviewResources();
         CreateTerrainResources();
         CreateSplineResources();
+        CreateObjectResources();
         CreateVehicleResources();
     }
 
@@ -391,6 +397,34 @@ public sealed class D3D11RenderWindow : Form
 
         _splineVertexCount =
             (uint)_splineGeometry.Vertices.Length;
+    }
+
+    private void CreateObjectResources()
+    {
+        if (_device is null)
+        {
+            throw new InvalidOperationException(
+                "D3D11 device is not initialized.");
+        }
+
+        _objectGeometry =
+            RuntimeObjectGeometryBuilder.Build(
+                _windowInfo.Tiles,
+                _windowInfo.Objects,
+                _windowInfo.SceneryAssets);
+
+        if (_objectGeometry.Vertices.Length == 0)
+        {
+            return;
+        }
+
+        _objectVertexBuffer =
+            _device.CreateBuffer(
+                _objectGeometry.Vertices.AsSpan(),
+                BindFlags.VertexBuffer);
+
+        _objectVertexCount =
+            (uint)_objectGeometry.Vertices.Length;
     }
 
     private void CreateVehicleResources()
@@ -682,6 +716,7 @@ public sealed class D3D11RenderWindow : Form
         {
             DrawTerrain();
             DrawSplines();
+            DrawObjects();
             DrawVehicle();
         }
         else
@@ -801,6 +836,50 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.Draw(
             _splineVertexCount,
+            0);
+
+        _deviceContext.RSSetState(null);
+    }
+
+    private void DrawObjects()
+    {
+        if (_deviceContext is null ||
+            _renderTargetView is null ||
+            _objectVertexBuffer is null ||
+            _terrainCameraBuffer is null ||
+            _terrainVertexShader is null ||
+            _terrainPixelShader is null ||
+            _terrainInputLayout is null ||
+            _objectVertexCount == 0)
+        {
+            return;
+        }
+
+        _deviceContext.OMSetRenderTargets(
+            _renderTargetView,
+            _depthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+        _deviceContext.IASetInputLayout(
+            _terrainInputLayout);
+        _deviceContext.IASetVertexBuffer(
+            0,
+            _objectVertexBuffer,
+            RuntimeTerrainVertex.SizeInBytes);
+
+        _deviceContext.VSSetShader(
+            _terrainVertexShader);
+        _deviceContext.PSSetShader(
+            _terrainPixelShader);
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.Draw(
+            _objectVertexCount,
             0);
 
         _deviceContext.RSSetState(null);
@@ -1283,8 +1362,13 @@ public sealed class D3D11RenderWindow : Form
 
     private void UpdateCaption()
     {
+        var sceneryBudget =
+            _objectGeometry.HitVertexBudget
+                ? " · object-budget"
+                : string.Empty;
+
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicle.Gear switch
@@ -1340,6 +1424,7 @@ public sealed class D3D11RenderWindow : Form
             _terrainCameraBuffer?.Dispose();
             _terrainVertexBuffer?.Dispose();
             _splineVertexBuffer?.Dispose();
+            _objectVertexBuffer?.Dispose();
 
             _vehicleInputLayout?.Dispose();
             _vehiclePixelShader?.Dispose();

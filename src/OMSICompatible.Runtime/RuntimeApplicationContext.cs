@@ -189,6 +189,62 @@ internal sealed class RuntimeApplicationContext :
                     })
                 .ToArray();
 
+        var runtimeObjects =
+            world.Objects
+                .Select(
+                    static item =>
+                        new RuntimeObjectInfo(
+                            item.Tile.X,
+                            item.Tile.Y,
+                            item.AssetPath,
+                            item.Position.X,
+                            item.Position.Y,
+                            item.Position.Z,
+                            item.HeadingDegrees,
+                            item.PitchDegrees,
+                            item.BankDegrees))
+                .ToArray();
+
+        var runtimeSceneryAssets =
+            world.SceneryAssets
+                .ToDictionary(
+                    static pair => pair.Key,
+                    static pair =>
+                        new RuntimeSceneryAssetInfo(
+                            pair.Value.UsesAbsoluteHeight,
+                            pair.Value.RenderType,
+                            pair.Value.Meshes
+                                .Select(
+                                    static mesh =>
+                                        new RuntimeObjectMeshInfo(
+                                            mesh.DeclaredPath,
+                                            mesh.ResolvedPath,
+                                            mesh.ErrorCode,
+                                            new RuntimeObjectMeshTransformInfo(
+                                                mesh.Transform.PositionX,
+                                                mesh.Transform.PositionY,
+                                                mesh.Transform.PositionZ,
+                                                mesh.Transform.RotationX,
+                                                mesh.Transform.RotationY,
+                                                mesh.Transform.RotationZ,
+                                                mesh.Transform.ScaleX,
+                                                mesh.Transform.ScaleY,
+                                                mesh.Transform.ScaleZ),
+                                            mesh.Positions,
+                                            mesh.Indices,
+                                            mesh.TriangleMaterialIndices,
+                                            mesh.Materials
+                                                .Select(
+                                                    static material =>
+                                                        new RuntimeO3dMaterialInfo(
+                                                            material.DiffuseR,
+                                                            material.DiffuseG,
+                                                            material.DiffuseB,
+                                                            material.DiffuseA))
+                                                .ToArray()))
+                                .ToArray()),
+                    StringComparer.OrdinalIgnoreCase);
+
         return new RuntimeWindowInfo(
             world.Name,
             world.Tiles.Count,
@@ -196,7 +252,9 @@ internal sealed class RuntimeApplicationContext :
             world.Splines.Count,
             contentRoot,
             runtimeTiles,
-            runtimeSplines);
+            runtimeSplines,
+            runtimeObjects,
+            runtimeSceneryAssets);
     }
 
     private static string? ResolveMapImage(
