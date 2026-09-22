@@ -43,21 +43,21 @@ internal static class DesktopShortcutCreator
             $"$s.IconLocation='{escapedTarget},0';" +
             "$s.Save();";
 
+        var startInfo =
+            new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-Command");
+        startInfo.ArgumentList.Add(command);
+
         using var process =
-            Process.Start(
-                new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments =
-                        "-NoProfile -NonInteractive -Command "" +
-                        command.Replace(
-                            """,
-                            "\"",
-                            StringComparison.Ordinal) +
-                        """,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                });
+            Process.Start(startInfo);
 
         process?.WaitForExit();
 
