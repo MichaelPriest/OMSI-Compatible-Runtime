@@ -703,7 +703,8 @@ internal sealed class RuntimeApplicationContext :
                                                 material.AlphaMode,
                                                 material.TransMapTexturePath,
                                                 material.NoZWrite,
-                                                material.NoZCheck))
+                                                material.NoZCheck,
+                                                material.AlphaScaleVariable))
                                     .ToArray(),
                                 mesh.ViewpointFlag,
                                 mesh.LodThreshold,
