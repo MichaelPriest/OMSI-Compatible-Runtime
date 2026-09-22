@@ -1,5 +1,6 @@
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Scripting;
 using OmsiCompat.Vehicles;
 using OMSICompatible.Renderer.D3D11;
 using OMSICompatible.World;
@@ -198,6 +199,15 @@ internal sealed class RuntimeApplicationContext :
                     _entryPoint,
                     _contentRoot.RootPath);
 
+            var scriptCatalog =
+                OmsiScriptCatalogLoader.Load(
+                    _contentRoot,
+                    _bus.ScriptManifest);
+
+            var scriptRuntime =
+                new OmsiScriptRuntime(
+                    scriptCatalog);
+
             ReportProgress(
                 new WorldLoadProgress(
                     96,
@@ -206,7 +216,8 @@ internal sealed class RuntimeApplicationContext :
 
             _runtimeWindow =
                 new D3D11RenderWindow(
-                    runtimeInfo);
+                    runtimeInfo,
+                    scriptRuntime);
 
             _runtimeWindow.StreamingCenterChanged +=
                 OnStreamingCenterChanged;
