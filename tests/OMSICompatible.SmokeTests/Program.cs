@@ -703,6 +703,18 @@ try
     scriptRuntime.SetSystem(
         "GetTime",
         10.0);
+
+    Require(
+        Math.Abs(
+            scriptRuntime.GetSystem(
+                "getTime") -
+            10.0) < 0.0001 &&
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "ENGINE_SPEED") -
+            660.0) < 0.0001,
+        "OMSI variable names must be case-insensitive.");
+
     scriptRuntime.ExecuteTrigger(
         "collision");
 
