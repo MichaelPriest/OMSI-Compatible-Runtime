@@ -85,6 +85,10 @@ public sealed record RuntimeO3dMaterialInfo(
     bool NoZWrite,
     bool NoZCheck);
 
+public sealed record RuntimeVehicleVisibilityConditionInfo(
+    string VariableName,
+    double Value);
+
 public sealed record RuntimeObjectMeshInfo(
     string DeclaredPath,
     string? ResolvedPath,
@@ -96,7 +100,8 @@ public sealed record RuntimeObjectMeshInfo(
     ushort[] TriangleMaterialIndices,
     IReadOnlyList<RuntimeO3dMaterialInfo> Materials,
     int ViewpointFlag = 0,
-    double? LodThreshold = null);
+    double? LodThreshold = null,
+    IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
