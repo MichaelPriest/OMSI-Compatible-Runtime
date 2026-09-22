@@ -127,16 +127,35 @@ public static class OmsiVehicleAssetLoader
                     }
 
                     string? transMapPath = null;
-                    if (materialOverride?.TransMapSource is { Length: > 0 } transMap &&
-                        !transMap.StartsWith("\\", StringComparison.Ordinal))
+                    var transMapSource =
+                        materialOverride?.TransMapSource;
+
+                    if (!string.IsNullOrWhiteSpace(
+                            transMapSource) &&
+                        !transMapSource.StartsWith(
+                            "\\",
+                            StringComparison.Ordinal))
                     {
                         OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
                             contentRoot.RootPath,
                             bus.DirectoryPath,
                             model.SourcePath,
                             meshPath,
-                            transMap,
+                            transMapSource,
                             out transMapPath);
+                    }
+
+                    var alphaMode =
+                        materialOverride?.AlphaMode ??
+                        (material.DiffuseA < 0.999f
+                            ? 2
+                            : 0);
+
+                    if (materialOverride?.HasTransMapDirective == true &&
+                        string.IsNullOrWhiteSpace(
+                            transMapSource))
+                    {
+                        alphaMode = 0;
                     }
 
                     return new OmsiVehicleMaterial(
@@ -145,9 +164,10 @@ public static class OmsiVehicleAssetLoader
                         material.DiffuseB,
                         material.DiffuseA,
                         texturePath,
-                        materialOverride?.AlphaMode ??
-                            (material.DiffuseA < 0.999f ? 2 : 0),
-                        transMapPath);
+                        alphaMode,
+                        transMapPath,
+                        materialOverride?.NoZWrite ?? false,
+                        materialOverride?.NoZCheck ?? false);
                 })
                 .ToArray();
 

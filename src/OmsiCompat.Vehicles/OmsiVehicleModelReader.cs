@@ -251,7 +251,25 @@ public static class OmsiVehicleModelReader
 
             if (section.Name.Equals("matl_transmap", StringComparison.OrdinalIgnoreCase))
             {
-                material.TransMapSource = Values(section).FirstOrDefault()?.Trim().Trim('"');
+                material.HasTransMapDirective = true;
+                material.TransMapSource =
+                    Values(section)
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+                continue;
+            }
+
+            if (section.Name.Equals("matl_noZwrite", StringComparison.OrdinalIgnoreCase))
+            {
+                material.NoZWrite = true;
+                continue;
+            }
+
+            if (section.Name.Equals("matl_noZcheck", StringComparison.OrdinalIgnoreCase))
+            {
+                material.NoZCheck = true;
+                continue;
             }
         }
 
@@ -307,8 +325,18 @@ public static class OmsiVehicleModelReader
         public int MaterialIndex { get; } = materialIndex;
         public int? AlphaMode { get; set; }
         public string? TransMapSource { get; set; }
+        public bool HasTransMapDirective { get; set; }
+        public bool NoZWrite { get; set; }
+        public bool NoZCheck { get; set; }
 
         public OmsiVehicleMaterialOverride Build() =>
-            new(TextureName, MaterialIndex, AlphaMode, TransMapSource);
+            new(
+                TextureName,
+                MaterialIndex,
+                AlphaMode,
+                TransMapSource,
+                HasTransMapDirective,
+                NoZWrite,
+                NoZCheck);
     }
 }

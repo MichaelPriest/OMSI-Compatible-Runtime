@@ -4,7 +4,10 @@ public sealed record OmsiVehicleMaterialOverride(
     string TextureName,
     int MaterialIndex,
     int? AlphaMode,
-    string? TransMapSource);
+    string? TransMapSource,
+    bool HasTransMapDirective,
+    bool NoZWrite,
+    bool NoZCheck);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,

@@ -687,8 +687,8 @@ internal sealed class RuntimeApplicationContext :
                                                 material.TexturePath,
                                                 material.AlphaMode,
                                                 material.TransMapTexturePath,
-                                                false,
-                                                false))
+                                                material.NoZWrite,
+                                                material.NoZCheck))
                                     .ToArray(),
                                 mesh.ViewpointFlag))
                     .ToArray(),

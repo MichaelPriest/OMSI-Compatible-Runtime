@@ -7,7 +7,9 @@ public sealed record OmsiVehicleMaterial(
     float DiffuseA,
     string? TexturePath,
     int AlphaMode,
-    string? TransMapTexturePath);
+    string? TransMapTexturePath,
+    bool NoZWrite,
+    bool NoZCheck);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
