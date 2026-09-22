@@ -1232,7 +1232,7 @@ public sealed class D3D11RenderWindow : Form
 
         _vehicleInputLayout =
             _device.CreateInputLayout(
-                CreateObjectInputElements(),
+                CreateVehicleInputElements(),
                 vertexShaderByteCode.Span);
 
         _vehicleSampler =
@@ -1574,6 +1574,35 @@ public sealed class D3D11RenderWindow : Form
             0,
             Format.R32G32_Float,
             28,
+            0)
+    ];
+
+    private static InputElementDescription[]
+        CreateVehicleInputElements() =>
+    [
+        new InputElementDescription(
+            "POSITION",
+            0,
+            Format.R32G32B32_Float,
+            0,
+            0),
+        new InputElementDescription(
+            "COLOR",
+            0,
+            Format.R32G32B32A32_Float,
+            12,
+            0),
+        new InputElementDescription(
+            "TEXCOORD",
+            0,
+            Format.R32G32_Float,
+            28,
+            0),
+        new InputElementDescription(
+            "NORMAL",
+            0,
+            Format.R32G32B32_Float,
+            36,
             0)
     ];
 
