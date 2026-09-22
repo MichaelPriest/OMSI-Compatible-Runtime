@@ -156,6 +156,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11RenderTargetView? _activeRenderTargetView;
     private ID3D11DepthStencilView? _activeDepthStencilView;
     private Matrix4x4? _viewProjectionOverride;
+    private bool _reflectionRenderingEnabled;
 
     private FeatureLevel _featureLevel;
 
@@ -1604,7 +1605,10 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        RenderReflectionTargets();
+        if (_reflectionRenderingEnabled)
+        {
+            RenderReflectionTargets();
+        }
 
         _deviceContext.ClearRenderTargetView(
             _renderTargetView,
@@ -2212,7 +2216,8 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
-        if (_reflectionTargets.TryGetValue(
+        if (_reflectionRenderingEnabled &&
+            _reflectionTargets.TryGetValue(
                 texturePath,
                 out var reflection))
         {
@@ -2450,6 +2455,16 @@ public sealed class D3D11RenderWindow : Form
             }
 
             _driveMode = false;
+            UpdateCaption();
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        if (e.KeyCode == Keys.F9)
+        {
+            _reflectionRenderingEnabled =
+                !_reflectionRenderingEnabled;
+
             UpdateCaption();
             e.SuppressKeyPress = true;
             return;
@@ -2868,8 +2883,13 @@ public sealed class D3D11RenderWindow : Form
                 ? " · object-budget"
                 : string.Empty;
 
+        var mirrorMode =
+            _reflectionRenderingEnabled
+                ? $"mirrors ON {_reflectionTargets.Count:N0}"
+                : $"mirrors OFF {_reflectionTargets.Count:N0}";
+
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · mirrors {_reflectionTargets.Count:N0} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicle.Gear switch
@@ -2901,7 +2921,7 @@ public sealed class D3D11RenderWindow : Form
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · Insert schedule · Home tickets · F4 free cam · D/N/R · E/M · Num. park · Tab free cam"
+              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · Insert schedule · Home tickets · F4 free cam · F9 mirrors · D/N/R · E/M · Num. park · Tab free cam"
             : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · F1/F2/F3 OMSI view · Tab OMSI drive";
 
         Text =
