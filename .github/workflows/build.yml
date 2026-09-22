@@ -30,6 +30,18 @@ jobs:
       - name: Run synthetic world smoke test
         run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
 
+      - name: Publish Launcher x64
+        run: >
+          dotnet publish src/OMSICompatible.Launcher/OMSICompatible.Launcher.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
+
       - name: Publish Runtime x64
         run: >
           dotnet publish src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj
@@ -40,46 +52,94 @@ jobs:
           -p:IncludeNativeLibrariesForSelfExtract=true
           -p:DebugType=None
           -p:DebugSymbols=false
-          -o artifacts/OMSI-Compatible-Runtime-alpha-win-x64
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime
 
       - name: Add test instructions
         shell: pwsh
         run: |
           @'
-          OMSI Compatible Runtime x64 - PRE-ALPHA
+          OMSI Compatible Runtime x64 - PRE-ALPHA UI
 
-          This build does not use Omsi.exe.
+          INÍCIO
+          ======
+          Abra:
+            OMSICompatible.Launcher.exe
 
-          Usage:
-            OMSICompatible.Runtime.exe --content "C:\path\to\OMSI" --map "Map Folder Name"
+          No launcher:
+          1. Clique em Procurar.
+          2. Selecione a pasta raiz do conteúdo OMSI.
+             Exemplo: G:\Games\OMSI 2 Steam Edition
+          3. Escolha o mapa.
+          4. Clique em JOGAR.
 
-          Controls in the 3D terrain view:
-            W/A/S/D  Move
-            Right Mouse Button  Look
-            Q/E      Down/Up
-            Shift    Faster
-            Ctrl     Slower
-            Mouse Wheel  Change movement speed
-            R        Reframe/reset camera
+          O launcher usa picture.jpg/preview do mapa quando disponível.
+          O loading mostra etapas reais do carregamento.
+          O jogo não inicia Omsi.exe.
 
-          Current scope:
-            - map/global/tile discovery
-            - object/spline placement parsing
-            - real .terrain height loading
-            - D3D11 x64 terrain mesh
-            - free camera
+          CONTROLES OMSI - MODO DIRIGIR
+          =============================
+          Num 8       Acelerador
+          Num 2       Aumentar freio de serviço
+          Num +       Liberar freio
+          Num 4 / 6   Direção esquerda/direita
+          Num 5       Centralizar direção
+          D / N / R   Marcha
+          E           Sistema elétrico
+          M           Motor
+          Num .       Freio de estacionamento
+          Num -       Freio de parada
+          O           Direção pelo mouse
 
-          Not implemented yet:
-            - terrain textures/lightmaps
-            - rendered splines/roads/crossings
-            - scenery O3D rendering
-            - vehicles/scripts/gameplay
-          '@ | Set-Content -Encoding UTF8 artifacts/OMSI-Compatible-Runtime-alpha-win-x64/README-TEST.txt
+          MODO MOUSE (O)
+          ==============
+          Mouse esquerda/direita  Direção
+          Mouse para cima         Acelerador
+          Mouse para baixo        Freio
+          Botão direito           Sair do modo mouse
 
-      - name: Upload x64 alpha
+          DESENVOLVIMENTO / CÂMERA LIVRE
+          ==============================
+          Tab         Alternar dirigir/câmera livre
+          WASD        Movimento da câmera
+          Q / E       Descer/subir
+          RMB + mouse Olhar
+          Shift       Mais rápido
+          Ctrl        Mais lento
+          R           Reenquadrar câmera livre
+          F5          Resetar veículo no modo dirigir
+
+          ATALHOS DO LAUNCHER
+          ===================
+          Pasta OMSI
+          Mapas
+          Veículos
+          Logs
+          Criar atalho na Área de Trabalho
+
+          ESCOPO ATUAL
+          ============
+          - Runtime Windows x64 independente
+          - Launcher gráfico
+          - Loading screen moderno
+          - Leitura de mapas/tiles
+          - Terreno 3D real
+          - Splines/ruas em desenvolvimento
+          - Veículo protótipo dirigível
+          - Controles OMSI em desenvolvimento
+
+          Ainda em desenvolvimento:
+          - texturas/lightmaps completos
+          - crossings completos
+          - Sceneryobjects/O3D
+          - ônibus OMSI reais
+          - scripts OMSI
+          - som/IBIS/tráfego/passageiros
+          '@ | Set-Content -Encoding UTF8 artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/README-TEST.txt
+
+      - name: Upload x64 UI alpha
         uses: actions/upload-artifact@v4
         with:
-          name: OMSI-Compatible-Runtime-alpha-win-x64
-          path: artifacts/OMSI-Compatible-Runtime-alpha-win-x64
+          name: OMSI-Compatible-Runtime-alpha-ui-win-x64
+          path: artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
           if-no-files-found: error
           compression-level: 6
