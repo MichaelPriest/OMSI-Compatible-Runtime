@@ -95,9 +95,61 @@ internal sealed class RuntimeApplicationContext :
                     "Inicializando",
                     "Preparando runtime x64..."));
 
-            var progress =
+            var worldLoadPercent = 0;
+            var vehicleLoadPercent = 0;
+
+            void ReportCombinedLoadProgress(
+                string stage,
+                string detail)
+            {
+                var combined =
+                    5 +
+                    (int)Math.Round(
+                        worldLoadPercent * 0.65 +
+                        vehicleLoadPercent * 0.20);
+
+                ReportProgress(
+                    new WorldLoadProgress(
+                        Math.Clamp(
+                            combined,
+                            5,
+                            90),
+                        stage,
+                        detail));
+            }
+
+            var worldProgress =
                 new Progress<WorldLoadProgress>(
-                    ReportProgress);
+                    item =>
+                    {
+                        worldLoadPercent =
+                            Math.Clamp(
+                                (int)Math.Round(
+                                    item.Percent /
+                                    90.0 *
+                                    100.0),
+                                0,
+                                100);
+
+                        ReportCombinedLoadProgress(
+                            item.Stage,
+                            item.Detail);
+                    });
+
+            var vehicleProgress =
+                new Progress<OmsiVehicleLoadProgress>(
+                    item =>
+                    {
+                        vehicleLoadPercent =
+                            Math.Clamp(
+                                item.Percent,
+                                0,
+                                100);
+
+                        ReportCombinedLoadProgress(
+                            "Carregando ônibus",
+                            item.Detail);
+                    });
 
             var worldTask =
                 Task.Run(
@@ -105,25 +157,20 @@ internal sealed class RuntimeApplicationContext :
                         WorldLoader.Load(
                             _contentRoot,
                             _map,
-                            progress,
+                            worldProgress,
                             new WorldLoadOptions(
                                 _entryPoint.Tile.X,
                                 _entryPoint.Tile.Y,
                                 ActiveTileRadius: 1,
                                 LoadEntireMap: false)));
 
-            ReportProgress(
-                new WorldLoadProgress(
-                    58,
-                    "Carregando ônibus",
-                    $"Lendo {_bus.DisplayName} e seus modelos OMSI..."));
-
             var vehicleTask =
                 Task.Run(
                     () =>
                         OmsiVehicleAssetLoader.Load(
                             _contentRoot,
-                            _bus));
+                            _bus,
+                            vehicleProgress));
 
             await Task.WhenAll(
                 worldTask,

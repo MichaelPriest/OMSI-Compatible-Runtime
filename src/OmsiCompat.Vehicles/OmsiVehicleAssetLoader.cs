@@ -7,14 +7,25 @@ public static class OmsiVehicleAssetLoader
 {
     public static OmsiVehicleAsset Load(
         OmsiContentRoot contentRoot,
-        OmsiBusInfo bus)
+        OmsiBusInfo bus,
+        IProgress<OmsiVehicleLoadProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(contentRoot);
         ArgumentNullException.ThrowIfNull(bus);
 
+        progress?.Report(
+            new OmsiVehicleLoadProgress(
+                2,
+                "Preparando definição do veículo..."));
+
         if (string.IsNullOrWhiteSpace(bus.ModelConfigPath) ||
             !File.Exists(bus.ModelConfigPath))
         {
+            progress?.Report(
+                new OmsiVehicleLoadProgress(
+                    100,
+                    "Veículo sem model.cfg renderizável."));
+
             return new OmsiVehicleAsset(
                 bus,
                 Array.Empty<OmsiVehicleMeshAsset>(),
@@ -24,8 +35,31 @@ public static class OmsiVehicleAssetLoader
         var model = OmsiVehicleModelReader.ReadFile(bus.ModelConfigPath);
         var meshes = new List<OmsiVehicleMeshAsset>();
 
-        foreach (var mesh in model.Meshes)
+        progress?.Report(
+            new OmsiVehicleLoadProgress(
+                8,
+                $"Modelo encontrado · {model.Meshes.Count:N0} mesh(es)."));
+
+        for (var meshIndex = 0;
+             meshIndex < model.Meshes.Count;
+             meshIndex++)
         {
+            var mesh =
+                model.Meshes[meshIndex];
+
+            var meshPercent =
+                10 +
+                (int)Math.Round(
+                    84.0 *
+                    meshIndex /
+                    Math.Max(
+                        model.Meshes.Count,
+                        1));
+
+            progress?.Report(
+                new OmsiVehicleLoadProgress(
+                    meshPercent,
+                    $"Mesh {meshIndex + 1:N0}/{model.Meshes.Count:N0} · {Path.GetFileName(mesh.DeclaredPath)}"));
             var meshPath = ResolveMeshPath(contentRoot.RootPath, bus, model.SourcePath, mesh.DeclaredPath);
 
             if (meshPath is null)
@@ -112,6 +146,11 @@ public static class OmsiVehicleAssetLoader
                 geometry.TriangleMaterialIndices,
                 materials));
         }
+
+        progress?.Report(
+            new OmsiVehicleLoadProgress(
+                100,
+                $"{meshes.Count:N0} mesh(es) processadas · finalizando veículo."));
 
         return new OmsiVehicleAsset(
             bus,
