@@ -120,6 +120,14 @@ jobs:
           Logs
           Criar atalho na Área de Trabalho
 
+          NORMALIZAÇÃO DE EIXOS OMSI
+          ==========================
+          Esta build corrige meshes O3D/X para:
+          X = lateral
+          Y = frente/trás
+          Z = altura
+          convertidos corretamente para o renderer X/Y-up/Z.
+
           ESCOPO ATUAL
           ============
           - Runtime Windows x64 independente
