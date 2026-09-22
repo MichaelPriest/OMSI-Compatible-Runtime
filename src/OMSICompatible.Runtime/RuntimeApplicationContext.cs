@@ -706,7 +706,9 @@ internal sealed class RuntimeApplicationContext :
                                                 material.NoZCheck,
                                                 material.AlphaScaleVariable,
                                                 material.LightMapTexturePath,
-                                                material.LightMapVariable))
+                                                material.LightMapVariable,
+                                                material.MaterialChangeTexturePath,
+                                                material.MaterialChangeVariable))
                                     .ToArray(),
                                 mesh.ViewpointFlag,
                                 mesh.LodThreshold,
