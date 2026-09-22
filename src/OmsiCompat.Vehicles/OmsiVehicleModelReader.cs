@@ -14,6 +14,7 @@ public static class OmsiVehicleModelReader
         var currentOrdinal = -1;
         var currentTransform =
             OmsiVehicleMeshTransform.Identity;
+        var currentViewpointFlag = 0;
         var overrides = new List<OmsiVehicleMaterialOverride>();
         MaterialBuilder? material = null;
 
@@ -36,6 +37,7 @@ public static class OmsiVehicleModelReader
                     currentOrdinal,
                     currentMeshPath,
                     currentTransform,
+                    currentViewpointFlag,
                     overrides.ToArray()));
             }
 
@@ -50,6 +52,7 @@ public static class OmsiVehicleModelReader
                 currentOrdinal++;
                 currentTransform =
                     OmsiVehicleMeshTransform.Identity;
+                currentViewpointFlag = 0;
 
                 currentMeshPath = Values(section).FirstOrDefault();
                 if (currentMeshPath is not null)
@@ -81,6 +84,28 @@ public static class OmsiVehicleModelReader
                     material = new MaterialBuilder(
                         values[0].Trim().Trim('"'),
                         materialIndex);
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "viewpoint",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var value =
+                    Values(section)
+                        .FirstOrDefault();
+
+                if (int.TryParse(
+                        value,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var viewpoint) &&
+                    viewpoint is >= 0 and <= 7)
+                {
+                    currentViewpointFlag =
+                        viewpoint;
                 }
 
                 continue;
