@@ -185,7 +185,7 @@ public static class OmsiTextureAssetPathResolver
             var normalized =
                 trimmed
                     .Replace(
-                        '\',
+                        (char)92,
                         Path.DirectorySeparatorChar)
                     .Replace(
                         '/',
