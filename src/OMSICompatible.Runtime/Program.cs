@@ -72,6 +72,9 @@ internal static class Program
             static tile => tile.Resources.ReadyMeshPaths.Count);
         var terrainTextureCount = world.Tiles.Sum(
             static tile => tile.Resources.TerrainTexturePaths.Count);
+        var renderableSplineAssetCount =
+            world.SplineAssets.Values.Count(
+                static asset => asset.IsRenderable);
 
         Console.WriteLine();
         Console.WriteLine($"Selected map: {world.Name}");
@@ -79,6 +82,8 @@ internal static class Program
         Console.WriteLine($"Tiles: {world.Tiles.Count:N0}");
         Console.WriteLine($"Objects: {world.Objects.Count:N0}");
         Console.WriteLine($"Splines: {world.Splines.Count:N0}");
+        Console.WriteLine(
+            $"Renderable spline assets: {renderableSplineAssetCount:N0}/{world.SplineAssets.Count:N0}");
         Console.WriteLine(
             $"Placement parse issues: {world.PlacementParseIssueCount:N0}");
         Console.WriteLine($"Terrain files: {terrainFileCount:N0}");
@@ -153,6 +158,39 @@ internal static class Program
                         tile.Terrain.MaximumHeight)))
             .ToArray();
 
+        var runtimeSplines = world.Splines
+            .Select(spline =>
+            {
+                world.SplineAssets.TryGetValue(
+                    spline.AssetPath,
+                    out var asset);
+
+                var surfaces = asset?.Surfaces
+                    .Select(static surface => new RuntimeSplineSurfaceInfo(
+                        new RuntimeSplineProfilePointInfo(
+                            surface.From.X,
+                            surface.From.Z),
+                        new RuntimeSplineProfilePointInfo(
+                            surface.To.X,
+                            surface.To.Z)))
+                    .ToArray()
+                    ?? Array.Empty<RuntimeSplineSurfaceInfo>();
+
+                return new RuntimeSplineInfo(
+                    spline.Tile.X,
+                    spline.Tile.Y,
+                    spline.Position.X,
+                    spline.Position.Y,
+                    spline.Position.Z,
+                    spline.HeadingDegrees,
+                    spline.LengthMeters,
+                    spline.RadiusMeters,
+                    spline.GradientStartPercent,
+                    spline.GradientEndPercent,
+                    surfaces);
+            })
+            .ToArray();
+
         ApplicationConfiguration.Initialize();
 
         using var window = new D3D11RenderWindow(
@@ -162,7 +200,8 @@ internal static class Program
                 world.Objects.Count,
                 world.Splines.Count,
                 contentRoot.RootPath,
-                runtimeTiles));
+                runtimeTiles,
+                runtimeSplines));
 
         Application.Run(window);
         return 0;

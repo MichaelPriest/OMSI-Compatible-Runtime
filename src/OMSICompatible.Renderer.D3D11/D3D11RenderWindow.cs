@@ -61,6 +61,11 @@ public sealed class D3D11RenderWindow : Form
         RuntimeTerrainGeometry.Empty;
     private uint _terrainVertexCount;
 
+    private ID3D11Buffer? _splineVertexBuffer;
+    private RuntimeSplineGeometry _splineGeometry =
+        RuntimeSplineGeometry.Empty;
+    private uint _splineVertexCount;
+
     private FeatureLevel _featureLevel;
 
     public D3D11RenderWindow(RuntimeWindowInfo windowInfo)
@@ -146,6 +151,7 @@ public sealed class D3D11RenderWindow : Form
         CreateBackBufferResources();
         CreateTileOverviewResources();
         CreateTerrainResources();
+        CreateSplineResources();
     }
 
     private static IDXGIAdapter1 GetHardwareAdapter(IDXGIFactory2 factory)
@@ -337,6 +343,32 @@ public sealed class D3D11RenderWindow : Form
             (uint)_terrainGeometry.Vertices.Length;
 
         _camera.Reset(_terrainGeometry);
+    }
+
+    private void CreateSplineResources()
+    {
+        if (_device is null)
+        {
+            throw new InvalidOperationException(
+                "D3D11 device is not initialized.");
+        }
+
+        _splineGeometry =
+            RuntimeSplineGeometryBuilder.Build(
+                _windowInfo.Splines);
+
+        if (_splineGeometry.Vertices.Length == 0)
+        {
+            return;
+        }
+
+        _splineVertexBuffer =
+            _device.CreateBuffer(
+                _splineGeometry.Vertices.AsSpan(),
+                BindFlags.VertexBuffer);
+
+        _splineVertexCount =
+            (uint)_splineGeometry.Vertices.Length;
     }
 
     private static InputElementDescription[]
@@ -566,6 +598,7 @@ public sealed class D3D11RenderWindow : Form
         if (CanDrawTerrain())
         {
             DrawTerrain();
+            DrawSplines();
         }
         else
         {
@@ -640,6 +673,50 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.Draw(
             _terrainVertexCount,
+            0);
+
+        _deviceContext.RSSetState(null);
+    }
+
+    private void DrawSplines()
+    {
+        if (_deviceContext is null ||
+            _renderTargetView is null ||
+            _splineVertexBuffer is null ||
+            _terrainCameraBuffer is null ||
+            _terrainVertexShader is null ||
+            _terrainPixelShader is null ||
+            _terrainInputLayout is null ||
+            _splineVertexCount == 0)
+        {
+            return;
+        }
+
+        _deviceContext.OMSetRenderTargets(
+            _renderTargetView,
+            _depthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+        _deviceContext.IASetInputLayout(
+            _terrainInputLayout);
+        _deviceContext.IASetVertexBuffer(
+            0,
+            _splineVertexBuffer,
+            RuntimeTerrainVertex.SizeInBytes);
+
+        _deviceContext.VSSetShader(
+            _terrainVertexShader);
+        _deviceContext.PSSetShader(
+            _terrainPixelShader);
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.Draw(
+            _splineVertexCount,
             0);
 
         _deviceContext.RSSetState(null);
@@ -817,7 +894,7 @@ public sealed class D3D11RenderWindow : Form
     private void UpdateCaption()
     {
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0}"
             : "tile overview";
 
         Text =
@@ -847,6 +924,7 @@ public sealed class D3D11RenderWindow : Form
             _terrainVertexShader?.Dispose();
             _terrainCameraBuffer?.Dispose();
             _terrainVertexBuffer?.Dispose();
+            _splineVertexBuffer?.Dispose();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
