@@ -53,45 +53,72 @@ internal sealed class RuntimeDriveVehicle
 
     public void Reset(
         IReadOnlyList<RuntimeSplineInfo> splines,
-        RuntimeTerrainGeometry terrainGeometry)
+        RuntimeTerrainGeometry terrainGeometry,
+        RuntimeSpawnInfo? selectedSpawn = null)
     {
-        var spawn =
-            splines.FirstOrDefault(
-                static spline =>
-                    spline.LengthMeters > 2.0);
-
-        if (spawn is not null)
+        if (selectedSpawn is not null)
         {
-            var x =
-                spawn.TileX * 300.0 +
-                spawn.X;
-            var z =
-                spawn.TileY * 300.0 +
-                spawn.Z;
-
             var y =
                 _terrain.TrySample(
-                    x,
-                    z,
+                    selectedSpawn.X,
+                    selectedSpawn.Z,
                     out var sampled)
                     ? sampled + RideHeight
-                    : (float)spawn.Y + RideHeight;
+                    : (float)selectedSpawn.Y +
+                      RideHeight;
 
             Position =
                 new Vector3(
-                    (float)x,
+                    (float)selectedSpawn.X,
                     y,
-                    (float)z);
+                    (float)selectedSpawn.Z);
 
             HeadingRadians =
                 (float)(
-                    spawn.HeadingDegrees *
+                    selectedSpawn.HeadingDegrees *
                     Math.PI /
                     180.0);
         }
         else
         {
-            var center =
+            var spawn =
+                splines.FirstOrDefault(
+                    static spline =>
+                        spline.LengthMeters > 2.0);
+
+            if (spawn is not null)
+            {
+                var x =
+                    spawn.TileX * 300.0 +
+                    spawn.X;
+                var z =
+                    spawn.TileY * 300.0 +
+                    spawn.Z;
+
+                var y =
+                    _terrain.TrySample(
+                        x,
+                        z,
+                        out var sampled)
+                        ? sampled + RideHeight
+                        : (float)spawn.Y +
+                          RideHeight;
+
+                Position =
+                    new Vector3(
+                        (float)x,
+                        y,
+                        (float)z);
+
+                HeadingRadians =
+                    (float)(
+                        spawn.HeadingDegrees *
+                        Math.PI /
+                        180.0);
+            }
+                else
+            {
+                var center =
                 terrainGeometry.Center;
 
             var y =
@@ -108,7 +135,8 @@ internal sealed class RuntimeDriveVehicle
                     y,
                     center.Z);
 
-            HeadingRadians = 0.0f;
+                HeadingRadians = 0.0f;
+            }
         }
 
         SpeedMetersPerSecond = 0.0f;
