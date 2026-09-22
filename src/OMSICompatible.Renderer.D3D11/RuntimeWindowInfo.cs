@@ -85,7 +85,8 @@ public sealed record RuntimeO3dMaterialInfo(
     int AlphaMode,
     string? TransMapTexturePath,
     bool NoZWrite,
-    bool NoZCheck);
+    bool NoZCheck,
+    string? AlphaScaleVariable = null);
 
 public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
