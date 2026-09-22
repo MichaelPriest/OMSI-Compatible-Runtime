@@ -155,6 +155,8 @@ try
             "{init}",
             "1",
             "(S.L.mesh_visible)",
+            "0.5",
+            "(S.L.mesh_alpha)",
             "650",
             "(S.L.engine_speed)",
             "{end}",
@@ -219,7 +221,8 @@ try
             "string_length",
             "callback_result",
             "parsed_number",
-            "mesh_visible"),
+            "mesh_visible",
+            "mesh_alpha"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -261,6 +264,13 @@ try
             "[visible]",
             "mesh_visible",
             "1",
+            "[matl]",
+            "regen.tga",
+            "0",
+            "[matl_alpha]",
+            "2",
+            "[alphascale]",
+            "mesh_alpha",
             "[newanim]",
             "origin_from_mesh",
             "origin_rot_y",
@@ -436,6 +446,9 @@ try
         Math.Abs(
             vehicleAsset.Meshes[0].Animations[0].MaxSpeed!.Value -
             360.0) < 0.0001 &&
+        vehicleAsset.Meshes[0].Materials.Count == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].AlphaScaleVariable ==
+            "mesh_alpha" &&
         vehicleAsset.Meshes[1].Animations.Count == 0 &&
         Math.Abs(
             vehicleAsset.Meshes[0].SourceTransform.M41 -
