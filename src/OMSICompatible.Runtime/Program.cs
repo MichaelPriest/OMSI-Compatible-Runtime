@@ -56,6 +56,7 @@ internal static class Program
         Console.WriteLine($"Selected map: {world.Name}");
         Console.WriteLine($"global.cfg: {globalSummary.Path}");
         Console.WriteLine($"Tiles: {world.Tiles.Count:N0}");
+        Console.WriteLine($"Distinct referenced assets: {world.Assets.Count:N0}");
 
         if (world.Bounds is not null)
         {
@@ -63,6 +64,20 @@ internal static class Program
                 $"Tile bounds: {world.Bounds.MinimumX},{world.Bounds.MinimumY} -> " +
                 $"{world.Bounds.MaximumX},{world.Bounds.MaximumY} " +
                 $"({world.Bounds.WidthInTiles}x{world.Bounds.HeightInTiles})");
+        }
+
+        var assetCounts = world.Assets
+            .GroupBy(static asset => asset.Kind)
+            .OrderBy(static group => group.Key)
+            .ToArray();
+
+        if (assetCounts.Length > 0)
+        {
+            Console.WriteLine("Referenced assets:");
+            foreach (var group in assetCounts)
+            {
+                Console.WriteLine($"  {group.Key}: {group.Count():N0}");
+            }
         }
 
         var sectionCounts = world.Tiles
