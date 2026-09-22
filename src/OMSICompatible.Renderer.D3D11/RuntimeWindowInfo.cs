@@ -93,7 +93,9 @@ public sealed record RuntimeO3dMaterialInfo(
     string? MaterialChangeVariable = null,
     string? EnvMapTexturePath = null,
     double EnvMapStrength = 0.0,
-    string? EnvMapMaskTexturePath = null);
+    string? EnvMapMaskTexturePath = null,
+    string? BumpMapTexturePath = null,
+    double BumpMapStrength = 0.0);
 
 public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
