@@ -1,5 +1,6 @@
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Vehicles;
 using OMSICompatible.Renderer.D3D11;
 using OMSICompatible.World;
 
@@ -10,16 +11,22 @@ internal sealed class RuntimeApplicationContext :
 {
     private readonly OmsiContentRoot _contentRoot;
     private readonly OmsiMapInfo _map;
+    private readonly OmsiBusInfo _bus;
+    private readonly OmsiMapEntryPoint _entryPoint;
     private readonly LoadingForm _loading;
 
     private D3D11RenderWindow? _runtimeWindow;
 
     public RuntimeApplicationContext(
         OmsiContentRoot contentRoot,
-        OmsiMapInfo map)
+        OmsiMapInfo map,
+        OmsiBusInfo bus,
+        OmsiMapEntryPoint entryPoint)
     {
         _contentRoot = contentRoot;
         _map = map;
+        _bus = bus;
+        _entryPoint = entryPoint;
 
         _loading =
             new LoadingForm(
@@ -62,22 +69,51 @@ internal sealed class RuntimeApplicationContext :
                         _loading.UpdateProgress(
                             update));
 
-            var world =
-                await Task.Run(
+            var worldTask =
+                Task.Run(
                     () =>
                         WorldLoader.Load(
                             _contentRoot,
                             _map,
-                            progress));
+                            progress,
+                            new WorldLoadOptions(
+                                _entryPoint.Tile.X,
+                                _entryPoint.Tile.Y,
+                                ActiveTileRadius: 1,
+                                LoadEntireMap: false)));
+
+            _loading.SetStage(
+                58,
+                "Carregando ônibus",
+                $"Lendo {_bus.DisplayName} e seus modelos OMSI...");
+
+            var vehicleTask =
+                Task.Run(
+                    () =>
+                        OmsiVehicleAssetLoader.Load(
+                            _contentRoot,
+                            _bus));
+
+            await Task.WhenAll(
+                worldTask,
+                vehicleTask);
+
+            var world =
+                await worldTask;
+
+            var vehicle =
+                await vehicleTask;
 
             _loading.SetStage(
                 90,
                 "Preparando renderização",
-                "Gerando terreno, vias e buffers D3D11...");
+                $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · {vehicle.RenderableMeshCount:N0} meshes do ônibus...");
 
             var runtimeInfo =
                 BuildRuntimeInfo(
                     world,
+                    vehicle,
+                    _entryPoint,
                     _contentRoot.RootPath);
 
             _loading.SetStage(
@@ -130,6 +166,8 @@ internal sealed class RuntimeApplicationContext :
 
     private static RuntimeWindowInfo BuildRuntimeInfo(
         WorldDefinition world,
+        OmsiVehicleAsset vehicle,
+        OmsiMapEntryPoint entryPoint,
         string contentRoot)
     {
         var runtimeTiles =
@@ -287,9 +325,69 @@ internal sealed class RuntimeApplicationContext :
                             layer.DetailTextureRepeating))
                 .ToArray();
 
+        var runtimeVehicle =
+            new RuntimeVehicleInfo(
+                vehicle.Bus.DisplayName,
+                vehicle.Bus.RelativePath,
+                vehicle.Meshes
+                    .Select(
+                        static mesh =>
+                            new RuntimeObjectMeshInfo(
+                                mesh.DeclaredPath,
+                                mesh.ResolvedPath,
+                                mesh.ErrorCode,
+                                new RuntimeObjectMeshTransformInfo(
+                                    mesh.Transform.PositionX,
+                                    mesh.Transform.PositionY,
+                                    mesh.Transform.PositionZ,
+                                    mesh.Transform.RotationX,
+                                    mesh.Transform.RotationY,
+                                    mesh.Transform.RotationZ,
+                                    mesh.Transform.ScaleX,
+                                    mesh.Transform.ScaleY,
+                                    mesh.Transform.ScaleZ),
+                                mesh.Positions,
+                                mesh.Uvs,
+                                mesh.Indices,
+                                mesh.TriangleMaterialIndices,
+                                mesh.Materials
+                                    .Select(
+                                        static material =>
+                                            new RuntimeO3dMaterialInfo(
+                                                material.DiffuseR,
+                                                material.DiffuseG,
+                                                material.DiffuseB,
+                                                material.DiffuseA,
+                                                material.TexturePath,
+                                                material.AlphaMode,
+                                                material.TransMapTexturePath,
+                                                false,
+                                                false))
+                                    .ToArray()))
+                    .ToArray(),
+                vehicle.DriverPosition is null
+                    ? null
+                    : new RuntimeDriverPositionInfo(
+                        vehicle.DriverPosition.X,
+                        vehicle.DriverPosition.Y,
+                        vehicle.DriverPosition.Z,
+                        vehicle.DriverPosition.SeatHeight,
+                        vehicle.DriverPosition.RotationDegrees),
+                vehicle.ProtectedMeshCount);
+
+        var runtimeSpawn =
+            new RuntimeSpawnInfo(
+                entryPoint.Name,
+                entryPoint.WorldX,
+                entryPoint.WorldY,
+                entryPoint.WorldZ,
+                entryPoint.HeadingDegrees);
+
         return new RuntimeWindowInfo(
             world.Name,
             world.Tiles.Count,
+            world.TotalTileCount,
+            world.ActiveTileRadius,
             world.Objects.Count,
             world.Splines.Count,
             contentRoot,
@@ -297,7 +395,9 @@ internal sealed class RuntimeApplicationContext :
             runtimeSplines,
             runtimeObjects,
             runtimeSceneryAssets,
-            runtimeGroundTextures);
+            runtimeGroundTextures,
+            runtimeVehicle,
+            runtimeSpawn);
     }
 
     private static string? ResolveMapImage(
