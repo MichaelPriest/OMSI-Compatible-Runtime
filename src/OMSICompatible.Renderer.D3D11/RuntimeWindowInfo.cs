@@ -110,9 +110,32 @@ public sealed record RuntimeSceneryAssetInfo(
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
     RuntimeTreeInfo? Tree);
 
+public sealed record RuntimeSpawnInfo(
+    string Name,
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees);
+
+public sealed record RuntimeDriverPositionInfo(
+    double X,
+    double Y,
+    double Z,
+    double SeatHeight,
+    double RotationDegrees);
+
+public sealed record RuntimeVehicleInfo(
+    string DisplayName,
+    string RelativePath,
+    IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
+    RuntimeDriverPositionInfo? DriverPosition,
+    int ProtectedMeshCount);
+
 public sealed record RuntimeWindowInfo(
     string WorldName,
     int TileCount,
+    int TotalTileCount,
+    int? ActiveTileRadius,
     int ObjectCount,
     int SplineCount,
     string ContentRoot,
@@ -120,4 +143,6 @@ public sealed record RuntimeWindowInfo(
     IReadOnlyList<RuntimeSplineInfo> Splines,
     IReadOnlyList<RuntimeObjectInfo> Objects,
     IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> SceneryAssets,
-    IReadOnlyList<RuntimeGroundTextureInfo> GroundTextures);
+    IReadOnlyList<RuntimeGroundTextureInfo> GroundTextures,
+    RuntimeVehicleInfo? Vehicle,
+    RuntimeSpawnInfo? Spawn);
