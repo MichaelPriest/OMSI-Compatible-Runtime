@@ -169,6 +169,8 @@ try
             "(L.$.number)",
             "$length",
             "(S.L.string_length)",
+            "(M.V.GetRouteIndex)",
+            "(S.L.callback_result)",
             ""125"",
             "$StrToFloat",
             "(S.L.parsed_number)",
@@ -208,6 +210,7 @@ try
             "idle_copy",
             "horn_timer",
             "string_length",
+            "callback_result",
             "parsed_number"),
         Encoding.Unicode);
 
@@ -426,6 +429,28 @@ try
         new OmsiScriptRuntime(
             scriptCatalog);
 
+    var invokedSystemMacros =
+        new List<string>();
+
+    scriptRuntime.SystemMacroHandler =
+        (name, context) =>
+        {
+            invokedSystemMacros.Add(
+                name);
+
+            if (!string.Equals(
+                    name,
+                    "GetRouteIndex",
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            context.PushFloat(
+                42.0);
+            return true;
+        };
+
     scriptRuntime.ExecuteInit();
     Require(
         Math.Abs(
@@ -469,6 +494,14 @@ try
                 "string_length") -
             18.0) < 0.0001,
         "OMSI string length operation failed.");
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "callback_result") -
+            42.0) < 0.0001 &&
+        invokedSystemMacros.Contains(
+            "GetRouteIndex"),
+        "OMSI synchronous system-macro bridge failed.");
     Require(
         Math.Abs(
             scriptRuntime.GetLocal(
