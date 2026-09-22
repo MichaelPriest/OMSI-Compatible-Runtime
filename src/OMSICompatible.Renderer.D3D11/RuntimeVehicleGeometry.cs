@@ -5,7 +5,7 @@ namespace OMSICompatible.Renderer.D3D11;
 
 internal static class RuntimeVehicleGeometry
 {
-    public static RuntimeTerrainVertex[] BuildBusProxy()
+    public static RuntimeVehicleVertex[] BuildBusProxy()
     {
         const float halfWidth = 1.25f;
         const float halfLength = 5.25f;
@@ -30,7 +30,7 @@ internal static class RuntimeVehicleGeometry
             new Color4(0.93f, 0.46f, 0.10f, 1.0f);
 
         var vertices =
-            new List<RuntimeTerrainVertex>(36);
+            new List<RuntimeVehicleVertex>(36);
 
         Quad(p000, p100, p110, p010, body, vertices);
         Quad(p101, p001, p011, p111, front, vertices);
@@ -48,14 +48,31 @@ internal static class RuntimeVehicleGeometry
         Vector3 c,
         Vector3 d,
         Color4 color,
-        ICollection<RuntimeTerrainVertex> output)
+        ICollection<RuntimeVehicleVertex> output)
     {
-        output.Add(new RuntimeTerrainVertex(a, color));
-        output.Add(new RuntimeTerrainVertex(b, color));
-        output.Add(new RuntimeTerrainVertex(c, color));
+        output.Add(new RuntimeVehicleVertex(a, color));
+        output.Add(new RuntimeVehicleVertex(b, color));
+        output.Add(new RuntimeVehicleVertex(c, color));
 
-        output.Add(new RuntimeTerrainVertex(a, color));
-        output.Add(new RuntimeTerrainVertex(c, color));
-        output.Add(new RuntimeTerrainVertex(d, color));
+        output.Add(new RuntimeVehicleVertex(a, color));
+        output.Add(new RuntimeVehicleVertex(c, color));
+        output.Add(new RuntimeVehicleVertex(d, color));
     }
+}
+
+
+internal readonly struct RuntimeVehicleVertex
+{
+    public const uint SizeInBytes = 28;
+
+    public RuntimeVehicleVertex(
+        Vector3 position,
+        Color4 color)
+    {
+        Position = position;
+        Color = color;
+    }
+
+    public readonly Vector3 Position;
+    public readonly Color4 Color;
 }
