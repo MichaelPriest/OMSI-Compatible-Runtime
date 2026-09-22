@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace OmsiCompat.Models;
 
 public sealed record OmsiO3dGeometry(
@@ -8,7 +10,8 @@ public sealed record OmsiO3dGeometry(
     float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
-    IReadOnlyList<OmsiO3dMaterial> Materials)
+    IReadOnlyList<OmsiO3dMaterial> Materials,
+    Matrix4x4 SourceTransform)
 {
     public static OmsiO3dGeometry Error(string errorCode) =>
         new(
@@ -19,5 +22,6 @@ public sealed record OmsiO3dGeometry(
             Array.Empty<float>(),
             Array.Empty<uint>(),
             Array.Empty<ushort>(),
-            Array.Empty<OmsiO3dMaterial>());
+            Array.Empty<OmsiO3dMaterial>(),
+            Matrix4x4.Identity);
 }
