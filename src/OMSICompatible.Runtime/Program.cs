@@ -30,6 +30,11 @@ internal static class Program
                 args,
                 "--spawn");
 
+        var externalLoading =
+            HasFlag(
+                args,
+                "--external-loading");
+
         var headless =
             HasFlag(
                 args,
@@ -145,7 +150,8 @@ internal static class Program
                 contentRoot,
                 selectedMap,
                 selectedBus,
-                selectedEntryPoint);
+                selectedEntryPoint,
+                externalLoading);
 
         Application.Run(context);
         return 0;
