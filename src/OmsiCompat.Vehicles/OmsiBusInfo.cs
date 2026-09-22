@@ -41,6 +41,33 @@ public sealed record OmsiReflectionCamera(
         $"runtime-reflection://{Index}";
 }
 
+public sealed record OmsiVehicleFileReference(
+    string DeclaredPath,
+    string? ResolvedPath)
+{
+    public bool Exists =>
+        ResolvedPath is not null;
+}
+
+public sealed record OmsiVehicleScriptManifest(
+    IReadOnlyList<OmsiVehicleFileReference> ScriptFiles,
+    IReadOnlyList<OmsiVehicleFileReference> VariableLists,
+    IReadOnlyList<OmsiVehicleFileReference> StringVariableLists,
+    IReadOnlyList<OmsiVehicleFileReference> ConstantFiles)
+{
+    public int RegisteredFileCount =>
+        ScriptFiles.Count +
+        VariableLists.Count +
+        StringVariableLists.Count +
+        ConstantFiles.Count;
+
+    public int MissingFileCount =>
+        ScriptFiles.Count(static file => !file.Exists) +
+        VariableLists.Count(static file => !file.Exists) +
+        StringVariableLists.Count(static file => !file.Exists) +
+        ConstantFiles.Count(static file => !file.Exists);
+}
+
 public sealed record OmsiVehicleAxle(
     double LongitudinalPositionMeters,
     double? WheelDiameterMeters,
@@ -136,6 +163,7 @@ public sealed record OmsiBusInfo(
     string? PassengerCabinPath,
     string? PathConfigPath,
     string? SoundConfigPath,
+    OmsiVehicleScriptManifest ScriptManifest,
     IReadOnlyList<OmsiDriverCamera> DriverCameras,
     IReadOnlyList<OmsiPassengerCamera> PassengerCameras,
     int StandardDriverCameraIndex,

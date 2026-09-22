@@ -14,11 +14,16 @@ try
     var sceneryDirectory = Path.Combine(root, "Sceneryobjects", "Synthetic");
     var splineDirectory = Path.Combine(root, "Splines", "Synthetic");
     var vehicleDirectory = Path.Combine(root, "Vehicles", "Synthetic");
+    var vehicleScriptDirectory =
+        Path.Combine(
+            vehicleDirectory,
+            "script");
 
     Directory.CreateDirectory(mapDirectory);
     Directory.CreateDirectory(sceneryDirectory);
     Directory.CreateDirectory(splineDirectory);
     Directory.CreateDirectory(vehicleDirectory);
+    Directory.CreateDirectory(vehicleScriptDirectory);
 
     File.WriteAllText(
         Path.Combine(mapDirectory, "global.cfg"),
@@ -83,11 +88,58 @@ try
         Encoding.Unicode);
 
     File.WriteAllText(
+        Path.Combine(
+            vehicleScriptDirectory,
+            "main.osc"),
+        Lines(
+            "{init}",
+            "0",
+            "{end}"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            vehicleScriptDirectory,
+            "engine_varlist.txt"),
+        "engine_speed",
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            vehicleScriptDirectory,
+            "strings.txt"),
+        "IBIS_line",
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            vehicleScriptDirectory,
+            "constants.txt"),
+        Lines(
+            "[const]",
+            "engine_idle",
+            "650"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
         Path.Combine(vehicleDirectory, "Synthetic.bus"),
         Lines(
             "[friendlyname]",
             "Synthetic",
             "Camera Bus",
+            "[varnamelist]",
+            "2",
+            @"script\engine_varlist.txt",
+            @"script\missing_varlist.txt",
+            "[stringvarnamelist]",
+            "1",
+            @"script\strings.txt",
+            "[script]",
+            "1",
+            @"script\main.osc",
+            "[constfile]",
+            "1",
+            @"script\constants.txt",
             "[add_camera_driver]",
             "0",
             "4.5",
@@ -174,6 +226,20 @@ try
     Require(buses.Count == 1, $"Expected 1 bus, found {buses.Count}.");
 
     var bus = buses[0];
+    Require(
+        bus.ScriptManifest.ScriptFiles.Count == 1 &&
+        bus.ScriptManifest.VariableLists.Count == 2 &&
+        bus.ScriptManifest.StringVariableLists.Count == 1 &&
+        bus.ScriptManifest.ConstantFiles.Count == 1,
+        "Synthetic OMSI script manifest counts are incorrect.");
+    Require(
+        bus.ScriptManifest.RegisteredFileCount == 5 &&
+        bus.ScriptManifest.MissingFileCount == 1,
+        "Synthetic OMSI script manifest missing-file diagnostics are incorrect.");
+    Require(
+        bus.ScriptManifest.ScriptFiles[0].Exists &&
+        !bus.ScriptManifest.VariableLists[1].Exists,
+        "Synthetic OMSI script file resolution is incorrect.");
     Require(
         bus.DriverCameras.Count == 2,
         "Synthetic driver cameras were not parsed.");

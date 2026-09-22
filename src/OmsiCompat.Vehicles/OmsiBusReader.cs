@@ -39,6 +39,9 @@ public static class OmsiBusReader
             ResolveRelative(directory, First(document, "passengercabin")),
             ResolveRelative(directory, First(document, "paths")),
             ResolveRelative(directory, First(document, "sound")),
+            ReadScriptManifest(
+                document,
+                directory),
             ReadDriverCameras(document),
             ReadPassengerCameras(document),
             ReadStandardDriverCameraIndex(document),
@@ -51,6 +54,88 @@ public static class OmsiBusReader
             ReadOutsideCameraCenter(document),
             ReadReflectionCameras(document),
             ReadVehiclePhysics(document));
+    }
+
+    private static OmsiVehicleScriptManifest
+        ReadScriptManifest(
+            OmsiSectionDocument document,
+            string baseDirectory)
+    {
+        return new OmsiVehicleScriptManifest(
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "script"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "varnamelist"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "stringvarnamelist"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "constfile"));
+    }
+
+    private static IReadOnlyList<OmsiVehicleFileReference>
+        ReadRegisteredFiles(
+            OmsiSectionDocument document,
+            string baseDirectory,
+            string sectionName)
+    {
+        var result =
+            new List<OmsiVehicleFileReference>();
+
+        foreach (var section in
+                 document.Sections.Where(
+                     section =>
+                         section.Name.Equals(
+                             sectionName,
+                             StringComparison.OrdinalIgnoreCase)))
+        {
+            var values =
+                section.Lines
+                    .Select(
+                        static line =>
+                            line.Value.Trim().Trim('"'))
+                    .Where(
+                        static value =>
+                            value.Length > 0 &&
+                            !value.StartsWith('#') &&
+                            !value.StartsWith(
+                                "//",
+                                StringComparison.Ordinal))
+                    .ToArray();
+
+            if (values.Length == 0 ||
+                !int.TryParse(
+                    values[0],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var declaredCount) ||
+                declaredCount <= 0)
+            {
+                continue;
+            }
+
+            foreach (var declaredPath in
+                     values
+                         .Skip(1)
+                         .Take(declaredCount))
+            {
+                result.Add(
+                    new OmsiVehicleFileReference(
+                        declaredPath,
+                        ResolveRelative(
+                            baseDirectory,
+                            declaredPath)));
+            }
+        }
+
+        return result;
     }
 
     private static IReadOnlyList<OmsiDriverCamera>

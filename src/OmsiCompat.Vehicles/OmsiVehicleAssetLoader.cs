@@ -16,7 +16,7 @@ public static class OmsiVehicleAssetLoader
         progress?.Report(
             new OmsiVehicleLoadProgress(
                 2,
-                "Preparando definição do veículo..."));
+                $"Preparando definição do veículo · {bus.ScriptManifest.RegisteredFileCount:N0} arquivo(s) de script registrados · {bus.ScriptManifest.MissingFileCount:N0} ausente(s)..."));
 
         if (string.IsNullOrWhiteSpace(bus.ModelConfigPath) ||
             !File.Exists(bus.ModelConfigPath))
