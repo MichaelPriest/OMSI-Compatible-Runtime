@@ -141,6 +141,10 @@ public sealed record RuntimeOutsideCameraCenterInfo(
     double Y,
     double Z);
 
+public sealed record RuntimeVehiclePhysicsInfo(
+    double? WheelBaseMeters,
+    double? MaximumSteeringAngleDegrees);
+
 public sealed record RuntimeDriverPositionInfo(
     double X,
     double Y,
@@ -156,6 +160,7 @@ public sealed record RuntimeVehicleInfo(
     IReadOnlyList<RuntimePassengerCameraInfo> PassengerCameras,
     int StandardDriverCameraIndex,
     RuntimeOutsideCameraCenterInfo? OutsideCameraCenter,
+    RuntimeVehiclePhysicsInfo Physics,
     RuntimeDriverPositionInfo? DriverPosition,
     int ProtectedMeshCount);
 

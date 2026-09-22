@@ -151,7 +151,9 @@ public sealed class D3D11RenderWindow : Form
     public D3D11RenderWindow(RuntimeWindowInfo windowInfo)
     {
         _windowInfo = windowInfo;
-        _vehicle = new RuntimeDriveVehicle(windowInfo.Tiles);
+        _vehicle = new RuntimeDriveVehicle(
+            windowInfo.Tiles,
+            windowInfo.Vehicle?.Physics);
         _driverCameraIndex =
             Math.Max(
                 windowInfo.Vehicle?.StandardDriverCameraIndex ?? 0,

@@ -42,7 +42,8 @@ public static class OmsiBusReader
             ReadDriverCameras(document),
             ReadPassengerCameras(document),
             ReadStandardDriverCameraIndex(document),
-            ReadOutsideCameraCenter(document));
+            ReadOutsideCameraCenter(document),
+            ReadVehiclePhysics(document));
     }
 
     private static IReadOnlyList<OmsiDriverCamera>
@@ -216,6 +217,110 @@ public static class OmsiBusReader
             x,
             y,
             z);
+    }
+
+    private static OmsiVehiclePhysics
+        ReadVehiclePhysics(
+            OmsiSectionDocument document)
+    {
+        var axles =
+            new List<OmsiVehicleAxle>();
+
+        foreach (var section in
+                 document.Sections.Where(
+                     static section =>
+                         section.Name.Equals(
+                             "newachse",
+                             StringComparison.OrdinalIgnoreCase)))
+        {
+            var values =
+                section.Lines
+                    .Select(
+                        static line =>
+                            line.Value.Trim())
+                    .Where(
+                        static value =>
+                            value.Length > 0 &&
+                            !value.StartsWith('#') &&
+                            !value.StartsWith(
+                                "//",
+                                StringComparison.Ordinal))
+                    .ToArray();
+
+            var longitudinal =
+                ReadNamedDouble(
+                    values,
+                    "achse_long");
+
+            if (!longitudinal.HasValue)
+            {
+                continue;
+            }
+
+            axles.Add(
+                new OmsiVehicleAxle(
+                    longitudinal.Value,
+                    ReadNamedDouble(
+                        values,
+                        "achse_raddurchmesser"),
+                    ReadNamedDouble(
+                        values,
+                        "achse_antrieb")));
+        }
+
+        return new OmsiVehiclePhysics(
+            axles,
+            ReadSectionDouble(
+                document,
+                "rot_pnt_long"),
+            ReadSectionDouble(
+                document,
+                "inv_min_turnradius"));
+    }
+
+    private static double?
+        ReadNamedDouble(
+            IReadOnlyList<string> values,
+            string name)
+    {
+        for (var index = 0;
+             index < values.Count - 1;
+             index++)
+        {
+            if (!string.Equals(
+                    values[index],
+                    name,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return TryDouble(
+                    values[index + 1],
+                    out var parsed)
+                ? parsed
+                : null;
+        }
+
+        return null;
+    }
+
+    private static double?
+        ReadSectionDouble(
+            OmsiSectionDocument document,
+            string name)
+    {
+        var value =
+            First(
+                document,
+                name);
+
+        return value is not null &&
+               TryDouble(
+                   value,
+                   out var parsed)
+            ? parsed
+            : null;
     }
 
     private static bool TryDouble(

@@ -583,6 +583,9 @@ internal sealed class RuntimeApplicationContext :
                         vehicle.Bus.OutsideCameraCenter.X,
                         vehicle.Bus.OutsideCameraCenter.Z,
                         vehicle.Bus.OutsideCameraCenter.Y),
+                new RuntimeVehiclePhysicsInfo(
+                    vehicle.Bus.Physics.WheelBaseMeters,
+                    vehicle.Bus.Physics.MaximumSteeringAngleDegrees),
                 vehicle.DriverPosition is null
                     ? null
                     : new RuntimeDriverPositionInfo(

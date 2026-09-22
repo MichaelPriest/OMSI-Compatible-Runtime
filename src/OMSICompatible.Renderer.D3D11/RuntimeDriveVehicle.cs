@@ -12,17 +12,38 @@ internal enum RuntimeDriveGear
 internal sealed class RuntimeDriveVehicle
 {
     private const float RideHeight = 0.45f;
-    private const float WheelBase = 5.8f;
-    private const float MaximumSteeringRadians =
-        32.0f * MathF.PI / 180.0f;
+    private const float DefaultWheelBaseMeters = 5.8f;
+    private const float DefaultMaximumSteeringDegrees = 32.0f;
 
     private RuntimeTerrainSampler _terrain;
+    private readonly float _wheelBaseMeters;
+    private readonly float _maximumSteeringRadians;
 
     public RuntimeDriveVehicle(
-        IReadOnlyList<RuntimeTileInfo> tiles)
+        IReadOnlyList<RuntimeTileInfo> tiles,
+        RuntimeVehiclePhysicsInfo? physics)
     {
         _terrain =
             new RuntimeTerrainSampler(tiles);
+
+        _wheelBaseMeters =
+            Math.Clamp(
+                (float)(physics?.WheelBaseMeters ??
+                    DefaultWheelBaseMeters),
+                1.5f,
+                12.0f);
+
+        var steeringDegrees =
+            Math.Clamp(
+                (float)(physics?.MaximumSteeringAngleDegrees ??
+                    DefaultMaximumSteeringDegrees),
+                10.0f,
+                55.0f);
+
+        _maximumSteeringRadians =
+            steeringDegrees *
+            MathF.PI /
+            180.0f;
     }
 
     public void ReplaceTerrainTiles(
@@ -415,14 +436,14 @@ internal sealed class RuntimeDriveVehicle
 
         var steeringAngle =
             SteeringInput *
-            MaximumSteeringRadians;
+            _maximumSteeringRadians;
 
         if (Math.Abs(SpeedMetersPerSecond) > 0.02f)
         {
             HeadingRadians +=
                 MathF.Tan(steeringAngle) *
                 SpeedMetersPerSecond /
-                WheelBase *
+                _wheelBaseMeters *
                 deltaSeconds;
         }
 

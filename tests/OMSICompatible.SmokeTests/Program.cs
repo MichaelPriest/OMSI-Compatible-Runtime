@@ -117,7 +117,25 @@ try
             "[set_camera_outside_center]",
             "0",
             "-2.5",
-            "1.2"),
+            "1.2",
+            "[rot_pnt_long]",
+            "-2.7",
+            "[inv_min_turnradius]",
+            "0.13",
+            "[newachse]",
+            "achse_long",
+            "3.1",
+            "achse_raddurchmesser",
+            "0.94",
+            "achse_antrieb",
+            "0",
+            "[newachse]",
+            "achse_long",
+            "-2.7",
+            "achse_raddurchmesser",
+            "0.94",
+            "achse_antrieb",
+            "1"),
         Encoding.Unicode);
 
     if (!OmsiContentRoot.TryCreate(
@@ -154,6 +172,17 @@ try
             Z: 1.2
         },
         "Outside camera center was not preserved.");
+    Require(
+        bus.Physics.Axles.Count == 2,
+        "Synthetic vehicle axles were not parsed.");
+    Require(
+        Math.Abs(
+            (bus.Physics.WheelBaseMeters ?? 0.0) -
+            5.8) < 0.0001,
+        "Vehicle wheelbase was not derived from OMSI axles.");
+    Require(
+        bus.Physics.MaximumSteeringAngleDegrees is > 35.0 and < 40.0,
+        "Vehicle steering angle was not derived from OMSI turn radius.");
 
     var map = maps[0];
     var world = WorldLoader.Load(contentRoot, map);
