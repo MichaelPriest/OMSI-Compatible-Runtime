@@ -21,7 +21,8 @@ internal static class RuntimeSplineGeometryBuilder
 {
     private readonly record struct BatchKey(
         string? TexturePath,
-        bool AlphaCutout);
+        bool AlphaCutout,
+        bool AlphaBlend = false);
 
     public static RuntimeSplineGeometry Build(
         IReadOnlyList<RuntimeSplineInfo> splines)
@@ -67,7 +68,9 @@ internal static class RuntimeSplineGeometryBuilder
                     new BatchKey(
                         surface.TexturePath,
                         hasTexture &&
-                        surface.AlphaMode > 0);
+                        surface.AlphaMode == 1,
+                        hasTexture &&
+                        surface.AlphaMode == 2);
 
                 var output =
                     GetBatch(
@@ -216,7 +219,8 @@ internal static class RuntimeSplineGeometryBuilder
                     start,
                     (uint)batchVertices.Count,
                     key.TexturePath,
-                    key.AlphaCutout));
+                    key.AlphaCutout,
+                    key.AlphaBlend));
         }
 
         return new RuntimeSplineGeometry(
