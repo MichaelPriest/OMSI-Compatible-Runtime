@@ -15,7 +15,9 @@ public sealed record OmsiVehicleMaterialOverride(
     string? MaterialChangeMapSource,
     string? EnvMapSource,
     double EnvMapStrength,
-    string? EnvMapMaskSource);
+    string? EnvMapMaskSource,
+    string? BumpMapSource,
+    double BumpMapStrength);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
