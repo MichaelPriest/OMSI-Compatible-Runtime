@@ -31,6 +31,27 @@ public sealed record OmsiVehicleVisibilityCondition(
     string VariableName,
     double Value);
 
+public enum OmsiVehicleAnimationKind
+{
+    Translation,
+    Rotation
+}
+
+public sealed record OmsiVehicleAnimation(
+    OmsiVehicleAnimationKind Kind,
+    string VariableName,
+    double Delta,
+    bool OriginFromMesh,
+    double OriginX,
+    double OriginY,
+    double OriginZ,
+    double OriginRotationX,
+    double OriginRotationY,
+    double OriginRotationZ,
+    double Offset,
+    double? MaxSpeed,
+    double? Delay);
+
 public sealed record OmsiVehicleMeshReference(
     int Ordinal,
     string DeclaredPath,
@@ -38,6 +59,7 @@ public sealed record OmsiVehicleMeshReference(
     int ViewpointFlag,
     double? LodThreshold,
     IReadOnlyList<OmsiVehicleVisibilityCondition> VisibilityConditions,
+    IReadOnlyList<OmsiVehicleAnimation> Animations,
     IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides);
 
 public sealed record OmsiVehicleModel(
