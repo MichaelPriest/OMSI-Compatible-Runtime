@@ -150,6 +150,22 @@ public static class OmsiVehicleAssetLoader
                             out transMapPath);
                     }
 
+                    string? lightMapPath = null;
+                    var lightMapSource =
+                        materialOverride?.LightMapSource;
+
+                    if (!string.IsNullOrWhiteSpace(
+                            lightMapSource))
+                    {
+                        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+                            contentRoot.RootPath,
+                            bus.DirectoryPath,
+                            model.SourcePath,
+                            meshPath,
+                            lightMapSource,
+                            out lightMapPath);
+                    }
+
                     var alphaMode =
                         materialOverride?.AlphaMode ??
                         (material.DiffuseA < 0.999f
@@ -173,7 +189,9 @@ public static class OmsiVehicleAssetLoader
                         transMapPath,
                         materialOverride?.NoZWrite ?? false,
                         materialOverride?.NoZCheck ?? false,
-                        materialOverride?.AlphaScaleVariable);
+                        materialOverride?.AlphaScaleVariable,
+                        lightMapPath,
+                        materialOverride?.LightMapVariable);
                 })
                 .ToArray();
 
