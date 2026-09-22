@@ -59,6 +59,57 @@ public sealed class OmsiScriptRuntime
                 _values);
     }
 
+    private sealed class StringStack
+    {
+        private readonly string[] _values =
+            Enumerable.Repeat(
+                string.Empty,
+                8)
+                .ToArray();
+
+        public string Top =>
+            _values[0];
+
+        public void Push(
+            string value)
+        {
+            for (var index = _values.Length - 1;
+                 index > 0;
+                 index--)
+            {
+                _values[index] =
+                    _values[index - 1];
+            }
+
+            _values[0] =
+                value ?? string.Empty;
+        }
+
+        public string Pop()
+        {
+            var value =
+                _values[0];
+
+            for (var index = 0;
+                 index < _values.Length - 1;
+                 index++)
+            {
+                _values[index] =
+                    _values[index + 1];
+            }
+
+            _values[^1] =
+                string.Empty;
+
+            return value;
+        }
+
+        public void ReplaceTop(
+            string value) =>
+            _values[0] =
+                value ?? string.Empty;
+    }
+
     private sealed record ConditionalFrame(
         bool ParentActive,
         bool Condition,
@@ -110,6 +161,9 @@ public sealed class OmsiScriptRuntime
 
     public event Action<string>?
         SoundTriggerRequested;
+
+    public event Action<string>?
+        DebugMessageRequested;
 
     public void ExecuteInit()
     {
@@ -217,15 +271,20 @@ public sealed class OmsiScriptRuntime
         var stack =
             new FloatStack();
 
+        var stringStack =
+            new StringStack();
+
         ExecuteBlock(
             block,
             stack,
+            stringStack,
             0);
     }
 
     private void ExecuteBlock(
         OmsiScriptBlock block,
         FloatStack stack,
+        StringStack stringStack,
         int depth)
     {
         if (depth > 64)
@@ -294,6 +353,15 @@ public sealed class OmsiScriptRuntime
                 continue;
             }
 
+            if (TryStringLiteral(
+                    token,
+                    out var stringLiteral))
+            {
+                stringStack.Push(
+                    stringLiteral);
+                continue;
+            }
+
             if (double.TryParse(
                     token,
                     NumberStyles.Float,
@@ -337,6 +405,28 @@ public sealed class OmsiScriptRuntime
                 stack.Push(
                     GetSystem(
                         systemName));
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
+                    "(L.$.",
+                    out var stringLocalName))
+            {
+                stringStack.Push(
+                    GetStringLocal(
+                        stringLocalName));
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
+                    "(S.$.",
+                    out stringLocalName))
+            {
+                SetStringLocal(
+                    stringLocalName,
+                    stringStack.Top);
                 continue;
             }
 
@@ -402,12 +492,15 @@ public sealed class OmsiScriptRuntime
                     "(F.L.",
                     out var curveName))
             {
+                var input =
+                    stack.Pop();
+
                 stack.Push(
                     _catalog.Curves.TryGetValue(
                         curveName,
                         out var curve)
                             ? curve.Evaluate(
-                                stack.Top)
+                                input)
                             : 0.0);
                 continue;
             }
@@ -424,6 +517,7 @@ public sealed class OmsiScriptRuntime
                     ExecuteBlock(
                         macro,
                         stack,
+                        stringStack,
                         depth + 1);
                 }
 
@@ -454,6 +548,218 @@ public sealed class OmsiScriptRuntime
 
             switch (token)
             {
+                case "$d":
+                    stringStack.Push(
+                        stringStack.Top);
+                    break;
+
+                case "$msg":
+                    DebugMessageRequested?.Invoke(
+                        stringStack.Top);
+                    break;
+
+                case "$+":
+                    StringBinary(
+                        stringStack,
+                        static (left, right) =>
+                            left + right);
+                    break;
+
+                case "$=":
+                    StringCompare(
+                        stack,
+                        stringStack,
+                        static comparison =>
+                            comparison == 0);
+                    break;
+
+                case "$<":
+                    StringCompare(
+                        stack,
+                        stringStack,
+                        static comparison =>
+                            comparison < 0);
+                    break;
+
+                case "$>":
+                    StringCompare(
+                        stack,
+                        stringStack,
+                        static comparison =>
+                            comparison > 0);
+                    break;
+
+                case "$<=":
+                    StringCompare(
+                        stack,
+                        stringStack,
+                        static comparison =>
+                            comparison <= 0);
+                    break;
+
+                case "$>=":
+                    StringCompare(
+                        stack,
+                        stringStack,
+                        static comparison =>
+                            comparison >= 0);
+                    break;
+
+                case "$length":
+                    stack.Push(
+                        stringStack.Top.Length);
+                    break;
+
+                case "$*":
+                {
+                    var targetLength =
+                        Math.Max(
+                            (int)Math.Truncate(
+                                stack.Pop()),
+                            0);
+
+                    var source =
+                        stringStack.Pop();
+
+                    if (targetLength == 0 ||
+                        source.Length == 0)
+                    {
+                        stringStack.Push(
+                            string.Empty);
+                        break;
+                    }
+
+                    var builder =
+                        new System.Text.StringBuilder(
+                            targetLength);
+
+                    while (builder.Length <
+                           targetLength)
+                    {
+                        builder.Append(
+                            source);
+                    }
+
+                    if (builder.Length >
+                        targetLength)
+                    {
+                        builder.Length =
+                            targetLength;
+                    }
+
+                    stringStack.Push(
+                        builder.ToString());
+                    break;
+                }
+
+                case "$cutBegin":
+                {
+                    var count =
+                        Math.Max(
+                            (int)Math.Truncate(
+                                stack.Pop()),
+                            0);
+
+                    var value =
+                        stringStack.Pop();
+
+                    stringStack.Push(
+                        count >= value.Length
+                            ? string.Empty
+                            : value[count..]);
+                    break;
+                }
+
+                case "$cutEnd":
+                {
+                    var count =
+                        Math.Max(
+                            (int)Math.Truncate(
+                                stack.Pop()),
+                            0);
+
+                    var value =
+                        stringStack.Pop();
+
+                    stringStack.Push(
+                        count >= value.Length
+                            ? string.Empty
+                            : value[..^count]);
+                    break;
+                }
+
+                case "$SetLengthL":
+                    stringStack.ReplaceTop(
+                        SetStringLength(
+                            stringStack.Top,
+                            stack.Top,
+                            StringAlignment.Left));
+                    break;
+
+                case "$SetLengthR":
+                    stringStack.ReplaceTop(
+                        SetStringLength(
+                            stringStack.Top,
+                            stack.Top,
+                            StringAlignment.Right));
+                    break;
+
+                case "$SetLengthC":
+                    stringStack.ReplaceTop(
+                        SetStringLength(
+                            stringStack.Top,
+                            stack.Top,
+                            StringAlignment.Center));
+                    break;
+
+                case "$IntToStr":
+                    stringStack.Push(
+                        Math.Truncate(
+                            stack.Pop())
+                            .ToString(
+                                "0",
+                                CultureInfo.InvariantCulture));
+                    break;
+
+                case "$IntToStrEnh":
+                {
+                    var format =
+                        stringStack.Pop();
+
+                    var value =
+                        Math.Truncate(
+                            stack.Pop());
+
+                    stringStack.Push(
+                        FormatInteger(
+                            value,
+                            format));
+                    break;
+                }
+
+                case "$StrToFloat":
+                {
+                    var value =
+                        stringStack.Pop();
+
+                    stack.Push(
+                        double.TryParse(
+                            value,
+                            NumberStyles.Float,
+                            CultureInfo.InvariantCulture,
+                            out var parsed) &&
+                        double.IsFinite(
+                            parsed)
+                            ? parsed
+                            : -1.0);
+                    break;
+                }
+
+                case "$RemoveSpaces":
+                    stringStack.ReplaceTop(
+                        stringStack.Top.Trim());
+                    break;
+
                 case "+":
                     Binary(
                         stack,
@@ -688,6 +994,162 @@ public sealed class OmsiScriptRuntime
                     break;
             }
         }
+    }
+
+    private enum StringAlignment
+    {
+        Left,
+        Center,
+        Right
+    }
+
+    private static bool TryStringLiteral(
+        string token,
+        out string value)
+    {
+        if (token.Length >= 2 &&
+            token[0] == '"' &&
+            token[^1] == '"')
+        {
+            value =
+                token[1..^1];
+            return true;
+        }
+
+        value =
+            string.Empty;
+        return false;
+    }
+
+    private static void StringBinary(
+        StringStack stack,
+        Func<string, string, string> operation)
+    {
+        var right =
+            stack.Pop();
+        var left =
+            stack.Pop();
+
+        stack.Push(
+            operation(
+                left,
+                right));
+    }
+
+    private static void StringCompare(
+        FloatStack floatStack,
+        StringStack stringStack,
+        Func<int, bool> predicate)
+    {
+        var right =
+            stringStack.Pop();
+        var left =
+            stringStack.Pop();
+
+        var comparison =
+            StringComparer.Ordinal.Compare(
+                left,
+                right);
+
+        floatStack.Push(
+            predicate(
+                comparison)
+                ? 1.0
+                : 0.0);
+    }
+
+    private static string SetStringLength(
+        string value,
+        double rawLength,
+        StringAlignment alignment)
+    {
+        var length =
+            Math.Clamp(
+                (int)Math.Truncate(
+                    rawLength),
+                0,
+                4096);
+
+        if (value.Length == length)
+        {
+            return value;
+        }
+
+        if (value.Length < length)
+        {
+            var padding =
+                length -
+                value.Length;
+
+            return alignment switch
+            {
+                StringAlignment.Right =>
+                    new string(
+                        ' ',
+                        padding) +
+                    value,
+                StringAlignment.Center =>
+                    new string(
+                        ' ',
+                        padding / 2) +
+                    value +
+                    new string(
+                        ' ',
+                        padding - padding / 2),
+                _ =>
+                    value +
+                    new string(
+                        ' ',
+                        padding)
+            };
+        }
+
+        var remove =
+            value.Length -
+            length;
+
+        return alignment switch
+        {
+            StringAlignment.Right =>
+                value[remove..],
+            StringAlignment.Center =>
+                value[
+                    (remove / 2)..
+                    (remove / 2 + length)],
+            _ =>
+                value[..length]
+        };
+    }
+
+    private static string FormatInteger(
+        double value,
+        string format)
+    {
+        if (format.Length < 2 ||
+            !int.TryParse(
+                format[1..],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var width) ||
+            width < 0 ||
+            width > 4096)
+        {
+            return "ERROR";
+        }
+
+        var raw =
+            value.ToString(
+                "0",
+                CultureInfo.InvariantCulture);
+
+        if (raw.Length >= width)
+        {
+            return raw;
+        }
+
+        return raw.PadLeft(
+            width,
+            format[0]);
     }
 
     private static bool IsActive(
