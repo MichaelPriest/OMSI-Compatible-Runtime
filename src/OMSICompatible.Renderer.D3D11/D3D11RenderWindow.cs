@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -27,6 +28,13 @@ public sealed class D3D11RenderWindow : Form
 
     private readonly RuntimeWindowInfo _windowInfo;
     private readonly System.Windows.Forms.Timer _renderTimer;
+    private readonly RuntimeFreeCamera _camera = new();
+    private readonly HashSet<Keys> _pressedKeys = [];
+    private readonly Stopwatch _frameClock = Stopwatch.StartNew();
+
+    private double _lastFrameTimeSeconds;
+    private bool _mouseLooking;
+    private System.Drawing.Point _lastMousePosition;
 
     private IDXGIFactory2? _factory;
     private ID3D11Device? _device;
@@ -63,6 +71,14 @@ public sealed class D3D11RenderWindow : Form
         ClientSize = new System.Drawing.Size(1280, 720);
         MinimumSize = new System.Drawing.Size(960, 540);
         StartPosition = FormStartPosition.CenterScreen;
+        KeyPreview = true;
+
+        KeyDown += OnRuntimeKeyDown;
+        KeyUp += OnRuntimeKeyUp;
+        MouseDown += OnRuntimeMouseDown;
+        MouseUp += OnRuntimeMouseUp;
+        MouseMove += OnRuntimeMouseMove;
+        MouseWheel += OnRuntimeMouseWheel;
 
         _renderTimer = new System.Windows.Forms.Timer
         {
@@ -319,6 +335,8 @@ public sealed class D3D11RenderWindow : Form
 
         _terrainVertexCount =
             (uint)_terrainGeometry.Vertices.Length;
+
+        _camera.Reset(_terrainGeometry);
     }
 
     private static InputElementDescription[]
@@ -509,6 +527,7 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         EventArgs e)
     {
+        UpdateCamera();
         RenderFrame();
     }
 
@@ -628,59 +647,136 @@ public sealed class D3D11RenderWindow : Form
 
     private Matrix4x4 CreateViewProjection()
     {
-        var center = _terrainGeometry.Center;
-        var horizontalSpan =
-            MathF.Max(
-                _terrainGeometry.HorizontalSpan,
-                300.0f);
-        var elevationSpan =
-            MathF.Max(
-                _terrainGeometry.MaximumHeight -
-                _terrainGeometry.MinimumHeight,
-                10.0f);
-
-        var target = new Vector3(
-            center.X,
-            center.Y,
-            center.Z);
-
-        var eye = new Vector3(
-            center.X,
-            _terrainGeometry.MaximumHeight +
-                horizontalSpan * 0.70f +
-                elevationSpan * 0.5f,
-            center.Z -
-                horizontalSpan * 0.80f);
-
-        var view = Matrix4x4.CreateLookAt(
-            eye,
-            target,
-            Vector3.UnitY);
-
         var aspect =
             Math.Max(ClientSize.Width, 1) /
             (float)Math.Max(
                 ClientSize.Height,
                 1);
 
-        var nearPlane =
-            MathF.Max(
-                0.5f,
-                horizontalSpan / 20_000.0f);
-        var farPlane =
-            MathF.Max(
-                5_000.0f,
-                horizontalSpan * 6.0f +
-                elevationSpan * 3.0f);
+        return _camera.CreateViewProjection(
+            aspect,
+            _terrainGeometry);
+    }
 
-        var projection =
-            Matrix4x4.CreatePerspectiveFieldOfView(
-                MathF.PI / 3.0f,
-                aspect,
-                nearPlane,
-                farPlane);
+    private void UpdateCamera()
+    {
+        var now =
+            _frameClock.Elapsed.TotalSeconds;
 
-        return view * projection;
+        var elapsed =
+            _lastFrameTimeSeconds <= 0.0
+                ? 0.0
+                : now - _lastFrameTimeSeconds;
+
+        _lastFrameTimeSeconds = now;
+
+        if (!CanDrawTerrain() ||
+            elapsed <= 0.0)
+        {
+            return;
+        }
+
+        var deltaSeconds =
+            (float)Math.Clamp(
+                elapsed,
+                0.0,
+                0.1);
+
+        var forward =
+            (_pressedKeys.Contains(Keys.W) ? 1.0f : 0.0f) -
+            (_pressedKeys.Contains(Keys.S) ? 1.0f : 0.0f);
+
+        var right =
+            (_pressedKeys.Contains(Keys.D) ? 1.0f : 0.0f) -
+            (_pressedKeys.Contains(Keys.A) ? 1.0f : 0.0f);
+
+        var up =
+            (_pressedKeys.Contains(Keys.E) ? 1.0f : 0.0f) -
+            (_pressedKeys.Contains(Keys.Q) ? 1.0f : 0.0f);
+
+        _camera.Move(
+            forward,
+            right,
+            up,
+            deltaSeconds,
+            _pressedKeys.Contains(Keys.ShiftKey),
+            _pressedKeys.Contains(Keys.ControlKey));
+    }
+
+    private void OnRuntimeKeyDown(
+        object? sender,
+        KeyEventArgs e)
+    {
+        _pressedKeys.Add(e.KeyCode);
+
+        if (e.KeyCode == Keys.R &&
+            _terrainGeometry.Vertices.Length > 0)
+        {
+            _camera.Reset(_terrainGeometry);
+        }
+    }
+
+    private void OnRuntimeKeyUp(
+        object? sender,
+        KeyEventArgs e)
+    {
+        _pressedKeys.Remove(e.KeyCode);
+    }
+
+    private void OnRuntimeMouseDown(
+        object? sender,
+        MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right)
+        {
+            return;
+        }
+
+        _mouseLooking = true;
+        _lastMousePosition = e.Location;
+        Capture = true;
+    }
+
+    private void OnRuntimeMouseUp(
+        object? sender,
+        MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right)
+        {
+            return;
+        }
+
+        _mouseLooking = false;
+        Capture = false;
+    }
+
+    private void OnRuntimeMouseMove(
+        object? sender,
+        MouseEventArgs e)
+    {
+        if (!_mouseLooking)
+        {
+            return;
+        }
+
+        var deltaX =
+            e.X - _lastMousePosition.X;
+        var deltaY =
+            e.Y - _lastMousePosition.Y;
+
+        _lastMousePosition = e.Location;
+
+        _camera.Rotate(
+            deltaX,
+            deltaY);
+    }
+
+    private void OnRuntimeMouseWheel(
+        object? sender,
+        MouseEventArgs e)
+    {
+        _camera.AdjustSpeed(
+            e.Delta / 120.0f);
     }
 
     private void DrawTileOverview()
@@ -729,7 +825,8 @@ public sealed class D3D11RenderWindow : Form
             $"{_windowInfo.TileCount:N0} tiles — " +
             $"{_windowInfo.ObjectCount:N0} objects — " +
             $"{_windowInfo.SplineCount:N0} splines — " +
-            $"{mode} — D3D11 {_featureLevel}";
+            $"{mode} — D3D11 {_featureLevel} — " +
+            "WASD move · RMB look · Q/E vertical · R reset";
     }
 
     protected override void Dispose(bool disposing)
