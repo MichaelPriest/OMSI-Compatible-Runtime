@@ -82,7 +82,6 @@ public sealed record WorldBounds(
     int MaximumY)
 {
     public int WidthInTiles => MaximumX - MinimumX + 1;
-
     public int HeightInTiles => MaximumY - MinimumY + 1;
 }
 
@@ -93,6 +92,7 @@ public sealed record WorldDefinition(
     IReadOnlyList<WorldAssetReference> Assets,
     IReadOnlyList<WorldObjectPlacement> Objects,
     IReadOnlyList<WorldSplinePlacement> Splines,
+    IReadOnlyDictionary<string, WorldSplineAsset> SplineAssets,
     WorldDependencyReport Dependencies,
     int PlacementParseIssueCount,
     int TerrainParseIssueCount,

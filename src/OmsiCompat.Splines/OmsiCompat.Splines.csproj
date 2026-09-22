@@ -4,6 +4,5 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../OmsiCompat.Map/OmsiCompat.Map.csproj" />
-    <ProjectReference Include="../OmsiCompat.Splines/OmsiCompat.Splines.csproj" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Splines;
 
 namespace OMSICompatible.World;
 
@@ -120,6 +121,10 @@ public static class WorldLoader
             allObjects,
             allSplines);
 
+        var splineAssets = LoadSplineAssets(
+            allSplines,
+            dependencies);
+
         return new WorldDefinition(
             map.FolderName,
             map.DirectoryPath,
@@ -127,10 +132,91 @@ public static class WorldLoader
             assets,
             allObjects,
             allSplines,
+            splineAssets,
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
             bounds);
+    }
+
+    private static IReadOnlyDictionary<string, WorldSplineAsset>
+        LoadSplineAssets(
+            IReadOnlyList<WorldSplinePlacement> splines,
+            WorldDependencyReport dependencies)
+    {
+        var result = new Dictionary<string, WorldSplineAsset>(
+            StringComparer.OrdinalIgnoreCase);
+
+        var dependencyByPath = dependencies.Dependencies
+            .Where(static dependency =>
+                dependency.Kind == WorldAssetKind.Spline)
+            .ToDictionary(
+                static dependency => dependency.SourcePath,
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (var declaredPath in splines
+                     .Select(static spline => spline.AssetPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            dependencyByPath.TryGetValue(
+                declaredPath,
+                out var dependency);
+
+            if (dependency is null ||
+                !dependency.Exists ||
+                string.IsNullOrWhiteSpace(dependency.ResolvedPath))
+            {
+                result[declaredPath] = new WorldSplineAsset(
+                    declaredPath,
+                    dependency?.ResolvedPath,
+                    false,
+                    Array.Empty<WorldSplineSurface>());
+                continue;
+            }
+
+            try
+            {
+                var definition = OmsiSplineDefinitionReader.ReadFile(
+                    dependency.ResolvedPath);
+
+                var surfaces = definition.Surfaces
+                    .Select(static surface => new WorldSplineSurface(
+                        surface.TextureIndex,
+                        surface.TextureName,
+                        surface.AlphaMode,
+                        new WorldSplineProfilePoint(
+                            surface.From.X,
+                            surface.From.Z,
+                            surface.From.TextureX,
+                            surface.From.TextureScale),
+                        new WorldSplineProfilePoint(
+                            surface.To.X,
+                            surface.To.Z,
+                            surface.To.TextureX,
+                            surface.To.TextureScale)))
+                    .ToArray();
+
+                result[declaredPath] = new WorldSplineAsset(
+                    declaredPath,
+                    dependency.ResolvedPath,
+                    definition.Exists,
+                    surfaces);
+            }
+            catch (Exception ex) when (
+                ex is IOException or
+                UnauthorizedAccessException or
+                InvalidDataException or
+                ArgumentException)
+            {
+                result[declaredPath] = new WorldSplineAsset(
+                    declaredPath,
+                    dependency.ResolvedPath,
+                    false,
+                    Array.Empty<WorldSplineSurface>());
+            }
+        }
+
+        return result;
     }
 
     private static (WorldTerrainData? Terrain, string? ErrorCode)
@@ -192,7 +278,7 @@ public static class WorldLoader
 
     private static string NormalizePath(string path)
     {
-        return path.Trim().Replace('/', '\\');
+        return path.Trim().Replace('/', '\');
     }
 
     private sealed class AssetKeyComparer :
