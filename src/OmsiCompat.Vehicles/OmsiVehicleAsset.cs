@@ -18,6 +18,7 @@ public sealed record OmsiVehicleMeshAsset(
     OmsiVehicleMeshTransform Transform,
     int ViewpointFlag,
     double? LodThreshold,
+    IReadOnlyList<OmsiVehicleVisibilityCondition> VisibilityConditions,
     float[] Positions,
     float[] Uvs,
     uint[] Indices,
