@@ -1,3 +1,5 @@
+using System.Drawing;
+using System.Windows.Forms;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -169,7 +171,7 @@ public sealed class D3D11RenderWindow : Form
 
         _renderTimer.Stop();
 
-        _deviceContext?.OMSetRenderTargets(null, null);
+        _deviceContext?.UnsetRenderTargets();
         _renderTargetView?.Dispose();
         _renderTargetView = null;
         _backBuffer?.Dispose();
