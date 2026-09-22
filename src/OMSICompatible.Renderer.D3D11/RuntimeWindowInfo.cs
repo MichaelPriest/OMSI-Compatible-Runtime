@@ -79,7 +79,11 @@ public sealed record RuntimeO3dMaterialInfo(
     float DiffuseG,
     float DiffuseB,
     float DiffuseA,
-    string? TexturePath);
+    string? TexturePath,
+    int AlphaMode,
+    string? TransMapTexturePath,
+    bool NoZWrite,
+    bool NoZCheck);
 
 public sealed record RuntimeObjectMeshInfo(
     string DeclaredPath,
