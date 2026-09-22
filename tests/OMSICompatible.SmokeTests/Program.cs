@@ -184,7 +184,7 @@ try
             "$StrToFloat",
             "(S.L.parsed_number)",
             "(L.S.GetTime)",
-            ""announcement.wav"",
+            "\"announcement.wav\"",
             "(T.F.ev_IBIS_Ansagen)",
             "(L.L.horn_timer)",
             "3",
