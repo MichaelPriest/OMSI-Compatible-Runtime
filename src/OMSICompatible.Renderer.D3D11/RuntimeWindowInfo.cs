@@ -43,7 +43,8 @@ public sealed record RuntimeObjectInfo(
     double Z,
     double HeadingDegrees,
     double PitchDegrees,
-    double BankDegrees);
+    double BankDegrees,
+    IReadOnlyList<string> ExtraValues);
 
 public sealed record RuntimeObjectMeshTransformInfo(
     double PositionX,
@@ -72,10 +73,18 @@ public sealed record RuntimeObjectMeshInfo(
     ushort[] TriangleMaterialIndices,
     IReadOnlyList<RuntimeO3dMaterialInfo> Materials);
 
+public sealed record RuntimeTreeInfo(
+    string TextureName,
+    double MinimumHeight,
+    double MaximumHeight,
+    double MinimumAspect,
+    double MaximumAspect);
+
 public sealed record RuntimeSceneryAssetInfo(
     bool UsesAbsoluteHeight,
     string? RenderType,
-    IReadOnlyList<RuntimeObjectMeshInfo> Meshes);
+    IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
+    RuntimeTreeInfo? Tree);
 
 public sealed record RuntimeWindowInfo(
     string WorldName,
