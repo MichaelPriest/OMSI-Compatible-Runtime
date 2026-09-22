@@ -1,3 +1,4 @@
+using System.Numerics;
 using OmsiCompat.Core;
 using OmsiCompat.Models;
 
@@ -72,6 +73,8 @@ public static class OmsiVehicleAssetLoader
                     mesh.ViewpointFlag,
                     mesh.LodThreshold,
                     mesh.VisibilityConditions,
+                    mesh.Animations,
+                    Matrix4x4.Identity,
                     [],
                     [],
                     [],
@@ -181,6 +184,8 @@ public static class OmsiVehicleAssetLoader
                 mesh.ViewpointFlag,
                 mesh.LodThreshold,
                 mesh.VisibilityConditions,
+                mesh.Animations,
+                geometry.SourceTransform,
                 geometry.Positions,
                 geometry.Uvs,
                 geometry.Indices,
