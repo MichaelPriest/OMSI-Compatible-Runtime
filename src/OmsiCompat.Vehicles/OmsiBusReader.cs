@@ -1,3 +1,4 @@
+using System.Globalization;
 using OmsiCompat.Map;
 
 namespace OmsiCompat.Vehicles;
@@ -37,8 +38,74 @@ public static class OmsiBusReader
             ResolveRelative(directory, First(document, "model")),
             ResolveRelative(directory, First(document, "passengercabin")),
             ResolveRelative(directory, First(document, "paths")),
-            ResolveRelative(directory, First(document, "sound")));
+            ResolveRelative(directory, First(document, "sound")),
+            ReadDriverCameras(document));
     }
+
+    private static IReadOnlyList<OmsiDriverCamera>
+        ReadDriverCameras(
+            OmsiSectionDocument document)
+    {
+        var result =
+            new List<OmsiDriverCamera>();
+
+        foreach (var section in
+                 document.Sections.Where(
+                     static section =>
+                         section.Name.Equals(
+                             "add_camera_driver",
+                             StringComparison.OrdinalIgnoreCase)))
+        {
+            var values =
+                section.Lines
+                    .Select(
+                        static line =>
+                            line.Value.Trim())
+                    .Where(
+                        static value =>
+                            value.Length > 0 &&
+                            !value.StartsWith('#') &&
+                            !value.StartsWith(
+                                "//",
+                                StringComparison.Ordinal))
+                    .Take(7)
+                    .ToArray();
+
+            if (values.Length < 7 ||
+                !TryDouble(values[0], out var x) ||
+                !TryDouble(values[1], out var y) ||
+                !TryDouble(values[2], out var z) ||
+                !TryDouble(values[3], out var eyeDistance) ||
+                !TryDouble(values[4], out var fieldOfView) ||
+                !TryDouble(values[5], out var heading) ||
+                !TryDouble(values[6], out var pitch))
+            {
+                continue;
+            }
+
+            result.Add(
+                new OmsiDriverCamera(
+                    x,
+                    y,
+                    z,
+                    eyeDistance,
+                    fieldOfView,
+                    heading,
+                    pitch));
+        }
+
+        return result;
+    }
+
+    private static bool TryDouble(
+        string value,
+        out double result) =>
+        double.TryParse(
+            value,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out result) &&
+        double.IsFinite(result);
 
     private static string? First(
         OmsiSectionDocument document,
