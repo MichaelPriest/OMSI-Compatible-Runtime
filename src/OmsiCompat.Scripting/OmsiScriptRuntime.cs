@@ -162,6 +162,9 @@ public sealed class OmsiScriptRuntime
     public event Action<string>?
         SoundTriggerRequested;
 
+    public event Action<string, string>?
+        FileSoundTriggerRequested;
+
     public event Action<string>?
         DebugMessageRequested;
 
@@ -480,6 +483,17 @@ public sealed class OmsiScriptRuntime
             {
                 SoundTriggerRequested?.Invoke(
                     triggerName);
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
+                    "(T.F.",
+                    out triggerName))
+            {
+                FileSoundTriggerRequested?.Invoke(
+                    triggerName,
+                    stringStack.Top);
                 continue;
             }
 
