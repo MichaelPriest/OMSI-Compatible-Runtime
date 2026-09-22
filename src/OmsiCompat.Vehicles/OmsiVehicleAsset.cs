@@ -13,6 +13,7 @@ public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
     string? ResolvedPath,
     string? ErrorCode,
+    OmsiVehicleMeshTransform Transform,
     float[] Positions,
     float[] Uvs,
     uint[] Indices,
