@@ -334,7 +334,7 @@ public static class MapTilePlacementParser
         return value
             .Trim()
             .Trim('"')
-            .Replace('/', '\');
+            .Replace('/', '\\\\');
     }
 
     private sealed record SplineLayout(
