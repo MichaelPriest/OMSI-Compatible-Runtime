@@ -374,7 +374,7 @@ public static class OmsiScriptCatalogLoader
     private static bool IsComment(
         string line) =>
             line.Length > 0 &&
-            line[0] == ''';
+            line[0] == (char)39;
 
     private static bool TryDouble(
         string value,
