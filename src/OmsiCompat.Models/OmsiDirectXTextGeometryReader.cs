@@ -217,7 +217,9 @@ public sealed class OmsiDirectXTextGeometryReader
                     _triangleMaterialIndices
                         .ToArray(),
                 Materials:
-                    _materials.ToArray());
+                    _materials.ToArray(),
+                SourceTransform:
+                    Matrix4x4.Identity);
         }
 
         private void ParseFrame(
