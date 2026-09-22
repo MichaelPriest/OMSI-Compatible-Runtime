@@ -2165,7 +2165,7 @@ public sealed class D3D11RenderWindow : Form
                 {
                     _deviceContext.PSSetShaderResource(
                         1,
-                        transMapView);
+                        transMapView!);
                 }
 
                 _deviceContext.PSSetShader(
@@ -2181,7 +2181,7 @@ public sealed class D3D11RenderWindow : Form
 
                 _deviceContext.PSSetShaderResource(
                     0,
-                    textureView);
+                    textureView!);
             }
             else
             {
