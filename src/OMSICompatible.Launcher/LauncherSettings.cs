@@ -36,11 +36,15 @@ internal sealed record LauncherSettings(
                        File.ReadAllText(SettingsPath))
                    ?? new LauncherSettings(
                        null,
+                       null,
+                       null,
                        null);
         }
         catch
         {
             return new LauncherSettings(
+                null,
+                null,
                 null,
                 null);
         }
