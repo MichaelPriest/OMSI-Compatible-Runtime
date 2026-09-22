@@ -16,13 +16,33 @@ internal sealed class RuntimeDriveVehicle
     private const float MaximumSteeringRadians =
         32.0f * MathF.PI / 180.0f;
 
-    private readonly RuntimeTerrainSampler _terrain;
+    private RuntimeTerrainSampler _terrain;
 
     public RuntimeDriveVehicle(
         IReadOnlyList<RuntimeTileInfo> tiles)
     {
         _terrain =
             new RuntimeTerrainSampler(tiles);
+    }
+
+    public void ReplaceTerrainTiles(
+        IReadOnlyList<RuntimeTileInfo> tiles)
+    {
+        _terrain =
+            new RuntimeTerrainSampler(
+                tiles);
+
+        if (_terrain.TrySample(
+                Position.X,
+                Position.Z,
+                out var groundHeight))
+        {
+            Position =
+                new Vector3(
+                    Position.X,
+                    groundHeight + RideHeight,
+                    Position.Z);
+        }
     }
 
     public Vector3 Position { get; private set; }
