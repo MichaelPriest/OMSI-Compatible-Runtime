@@ -6,12 +6,25 @@ public sealed record RuntimeTerrainInfo(
     float MinimumHeight,
     float MaximumHeight);
 
+public sealed record RuntimeTerrainMaskInfo(
+    int LayerIndex,
+    string Path);
+
 public sealed record RuntimeTileInfo(
     int X,
     int Y,
     int ObjectCount,
     int SplineCount,
-    RuntimeTerrainInfo? Terrain);
+    RuntimeTerrainInfo? Terrain,
+    string? LightmapPath,
+    IReadOnlyList<RuntimeTerrainMaskInfo> TerrainMasks);
+
+public sealed record RuntimeGroundTextureInfo(
+    int LayerIndex,
+    string? MainTexturePath,
+    string? DetailTexturePath,
+    double MainTextureRepeating,
+    double DetailTextureRepeating);
 
 public sealed record RuntimeSplineProfilePointInfo(
     double X,
@@ -102,4 +115,5 @@ public sealed record RuntimeWindowInfo(
     IReadOnlyList<RuntimeTileInfo> Tiles,
     IReadOnlyList<RuntimeSplineInfo> Splines,
     IReadOnlyList<RuntimeObjectInfo> Objects,
-    IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> SceneryAssets);
+    IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> SceneryAssets,
+    IReadOnlyList<RuntimeGroundTextureInfo> GroundTextures);
