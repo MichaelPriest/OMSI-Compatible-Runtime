@@ -10,6 +10,7 @@
     <ProjectReference Include="../OmsiCompat.Core/OmsiCompat.Core.csproj" />
     <ProjectReference Include="../OmsiCompat.Map/OmsiCompat.Map.csproj" />
     <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
+    <ProjectReference Include="../OmsiCompat.Scripting/OmsiCompat.Scripting.csproj" />
     <ProjectReference Include="../OMSICompatible.World/OMSICompatible.World.csproj" />
     <ProjectReference Include="../OMSICompatible.Renderer.D3D11/OMSICompatible.Renderer.D3D11.csproj" />
   </ItemGroup>
