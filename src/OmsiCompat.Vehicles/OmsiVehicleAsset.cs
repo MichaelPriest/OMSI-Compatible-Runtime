@@ -21,7 +21,9 @@ public sealed record OmsiVehicleMaterial(
     double EnvMapStrength,
     string? EnvMapMaskTexturePath,
     string? BumpMapTexturePath,
-    double BumpMapStrength);
+    double BumpMapStrength,
+    IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
+    int? TextTextureIndex);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
@@ -49,7 +51,8 @@ public sealed record OmsiVehicleMeshAsset(
 public sealed record OmsiVehicleAsset(
     OmsiBusInfo Bus,
     IReadOnlyList<OmsiVehicleMeshAsset> Meshes,
-    OmsiDriverPosition? DriverPosition)
+    OmsiDriverPosition? DriverPosition,
+    IReadOnlyList<OmsiVehicleTextTexture> TextTextures)
 {
     public int RenderableMeshCount =>
         Meshes.Count(static mesh => mesh.IsRenderable);
