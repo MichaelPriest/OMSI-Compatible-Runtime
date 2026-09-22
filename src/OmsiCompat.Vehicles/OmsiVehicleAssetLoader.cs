@@ -172,7 +172,8 @@ public static class OmsiVehicleAssetLoader
                         alphaMode,
                         transMapPath,
                         materialOverride?.NoZWrite ?? false,
-                        materialOverride?.NoZCheck ?? false);
+                        materialOverride?.NoZCheck ?? false,
+                        materialOverride?.AlphaScaleVariable);
                 })
                 .ToArray();
 
