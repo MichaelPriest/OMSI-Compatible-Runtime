@@ -93,6 +93,7 @@ public sealed record WorldDefinition(
     IReadOnlyList<WorldObjectPlacement> Objects,
     IReadOnlyList<WorldSplinePlacement> Splines,
     IReadOnlyDictionary<string, WorldSplineAsset> SplineAssets,
+    IReadOnlyDictionary<string, WorldSceneryAsset> SceneryAssets,
     WorldDependencyReport Dependencies,
     int PlacementParseIssueCount,
     int TerrainParseIssueCount,

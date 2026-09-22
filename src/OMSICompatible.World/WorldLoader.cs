@@ -1,5 +1,7 @@
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Models;
+using OmsiCompat.Scenery;
 using OmsiCompat.Splines;
 
 namespace OMSICompatible.World;
@@ -163,9 +165,20 @@ public static class WorldLoader
 
         progress?.Report(
             new WorldLoadProgress(
-                84,
+                82,
+                "Preparando cenário",
+                $"Lendo {allObjects.Select(static item => item.AssetPath).Distinct(StringComparer.OrdinalIgnoreCase).Count():N0} tipos de Sceneryobjects/O3D..."));
+
+        var sceneryAssets = LoadSceneryAssets(
+            contentRoot,
+            allObjects,
+            dependencies);
+
+        progress?.Report(
+            new WorldLoadProgress(
+                90,
                 "Montando mundo",
-                "Finalizando modelo normalizado x64..."));
+                $"Cenário: {sceneryAssets.Values.Count(static asset => asset.IsRenderable):N0} assets renderizáveis · finalizando modelo x64..."));
 
         return new WorldDefinition(
             map.FolderName,
@@ -175,6 +188,7 @@ public static class WorldLoader
             allObjects,
             allSplines,
             splineAssets,
+            sceneryAssets,
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
@@ -260,6 +274,305 @@ public static class WorldLoader
 
         return result;
     }
+
+    private static IReadOnlyDictionary<string, WorldSceneryAsset>
+        LoadSceneryAssets(
+            OmsiContentRoot contentRoot,
+            IReadOnlyList<WorldObjectPlacement> objects,
+            WorldDependencyReport dependencies)
+    {
+        var result =
+            new Dictionary<string, WorldSceneryAsset>(
+                StringComparer.OrdinalIgnoreCase);
+
+        var dependencyByPath =
+            dependencies.Dependencies
+                .Where(
+                    static dependency =>
+                        dependency.Kind ==
+                        WorldAssetKind.SceneryObject)
+                .ToDictionary(
+                    static dependency =>
+                        dependency.SourcePath,
+                    StringComparer.OrdinalIgnoreCase);
+
+        foreach (var declaredPath in objects
+                     .Select(static item => item.AssetPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            dependencyByPath.TryGetValue(
+                declaredPath,
+                out var dependency);
+
+            if (dependency is null ||
+                !dependency.Exists ||
+                string.IsNullOrWhiteSpace(
+                    dependency.ResolvedPath))
+            {
+                result[declaredPath] =
+                    new WorldSceneryAsset(
+                        declaredPath,
+                        dependency?.ResolvedPath,
+                        false,
+                        false,
+                        null,
+                        Array.Empty<WorldSceneryMeshAsset>());
+
+                continue;
+            }
+
+            try
+            {
+                var definition =
+                    OmsiSceneryObjectReader.ReadFile(
+                        dependency.ResolvedPath);
+
+                var lodThresholds =
+                    definition.Meshes
+                        .Where(
+                            static mesh =>
+                                mesh.LodThreshold.HasValue)
+                        .Select(
+                            static mesh =>
+                                mesh.LodThreshold!.Value)
+                        .Distinct()
+                        .OrderByDescending(
+                            static value => value)
+                        .ToArray();
+
+                var selectedLod =
+                    lodThresholds.FirstOrDefault();
+
+                var meshes =
+                    new List<WorldSceneryMeshAsset>();
+
+                foreach (var mesh in definition.Meshes)
+                {
+                    if (mesh.LodThreshold.HasValue &&
+                        lodThresholds.Length > 0 &&
+                        Math.Abs(
+                            mesh.LodThreshold.Value -
+                            selectedLod) >
+                        0.000001)
+                    {
+                        continue;
+                    }
+
+                    var meshPath =
+                        ResolveMeshPath(
+                            contentRoot.RootPath,
+                            dependency.ResolvedPath,
+                            mesh.Path);
+
+                    if (meshPath is null)
+                    {
+                        meshes.Add(
+                            CreateMissingMesh(
+                                mesh.Path,
+                                mesh.Transform,
+                                "missingO3d"));
+
+                        continue;
+                    }
+
+                    var geometry =
+                        OmsiO3dGeometryReader.ReadFile(
+                            meshPath);
+
+                    meshes.Add(
+                        new WorldSceneryMeshAsset(
+                            mesh.Path,
+                            meshPath,
+                            File.Exists(meshPath),
+                            geometry.ErrorCode,
+                            ConvertTransform(
+                                mesh.Transform),
+                            geometry.Positions,
+                            geometry.Indices,
+                            geometry.TriangleMaterialIndices,
+                            geometry.Materials
+                                .Select(
+                                    static material =>
+                                        new WorldO3dMaterial(
+                                            material.DiffuseR,
+                                            material.DiffuseG,
+                                            material.DiffuseB,
+                                            material.DiffuseA,
+                                            material.TextureName))
+                                .ToArray()));
+                }
+
+                result[declaredPath] =
+                    new WorldSceneryAsset(
+                        declaredPath,
+                        dependency.ResolvedPath,
+                        definition.Exists,
+                        definition.UsesAbsoluteHeight,
+                        definition.RenderType,
+                        meshes.ToArray());
+            }
+            catch (Exception ex) when (
+                ex is IOException or
+                UnauthorizedAccessException or
+                InvalidDataException or
+                ArgumentException or
+                OverflowException)
+            {
+                result[declaredPath] =
+                    new WorldSceneryAsset(
+                        declaredPath,
+                        dependency.ResolvedPath,
+                        false,
+                        false,
+                        null,
+                        Array.Empty<WorldSceneryMeshAsset>());
+            }
+        }
+
+        return result;
+    }
+
+    private static WorldSceneryMeshAsset CreateMissingMesh(
+        string declaredPath,
+        OmsiSceneryMeshTransform transform,
+        string errorCode) =>
+        new(
+            declaredPath,
+            null,
+            false,
+            errorCode,
+            ConvertTransform(transform),
+            Array.Empty<float>(),
+            Array.Empty<uint>(),
+            Array.Empty<ushort>(),
+            Array.Empty<WorldO3dMaterial>());
+
+    private static WorldSceneryMeshTransform ConvertTransform(
+        OmsiSceneryMeshTransform transform) =>
+        new(
+            transform.PositionX,
+            transform.PositionY,
+            transform.PositionZ,
+            transform.RotationX,
+            transform.RotationY,
+            transform.RotationZ,
+            transform.ScaleX,
+            transform.ScaleY,
+            transform.ScaleZ);
+
+    private static string? ResolveMeshPath(
+        string contentRoot,
+        string sceneryObjectPath,
+        string declaredMeshPath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                declaredMeshPath))
+        {
+            return null;
+        }
+
+        var normalized =
+            declaredMeshPath
+                .Trim()
+                .Trim('"')
+                .Replace(
+                    '/',
+                    Path.DirectorySeparatorChar)
+                .Replace(
+                    '\\',
+                    Path.DirectorySeparatorChar);
+
+        if (Path.IsPathRooted(normalized))
+        {
+            return null;
+        }
+
+        var sceneryDirectory =
+            Path.GetDirectoryName(
+                sceneryObjectPath);
+
+        if (string.IsNullOrWhiteSpace(
+                sceneryDirectory))
+        {
+            return null;
+        }
+
+        var candidates =
+            new List<string>
+            {
+                Path.Combine(
+                    sceneryDirectory,
+                    normalized)
+            };
+
+        if (!normalized.StartsWith(
+                "model" +
+                Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            candidates.Add(
+                Path.Combine(
+                    sceneryDirectory,
+                    "model",
+                    normalized));
+        }
+
+        if (normalized.StartsWith(
+                "Sceneryobjects" +
+                Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            candidates.Add(
+                Path.Combine(
+                    contentRoot,
+                    normalized));
+        }
+
+        var root =
+            EnsureTrailingSeparator(
+                Path.GetFullPath(
+                    contentRoot));
+
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var fullPath =
+                    Path.GetFullPath(
+                        candidate);
+
+                if (!fullPath.StartsWith(
+                        root,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (File.Exists(fullPath))
+                {
+                    return fullPath;
+                }
+            }
+            catch (Exception ex) when (
+                ex is ArgumentException or
+                NotSupportedException or
+                PathTooLongException)
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private static string EnsureTrailingSeparator(
+        string path) =>
+        path.EndsWith(
+            Path.DirectorySeparatorChar) ||
+        path.EndsWith(
+            Path.AltDirectorySeparatorChar)
+            ? path
+            : path +
+              Path.DirectorySeparatorChar;
 
     private static (WorldTerrainData? Terrain, string? ErrorCode)
         LoadTerrain(string? terrainPath)
