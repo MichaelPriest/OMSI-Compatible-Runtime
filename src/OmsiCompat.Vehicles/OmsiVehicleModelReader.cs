@@ -532,6 +532,18 @@ public static class OmsiVehicleModelReader
                 continue;
             }
 
+            if (section.Name.Equals(
+                    "alphascale",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                material.AlphaScaleVariable =
+                    Values(section)
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+                continue;
+            }
+
             if (section.Name.Equals("matl_noZwrite", StringComparison.OrdinalIgnoreCase))
             {
                 material.NoZWrite = true;
@@ -708,6 +720,7 @@ public static class OmsiVehicleModelReader
         public bool HasTransMapDirective { get; set; }
         public bool NoZWrite { get; set; }
         public bool NoZCheck { get; set; }
+        public string? AlphaScaleVariable { get; set; }
 
         public OmsiVehicleMaterialOverride Build() =>
             new(
@@ -717,6 +730,7 @@ public static class OmsiVehicleModelReader
                 TransMapSource,
                 HasTransMapDirective,
                 NoZWrite,
-                NoZCheck);
+                NoZCheck,
+                AlphaScaleVariable);
     }
 }
