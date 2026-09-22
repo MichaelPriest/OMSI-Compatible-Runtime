@@ -1103,9 +1103,19 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Vehicle,
                 viewpointBit: 2);
 
+        Console.WriteLine(
+            $"[vehicle-geometry] exteriorVertices={_vehicleExteriorGeometry.Vertices.Length}; " +
+            $"exteriorMeshes={_vehicleExteriorGeometry.RenderedMeshCount}; " +
+            $"interiorVertices={_vehicleInteriorGeometry.Vertices.Length}; " +
+            $"interiorMeshes={_vehicleInteriorGeometry.RenderedMeshCount}; " +
+            $"protected={Math.Max(_vehicleExteriorGeometry.ProtectedMeshCount, _vehicleInteriorGeometry.ProtectedMeshCount)}; " +
+            $"failed={Math.Max(_vehicleExteriorGeometry.MissingMeshCount, _vehicleInteriorGeometry.MissingMeshCount)}");
+
         if (_vehicleExteriorGeometry.Vertices.Length == 0 &&
             _vehicleInteriorGeometry.Vertices.Length == 0)
         {
+            Console.WriteLine(
+                "[vehicle-geometry] No real vehicle geometry could be built; exterior proxy fallback will be used.");
             return;
         }
 
@@ -2074,19 +2084,61 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawVehicle()
     {
-        var interiorView =
-            _vehicleViewMode !=
-            RuntimeVehicleViewMode.Exterior;
+        // Geometry selection must follow the camera that is actually in use.
+        // If an OMSI .bus has no valid F1/F2 cameras, CreateViewProjection()
+        // falls back to the chase camera; drawing the interior geometry in
+        // that case makes the vehicle appear to be missing.
+        var useExteriorGeometry =
+            !_driveMode ||
+            _vehicleViewMode ==
+                RuntimeVehicleViewMode.Exterior ||
+            (_vehicleViewMode ==
+                 RuntimeVehicleViewMode.Driver &&
+             _windowInfo.Vehicle?.DriverCameras.Count is
+                 not > 0) ||
+            (_vehicleViewMode ==
+                 RuntimeVehicleViewMode.Passenger &&
+             _windowInfo.Vehicle?.PassengerCameras.Count is
+                 not > 0 &&
+             _windowInfo.Vehicle?.DriverCameras.Count is
+                 not > 0);
 
         var geometry =
-            interiorView
-                ? _vehicleInteriorGeometry
-                : _vehicleExteriorGeometry;
+            useExteriorGeometry
+                ? _vehicleExteriorGeometry
+                : _vehicleInteriorGeometry;
 
         var vertexBuffer =
-            interiorView
-                ? _vehicleInteriorVertexBuffer
-                : _vehicleExteriorVertexBuffer;
+            useExteriorGeometry
+                ? _vehicleExteriorVertexBuffer
+                : _vehicleInteriorVertexBuffer;
+
+        // Some add-ons omit one viewpoint set completely. In that case use
+        // the other successfully-built geometry instead of making the bus
+        // invisible. Viewpoint filtering is still respected when both sets
+        // are available.
+        if (geometry.Vertices.Length == 0 ||
+            vertexBuffer is null)
+        {
+            var alternateGeometry =
+                useExteriorGeometry
+                    ? _vehicleInteriorGeometry
+                    : _vehicleExteriorGeometry;
+
+            var alternateBuffer =
+                useExteriorGeometry
+                    ? _vehicleInteriorVertexBuffer
+                    : _vehicleExteriorVertexBuffer;
+
+            if (alternateGeometry.Vertices.Length > 0 &&
+                alternateBuffer is not null)
+            {
+                geometry =
+                    alternateGeometry;
+                vertexBuffer =
+                    alternateBuffer;
+            }
+        }
 
         if (_deviceContext is null ||
             _renderTargetView is null ||
