@@ -12,7 +12,9 @@ public sealed record OmsiVehicleMaterial(
     string? TransMapTexturePath,
     bool NoZWrite,
     bool NoZCheck,
-    string? AlphaScaleVariable);
+    string? AlphaScaleVariable,
+    string? LightMapTexturePath,
+    string? LightMapVariable);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
