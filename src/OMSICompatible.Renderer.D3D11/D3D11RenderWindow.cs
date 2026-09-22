@@ -146,6 +146,17 @@ public sealed class D3D11RenderWindow : Form
     private RuntimeObjectGeometry _vehicleInteriorGeometry =
         RuntimeObjectGeometry.Empty;
 
+    private const uint ReflectionTextureSize = 512;
+    private readonly Dictionary<string, RuntimeReflectionTarget>
+        _reflectionTargets =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private ID3D11Texture2D? _reflectionDepthTexture;
+    private ID3D11DepthStencilView? _reflectionDepthStencilView;
+    private ID3D11RenderTargetView? _activeRenderTargetView;
+    private ID3D11DepthStencilView? _activeDepthStencilView;
+    private Matrix4x4? _viewProjectionOverride;
+
     private FeatureLevel _featureLevel;
 
     public D3D11RenderWindow(RuntimeWindowInfo windowInfo)
@@ -1190,6 +1201,8 @@ public sealed class D3D11RenderWindow : Form
             new RuntimeGpuTextureLoader(
                 _device);
 
+        CreateReflectionResources();
+
         foreach (var texturePath in
             _vehicleExteriorGeometry.Batches
                 .Concat(
@@ -1212,6 +1225,8 @@ public sealed class D3D11RenderWindow : Form
                     StringComparer.OrdinalIgnoreCase))
         {
             if (_objectTextureCache.ContainsKey(
+                    texturePath) ||
+                _reflectionTargets.ContainsKey(
                     texturePath))
             {
                 continue;
@@ -1238,6 +1253,49 @@ public sealed class D3D11RenderWindow : Form
             _windowInfo.Splines,
             _terrainGeometry,
             _windowInfo.Spawn);
+    }
+
+    private void CreateReflectionResources()
+    {
+        if (_device is null ||
+            _windowInfo.Vehicle?.ReflectionCameras.Count is
+                not > 0)
+        {
+            return;
+        }
+
+        foreach (var camera in
+                 _windowInfo.Vehicle.ReflectionCameras)
+        {
+            if (_reflectionTargets.ContainsKey(
+                    camera.RuntimeTextureKey))
+            {
+                continue;
+            }
+
+            _reflectionTargets[
+                camera.RuntimeTextureKey] =
+                new RuntimeReflectionTarget(
+                    _device,
+                    camera,
+                    ReflectionTextureSize);
+        }
+
+        if (_reflectionDepthTexture is null)
+        {
+            _reflectionDepthTexture =
+                _device.CreateTexture2D(
+                    Format.D32_Float,
+                    ReflectionTextureSize,
+                    ReflectionTextureSize,
+                    mipLevels: 1,
+                    bindFlags:
+                        BindFlags.DepthStencil);
+
+            _reflectionDepthStencilView =
+                _device.CreateDepthStencilView(
+                    _reflectionDepthTexture);
+        }
     }
 
     private static InputElementDescription[]
@@ -1546,6 +1604,8 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        RenderReflectionTargets();
+
         _deviceContext.ClearRenderTargetView(
             _renderTargetView,
             new Color4(
@@ -1587,6 +1647,85 @@ public sealed class D3D11RenderWindow : Form
             .CheckError();
     }
 
+    private void RenderReflectionTargets()
+    {
+        if (_deviceContext is null ||
+            _reflectionDepthStencilView is null ||
+            _reflectionTargets.Count == 0 ||
+            !CanDrawTerrain())
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var target in
+                     _reflectionTargets.Values)
+            {
+                _deviceContext.PSUnsetShaderResource(0);
+                _deviceContext.PSUnsetShaderResource(1);
+                _deviceContext.PSUnsetShaderResource(2);
+
+                _activeRenderTargetView =
+                    target.RenderTargetView;
+                _activeDepthStencilView =
+                    _reflectionDepthStencilView;
+                _viewProjectionOverride =
+                    _vehicle.CreateReflectionViewProjection(
+                        target.Camera,
+                        1.0f,
+                        _terrainGeometry);
+
+                _deviceContext.OMSetRenderTargets(
+                    target.RenderTargetView,
+                    _reflectionDepthStencilView);
+
+                _deviceContext.ClearRenderTargetView(
+                    target.RenderTargetView,
+                    new Color4(
+                        0.025f,
+                        0.035f,
+                        0.055f,
+                        1.0f));
+
+                _deviceContext.ClearDepthStencilView(
+                    _reflectionDepthStencilView,
+                    DepthStencilClearFlags.Depth,
+                    1.0f,
+                    0);
+
+                _deviceContext.RSSetViewport(
+                    0,
+                    0,
+                    ReflectionTextureSize,
+                    ReflectionTextureSize);
+
+                DrawTerrain();
+                DrawSplines();
+                DrawObjects();
+            }
+        }
+        finally
+        {
+            _deviceContext.PSUnsetShaderResource(0);
+            _deviceContext.PSUnsetShaderResource(1);
+            _deviceContext.PSUnsetShaderResource(2);
+            _activeRenderTargetView = null;
+            _activeDepthStencilView = null;
+            _viewProjectionOverride = null;
+        }
+    }
+
+    private ID3D11RenderTargetView?
+        CurrentRenderTargetView =>
+            _activeRenderTargetView ??
+            _renderTargetView;
+
+    private ID3D11DepthStencilView?
+        CurrentDepthStencilView =>
+            _activeDepthStencilView ??
+            _depthStencilView;
+
     private bool CanDrawTerrain() =>
         _terrainVertexBuffer is not null &&
         _terrainCameraBuffer is not null &&
@@ -1598,7 +1737,7 @@ public sealed class D3D11RenderWindow : Form
     private void DrawTerrain()
     {
         if (_deviceContext is null ||
-            _renderTargetView is null ||
+            CurrentRenderTargetView is null ||
             _terrainVertexBuffer is null ||
             _terrainCameraBuffer is null ||
             _terrainVertexShader is null ||
@@ -1616,8 +1755,8 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _deviceContext.OMSetRenderTargets(
-            _renderTargetView,
-            _depthStencilView);
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
 
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
@@ -1798,7 +1937,7 @@ public sealed class D3D11RenderWindow : Form
         IReadOnlyList<RuntimeObjectBatch> batches)
     {
         if (_deviceContext is null ||
-            _renderTargetView is null ||
+            CurrentRenderTargetView is null ||
             vertexBuffer is null ||
             _terrainCameraBuffer is null ||
             _objectVertexShader is null ||
@@ -1816,8 +1955,8 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _deviceContext.OMSetRenderTargets(
-            _renderTargetView,
-            _depthStencilView);
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
 
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
@@ -2013,27 +2152,20 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.PSUnsetShaderResource(
                 1);
 
-            if (!string.IsNullOrWhiteSpace(
-                    batch.TexturePath) &&
-                _objectTextureCache.TryGetValue(
+            if (TryGetVehicleTextureView(
                     batch.TexturePath,
-                    out var texture))
+                    out var textureView))
             {
-                RuntimeGpuTexture? transMap =
-                    null;
-
                 var hasTransMap =
-                    !string.IsNullOrWhiteSpace(
-                        batch.TransMapTexturePath) &&
-                    _objectTextureCache.TryGetValue(
+                    TryGetVehicleTextureView(
                         batch.TransMapTexturePath,
-                        out transMap);
+                        out var transMapView);
 
                 if (hasTransMap)
                 {
                     _deviceContext.PSSetShaderResource(
                         1,
-                        transMap!.View);
+                        transMapView);
                 }
 
                 _deviceContext.PSSetShader(
@@ -2049,7 +2181,7 @@ public sealed class D3D11RenderWindow : Form
 
                 _deviceContext.PSSetShaderResource(
                     0,
-                    texture.View);
+                    textureView);
             }
             else
             {
@@ -2068,8 +2200,46 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(null);
     }
 
+    private bool TryGetVehicleTextureView(
+        string? texturePath,
+        out ID3D11ShaderResourceView? view)
+    {
+        view = null;
+
+        if (string.IsNullOrWhiteSpace(
+                texturePath))
+        {
+            return false;
+        }
+
+        if (_reflectionTargets.TryGetValue(
+                texturePath,
+                out var reflection))
+        {
+            view =
+                reflection.ShaderResourceView;
+            return true;
+        }
+
+        if (_objectTextureCache.TryGetValue(
+                texturePath,
+                out var texture))
+        {
+            view =
+                texture.View;
+            return true;
+        }
+
+        return false;
+    }
+
     private Matrix4x4 CreateViewProjection()
     {
+        if (_viewProjectionOverride.HasValue)
+        {
+            return _viewProjectionOverride.Value;
+        }
+
         var aspect =
             Math.Max(ClientSize.Width, 1) /
             (float)Math.Max(
@@ -2699,7 +2869,7 @@ public sealed class D3D11RenderWindow : Form
                 : string.Empty;
 
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · mirrors {_reflectionTargets.Count:N0} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicle.Gear switch
@@ -2796,6 +2966,20 @@ public sealed class D3D11RenderWindow : Form
             _objectColorPixelShader?.Dispose();
             _objectVertexShader?.Dispose();
             _objectVertexBuffer?.Dispose();
+
+            foreach (var target in
+                _reflectionTargets.Values)
+            {
+                target.Dispose();
+            }
+
+            _reflectionTargets.Clear();
+
+            _reflectionDepthStencilView?.Dispose();
+            _reflectionDepthStencilView = null;
+
+            _reflectionDepthTexture?.Dispose();
+            _reflectionDepthTexture = null;
 
             _vehicleAlphaBlendState?.Dispose();
             _vehicleSampler?.Dispose();

@@ -100,13 +100,30 @@ public static class OmsiVehicleAssetLoader
                     string? texturePath = null;
                     if (!string.IsNullOrWhiteSpace(material.TextureName))
                     {
-                        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
-                            contentRoot.RootPath,
-                            bus.DirectoryPath,
-                            model.SourcePath,
-                            meshPath,
-                            material.TextureName,
-                            out texturePath);
+                        var reflectionCamera =
+                            bus.ReflectionCameras.FirstOrDefault(
+                                camera =>
+                                    string.Equals(
+                                        camera.RuntimeTextureName,
+                                        Path.GetFileName(
+                                            material.TextureName),
+                                        StringComparison.OrdinalIgnoreCase));
+
+                        if (reflectionCamera is not null)
+                        {
+                            texturePath =
+                                reflectionCamera.RuntimeTextureKey;
+                        }
+                        else
+                        {
+                            OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+                                contentRoot.RootPath,
+                                bus.DirectoryPath,
+                                model.SourcePath,
+                                meshPath,
+                                material.TextureName,
+                                out texturePath);
+                        }
                     }
 
                     string? transMapPath = null;

@@ -645,7 +645,8 @@ internal sealed class RuntimeApplicationContext :
                                 camera.HeadingDegrees,
                                 camera.PitchDegrees,
                                 camera.MaximumRenderDistanceMeters,
-                                camera.RuntimeTextureName))
+                                camera.RuntimeTextureName,
+                                camera.RuntimeTextureKey))
                     .ToArray(),
                 new RuntimeVehiclePhysicsInfo(
                     vehicle.Bus.Physics.WheelBaseMeters,

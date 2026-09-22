@@ -36,6 +36,9 @@ public sealed record OmsiReflectionCamera(
 {
     public string RuntimeTextureName =>
         $"reflexion{Index}.bmp";
+
+    public string RuntimeTextureKey =>
+        $"runtime-reflection://{Index}";
 }
 
 public sealed record OmsiVehicleAxle(

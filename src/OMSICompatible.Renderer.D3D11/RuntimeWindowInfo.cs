@@ -151,7 +151,8 @@ public sealed record RuntimeReflectionCameraInfo(
     double HeadingDegrees,
     double PitchDegrees,
     double? MaximumRenderDistanceMeters,
-    string RuntimeTextureName);
+    string RuntimeTextureName,
+    string RuntimeTextureKey);
 
 public sealed record RuntimeVehiclePhysicsInfo(
     double? WheelBaseMeters,

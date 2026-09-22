@@ -553,6 +553,24 @@ internal sealed class RuntimeDriveVehicle
         return view * projection;
     }
 
+    public Matrix4x4 CreateReflectionViewProjection(
+        RuntimeReflectionCameraInfo camera,
+        float aspect,
+        RuntimeTerrainGeometry terrainGeometry)
+    {
+        return CreateDriverViewProjection(
+            new RuntimeDriverCameraInfo(
+                camera.X,
+                camera.Y,
+                camera.Z,
+                camera.EyeDistance,
+                camera.FieldOfViewDegrees,
+                camera.HeadingDegrees,
+                camera.PitchDegrees),
+            aspect,
+            terrainGeometry);
+    }
+
     public Matrix4x4 CreatePassengerViewProjection(
         RuntimePassengerCameraInfo camera,
         float aspect,
