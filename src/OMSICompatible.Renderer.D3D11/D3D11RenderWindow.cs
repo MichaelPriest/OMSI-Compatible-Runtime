@@ -93,6 +93,10 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11PixelShader? _objectColorPixelShader;
     private ID3D11PixelShader? _objectTexturedPixelShader;
     private ID3D11PixelShader? _objectAlphaCutoutPixelShader;
+    private ID3D11PixelShader? _objectAlphaBlendPixelShader;
+    private ID3D11PixelShader? _objectAlphaCutoutTransMapPixelShader;
+    private ID3D11PixelShader? _objectAlphaBlendTransMapPixelShader;
+    private ID3D11BlendState? _objectAlphaBlendState;
     private ID3D11InputLayout? _objectInputLayout;
     private ID3D11SamplerState? _objectSampler;
     private RuntimeGpuTextureLoader? _objectTextureLoader;
@@ -553,6 +557,24 @@ public sealed class D3D11RenderWindow : Form
                 "PSAlphaCutout",
                 "ps_4_0");
 
+        ReadOnlyMemory<byte> alphaBlendPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSAlphaBlend",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> alphaCutoutTransMapPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSAlphaCutoutTransMap",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> alphaBlendTransMapPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSAlphaBlendTransMap",
+                "ps_4_0");
+
         _objectVertexShader =
             _device.CreateVertexShader(
                 vertexShaderByteCode.Span);
@@ -568,6 +590,22 @@ public sealed class D3D11RenderWindow : Form
         _objectAlphaCutoutPixelShader =
             _device.CreatePixelShader(
                 alphaCutoutPixelShaderByteCode.Span);
+
+        _objectAlphaBlendPixelShader =
+            _device.CreatePixelShader(
+                alphaBlendPixelShaderByteCode.Span);
+
+        _objectAlphaCutoutTransMapPixelShader =
+            _device.CreatePixelShader(
+                alphaCutoutTransMapPixelShaderByteCode.Span);
+
+        _objectAlphaBlendTransMapPixelShader =
+            _device.CreatePixelShader(
+                alphaBlendTransMapPixelShaderByteCode.Span);
+
+        _objectAlphaBlendState =
+            _device.CreateBlendState(
+                BlendDescription.NonPremultiplied);
 
         _objectInputLayout =
             _device.CreateInputLayout(
@@ -586,9 +624,13 @@ public sealed class D3D11RenderWindow : Form
             _objectGeometry.Batches
                 .Concat(
                     _splineGeometry.Batches)
-                .Select(
+                .SelectMany(
                     static batch =>
-                        batch.TexturePath)
+                        new[]
+                        {
+                            batch.TexturePath,
+                            batch.TransMapTexturePath
+                        })
                 .Where(
                     static path =>
                         !string.IsNullOrWhiteSpace(
@@ -1252,100 +1294,39 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawSplines()
     {
-        if (_deviceContext is null ||
-            _renderTargetView is null ||
-            _splineVertexBuffer is null ||
-            _terrainCameraBuffer is null ||
-            _objectVertexShader is null ||
-            _objectColorPixelShader is null ||
-            _objectTexturedPixelShader is null ||
-            _objectAlphaCutoutPixelShader is null ||
-            _objectInputLayout is null ||
-            _objectSampler is null ||
-            _splineVertexCount == 0)
-        {
-            return;
-        }
-
-        _deviceContext.OMSetRenderTargets(
-            _renderTargetView,
-            _depthStencilView);
-
-        _deviceContext.IASetPrimitiveTopology(
-            PrimitiveTopology.TriangleList);
-        _deviceContext.IASetInputLayout(
-            _objectInputLayout);
-        _deviceContext.IASetVertexBuffer(
-            0,
+        DrawTexturedGeometry(
             _splineVertexBuffer,
-            RuntimeObjectVertex.SizeInBytes);
-
-        _deviceContext.VSSetShader(
-            _objectVertexShader);
-        _deviceContext.VSSetConstantBuffer(
-            0,
-            _terrainCameraBuffer);
-        _deviceContext.PSSetSampler(
-            0,
-            _objectSampler);
-        _deviceContext.RSSetState(
-            _terrainRasterizerState);
-
-        foreach (var batch in
-            _splineGeometry.Batches)
-        {
-            if (batch.VertexCount == 0)
-            {
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(
-                    batch.TexturePath) &&
-                _objectTextureCache.TryGetValue(
-                    batch.TexturePath,
-                    out var texture))
-            {
-                _deviceContext.PSSetShader(
-                    batch.AlphaCutout
-                        ? _objectAlphaCutoutPixelShader
-                        : _objectTexturedPixelShader);
-
-                _deviceContext.PSSetShaderResource(
-                    0,
-                    texture.View);
-            }
-            else
-            {
-                _deviceContext.PSSetShader(
-                    _objectColorPixelShader);
-
-                _deviceContext.PSUnsetShaderResource(
-                    0);
-            }
-
-            _deviceContext.Draw(
-                batch.VertexCount,
-                batch.StartVertex);
-        }
-
-        _deviceContext.PSUnsetShaderResource(
-            0);
-        _deviceContext.RSSetState(null);
+            _splineVertexCount,
+            _splineGeometry.Batches);
     }
 
     private void DrawObjects()
     {
+        DrawTexturedGeometry(
+            _objectVertexBuffer,
+            _objectVertexCount,
+            _objectGeometry.Batches);
+    }
+
+    private void DrawTexturedGeometry(
+        ID3D11Buffer? vertexBuffer,
+        uint vertexCount,
+        IReadOnlyList<RuntimeObjectBatch> batches)
+    {
         if (_deviceContext is null ||
             _renderTargetView is null ||
-            _objectVertexBuffer is null ||
+            vertexBuffer is null ||
             _terrainCameraBuffer is null ||
             _objectVertexShader is null ||
             _objectColorPixelShader is null ||
             _objectTexturedPixelShader is null ||
             _objectAlphaCutoutPixelShader is null ||
+            _objectAlphaBlendPixelShader is null ||
+            _objectAlphaCutoutTransMapPixelShader is null ||
+            _objectAlphaBlendTransMapPixelShader is null ||
             _objectInputLayout is null ||
             _objectSampler is null ||
-            _objectVertexCount == 0)
+            vertexCount == 0)
         {
             return;
         }
@@ -1360,7 +1341,7 @@ public sealed class D3D11RenderWindow : Form
             _objectInputLayout);
         _deviceContext.IASetVertexBuffer(
             0,
-            _objectVertexBuffer,
+            vertexBuffer,
             RuntimeObjectVertex.SizeInBytes);
 
         _deviceContext.VSSetShader(
@@ -1374,13 +1355,22 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
-        foreach (var batch in
-            _objectGeometry.Batches)
+        foreach (var batch in batches)
         {
             if (batch.VertexCount == 0)
             {
                 continue;
             }
+
+            _deviceContext.OMSetBlendState(
+                batch.AlphaBlend
+                    ? _objectAlphaBlendState
+                    : null);
+
+            _deviceContext.PSUnsetShaderResource(
+                0);
+            _deviceContext.PSUnsetShaderResource(
+                1);
 
             if (!string.IsNullOrWhiteSpace(
                     batch.TexturePath) &&
@@ -1388,10 +1378,33 @@ public sealed class D3D11RenderWindow : Form
                     batch.TexturePath,
                     out var texture))
             {
+                RuntimeGpuTexture? transMap =
+                    null;
+
+                var hasTransMap =
+                    !string.IsNullOrWhiteSpace(
+                        batch.TransMapTexturePath) &&
+                    _objectTextureCache.TryGetValue(
+                        batch.TransMapTexturePath,
+                        out transMap);
+
+                if (hasTransMap)
+                {
+                    _deviceContext.PSSetShaderResource(
+                        1,
+                        transMap!.View);
+                }
+
                 _deviceContext.PSSetShader(
                     batch.AlphaCutout
-                        ? _objectAlphaCutoutPixelShader
-                        : _objectTexturedPixelShader);
+                        ? hasTransMap
+                            ? _objectAlphaCutoutTransMapPixelShader
+                            : _objectAlphaCutoutPixelShader
+                        : batch.AlphaBlend
+                            ? hasTransMap
+                                ? _objectAlphaBlendTransMapPixelShader
+                                : _objectAlphaBlendPixelShader
+                            : _objectTexturedPixelShader);
 
                 _deviceContext.PSSetShaderResource(
                     0,
@@ -1401,9 +1414,6 @@ public sealed class D3D11RenderWindow : Form
             {
                 _deviceContext.PSSetShader(
                     _objectColorPixelShader);
-
-                _deviceContext.PSUnsetShaderResource(
-                    0);
             }
 
             _deviceContext.Draw(
@@ -1411,8 +1421,9 @@ public sealed class D3D11RenderWindow : Form
                 batch.StartVertex);
         }
 
-        _deviceContext.PSUnsetShaderResource(
-            0);
+        _deviceContext.OMSetBlendState(null);
+        _deviceContext.PSUnsetShaderResource(0);
+        _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.RSSetState(null);
     }
 
@@ -1975,7 +1986,11 @@ public sealed class D3D11RenderWindow : Form
             _failedObjectTexturePaths.Clear();
 
             _objectSampler?.Dispose();
+            _objectAlphaBlendState?.Dispose();
             _objectInputLayout?.Dispose();
+            _objectAlphaBlendTransMapPixelShader?.Dispose();
+            _objectAlphaCutoutTransMapPixelShader?.Dispose();
+            _objectAlphaBlendPixelShader?.Dispose();
             _objectAlphaCutoutPixelShader?.Dispose();
             _objectTexturedPixelShader?.Dispose();
             _objectColorPixelShader?.Dispose();
