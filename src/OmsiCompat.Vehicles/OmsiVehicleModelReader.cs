@@ -551,6 +551,28 @@ public static class OmsiVehicleModelReader
                 continue;
             }
 
+            if (section.Name.Equals(
+                    "matl_lightmap",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                material.LightMapSource =
+                    values.FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+
+                material.LightMapVariable =
+                    values.Length >= 2
+                        ? values[1]
+                            .Trim()
+                            .Trim('"')
+                        : null;
+
+                continue;
+            }
+
             if (section.Name.Equals("matl_noZwrite", StringComparison.OrdinalIgnoreCase))
             {
                 material.NoZWrite = true;
@@ -914,6 +936,8 @@ public static class OmsiVehicleModelReader
         public bool NoZWrite { get; set; }
         public bool NoZCheck { get; set; }
         public string? AlphaScaleVariable { get; set; }
+        public string? LightMapSource { get; set; }
+        public string? LightMapVariable { get; set; }
 
         public OmsiVehicleMaterialOverride Build() =>
             new(
@@ -924,6 +948,8 @@ public static class OmsiVehicleModelReader
                 HasTransMapDirective,
                 NoZWrite,
                 NoZCheck,
-                AlphaScaleVariable);
+                AlphaScaleVariable,
+                LightMapSource,
+                LightMapVariable);
     }
 }
