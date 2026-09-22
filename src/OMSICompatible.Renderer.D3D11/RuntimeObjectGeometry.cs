@@ -13,7 +13,10 @@ internal sealed record RuntimeObjectBatch(
     string? TransMapTexturePath = null,
     bool NoZWrite = false,
     bool NoZCheck = false,
-    IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null);
+    IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null,
+    IReadOnlyList<RuntimeVehicleAnimationInfo>? Animations = null,
+    Matrix4x4? SourceTransform = null,
+    Matrix4x4? StaticTransform = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -51,7 +54,10 @@ internal static class RuntimeObjectGeometryBuilder
         string? TransMapTexturePath = null,
         bool NoZWrite = false,
         bool NoZCheck = false,
-        IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null);
+        IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null,
+        IReadOnlyList<RuntimeVehicleAnimationInfo>? Animations = null,
+        Matrix4x4? SourceTransform = null,
+        Matrix4x4? StaticTransform = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -284,7 +290,10 @@ internal static class RuntimeObjectGeometryBuilder
                     key.TransMapTexturePath,
                     key.NoZWrite,
                     key.NoZCheck,
-                    key.VisibilityConditions));
+                    key.VisibilityConditions,
+                    key.Animations,
+                    key.SourceTransform,
+                    key.StaticTransform));
         }
 
         return new RuntimeObjectGeometry(
@@ -365,7 +374,10 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.TransMapTexturePath,
                     material?.NoZWrite ?? false,
                     material?.NoZCheck ?? false,
-                    mesh.VisibilityConditions);
+                    mesh.VisibilityConditions,
+                    mesh.Animations,
+                    mesh.SourceTransform,
+                    worldTransform);
 
             var output =
                 GetBatch(
