@@ -30,7 +30,8 @@ public static class OmsiVehicleAssetLoader
             return new OmsiVehicleAsset(
                 bus,
                 Array.Empty<OmsiVehicleMeshAsset>(),
-                OmsiDriverPositionReader.ReadFile(bus.PassengerCabinPath));
+                OmsiDriverPositionReader.ReadFile(bus.PassengerCabinPath),
+                Array.Empty<OmsiVehicleTextTexture>());
         }
 
         var model = OmsiVehicleModelReader.ReadFile(bus.ModelConfigPath);
@@ -293,7 +294,10 @@ public static class OmsiVehicleAssetLoader
                         materialOverride?.EnvMapStrength ?? 0.0,
                         envMapMaskPath,
                         bumpMapPath,
-                        materialOverride?.BumpMapStrength ?? 0.0);
+                        materialOverride?.BumpMapStrength ?? 0.0,
+                        materialOverride?.FreeTextures ??
+                            Array.Empty<OmsiVehicleFreeTexture>(),
+                        materialOverride?.TextTextureIndex);
                 })
                 .ToArray();
 
@@ -323,7 +327,8 @@ public static class OmsiVehicleAssetLoader
         return new OmsiVehicleAsset(
             bus,
             meshes.ToArray(),
-            OmsiDriverPositionReader.ReadFile(bus.PassengerCabinPath));
+            OmsiDriverPositionReader.ReadFile(bus.PassengerCabinPath),
+            model.TextTextures);
     }
 
     private static string? ResolveMeshPath(
