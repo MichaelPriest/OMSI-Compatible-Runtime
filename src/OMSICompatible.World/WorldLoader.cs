@@ -317,7 +317,8 @@ public static class WorldLoader
                         false,
                         false,
                         null,
-                        Array.Empty<WorldSceneryMeshAsset>());
+                        Array.Empty<WorldSceneryMeshAsset>(),
+                        null);
 
                 continue;
             }
@@ -410,7 +411,15 @@ public static class WorldLoader
                         definition.Exists,
                         definition.UsesAbsoluteHeight,
                         definition.RenderType,
-                        meshes.ToArray());
+                        meshes.ToArray(),
+                        definition.Tree is null
+                            ? null
+                            : new WorldSceneryTreeDefinition(
+                                definition.Tree.TextureName,
+                                definition.Tree.MinimumHeight,
+                                definition.Tree.MaximumHeight,
+                                definition.Tree.MinimumAspect,
+                                definition.Tree.MaximumAspect));
             }
             catch (Exception ex) when (
                 ex is IOException or
@@ -426,7 +435,8 @@ public static class WorldLoader
                         false,
                         false,
                         null,
-                        Array.Empty<WorldSceneryMeshAsset>());
+                        Array.Empty<WorldSceneryMeshAsset>(),
+                        null);
             }
         }
 
