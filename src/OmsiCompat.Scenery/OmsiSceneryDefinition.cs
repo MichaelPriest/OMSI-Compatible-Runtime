@@ -48,6 +48,7 @@ public sealed record OmsiSceneryMaterialOverride(
 public sealed record OmsiSceneryDefinition(
     bool Exists,
     bool UsesAbsoluteHeight,
+    bool OnlyEditor,
     string? RenderType,
     IReadOnlyList<OmsiSceneryMeshReference> Meshes,
     IReadOnlyList<OmsiSceneryMaterialOverride> MaterialOverrides,
@@ -55,6 +56,7 @@ public sealed record OmsiSceneryDefinition(
 {
     public static OmsiSceneryDefinition Missing { get; } =
         new(
+            false,
             false,
             false,
             null,
