@@ -29,16 +29,25 @@ public sealed record OmsiSceneryMeshReference(
     double? LodThreshold,
     OmsiSceneryMeshTransform Transform);
 
+public sealed record OmsiSceneryTreeDefinition(
+    string TextureName,
+    double MinimumHeight,
+    double MaximumHeight,
+    double MinimumAspect,
+    double MaximumAspect);
+
 public sealed record OmsiSceneryDefinition(
     bool Exists,
     bool UsesAbsoluteHeight,
     string? RenderType,
-    IReadOnlyList<OmsiSceneryMeshReference> Meshes)
+    IReadOnlyList<OmsiSceneryMeshReference> Meshes,
+    OmsiSceneryTreeDefinition? Tree)
 {
     public static OmsiSceneryDefinition Missing { get; } =
         new(
             false,
             false,
             null,
-            Array.Empty<OmsiSceneryMeshReference>());
+            Array.Empty<OmsiSceneryMeshReference>(),
+            null);
 }
