@@ -143,6 +143,39 @@ public static class OmsiVehicleModelReader
             }
 
             if (section.Name.Equals(
+                    "matl_change",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                CommitMaterial();
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length >= 3 &&
+                    int.TryParse(
+                        values[1],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var materialIndex) &&
+                    materialIndex >= 0)
+                {
+                    material =
+                        new MaterialBuilder(
+                            values[0]
+                                .Trim()
+                                .Trim('"'),
+                            materialIndex)
+                        {
+                            MaterialChangeVariable =
+                                values[2]
+                                    .Trim()
+                                    .Trim('"')
+                        };
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
                     "viewpoint",
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -512,6 +545,30 @@ public static class OmsiVehicleModelReader
                 continue;
             }
 
+            if (section.Name.Equals(
+                    "matl_item",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_nightmap",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(
+                        material.MaterialChangeVariable))
+                {
+                    material.MaterialChangeMapSource =
+                        Values(section)
+                            .FirstOrDefault()?
+                            .Trim()
+                            .Trim('"');
+                }
+
+                continue;
+            }
+
             if (section.Name.Equals("matl_alpha", StringComparison.OrdinalIgnoreCase))
             {
                 var value = Values(section).FirstOrDefault();
@@ -558,17 +615,28 @@ public static class OmsiVehicleModelReader
                 var values =
                     Values(section).ToArray();
 
-                material.LightMapSource =
-                    values.FirstOrDefault()?
-                        .Trim()
-                        .Trim('"');
-
-                material.LightMapVariable =
-                    values.Length >= 2
-                        ? values[1]
+                if (!string.IsNullOrWhiteSpace(
+                        material.MaterialChangeVariable))
+                {
+                    material.MaterialChangeMapSource =
+                        values.FirstOrDefault()?
                             .Trim()
-                            .Trim('"')
-                        : null;
+                            .Trim('"');
+                }
+                else
+                {
+                    material.LightMapSource =
+                        values.FirstOrDefault()?
+                            .Trim()
+                            .Trim('"');
+
+                    material.LightMapVariable =
+                        values.Length >= 2
+                            ? values[1]
+                                .Trim()
+                                .Trim('"')
+                            : null;
+                }
 
                 continue;
             }
@@ -938,6 +1006,8 @@ public static class OmsiVehicleModelReader
         public string? AlphaScaleVariable { get; set; }
         public string? LightMapSource { get; set; }
         public string? LightMapVariable { get; set; }
+        public string? MaterialChangeVariable { get; set; }
+        public string? MaterialChangeMapSource { get; set; }
 
         public OmsiVehicleMaterialOverride Build() =>
             new(
@@ -950,6 +1020,8 @@ public static class OmsiVehicleModelReader
                 NoZCheck,
                 AlphaScaleVariable,
                 LightMapSource,
-                LightMapVariable);
+                LightMapVariable,
+                MaterialChangeVariable,
+                MaterialChangeMapSource);
     }
 }
