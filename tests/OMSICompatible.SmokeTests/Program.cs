@@ -157,7 +157,9 @@ try
             "(S.L.mesh_visible)",
             "0.5",
             "(S.L.mesh_alpha)",
-            "650",
+            "0.75",
+            "(S.L.lights_stand)",
+            "650"
             "(S.L.engine_speed)",
             "{end}",
             "{frame}",
@@ -224,7 +226,8 @@ try
             "callback_result",
             "parsed_number",
             "mesh_visible",
-            "mesh_alpha"),
+            "mesh_alpha",
+            "lights_stand"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -273,6 +276,9 @@ try
             "2",
             "[alphascale]",
             "mesh_alpha",
+            "[matl_lightmap]",
+            "panel_lm.bmp",
+            "lights_stand",
             "[newanim]",
             "origin_from_mesh",
             "origin_rot_y",
@@ -298,6 +304,12 @@ try
         Path.Combine(
             vehicleModelDirectory,
             "triangle.o3d"));
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleModelDirectory,
+            "panel_lm.bmp"),
+        [0x42, 0x4D, 0x00, 0x00]);
 
     File.WriteAllText(
         Path.Combine(vehicleDirectory, "Synthetic.bus"),
@@ -451,6 +463,13 @@ try
         vehicleAsset.Meshes[0].Materials.Count == 1 &&
         vehicleAsset.Meshes[0].Materials[0].AlphaScaleVariable ==
             "mesh_alpha" &&
+        vehicleAsset.Meshes[0].Materials[0].LightMapVariable ==
+            "lights_stand" &&
+        !string.IsNullOrWhiteSpace(
+            vehicleAsset.Meshes[0].Materials[0].LightMapTexturePath) &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[0].Materials[0].LightMapTexturePath!) ==
+            "panel_lm.bmp" &&
         vehicleAsset.Meshes[1].Animations.Count == 0 &&
         Math.Abs(
             vehicleAsset.Meshes[0].SourceTransform.M41 -
