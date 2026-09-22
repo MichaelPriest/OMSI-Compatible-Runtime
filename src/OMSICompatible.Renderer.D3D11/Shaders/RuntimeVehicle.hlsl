@@ -27,6 +27,7 @@ struct VertexInput
     float3 Position : POSITION;
     float4 Color : COLOR;
     float2 Uv : TEXCOORD;
+    float3 Normal : NORMAL;
 };
 
 struct VertexOutput
@@ -34,6 +35,7 @@ struct VertexOutput
     float4 Position : SV_POSITION;
     float4 Color : COLOR;
     float2 Uv : TEXCOORD;
+    float3 WorldNormal : TEXCOORD1;
 };
 
 VertexOutput VSMain(VertexInput input)
@@ -57,6 +59,12 @@ VertexOutput VSMain(VertexInput input)
 
     output.Uv =
         input.Uv;
+
+    output.WorldNormal =
+        normalize(
+            mul(
+                input.Normal,
+                (float3x3)World));
 
     return output;
 }
