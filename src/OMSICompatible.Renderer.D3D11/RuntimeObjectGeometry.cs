@@ -460,22 +460,32 @@ internal static class RuntimeObjectGeometryBuilder
         var positionOffset =
             vertexIndex * 3;
 
-        // OMSI model coordinates:
-        //   X = lateral
-        //   Y = forward/backward
-        //   Z = height
-        // Renderer coordinates:
-        //   X = lateral
-        //   Y = height
-        //   Z = forward/backward
+        // Raw O3D vertex coordinates use the Direct3D-style model
+        // convention used by OMSI's mesh files. They are not the same
+        // coordinate convention as placement/camera values from CFG/BUS.
+        // Mature O3D tooling converts raw O3D vertices to a Y-up scene by
+        // mirroring X while preserving Y/Z.
         //
-        // Both O3D and legacy DirectX .x assets must therefore swap
-        // source Y/Z before any renderer-side transform is applied.
+        // Keep legacy .x behavior unchanged until its source convention is
+        // independently verified; only correct the O3D path here.
+        var isO3d =
+            string.Equals(
+                Path.GetExtension(
+                    mesh.ResolvedPath ??
+                    mesh.DeclaredPath),
+                ".o3d",
+                StringComparison.OrdinalIgnoreCase);
+
         var source =
-            new Vector3(
-                mesh.Positions[positionOffset],
-                mesh.Positions[positionOffset + 2],
-                mesh.Positions[positionOffset + 1]);
+            isO3d
+                ? new Vector3(
+                    -mesh.Positions[positionOffset],
+                    mesh.Positions[positionOffset + 1],
+                    mesh.Positions[positionOffset + 2])
+                : new Vector3(
+                    mesh.Positions[positionOffset],
+                    mesh.Positions[positionOffset + 2],
+                    mesh.Positions[positionOffset + 1]);
 
         var world =
             Vector3.Transform(
