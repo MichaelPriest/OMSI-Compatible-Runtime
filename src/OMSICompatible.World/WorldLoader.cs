@@ -17,21 +17,25 @@ public static class WorldLoader
         ArgumentNullException.ThrowIfNull(contentRoot);
         ArgumentNullException.ThrowIfNull(map);
 
-        progress?.Report(
-            new WorldLoadProgress(
-                8,
-                "Lendo mapa",
-                options.LoadEntireMap
-                    ? "Descobrindo tiles e estrutura do mundo..."
-                    : $"Preparando streaming · {sourceTiles.Count:N0}/{allSourceTiles.Count:N0} tiles ativos..."));
+        var allSourceTiles =
+            MapTileDiscovery.Discover(
+                map);
 
-        var allSourceTiles = MapTileDiscovery.Discover(map);
-        options ??= new WorldLoadOptions();
+        options ??=
+            new WorldLoadOptions();
 
         var sourceTiles =
             SelectSourceTiles(
                 allSourceTiles,
                 options);
+
+        progress?.Report(
+            new WorldLoadProgress(
+                8,
+                "Lendo mapa",
+                options.LoadEntireMap
+                    ? $"Carregando mapa completo · {allSourceTiles.Count:N0} tiles..."
+                    : $"Preparando streaming · {sourceTiles.Count:N0}/{allSourceTiles.Count:N0} tiles ativos..."));
 
         var tiles = new List<WorldTile>(sourceTiles.Count);
         var tileIndex = 0;
