@@ -475,6 +475,72 @@ internal sealed class RuntimeDriveVehicle
         }
     }
 
+    public Vector3 GetDriverCameraPosition(
+        RuntimeDriverCameraInfo camera)
+    {
+        var localEye =
+            new Vector3(
+                (float)camera.X,
+                (float)camera.Y,
+                (float)camera.Z);
+
+        var vehicleRotation =
+            Matrix4x4.CreateRotationY(
+                HeadingRadians);
+
+        return Vector3.Transform(
+                   localEye,
+                   vehicleRotation) +
+               Position;
+    }
+
+    public Vector3 GetPassengerCameraPosition(
+        RuntimePassengerCameraInfo camera) =>
+        GetDriverCameraPosition(
+            new RuntimeDriverCameraInfo(
+                camera.X,
+                camera.Y,
+                camera.Z,
+                camera.EyeDistance,
+                camera.FieldOfViewDegrees,
+                camera.HeadingDegrees,
+                camera.PitchDegrees));
+
+    public Vector3 GetChaseCameraPosition(
+        RuntimeOutsideCameraCenterInfo? outsideCenter)
+    {
+        var forward =
+            new Vector3(
+                MathF.Sin(HeadingRadians),
+                0.0f,
+                MathF.Cos(HeadingRadians));
+
+        var vehicleRotation =
+            Matrix4x4.CreateRotationY(
+                HeadingRadians);
+
+        var localCenter =
+            outsideCenter is null
+                ? new Vector3(
+                    0.0f,
+                    1.6f,
+                    0.0f)
+                : new Vector3(
+                    (float)outsideCenter.X,
+                    (float)outsideCenter.Y,
+                    (float)outsideCenter.Z);
+
+        var center =
+            Vector3.Transform(
+                localCenter,
+                vehicleRotation) +
+            Position;
+
+        return center -
+               forward * 14.0f +
+               Vector3.UnitY * 4.4f;
+    }
+
     public Matrix4x4 CreateDriverViewProjection(
         RuntimeDriverCameraInfo camera,
         float aspect,
