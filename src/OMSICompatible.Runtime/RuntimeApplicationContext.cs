@@ -710,7 +710,10 @@ internal sealed class RuntimeApplicationContext :
                                                 material.LightMapTexturePath,
                                                 material.LightMapVariable,
                                                 material.MaterialChangeTexturePath,
-                                                material.MaterialChangeVariable))
+                                                material.MaterialChangeVariable,
+                                                material.EnvMapTexturePath,
+                                                material.EnvMapStrength,
+                                                material.EnvMapMaskTexturePath))
                                     .ToArray(),
                                 mesh.ViewpointFlag,
                                 mesh.LodThreshold,
