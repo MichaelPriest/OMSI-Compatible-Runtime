@@ -33,8 +33,8 @@ public sealed class D3D11RenderWindow : Form
         _windowInfo = windowInfo;
 
         Text = $"OMSI Compatible Runtime — {windowInfo.WorldName}";
-        ClientSize = new System.Drawing.Size(1280, 720);
-        MinimumSize = new System.Drawing.Size(960, 540);
+        ClientSize = new Size(1280, 720);
+        MinimumSize = new Size(960, 540);
         StartPosition = FormStartPosition.CenterScreen;
 
         _renderTimer = new System.Windows.Forms.Timer
@@ -135,18 +135,28 @@ public sealed class D3D11RenderWindow : Form
             Width = (uint)Math.Max(ClientSize.Width, 1),
             Height = (uint)Math.Max(ClientSize.Height, 1),
             Format = Format.R8G8B8A8_UNorm,
-            Stereo = false,
-            SampleDescription = new SampleDescription(1, 0),
-            BufferUsage = Usage.RenderTargetOutput,
             BufferCount = 2,
+            BufferUsage = Usage.RenderTargetOutput,
+            SampleDescription = SampleDescription.Default,
             Scaling = Scaling.Stretch,
             SwapEffect = SwapEffect.FlipDiscard,
-            AlphaMode = AlphaMode.Ignore,
-            Flags = SwapChainFlags.None
+            AlphaMode = AlphaMode.Ignore
         };
 
-        using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
-        _swapChain = _factory.CreateSwapChainForHwnd(dxgiDevice, Handle, description);
+        var fullscreenDescription = new SwapChainFullscreenDescription
+        {
+            Windowed = true
+        };
+
+        _swapChain = _factory.CreateSwapChainForHwnd(
+            _device,
+            Handle,
+            description,
+            fullscreenDescription);
+
+        _factory.MakeWindowAssociation(
+            Handle,
+            WindowAssociationFlags.IgnoreAltEnter);
     }
 
     private void CreateBackBuffer()
@@ -202,11 +212,14 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        _deviceContext.OMSetRenderTargets((ID3D11RenderTargetView)_renderTargetView, (ID3D11DepthStencilView?)null);
-        _deviceContext.RSSetViewport(new Viewport(ClientSize.Width, ClientSize.Height));
         _deviceContext.ClearRenderTargetView(
             _renderTargetView,
             new Color4(0.025f, 0.035f, 0.055f, 1.0f));
+        _deviceContext.OMSetRenderTargets(
+            _renderTargetView,
+            (ID3D11DepthStencilView?)null);
+        _deviceContext.RSSetViewport(
+            new Viewport(ClientSize.Width, ClientSize.Height));
 
         _swapChain.Present(1, PresentFlags.None).CheckError();
     }
@@ -228,6 +241,7 @@ public sealed class D3D11RenderWindow : Form
             _renderTimer.Tick -= RenderTimerOnTick;
             _renderTimer.Dispose();
 
+            _deviceContext?.ClearState();
             _deviceContext?.Flush();
             _renderTargetView?.Dispose();
             _backBuffer?.Dispose();
