@@ -9,5 +9,6 @@
   <Project Path="src/OMSICompatible.Renderer.D3D11/OMSICompatible.Renderer.D3D11.csproj" />
   <Project Path="src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj" />
   <Project Path="src/OMSICompatible.Launcher/OMSICompatible.Launcher.csproj" />
+  <Project Path="src/OMSICompatible.Launcher.WinUI/OMSICompatible.Launcher.WinUI.csproj" />
   <Project Path="tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj" />
 </Solution>

@@ -1,0 +1,609 @@
+using System.Diagnostics;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
+using OmsiCompat.Core;
+using OmsiCompat.Map;
+using OmsiCompat.Vehicles;
+using Windows.Graphics;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
+
+namespace OMSICompatible.Launcher.WinUI;
+
+public sealed partial class MainWindow :
+    Window
+{
+    private readonly RuntimeProcessHost _runtime =
+        new();
+
+    private readonly LauncherSettings _settings =
+        LauncherSettings.Load();
+
+    private IReadOnlyList<OmsiMapInfo> _maps =
+        Array.Empty<OmsiMapInfo>();
+
+    private IReadOnlyList<OmsiBusInfo> _buses =
+        Array.Empty<OmsiBusInfo>();
+
+    private IReadOnlyList<OmsiMapEntryPointGroup> _entryPoints =
+        Array.Empty<OmsiMapEntryPointGroup>();
+
+    private bool _refreshing;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+
+        AppWindow.Resize(
+            new SizeInt32(
+                1280,
+                850));
+
+        _runtime.OutputReceived +=
+            RuntimeOutputReceived;
+
+        _runtime.Exited +=
+            RuntimeExited;
+
+        Closed +=
+            (_, _) =>
+                _runtime.Dispose();
+
+        Activated +=
+            OnFirstActivated;
+    }
+
+    private async void OnFirstActivated(
+        object sender,
+        WindowActivatedEventArgs args)
+    {
+        Activated -=
+            OnFirstActivated;
+
+        var initial =
+            _settings.ContentPath;
+
+        if (!string.IsNullOrWhiteSpace(initial))
+        {
+            ContentPathBox.Text =
+                initial;
+
+            await RefreshContentAsync(
+                _settings.MapName);
+        }
+    }
+
+    private async void BrowseButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var picker =
+            new FolderPicker();
+
+        picker.FileTypeFilter.Add(
+            "*");
+
+        InitializeWithWindow.Initialize(
+            picker,
+            WindowNative.GetWindowHandle(
+                this));
+
+        var folder =
+            await picker.PickSingleFolderAsync();
+
+        if (folder is null)
+        {
+            return;
+        }
+
+        ContentPathBox.Text =
+            folder.Path;
+
+        await RefreshContentAsync(
+            null);
+    }
+
+    private async void RefreshButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await RefreshContentAsync(
+            SelectedMap()?.FolderName);
+    }
+
+    private async Task RefreshContentAsync(
+        string? selectMap)
+    {
+        if (_refreshing)
+        {
+            return;
+        }
+
+        _refreshing = true;
+        PlayButton.IsEnabled = false;
+
+        try
+        {
+            if (!OmsiContentRoot.TryCreate(
+                    ContentPathBox.Text,
+                    out var contentRoot,
+                    out var error) ||
+                contentRoot is null)
+            {
+                SetStatus(
+                    error);
+
+                ClearSelections();
+                return;
+            }
+
+            SetStatus(
+                "Descobrindo mapas e ônibus...");
+
+            var discovery =
+                await Task.Run(
+                    () =>
+                    {
+                        var maps =
+                            MapDiscovery.Discover(
+                                contentRoot);
+
+                        var buses =
+                            BusDiscovery.Discover(
+                                contentRoot);
+
+                        return (
+                            Maps: maps,
+                            Buses: buses);
+                    });
+
+            _maps =
+                discovery.Maps;
+
+            _buses =
+                discovery.Buses;
+
+            MapBox.ItemsSource =
+                _maps;
+
+            BusBox.ItemsSource =
+                _buses;
+
+            MapCountText.Text =
+                _maps.Count.ToString(
+                    "N0");
+
+            BusCountText.Text =
+                _buses.Count.ToString(
+                    "N0");
+
+            var map =
+                _maps.FirstOrDefault(
+                    item =>
+                        string.Equals(
+                            item.FolderName,
+                            selectMap,
+                            StringComparison.OrdinalIgnoreCase))
+                ?? _maps.FirstOrDefault();
+
+            MapBox.SelectedItem =
+                map;
+
+            var bus =
+                _buses.FirstOrDefault(
+                    item =>
+                        string.Equals(
+                            item.RelativePath,
+                            _settings.BusRelativePath,
+                            StringComparison.OrdinalIgnoreCase))
+                ?? _buses.FirstOrDefault();
+
+            BusBox.SelectedItem =
+                bus;
+
+            if (map is not null)
+            {
+                await LoadEntryPointsAsync(
+                    map);
+            }
+
+            UpdatePlayAvailability();
+
+            SetStatus(
+                $"{_maps.Count:N0} mapa(s) · {_buses.Count:N0} ônibus.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                ex.Message);
+        }
+        finally
+        {
+            _refreshing = false;
+            SaveSettings();
+        }
+    }
+
+    private async void MapBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        var map =
+            SelectedMap();
+
+        UpdateHero(
+            map);
+
+        if (_refreshing ||
+            map is null)
+        {
+            UpdatePlayAvailability();
+            return;
+        }
+
+        await LoadEntryPointsAsync(
+            map);
+
+        UpdatePlayAvailability();
+        SaveSettings();
+    }
+
+    private void SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (_refreshing)
+        {
+            return;
+        }
+
+        UpdatePlayAvailability();
+        SaveSettings();
+    }
+
+    private async Task LoadEntryPointsAsync(
+        OmsiMapInfo map)
+    {
+        SpawnBox.ItemsSource = null;
+        _entryPoints =
+            Array.Empty<OmsiMapEntryPointGroup>();
+
+        SetStatus(
+            "Lendo pontos iniciais do mapa...");
+
+        _entryPoints =
+            await Task.Run(
+                () =>
+                    MapEntryPointDiscovery.Discover(
+                        map));
+
+        SpawnBox.ItemsSource =
+            _entryPoints;
+
+        var spawn =
+            _entryPoints.FirstOrDefault(
+                item =>
+                    string.Equals(
+                        item.Name,
+                        _settings.EntryPointName,
+                        StringComparison.OrdinalIgnoreCase))
+            ?? _entryPoints.FirstOrDefault();
+
+        SpawnBox.SelectedItem =
+            spawn;
+    }
+
+    private void PlayButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_runtime.IsRunning)
+        {
+            return;
+        }
+
+        var map =
+            SelectedMap();
+
+        var bus =
+            SelectedBus();
+
+        var spawn =
+            SelectedSpawn();
+
+        if (map is null ||
+            bus is null ||
+            spawn is null)
+        {
+            SetStatus(
+                "Selecione mapa, ônibus e ponto inicial.");
+            return;
+        }
+
+        try
+        {
+            SaveSettings();
+
+            ShowLoading(
+                map,
+                bus);
+
+            SetRuntimeProgress(
+                new RuntimeProgress(
+                    1,
+                    "Inicializando",
+                    "Abrindo o runtime x64..."));
+
+            if (!_runtime.Start(
+                    ContentPathBox.Text,
+                    map.FolderName,
+                    bus.RelativePath,
+                    spawn.Name))
+            {
+                throw new InvalidOperationException(
+                    "O runtime não pôde ser iniciado.");
+            }
+        }
+        catch (Exception ex)
+        {
+            HideLoading();
+            SetStatus(
+                ex.Message);
+        }
+    }
+
+    private void RuntimeOutputReceived(
+        string line)
+    {
+        DispatcherQueue.TryEnqueue(
+            () =>
+            {
+                if (RuntimeProgress.TryParse(
+                        line,
+                        out var progress) &&
+                    progress is not null)
+                {
+                    SetRuntimeProgress(
+                        progress);
+                    return;
+                }
+
+                if (string.Equals(
+                        line,
+                        "[runtime-ready]",
+                        StringComparison.Ordinal))
+                {
+                    SetRuntimeProgress(
+                        new RuntimeProgress(
+                            100,
+                            "Pronto",
+                            "Entrando no mundo..."));
+
+                    HideLoading();
+                    SetStatus(
+                        "Em execução");
+                    return;
+                }
+
+                AppendLog(
+                    line);
+            });
+    }
+
+    private void RuntimeExited(
+        int exitCode)
+    {
+        DispatcherQueue.TryEnqueue(
+            () =>
+            {
+                HideLoading();
+
+                SetStatus(
+                    exitCode == 0
+                        ? "Runtime encerrado."
+                        : $"Runtime encerrado com erro {exitCode}.");
+
+                UpdatePlayAvailability();
+            });
+    }
+
+    private void ShowLoading(
+        OmsiMapInfo map,
+        OmsiBusInfo bus)
+    {
+        LoadingMapText.Text =
+            map.FolderName;
+
+        LoadingBusText.Text =
+            bus.DisplayName;
+
+        var image =
+            ResolveMapImage(
+                map.DirectoryPath);
+
+        ApplyImage(
+            LoadingImage,
+            image);
+
+        LoadingOverlay.Visibility =
+            Visibility.Visible;
+
+        PlayButton.IsEnabled =
+            false;
+    }
+
+    private void HideLoading()
+    {
+        LoadingOverlay.Visibility =
+            Visibility.Collapsed;
+
+        UpdatePlayAvailability();
+    }
+
+    private void SetRuntimeProgress(
+        RuntimeProgress progress)
+    {
+        LoadingProgress.Value =
+            progress.Percent;
+
+        LoadingPercentText.Text =
+            $"{progress.Percent}%";
+
+        LoadingStageText.Text =
+            progress.Stage;
+
+        LoadingDetailText.Text =
+            progress.Detail;
+    }
+
+    private void UpdateHero(
+        OmsiMapInfo? map)
+    {
+        HeroTitle.Text =
+            map?.FolderName ??
+            "Escolha um mapa";
+
+        HeroSubtitle.Text =
+            map is null
+                ? "Carregamento por tiles · ônibus OMSI · Direct3D 11"
+                : "Streaming por área · seleção de ônibus · entrypoint OMSI";
+
+        ApplyImage(
+            HeroImage,
+            map is null
+                ? null
+                : ResolveMapImage(
+                    map.DirectoryPath));
+    }
+
+    private static string? ResolveMapImage(
+        string mapDirectory)
+    {
+        string[] candidates =
+        [
+            "picture.jpg",
+            "picture.jpeg",
+            "picture.png",
+            "preview.jpg",
+            "preview.png",
+            "picture.bmp"
+        ];
+
+        return candidates
+            .Select(
+                name =>
+                    Path.Combine(
+                        mapDirectory,
+                        name))
+            .FirstOrDefault(
+                File.Exists);
+    }
+
+    private static void ApplyImage(
+        Image target,
+        string? path)
+    {
+        if (string.IsNullOrWhiteSpace(
+                path) ||
+            !File.Exists(path))
+        {
+            target.Source = null;
+            return;
+        }
+
+        try
+        {
+            target.Source =
+                new BitmapImage(
+                    new Uri(
+                        path));
+        }
+        catch
+        {
+            target.Source = null;
+        }
+    }
+
+    private void UpdatePlayAvailability()
+    {
+        PlayButton.IsEnabled =
+            !_runtime.IsRunning &&
+            SelectedMap() is not null &&
+            SelectedBus() is not null &&
+            SelectedSpawn() is not null;
+    }
+
+    private OmsiMapInfo? SelectedMap() =>
+        MapBox.SelectedItem
+            as OmsiMapInfo;
+
+    private OmsiBusInfo? SelectedBus() =>
+        BusBox.SelectedItem
+            as OmsiBusInfo;
+
+    private OmsiMapEntryPointGroup? SelectedSpawn() =>
+        SpawnBox.SelectedItem
+            as OmsiMapEntryPointGroup;
+
+    private void ClearSelections()
+    {
+        _maps =
+            Array.Empty<OmsiMapInfo>();
+
+        _buses =
+            Array.Empty<OmsiBusInfo>();
+
+        _entryPoints =
+            Array.Empty<OmsiMapEntryPointGroup>();
+
+        MapBox.ItemsSource = null;
+        BusBox.ItemsSource = null;
+        SpawnBox.ItemsSource = null;
+
+        MapCountText.Text = "0";
+        BusCountText.Text = "0";
+
+        UpdateHero(null);
+    }
+
+    private void SaveSettings()
+    {
+        new LauncherSettings(
+            ContentPathBox.Text,
+            SelectedMap()?.FolderName,
+            SelectedBus()?.RelativePath,
+            SelectedSpawn()?.Name)
+            .Save();
+    }
+
+    private void SetStatus(
+        string text)
+    {
+        AppendLog(
+            text);
+    }
+
+    private void AppendLog(
+        string text)
+    {
+        if (string.IsNullOrWhiteSpace(
+                text))
+        {
+            return;
+        }
+
+        if (LogBox.Text.Length > 0)
+        {
+            LogBox.Text +=
+                Environment.NewLine;
+        }
+
+        LogBox.Text +=
+            $"[{DateTime.Now:HH:mm:ss}] {text}";
+    }
+}
