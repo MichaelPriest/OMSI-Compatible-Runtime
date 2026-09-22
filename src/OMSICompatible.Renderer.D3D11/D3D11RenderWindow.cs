@@ -907,19 +907,23 @@ public sealed class D3D11RenderWindow : Form
 
         if (_driveMode)
         {
-            var drive =
-                (_pressedKeys.Contains(Keys.W) ? 1.0f : 0.0f) -
-                (_pressedKeys.Contains(Keys.S) ? 1.0f : 0.0f);
+            var steeringDirection =
+                (_pressedKeys.Contains(Keys.NumPad6) ? 1.0f : 0.0f) -
+                (_pressedKeys.Contains(Keys.NumPad4) ? 1.0f : 0.0f);
 
-            var steering =
-                (_pressedKeys.Contains(Keys.D) ? 1.0f : 0.0f) -
-                (_pressedKeys.Contains(Keys.A) ? 1.0f : 0.0f);
-
-            _vehicle.Update(
-                drive,
-                steering,
-                _pressedKeys.Contains(Keys.Space),
-                deltaSeconds);
+            _vehicle.UpdateOmsiControls(
+                acceleratorHeld:
+                    _pressedKeys.Contains(Keys.NumPad8),
+                brakeIncreaseHeld:
+                    _pressedKeys.Contains(Keys.NumPad2),
+                brakeReleaseHeld:
+                    _pressedKeys.Contains(Keys.Add),
+                steeringDirection:
+                    steeringDirection,
+                centerSteeringHeld:
+                    _pressedKeys.Contains(Keys.NumPad5),
+                deltaSeconds:
+                    deltaSeconds);
 
             return;
         }
@@ -949,7 +953,13 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         KeyEventArgs e)
     {
-        _pressedKeys.Add(e.KeyCode);
+        var firstPress =
+            _pressedKeys.Add(e.KeyCode);
+
+        if (!firstPress)
+        {
+            return;
+        }
 
         if (e.KeyCode == Keys.Tab)
         {
@@ -959,21 +969,63 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (_driveMode)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.E:
+                    _vehicle.ToggleElectricalSystem();
+                    break;
+
+                case Keys.M:
+                    _vehicle.ToggleEngine();
+                    break;
+
+                case Keys.D:
+                    _vehicle.SelectGear(
+                        RuntimeDriveGear.Drive);
+                    break;
+
+                case Keys.N:
+                    _vehicle.SelectGear(
+                        RuntimeDriveGear.Neutral);
+                    break;
+
+                case Keys.R:
+                    _vehicle.SelectGear(
+                        RuntimeDriveGear.Reverse);
+                    break;
+
+                case Keys.Decimal:
+                case Keys.OemPeriod:
+                    _vehicle.ToggleParkingBrake();
+                    break;
+
+                case Keys.Subtract:
+                    _vehicle.ToggleStopBrake();
+                    break;
+
+                case Keys.F5:
+                    if (_terrainGeometry.Vertices.Length > 0)
+                    {
+                        _vehicle.Reset(
+                            _windowInfo.Splines,
+                            _terrainGeometry);
+                    }
+
+                    break;
+            }
+
+            UpdateCaption();
+            return;
+        }
+
         if ((e.KeyCode == Keys.R ||
              e.KeyCode == Keys.F5) &&
             _terrainGeometry.Vertices.Length > 0)
         {
-            if (_driveMode)
-            {
-                _vehicle.Reset(
-                    _windowInfo.Splines,
-                    _terrainGeometry);
-            }
-            else
-            {
-                _camera.Reset(
-                    _terrainGeometry);
-            }
+            _camera.Reset(
+                _terrainGeometry);
         }
     }
 
@@ -1082,9 +1134,21 @@ public sealed class D3D11RenderWindow : Form
             ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0}"
             : "tile overview";
 
+        var gear = _vehicle.Gear switch
+        {
+            RuntimeDriveGear.Drive => "D",
+            RuntimeDriveGear.Reverse => "R",
+            _ => "N"
+        };
+
         var control = _driveMode
-            ? $"DRIVE {_vehicle.SpeedKph:0} km/h · W/S drive · A/D steer · Space brake · Tab free cam"
-            : "FREE CAM · WASD move · RMB look · Q/E vertical · Tab drive";
+            ? $"OMSI DRIVE {_vehicle.SpeedKph:0} km/h · gear {gear} · " +
+              $"E:{(_vehicle.ElectricalSystemEnabled ? "ON" : "OFF")} " +
+              $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
+              $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
+              $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
+              "Num8 throttle · Num2 brake · Num+ release · Num4/6 steer · Num5 center · D/N/R · E/M · Num. park · Tab free cam"
+            : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · Tab OMSI drive";
 
         Text =
             $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
