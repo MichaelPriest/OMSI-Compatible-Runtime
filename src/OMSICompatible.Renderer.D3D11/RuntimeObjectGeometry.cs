@@ -115,9 +115,11 @@ internal static class RuntimeObjectGeometryBuilder
                 instance.TileX * TileSizeMeters +
                 instance.X;
 
+            // OMSI map placements use X/Y on the ground plane and Z as height.
+            // Renderer space is X/Z on the ground plane with Y up.
             var worldZ =
                 instance.TileY * TileSizeMeters +
-                instance.Z;
+                instance.Y;
 
             var terrainOffset = 0.0f;
 
@@ -149,7 +151,7 @@ internal static class RuntimeObjectGeometryBuilder
                         instance.BankDegrees)) *
                 Matrix4x4.CreateTranslation(
                     (float)worldX,
-                    (float)instance.Y +
+                    (float)instance.Z +
                     terrainOffset +
                     renderLift,
                     (float)worldZ);
@@ -214,7 +216,7 @@ internal static class RuntimeObjectGeometryBuilder
                     asset.Tree,
                     worldX,
                     worldZ,
-                    (float)instance.Y +
+                    (float)instance.Z +
                     terrainOffset +
                     renderLift,
                     batches,
