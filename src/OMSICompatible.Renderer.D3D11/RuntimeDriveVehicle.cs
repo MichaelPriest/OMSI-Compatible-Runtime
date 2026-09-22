@@ -238,6 +238,88 @@ internal sealed class RuntimeDriveVehicle
                 1.0f);
         }
 
+        ApplyDynamics(deltaSeconds);
+    }
+
+    public void UpdateOmsiMouseControls(
+        float accelerator,
+        float brake,
+        float steering,
+        float deltaSeconds)
+    {
+        deltaSeconds = Math.Clamp(
+            deltaSeconds,
+            0.0f,
+            0.1f);
+
+        accelerator = Math.Clamp(
+            accelerator,
+            0.0f,
+            1.0f);
+        brake = Math.Clamp(
+            brake,
+            0.0f,
+            1.0f);
+        steering = Math.Clamp(
+            steering,
+            -1.0f,
+            1.0f);
+
+        // OMSI makes mouse steering progressively more precise
+        // as speed increases.
+        var speedPrecision =
+            Math.Clamp(
+                Math.Abs(SpeedKph) / 60.0f,
+                0.0f,
+                1.0f);
+
+        var steeringScale =
+            1.0f -
+            speedPrecision * 0.65f;
+
+        var steeringTarget =
+            steering *
+            steeringScale;
+
+        SteeringInput = MoveTowards(
+            SteeringInput,
+            steeringTarget,
+            5.0f * deltaSeconds);
+
+        var canApplyPower =
+            ElectricalSystemEnabled &&
+            EngineRunning &&
+            Gear != RuntimeDriveGear.Neutral &&
+            !ParkingBrakeEngaged &&
+            !StopBrakeEngaged;
+
+        AcceleratorLevel = MoveTowards(
+            AcceleratorLevel,
+            canApplyPower
+                ? accelerator
+                : 0.0f,
+            4.0f * deltaSeconds);
+
+        if (accelerator > 0.02f)
+        {
+            BrakeLevel = MoveTowards(
+                BrakeLevel,
+                0.0f,
+                5.0f * deltaSeconds);
+        }
+        else
+        {
+            BrakeLevel = MoveTowards(
+                BrakeLevel,
+                brake,
+                5.0f * deltaSeconds);
+        }
+
+        ApplyDynamics(deltaSeconds);
+    }
+
+    private void ApplyDynamics(float deltaSeconds)
+    {
         var requestedDirection =
             (int)Gear;
 
@@ -260,15 +342,12 @@ internal sealed class RuntimeDriveVehicle
                 0.0f,
                 1.0f);
 
-        var brakeStrength =
-            effectiveBrake *
-            8.5f;
-
         SpeedMetersPerSecond =
             MoveTowards(
                 SpeedMetersPerSecond,
                 0.0f,
-                brakeStrength *
+                effectiveBrake *
+                8.5f *
                 deltaSeconds);
 
         if (AcceleratorLevel <= 0.001f)
