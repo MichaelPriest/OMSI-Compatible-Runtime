@@ -257,7 +257,11 @@ internal sealed class RuntimeApplicationContext :
                                                             material.DiffuseG,
                                                             material.DiffuseB,
                                                             material.DiffuseA,
-                                                            material.TexturePath))
+                                                            material.TexturePath,
+                                                            material.AlphaMode,
+                                                            material.TransMapTexturePath,
+                                                            material.NoZWrite,
+                                                            material.NoZCheck))
                                                 .ToArray()))
                                 .ToArray(),
                             pair.Value.Tree is null
