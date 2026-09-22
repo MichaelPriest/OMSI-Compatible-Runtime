@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace OmsiCompat.Vehicles;
 
 public sealed record OmsiVehicleMaterial(
@@ -19,6 +21,8 @@ public sealed record OmsiVehicleMeshAsset(
     int ViewpointFlag,
     double? LodThreshold,
     IReadOnlyList<OmsiVehicleVisibilityCondition> VisibilityConditions,
+    IReadOnlyList<OmsiVehicleAnimation> Animations,
+    Matrix4x4 SourceTransform,
     float[] Positions,
     float[] Uvs,
     uint[] Indices,
