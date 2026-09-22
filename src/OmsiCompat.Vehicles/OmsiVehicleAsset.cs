@@ -14,7 +14,9 @@ public sealed record OmsiVehicleMaterial(
     bool NoZCheck,
     string? AlphaScaleVariable,
     string? LightMapTexturePath,
-    string? LightMapVariable);
+    string? LightMapVariable,
+    string? MaterialChangeTexturePath,
+    string? MaterialChangeVariable);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
