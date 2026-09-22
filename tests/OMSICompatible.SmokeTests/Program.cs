@@ -1,6 +1,7 @@
 using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Vehicles;
 using OMSICompatible.World;
 
 var root = Path.Combine(
@@ -12,10 +13,12 @@ try
     var mapDirectory = Path.Combine(root, "maps", "SyntheticMap");
     var sceneryDirectory = Path.Combine(root, "Sceneryobjects", "Synthetic");
     var splineDirectory = Path.Combine(root, "Splines", "Synthetic");
+    var vehicleDirectory = Path.Combine(root, "Vehicles", "Synthetic");
 
     Directory.CreateDirectory(mapDirectory);
     Directory.CreateDirectory(sceneryDirectory);
     Directory.CreateDirectory(splineDirectory);
+    Directory.CreateDirectory(vehicleDirectory);
 
     File.WriteAllText(
         Path.Combine(mapDirectory, "global.cfg"),
@@ -79,6 +82,44 @@ try
         Lines("[friendlyname]", "Synthetic Road"),
         Encoding.Unicode);
 
+    File.WriteAllText(
+        Path.Combine(vehicleDirectory, "Synthetic.bus"),
+        Lines(
+            "[friendlyname]",
+            "Synthetic",
+            "Camera Bus",
+            "[add_camera_driver]",
+            "0",
+            "4.5",
+            "1.8",
+            "-0.06",
+            "55",
+            "0",
+            "-8",
+            "[add_camera_driver]",
+            "-0.7",
+            "4.6",
+            "1.9",
+            "-0.06",
+            "48",
+            "-30",
+            "4",
+            "[add_camera_pax]",
+            "0.8",
+            "-2.0",
+            "2.1",
+            "-0.06",
+            "45",
+            "25",
+            "0",
+            "[set_camera_std]",
+            "1",
+            "[set_camera_outside_center]",
+            "0",
+            "-2.5",
+            "1.2"),
+        Encoding.Unicode);
+
     if (!OmsiContentRoot.TryCreate(
             root,
             out var contentRoot,
@@ -91,6 +132,28 @@ try
 
     var maps = MapDiscovery.Discover(contentRoot);
     Require(maps.Count == 1, $"Expected 1 map, found {maps.Count}.");
+
+    var buses = BusDiscovery.Discover(contentRoot);
+    Require(buses.Count == 1, $"Expected 1 bus, found {buses.Count}.");
+
+    var bus = buses[0];
+    Require(
+        bus.DriverCameras.Count == 2,
+        "Synthetic driver cameras were not parsed.");
+    Require(
+        bus.PassengerCameras.Count == 1,
+        "Synthetic passenger camera was not parsed.");
+    Require(
+        bus.StandardDriverCameraIndex == 1,
+        "Standard driver camera index was not preserved.");
+    Require(
+        bus.OutsideCameraCenter is
+        {
+            X: 0,
+            Y: -2.5,
+            Z: 1.2
+        },
+        "Outside camera center was not preserved.");
 
     var map = maps[0];
     var world = WorldLoader.Load(contentRoot, map);

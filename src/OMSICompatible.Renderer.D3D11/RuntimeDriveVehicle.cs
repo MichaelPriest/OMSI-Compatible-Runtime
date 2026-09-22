@@ -532,9 +532,28 @@ internal sealed class RuntimeDriveVehicle
         return view * projection;
     }
 
-    public Matrix4x4 CreateChaseViewProjection(
+    public Matrix4x4 CreatePassengerViewProjection(
+        RuntimePassengerCameraInfo camera,
         float aspect,
         RuntimeTerrainGeometry terrainGeometry)
+    {
+        return CreateDriverViewProjection(
+            new RuntimeDriverCameraInfo(
+                camera.X,
+                camera.Y,
+                camera.Z,
+                camera.EyeDistance,
+                camera.FieldOfViewDegrees,
+                camera.HeadingDegrees,
+                camera.PitchDegrees),
+            aspect,
+            terrainGeometry);
+    }
+
+    public Matrix4x4 CreateChaseViewProjection(
+        float aspect,
+        RuntimeTerrainGeometry terrainGeometry,
+        RuntimeOutsideCameraCenterInfo? outsideCenter)
     {
         var forward =
             new Vector3(
@@ -542,15 +561,35 @@ internal sealed class RuntimeDriveVehicle
                 0.0f,
                 MathF.Cos(HeadingRadians));
 
+        var vehicleRotation =
+            Matrix4x4.CreateRotationY(
+                HeadingRadians);
+
+        var localCenter =
+            outsideCenter is null
+                ? new Vector3(
+                    0.0f,
+                    1.6f,
+                    0.0f)
+                : new Vector3(
+                    (float)outsideCenter.X,
+                    (float)outsideCenter.Y,
+                    (float)outsideCenter.Z);
+
+        var center =
+            Vector3.Transform(
+                localCenter,
+                vehicleRotation) +
+            Position;
+
         var eye =
-            Position -
+            center -
             forward * 14.0f +
-            Vector3.UnitY * 6.0f;
+            Vector3.UnitY * 4.4f;
 
         var target =
-            Position +
-            forward * 8.0f +
-            Vector3.UnitY * 1.6f;
+            center +
+            forward * 8.0f;
 
         var view =
             Matrix4x4.CreateLookAt(

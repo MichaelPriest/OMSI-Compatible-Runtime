@@ -564,6 +564,25 @@ internal sealed class RuntimeApplicationContext :
                                 camera.HeadingDegrees,
                                 camera.PitchDegrees))
                     .ToArray(),
+                vehicle.Bus.PassengerCameras
+                    .Select(
+                        static camera =>
+                            new RuntimePassengerCameraInfo(
+                                camera.X,
+                                camera.Z,
+                                camera.Y,
+                                camera.EyeDistance,
+                                camera.FieldOfViewDegrees,
+                                camera.HeadingDegrees,
+                                camera.PitchDegrees))
+                    .ToArray(),
+                vehicle.Bus.StandardDriverCameraIndex,
+                vehicle.Bus.OutsideCameraCenter is null
+                    ? null
+                    : new RuntimeOutsideCameraCenterInfo(
+                        vehicle.Bus.OutsideCameraCenter.X,
+                        vehicle.Bus.OutsideCameraCenter.Z,
+                        vehicle.Bus.OutsideCameraCenter.Y),
                 vehicle.DriverPosition is null
                     ? null
                     : new RuntimeDriverPositionInfo(

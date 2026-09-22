@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/OmsiCompat.Core/OmsiCompat.Core.csproj" />
     <ProjectReference Include="../../src/OmsiCompat.Map/OmsiCompat.Map.csproj" />
+    <ProjectReference Include="../../src/OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
     <ProjectReference Include="../../src/OMSICompatible.World/OMSICompatible.World.csproj" />
   </ItemGroup>
 </Project>

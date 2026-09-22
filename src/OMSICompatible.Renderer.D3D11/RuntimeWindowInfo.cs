@@ -127,6 +127,20 @@ public sealed record RuntimeDriverCameraInfo(
     double HeadingDegrees,
     double PitchDegrees);
 
+public sealed record RuntimePassengerCameraInfo(
+    double X,
+    double Y,
+    double Z,
+    double EyeDistance,
+    double FieldOfViewDegrees,
+    double HeadingDegrees,
+    double PitchDegrees);
+
+public sealed record RuntimeOutsideCameraCenterInfo(
+    double X,
+    double Y,
+    double Z);
+
 public sealed record RuntimeDriverPositionInfo(
     double X,
     double Y,
@@ -139,6 +153,9 @@ public sealed record RuntimeVehicleInfo(
     string RelativePath,
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
     IReadOnlyList<RuntimeDriverCameraInfo> DriverCameras,
+    IReadOnlyList<RuntimePassengerCameraInfo> PassengerCameras,
+    int StandardDriverCameraIndex,
+    RuntimeOutsideCameraCenterInfo? OutsideCameraCenter,
     RuntimeDriverPositionInfo? DriverPosition,
     int ProtectedMeshCount);
 

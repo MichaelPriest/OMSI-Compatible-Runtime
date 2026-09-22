@@ -26,6 +26,13 @@ public sealed class D3D11RenderWindow : Form
         public Matrix4x4 World;
     }
 
+    private enum RuntimeVehicleViewMode
+    {
+        Driver,
+        Passenger,
+        Exterior
+    }
+
     private static readonly FeatureLevel[] RequestedFeatureLevels =
     [
         FeatureLevel.Level_11_1,
@@ -43,8 +50,10 @@ public sealed class D3D11RenderWindow : Form
     private bool _mouseLooking;
     private bool _mouseDriveMode;
     private bool _driveMode = true;
-    private bool _driverView = true;
+    private RuntimeVehicleViewMode _vehicleViewMode =
+        RuntimeVehicleViewMode.Driver;
     private int _driverCameraIndex;
+    private int _passengerCameraIndex;
     private float _mouseDriveAccelerator;
     private float _mouseDriveBrake;
     private float _mouseDriveSteering;
@@ -143,6 +152,10 @@ public sealed class D3D11RenderWindow : Form
     {
         _windowInfo = windowInfo;
         _vehicle = new RuntimeDriveVehicle(windowInfo.Tiles);
+        _driverCameraIndex =
+            Math.Max(
+                windowInfo.Vehicle?.StandardDriverCameraIndex ?? 0,
+                0);
 
         Text = $"OMSI Compatible Runtime — {windowInfo.WorldName}";
         ClientSize = new System.Drawing.Size(1280, 720);
@@ -1898,13 +1911,17 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawVehicle()
     {
+        var interiorView =
+            _vehicleViewMode !=
+            RuntimeVehicleViewMode.Exterior;
+
         var geometry =
-            _driverView
+            interiorView
                 ? _vehicleInteriorGeometry
                 : _vehicleExteriorGeometry;
 
         var vertexBuffer =
-            _driverView
+            interiorView
                 ? _vehicleInteriorVertexBuffer
                 : _vehicleExteriorVertexBuffer;
 
@@ -2064,7 +2081,8 @@ public sealed class D3D11RenderWindow : Form
                 _terrainGeometry);
         }
 
-        if (_driverView &&
+        if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Driver &&
             _windowInfo.Vehicle?.DriverCameras.Count > 0)
         {
             _driverCameraIndex =
@@ -2080,9 +2098,44 @@ public sealed class D3D11RenderWindow : Form
                 _terrainGeometry);
         }
 
+        if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Passenger &&
+            _windowInfo.Vehicle?.PassengerCameras.Count > 0)
+        {
+            _passengerCameraIndex =
+                Math.Clamp(
+                    _passengerCameraIndex,
+                    0,
+                    _windowInfo.Vehicle.PassengerCameras.Count - 1);
+
+            return _vehicle.CreatePassengerViewProjection(
+                _windowInfo.Vehicle.PassengerCameras[
+                    _passengerCameraIndex],
+                aspect,
+                _terrainGeometry);
+        }
+
+        if (_vehicleViewMode !=
+                RuntimeVehicleViewMode.Exterior &&
+            _windowInfo.Vehicle?.DriverCameras.Count > 0)
+        {
+            _driverCameraIndex =
+                Math.Clamp(
+                    _windowInfo.Vehicle.StandardDriverCameraIndex,
+                    0,
+                    _windowInfo.Vehicle.DriverCameras.Count - 1);
+
+            return _vehicle.CreateDriverViewProjection(
+                _windowInfo.Vehicle.DriverCameras[
+                    _driverCameraIndex],
+                aspect,
+                _terrainGeometry);
+        }
+
         return _vehicle.CreateChaseViewProjection(
             aspect,
-            _terrainGeometry);
+            _terrainGeometry,
+            _windowInfo.Vehicle?.OutsideCameraCenter);
     }
 
     private void UpdateSimulation()
@@ -2179,7 +2232,29 @@ public sealed class D3D11RenderWindow : Form
         if (e.KeyCode == Keys.F1)
         {
             _driveMode = true;
-            _driverView = true;
+            _vehicleViewMode =
+                RuntimeVehicleViewMode.Driver;
+
+            if (_windowInfo.Vehicle is not null)
+            {
+                _driverCameraIndex =
+                    Math.Max(
+                        _windowInfo.Vehicle.StandardDriverCameraIndex,
+                        0);
+            }
+
+            UpdateCaption();
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        if (e.KeyCode == Keys.F2)
+        {
+            _driveMode = true;
+            _vehicleViewMode =
+                _windowInfo.Vehicle?.PassengerCameras.Count > 0
+                    ? RuntimeVehicleViewMode.Passenger
+                    : RuntimeVehicleViewMode.Driver;
             UpdateCaption();
             e.SuppressKeyPress = true;
             return;
@@ -2188,7 +2263,21 @@ public sealed class D3D11RenderWindow : Form
         if (e.KeyCode == Keys.F3)
         {
             _driveMode = true;
-            _driverView = false;
+            _vehicleViewMode =
+                RuntimeVehicleViewMode.Exterior;
+            UpdateCaption();
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        if (e.KeyCode == Keys.F4)
+        {
+            if (_mouseDriveMode)
+            {
+                DisableMouseDriveMode();
+            }
+
+            _driveMode = false;
             UpdateCaption();
             e.SuppressKeyPress = true;
             return;
@@ -2209,6 +2298,17 @@ public sealed class D3D11RenderWindow : Form
 
         if (_driveMode)
         {
+            if (e.KeyCode is Keys.Left or Keys.Right)
+            {
+                CycleInteriorCamera(
+                    e.KeyCode == Keys.Left
+                        ? 1
+                        : -1);
+                UpdateCaption();
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.O)
             {
                 ToggleMouseDriveMode();
@@ -2273,6 +2373,54 @@ public sealed class D3D11RenderWindow : Form
             _camera.Reset(
                 _terrainGeometry);
         }
+    }
+
+    private void CycleInteriorCamera(
+        int direction)
+    {
+        var vehicle =
+            _windowInfo.Vehicle;
+
+        if (vehicle is null)
+        {
+            return;
+        }
+
+        if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Driver &&
+            vehicle.DriverCameras.Count > 0)
+        {
+            _driverCameraIndex =
+                WrapCameraIndex(
+                    _driverCameraIndex + direction,
+                    vehicle.DriverCameras.Count);
+            return;
+        }
+
+        if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Passenger &&
+            vehicle.PassengerCameras.Count > 0)
+        {
+            _passengerCameraIndex =
+                WrapCameraIndex(
+                    _passengerCameraIndex + direction,
+                    vehicle.PassengerCameras.Count);
+        }
+    }
+
+    private static int WrapCameraIndex(
+        int index,
+        int count)
+    {
+        if (count <= 0)
+        {
+            return 0;
+        }
+
+        index %= count;
+        return index < 0
+            ? index + count
+            : index;
     }
 
     private void OnRuntimeKeyUp(
@@ -2524,9 +2672,15 @@ public sealed class D3D11RenderWindow : Form
                 : "KEYBOARD: Num8 throttle · Num2 brake · Num+ release · Num4/6 steer · Num5 center · O mouse";
 
         var vehicleView =
-            _driverView
-                ? "F1 cockpit"
-                : "F3 exterior";
+            _vehicleViewMode switch
+            {
+                RuntimeVehicleViewMode.Passenger =>
+                    "F2 passenger",
+                RuntimeVehicleViewMode.Exterior =>
+                    "F3 exterior",
+                _ =>
+                    "F1 cockpit"
+            };
 
         var control = _driveMode
             ? $"OMSI DRIVE · {vehicleView} · {_vehicle.SpeedKph:0} km/h · gear {gear} · " +
@@ -2534,8 +2688,8 @@ public sealed class D3D11RenderWindow : Form
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              $"{driveInputMode} · F1/F3 view · D/N/R · E/M · Num. park · Tab free cam"
-            : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · Tab OMSI drive";
+              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · F4 free cam · D/N/R · E/M · Num. park · Tab free cam"
+            : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · F1/F2/F3 OMSI view · Tab OMSI drive";
 
         Text =
             $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
