@@ -19,6 +19,8 @@ public sealed record OmsiContentRoot
 
     public string TexturesPath => Path.Combine(RootPath, "Texture");
 
+    public string ProgramPath => Path.Combine(RootPath, "program");
+
     public static bool TryCreate(string? path, out OmsiContentRoot? contentRoot, out string error)
     {
         contentRoot = null;
