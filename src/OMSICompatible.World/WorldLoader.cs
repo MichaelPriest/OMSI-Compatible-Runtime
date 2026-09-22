@@ -302,7 +302,12 @@ public static class WorldLoader
 
     private static WorldVector3 ToWorldVector(OmsiSourceVector3 source)
     {
-        return new WorldVector3(source.X, source.Y, source.Z);
+        // OMSI placement files use X/Y on the ground plane and Z as height.
+        // The renderer uses X/Z on the ground plane and Y as height.
+        return new WorldVector3(
+            source.X,
+            source.Z,
+            source.Y);
     }
 
     private static WorldAssetKind Classify(string extension)
