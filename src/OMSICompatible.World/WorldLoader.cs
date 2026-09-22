@@ -11,7 +11,8 @@ public static class WorldLoader
     public static WorldDefinition Load(
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
-        IProgress<WorldLoadProgress>? progress = null)
+        IProgress<WorldLoadProgress>? progress = null,
+        WorldLoadOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(contentRoot);
         ArgumentNullException.ThrowIfNull(map);
@@ -20,9 +21,18 @@ public static class WorldLoader
             new WorldLoadProgress(
                 8,
                 "Lendo mapa",
-                "Descobrindo tiles e estrutura do mundo..."));
+                options.LoadEntireMap
+                    ? "Descobrindo tiles e estrutura do mundo..."
+                    : $"Preparando streaming · {sourceTiles.Count:N0}/{allSourceTiles.Count:N0} tiles ativos..."));
 
-        var sourceTiles = MapTileDiscovery.Discover(map);
+        var allSourceTiles = MapTileDiscovery.Discover(map);
+        options ??= new WorldLoadOptions();
+
+        var sourceTiles =
+            SelectSourceTiles(
+                allSourceTiles,
+                options);
+
         var tiles = new List<WorldTile>(sourceTiles.Count);
         var tileIndex = 0;
 
@@ -193,6 +203,10 @@ public static class WorldLoader
         return new WorldDefinition(
             map.FolderName,
             map.DirectoryPath,
+            allSourceTiles.Count,
+            options.LoadEntireMap
+                ? null
+                : options.SafeActiveTileRadius,
             tiles.ToArray(),
             assets,
             allObjects,
@@ -204,6 +218,49 @@ public static class WorldLoader
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
             bounds);
+    }
+
+    private static IReadOnlyList<OmsiMapTileInfo>
+        SelectSourceTiles(
+            IReadOnlyList<OmsiMapTileInfo> allSourceTiles,
+            WorldLoadOptions options)
+    {
+        if (options.LoadEntireMap ||
+            !options.HasCenter)
+        {
+            return allSourceTiles;
+        }
+
+        var radius =
+            options.SafeActiveTileRadius;
+
+        var centerX =
+            options.CenterTileX!.Value;
+
+        var centerY =
+            options.CenterTileY!.Value;
+
+        return allSourceTiles
+            .Where(
+                tile =>
+                    Math.Abs(
+                        tile.Coordinate.X -
+                        centerX) <= radius &&
+                    Math.Abs(
+                        tile.Coordinate.Y -
+                        centerY) <= radius)
+            .OrderBy(
+                tile =>
+                    Math.Max(
+                        Math.Abs(
+                            tile.Coordinate.X -
+                            centerX),
+                        Math.Abs(
+                            tile.Coordinate.Y -
+                            centerY)))
+            .ThenBy(static tile => tile.Coordinate.Y)
+            .ThenBy(static tile => tile.Coordinate.X)
+            .ToArray();
     }
 
     private static IReadOnlyList<WorldGroundTexture>
