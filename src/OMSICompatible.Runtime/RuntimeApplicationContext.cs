@@ -14,8 +14,15 @@ internal sealed class RuntimeApplicationContext :
     private readonly OmsiBusInfo _bus;
     private readonly OmsiMapEntryPoint _entryPoint;
     private readonly LoadingForm _loading;
+    private readonly SemaphoreSlim _streamingGate =
+        new(1, 1);
 
     private D3D11RenderWindow? _runtimeWindow;
+    private OmsiVehicleAsset? _vehicleAsset;
+    private (int X, int Y)? _pendingStreamingCenter;
+    private int _loadedCenterX;
+    private int _loadedCenterY;
+    private bool _closing;
 
     public RuntimeApplicationContext(
         OmsiContentRoot contentRoot,
@@ -27,6 +34,10 @@ internal sealed class RuntimeApplicationContext :
         _map = map;
         _bus = bus;
         _entryPoint = entryPoint;
+        _loadedCenterX =
+            entryPoint.Tile.X;
+        _loadedCenterY =
+            entryPoint.Tile.Y;
 
         _loading =
             new LoadingForm(
@@ -104,6 +115,9 @@ internal sealed class RuntimeApplicationContext :
             var vehicle =
                 await vehicleTask;
 
+            _vehicleAsset =
+                vehicle;
+
             _loading.SetStage(
                 90,
                 "Preparando renderização",
@@ -125,6 +139,9 @@ internal sealed class RuntimeApplicationContext :
                 new D3D11RenderWindow(
                     runtimeInfo);
 
+            _runtimeWindow.StreamingCenterChanged +=
+                OnStreamingCenterChanged;
+
             _runtimeWindow.Shown +=
                 (_, _) =>
                 {
@@ -139,6 +156,11 @@ internal sealed class RuntimeApplicationContext :
             _runtimeWindow.FormClosed +=
                 (_, _) =>
                 {
+                    _closing = true;
+
+                    _runtimeWindow.StreamingCenterChanged -=
+                        OnStreamingCenterChanged;
+
                     _runtimeWindow.Dispose();
                     _runtimeWindow = null;
 
@@ -161,6 +183,96 @@ internal sealed class RuntimeApplicationContext :
 
             _loading.ShowFailure(
                 ex.Message);
+        }
+    }
+
+    private async void OnStreamingCenterChanged(
+        int tileX,
+        int tileY)
+    {
+        if (_closing ||
+            _vehicleAsset is null)
+        {
+            return;
+        }
+
+        _pendingStreamingCenter =
+            (tileX, tileY);
+
+        if (!await _streamingGate.WaitAsync(0))
+        {
+            return;
+        }
+
+        try
+        {
+            while (!_closing &&
+                   _pendingStreamingCenter is
+                       { } requested)
+            {
+                _pendingStreamingCenter =
+                    null;
+
+                if (requested.X ==
+                        _loadedCenterX &&
+                    requested.Y ==
+                        _loadedCenterY)
+                {
+                    continue;
+                }
+
+                Console.WriteLine(
+                    $"[streaming] Loading tile window centered at {requested.X},{requested.Y}...");
+
+                var streamedWorld =
+                    await Task.Run(
+                        () =>
+                            WorldLoader.Load(
+                                _contentRoot,
+                                _map,
+                                progress: null,
+                                new WorldLoadOptions(
+                                    requested.X,
+                                    requested.Y,
+                                    ActiveTileRadius: 1,
+                                    LoadEntireMap: false)));
+
+                if (_closing ||
+                    _runtimeWindow is null ||
+                    _runtimeWindow.IsDisposed ||
+                    _vehicleAsset is null)
+                {
+                    return;
+                }
+
+                var runtimeInfo =
+                    BuildRuntimeInfo(
+                        streamedWorld,
+                        _vehicleAsset,
+                        _entryPoint,
+                        _contentRoot.RootPath);
+
+                _runtimeWindow.ApplyStreamedWorld(
+                    runtimeInfo);
+
+                _loadedCenterX =
+                    requested.X;
+
+                _loadedCenterY =
+                    requested.Y;
+
+                Console.WriteLine(
+                    $"[streaming] Active {streamedWorld.Tiles.Count:N0}/{streamedWorld.TotalTileCount:N0} tiles around {requested.X},{requested.Y}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"[streaming] {ex}");
+        }
+        finally
+        {
+            _streamingGate.Release();
         }
     }
 
