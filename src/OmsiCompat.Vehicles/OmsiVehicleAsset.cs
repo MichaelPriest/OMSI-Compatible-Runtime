@@ -19,7 +19,9 @@ public sealed record OmsiVehicleMaterial(
     string? MaterialChangeVariable,
     string? EnvMapTexturePath,
     double EnvMapStrength,
-    string? EnvMapMaskTexturePath);
+    string? EnvMapMaskTexturePath,
+    string? BumpMapTexturePath,
+    double BumpMapStrength);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
