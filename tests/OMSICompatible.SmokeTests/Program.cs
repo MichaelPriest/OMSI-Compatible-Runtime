@@ -19,6 +19,10 @@ try
         Path.Combine(
             vehicleDirectory,
             "script");
+    var vehicleModelDirectory =
+        Path.Combine(
+            vehicleDirectory,
+            "model");
     var programDirectory =
         Path.Combine(
             root,
@@ -29,6 +33,7 @@ try
     Directory.CreateDirectory(splineDirectory);
     Directory.CreateDirectory(vehicleDirectory);
     Directory.CreateDirectory(vehicleScriptDirectory);
+    Directory.CreateDirectory(vehicleModelDirectory);
     Directory.CreateDirectory(programDirectory);
 
     File.WriteAllText(
@@ -240,8 +245,26 @@ try
         Encoding.Unicode);
 
     File.WriteAllText(
+        Path.Combine(
+            vehicleModelDirectory,
+            "model.cfg"),
+        Lines(
+            "[mesh]",
+            "triangle.o3d",
+            "[viewpoint]",
+            "3"),
+        Encoding.Unicode);
+
+    WriteSyntheticO3d(
+        Path.Combine(
+            vehicleModelDirectory,
+            "triangle.o3d"));
+
+    File.WriteAllText(
         Path.Combine(vehicleDirectory, "Synthetic.bus"),
         Lines(
+            "[model]",
+            @"model\model.cfg",
             "[friendlyname]",
             "Synthetic",
             "Camera Bus",
@@ -344,6 +367,24 @@ try
     Require(buses.Count == 1, $"Expected 1 bus, found {buses.Count}.");
 
     var bus = buses[0];
+
+    var vehicleAsset =
+        OmsiVehicleAssetLoader.Load(
+            contentRoot,
+            bus);
+
+    Require(
+        vehicleAsset.Meshes.Count == 1 &&
+        vehicleAsset.RenderableMeshCount == 1 &&
+        vehicleAsset.ProtectedMeshCount == 0 &&
+        vehicleAsset.FailedMeshCount == 0,
+        "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
+
+    Require(
+        vehicleAsset.Meshes[0].Positions.Length == 9 &&
+        vehicleAsset.Meshes[0].Indices.Length == 3,
+        "Synthetic OMSI vehicle geometry counts are incorrect.");
+
     Require(
         bus.ScriptManifest.ScriptFiles.Count == 1 &&
         bus.ScriptManifest.VariableLists.Count == 2 &&
@@ -702,6 +743,89 @@ finally
 static string Lines(params string[] values)
 {
     return string.Join(Environment.NewLine, values) + Environment.NewLine;
+}
+
+static void WriteSyntheticO3d(string path)
+{
+    using var stream =
+        File.Create(path);
+
+    using var writer =
+        new BinaryWriter(stream);
+
+    writer.Write((byte)0x84);
+    writer.Write((byte)0x19);
+    writer.Write((byte)3);
+
+    writer.Write((byte)0x17);
+    writer.Write((ushort)3);
+
+    static void Vertex(
+        BinaryWriter writer,
+        float x,
+        float y,
+        float z,
+        float u,
+        float v)
+    {
+        writer.Write(x);
+        writer.Write(y);
+        writer.Write(z);
+
+        writer.Write(0.0f);
+        writer.Write(0.0f);
+        writer.Write(1.0f);
+
+        writer.Write(u);
+        writer.Write(v);
+    }
+
+    Vertex(writer, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    Vertex(writer, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+    Vertex(writer, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f);
+
+    writer.Write((byte)0x49);
+    writer.Write((ushort)1);
+    writer.Write((ushort)0);
+    writer.Write((ushort)1);
+    writer.Write((ushort)2);
+    writer.Write((ushort)0);
+
+    writer.Write((byte)0x26);
+    writer.Write((ushort)1);
+
+    writer.Write(0.7f);
+    writer.Write(0.7f);
+    writer.Write(0.7f);
+    writer.Write(1.0f);
+
+    writer.Write(0.0f);
+    writer.Write(0.0f);
+    writer.Write(0.0f);
+
+    writer.Write(0.0f);
+    writer.Write(0.0f);
+    writer.Write(0.0f);
+
+    writer.Write(0.0f);
+    writer.Write((byte)0);
+
+    writer.Write((byte)0x79);
+
+    for (var row = 0;
+         row < 4;
+         row++)
+    {
+        for (var column = 0;
+             column < 4;
+             column++)
+        {
+            writer.Write(
+                row == column
+                    ? 1.0f
+                    : 0.0f);
+        }
+    }
 }
 
 static void WriteTerrain(string path)
