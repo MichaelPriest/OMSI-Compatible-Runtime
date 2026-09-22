@@ -689,7 +689,10 @@ internal static class RuntimeObjectGeometryBuilder
             double.IsFinite(parsed) &&
             parsed > 0)
         {
-            return parsed;
+            return Math.Clamp(
+                parsed,
+                minimum,
+                maximum);
         }
 
         return minimum +
