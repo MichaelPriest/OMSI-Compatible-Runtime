@@ -101,6 +101,8 @@ public sealed record WorldBounds(
 public sealed record WorldDefinition(
     string Name,
     string SourceDirectory,
+    int TotalTileCount,
+    int? ActiveTileRadius,
     IReadOnlyList<WorldTile> Tiles,
     IReadOnlyList<WorldAssetReference> Assets,
     IReadOnlyList<WorldObjectPlacement> Objects,
