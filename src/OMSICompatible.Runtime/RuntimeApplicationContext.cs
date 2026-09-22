@@ -13,6 +13,7 @@ internal sealed class RuntimeApplicationContext :
     private readonly OmsiMapInfo _map;
     private readonly OmsiBusInfo _bus;
     private readonly OmsiMapEntryPoint _entryPoint;
+    private readonly bool _externalLoading;
     private readonly LoadingForm _loading;
     private readonly SemaphoreSlim _streamingGate =
         new(1, 1);
@@ -28,12 +29,15 @@ internal sealed class RuntimeApplicationContext :
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
         OmsiBusInfo bus,
-        OmsiMapEntryPoint entryPoint)
+        OmsiMapEntryPoint entryPoint,
+        bool externalLoading)
     {
         _contentRoot = contentRoot;
         _map = map;
         _bus = bus;
         _entryPoint = entryPoint;
+        _externalLoading =
+            externalLoading;
         _loadedCenterX =
             entryPoint.Tile.X;
         _loadedCenterY =
@@ -44,6 +48,22 @@ internal sealed class RuntimeApplicationContext :
                 map.FolderName,
                 ResolveMapImage(
                     map.DirectoryPath));
+
+        if (_externalLoading)
+        {
+            _loading.Opacity = 0.0;
+            _loading.ShowInTaskbar = false;
+            _loading.StartPosition =
+                FormStartPosition.Manual;
+            _loading.Location =
+                new Point(
+                    -32000,
+                    -32000);
+            _loading.Size =
+                new Size(
+                    1,
+                    1);
+        }
 
         MainForm = _loading;
 
@@ -69,16 +89,15 @@ internal sealed class RuntimeApplicationContext :
 
         try
         {
-            _loading.SetStage(
-                3,
-                "Inicializando",
-                "Preparando runtime x64...");
+            ReportProgress(
+                new WorldLoadProgress(
+                    3,
+                    "Inicializando",
+                    "Preparando runtime x64..."));
 
             var progress =
                 new Progress<WorldLoadProgress>(
-                    update =>
-                        _loading.UpdateProgress(
-                            update));
+                    ReportProgress);
 
             var worldTask =
                 Task.Run(
@@ -93,10 +112,11 @@ internal sealed class RuntimeApplicationContext :
                                 ActiveTileRadius: 1,
                                 LoadEntireMap: false)));
 
-            _loading.SetStage(
-                58,
-                "Carregando ônibus",
-                $"Lendo {_bus.DisplayName} e seus modelos OMSI...");
+            ReportProgress(
+                new WorldLoadProgress(
+                    58,
+                    "Carregando ônibus",
+                    $"Lendo {_bus.DisplayName} e seus modelos OMSI..."));
 
             var vehicleTask =
                 Task.Run(
@@ -118,10 +138,11 @@ internal sealed class RuntimeApplicationContext :
             _vehicleAsset =
                 vehicle;
 
-            _loading.SetStage(
-                90,
-                "Preparando renderização",
-                $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · {vehicle.RenderableMeshCount:N0} meshes do ônibus...");
+            ReportProgress(
+                new WorldLoadProgress(
+                    90,
+                    "Preparando renderização",
+                    $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · {vehicle.RenderableMeshCount:N0} meshes do ônibus..."));
 
             var runtimeInfo =
                 BuildRuntimeInfo(
@@ -130,10 +151,11 @@ internal sealed class RuntimeApplicationContext :
                     _entryPoint,
                     _contentRoot.RootPath);
 
-            _loading.SetStage(
-                96,
-                "Inicializando Direct3D 11",
-                "Criando dispositivo, shaders e recursos gráficos...");
+            ReportProgress(
+                new WorldLoadProgress(
+                    96,
+                    "Inicializando Direct3D 11",
+                    "Criando dispositivo, shaders e recursos gráficos..."));
 
             _runtimeWindow =
                 new D3D11RenderWindow(
@@ -145,10 +167,14 @@ internal sealed class RuntimeApplicationContext :
             _runtimeWindow.Shown +=
                 (_, _) =>
                 {
-                    _loading.SetStage(
-                        100,
-                        "Pronto",
-                        "Entrando no mundo...");
+                    ReportProgress(
+                        new WorldLoadProgress(
+                            100,
+                            "Pronto",
+                            "Entrando no mundo..."));
+
+                    Console.WriteLine(
+                        "[runtime-ready]");
 
                     _loading.Hide();
                 };
@@ -181,10 +207,58 @@ internal sealed class RuntimeApplicationContext :
         {
             Console.Error.WriteLine(ex);
 
-            _loading.ShowFailure(
-                ex.Message);
+            ReportProgress(
+                new WorldLoadProgress(
+                    100,
+                    "Falha ao iniciar",
+                    ex.Message));
+
+            if (_externalLoading)
+            {
+                _loading.Close();
+                ExitThread();
+            }
+            else
+            {
+                _loading.ShowFailure(
+                    ex.Message);
+            }
         }
     }
+
+    private void ReportProgress(
+        WorldLoadProgress progress)
+    {
+        if (!_loading.IsDisposed)
+        {
+            _loading.UpdateProgress(
+                progress);
+        }
+
+        var stage =
+            SanitizeProgressField(
+                progress.Stage);
+
+        var detail =
+            SanitizeProgressField(
+                progress.Detail);
+
+        Console.WriteLine(
+            $"[runtime-progress]|{Math.Clamp(progress.Percent, 0, 100)}|{stage}|{detail}");
+    }
+
+    private static string SanitizeProgressField(
+        string value) =>
+        value
+            .Replace(
+                '|',
+                '/')
+            .Replace(
+                '\r',
+                ' ')
+            .Replace(
+                '\n',
+                ' ');
 
     private async void OnStreamingCenterChanged(
         int tileX,
