@@ -52,6 +52,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
     private readonly OmsiScriptRuntime? _scriptRuntime;
+    private readonly OmsiSystemMacroHandler? _previousSystemMacroHandler;
     private readonly HashSet<string> _reportedUnhandledSystemMacros =
         new(
             StringComparer.Ordinal);
@@ -181,9 +182,13 @@ public sealed class D3D11RenderWindow : Form
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
+        _previousSystemMacroHandler =
+            _scriptRuntime?.SystemMacroHandler;
 
         if (_scriptRuntime is not null)
         {
+            _scriptRuntime.SystemMacroHandler =
+                HandleOmsiSystemMacro;
             _scriptRuntime.UnhandledSystemMacro +=
                 OnUnhandledSystemMacro;
             _scriptRuntime.DebugMessageRequested +=
@@ -2934,6 +2939,84 @@ public sealed class D3D11RenderWindow : Form
             now);
     }
 
+    private bool HandleOmsiSystemMacro(
+        string name,
+        OmsiScriptCallbackContext context)
+    {
+        if (name.Equals(
+                "NrSpecRandom",
+                StringComparison.Ordinal))
+        {
+            var selector =
+                (int)Math.Truncate(
+                    context.PopFloat());
+
+            context.PushFloat(
+                ResolveNrSpecRandom(
+                    selector));
+
+            return true;
+        }
+
+        return _previousSystemMacroHandler?.Invoke(
+                   name,
+                   context) ==
+               true;
+    }
+
+    private double ResolveNrSpecRandom(
+        int selector)
+    {
+        const uint offsetBasis =
+            2166136261;
+        const uint prime =
+            16777619;
+
+        var hash =
+            offsetBasis;
+
+        var identity =
+            _windowInfo.Vehicle?.RelativePath ??
+            "vehicle";
+
+        foreach (var character in
+                 identity)
+        {
+            var normalized =
+                char.ToUpperInvariant(
+                    character);
+
+            hash ^=
+                (byte)(normalized & 0xFF);
+            hash *=
+                prime;
+
+            hash ^=
+                (byte)(normalized >> 8);
+            hash *=
+                prime;
+        }
+
+        unchecked
+        {
+            hash ^=
+                (uint)selector;
+            hash *=
+                prime;
+
+            hash ^=
+                hash >> 13;
+            hash *=
+                0x5BD1E995u;
+            hash ^=
+                hash >> 15;
+        }
+
+        return
+            (hash & 0x00FFFFFFu) /
+            16777216.0;
+    }
+
     private void OnUnhandledSystemMacro(
         string name)
     {
@@ -3572,6 +3655,8 @@ public sealed class D3D11RenderWindow : Form
         {
             if (_scriptRuntime is not null)
             {
+                _scriptRuntime.SystemMacroHandler =
+                    _previousSystemMacroHandler;
                 _scriptRuntime.UnhandledSystemMacro -=
                     OnUnhandledSystemMacro;
                 _scriptRuntime.DebugMessageRequested -=
