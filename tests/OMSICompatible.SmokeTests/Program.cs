@@ -18,43 +18,41 @@ try
 
     File.WriteAllText(
         Path.Combine(mapDirectory, "global.cfg"),
-        """
-        [map]
-        0
-        0
-        tile_0_0.map
-        """);
+        Lines(
+            "[map]",
+            "0",
+            "0",
+            "tile_0_0.map"));
 
     File.WriteAllText(
         Path.Combine(mapDirectory, "tile_0_0.map"),
-        """
-        [object]
-        0
-        SceneryobjectsSyntheticobject.sco
-        1001
-        10.5
-        20.25
-        3
-        90
-        2
-        1
-        0
-
-        [spline]
-        0
-        SplinesSyntheticoad.sli
-        2001
-        -1
-        -1
-        5
-        7
-        6
-        45
-        100
-        0
-        1.5
-        2.5
-        """);
+        Lines(
+            "[object]",
+            "0",
+            @"Sceneryobjects\Synthetic\object.sco",
+            "1001",
+            "10.5",
+            "20.25",
+            "3",
+            "90",
+            "2",
+            "1",
+            "0",
+            "",
+            "[spline]",
+            "0",
+            @"Splines\Synthetic\road.sli",
+            "2001",
+            "-1",
+            "-1",
+            "5",
+            "7",
+            "6",
+            "45",
+            "100",
+            "0",
+            "1.5",
+            "2.5"));
 
     // This tile exists on disk but is intentionally not declared in global.cfg.
     File.WriteAllText(
@@ -71,11 +69,11 @@ try
 
     File.WriteAllText(
         Path.Combine(sceneryDirectory, "object.sco"),
-        "[friendlyname]\nSynthetic Object\n");
+        Lines("[friendlyname]", "Synthetic Object"));
 
     File.WriteAllText(
         Path.Combine(splineDirectory, "road.sli"),
-        "[friendlyname]\nSynthetic Road\n");
+        Lines("[friendlyname]", "Synthetic Road"));
 
     Require(
         OmsiContentRoot.TryCreate(root, out var contentRoot, out var contentError) &&
@@ -123,6 +121,11 @@ finally
     {
         Directory.Delete(root, recursive: true);
     }
+}
+
+static string Lines(params string[] values)
+{
+    return string.Join(Environment.NewLine, values) + Environment.NewLine;
 }
 
 static void Require(bool condition, string message)
