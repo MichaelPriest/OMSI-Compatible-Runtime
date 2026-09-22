@@ -37,7 +37,9 @@ public sealed class D3D11RenderWindow : Form
         public float MaterialChangeStrength;
         public float EnvMapStrength;
         public float EnvMapMaskEnabled;
-        public Vector3 Padding;
+        public float BumpMapStrength;
+        public float Padding0;
+        public float Padding1;
     }
 
     private enum RuntimeVehicleViewMode
@@ -999,7 +1001,8 @@ public sealed class D3D11RenderWindow : Form
                             batch.LightMapTexturePath,
                             batch.MaterialChangeTexturePath,
                             batch.EnvMapTexturePath,
-                            batch.EnvMapMaskTexturePath
+                            batch.EnvMapMaskTexturePath,
+                            batch.BumpMapTexturePath
                         })
                 .Where(
                     static path =>
@@ -2466,8 +2469,13 @@ public sealed class D3D11RenderWindow : Form
                     EnvMapMaskEnabled =
                         ResolveVehicleEnvMapMaskEnabled(
                             batch),
-                    Padding =
-                        Vector3.Zero
+                    BumpMapStrength =
+                        ResolveVehicleBumpMapStrength(
+                            batch),
+                    Padding0 =
+                        0.0f,
+                    Padding1 =
+                        0.0f
                 };
 
             _vehicleMaterialBuffer.SetData(
@@ -2505,6 +2513,9 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.PSUnsetShaderResource(
                 5);
 
+            _deviceContext.PSUnsetShaderResource(
+                6);
+
             if (TryGetVehicleTextureView(
                     batch.EnvMapTexturePath,
                     out var envMapView))
@@ -2521,6 +2532,15 @@ public sealed class D3D11RenderWindow : Form
                 _deviceContext.PSSetShaderResource(
                     5,
                     envMapMaskView!);
+            }
+
+            if (TryGetVehicleTextureView(
+                    batch.BumpMapTexturePath,
+                    out var bumpMapView))
+            {
+                _deviceContext.PSSetShaderResource(
+                    6,
+                    bumpMapView!);
             }
 
             if (TryGetVehicleTextureView(
@@ -2597,7 +2617,27 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(3);
         _deviceContext.PSUnsetShaderResource(4);
         _deviceContext.PSUnsetShaderResource(5);
+        _deviceContext.PSUnsetShaderResource(6);
         _deviceContext.RSSetState(null);
+    }
+
+    private float ResolveVehicleBumpMapStrength(
+        RuntimeObjectBatch batch)
+    {
+        if (string.IsNullOrWhiteSpace(
+                batch.BumpMapTexturePath) ||
+            batch.BumpMapStrength <= 0.0 ||
+            !TryGetVehicleTextureView(
+                batch.BumpMapTexturePath,
+                out _))
+        {
+            return 0.0f;
+        }
+
+        return (float)Math.Clamp(
+            batch.BumpMapStrength,
+            0.0,
+            10.0);
     }
 
     private float ResolveVehicleEnvMapStrength(
