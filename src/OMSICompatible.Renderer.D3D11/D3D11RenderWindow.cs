@@ -33,8 +33,8 @@ public sealed class D3D11RenderWindow : Form
         _windowInfo = windowInfo;
 
         Text = $"OMSI Compatible Runtime — {windowInfo.WorldName}";
-        ClientSize = new Size(1280, 720);
-        MinimumSize = new Size(960, 540);
+        ClientSize = new System.Drawing.Size(1280, 720);
+        MinimumSize = new System.Drawing.Size(960, 540);
         StartPosition = FormStartPosition.CenterScreen;
 
         _renderTimer = new System.Windows.Forms.Timer
