@@ -2748,6 +2748,13 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime.SetLocal(
             "Velocity_Ground",
             _vehicle.SpeedKph);
+
+        _scriptRuntime.SetLocal(
+            "Axle_Steering_0_L",
+            _vehicle.SteeringAngleRadians);
+        _scriptRuntime.SetLocal(
+            "Axle_Steering_0_R",
+            _vehicle.SteeringAngleRadians);
     }
 
     private void OnRuntimeKeyDown(
