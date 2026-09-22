@@ -18,10 +18,15 @@ internal static class Program
         var mapName = GetOption(args, "--map");
         var headless = HasFlag(args, "--headless");
 
-        if (!OmsiContentRoot.TryCreate(contentPath, out var contentRoot, out var contentError) || contentRoot is null)
+        if (!OmsiContentRoot.TryCreate(
+                contentPath,
+                out var contentRoot,
+                out var contentError) ||
+            contentRoot is null)
         {
             Console.Error.WriteLine(contentError);
-            Console.Error.WriteLine("Usage: OMSICompatible.Runtime --content <path> [--map <folder>] [--headless]");
+            Console.Error.WriteLine(
+                "Usage: OMSICompatible.Runtime --content <path> [--map <folder>] [--headless]");
             return 2;
         }
 
@@ -41,7 +46,10 @@ internal static class Program
         }
 
         var selectedMap = maps.FirstOrDefault(
-            map => string.Equals(map.FolderName, mapName, StringComparison.OrdinalIgnoreCase));
+            map => string.Equals(
+                map.FolderName,
+                mapName,
+                StringComparison.OrdinalIgnoreCase));
 
         if (selectedMap is null)
         {
@@ -52,11 +60,18 @@ internal static class Program
         var globalSummary = GlobalConfigProbe.ReadSummary(selectedMap);
         var world = WorldLoader.Load(contentRoot, selectedMap);
 
-        var terrainCount = world.Tiles.Count(static tile => tile.Resources.TerrainPath is not null);
-        var lightmapCount = world.Tiles.Count(static tile => tile.Resources.LightmapPath is not null);
-        var waterCount = world.Tiles.Count(static tile => tile.Resources.WaterPath is not null);
-        var readyMeshCount = world.Tiles.Sum(static tile => tile.Resources.ReadyMeshPaths.Count);
-        var terrainTextureCount = world.Tiles.Sum(static tile => tile.Resources.TerrainTexturePaths.Count);
+        var terrainFileCount = world.Tiles.Count(
+            static tile => tile.Resources.TerrainPath is not null);
+        var loadedTerrainCount = world.Tiles.Count(
+            static tile => tile.Terrain is not null);
+        var lightmapCount = world.Tiles.Count(
+            static tile => tile.Resources.LightmapPath is not null);
+        var waterCount = world.Tiles.Count(
+            static tile => tile.Resources.WaterPath is not null);
+        var readyMeshCount = world.Tiles.Sum(
+            static tile => tile.Resources.ReadyMeshPaths.Count);
+        var terrainTextureCount = world.Tiles.Sum(
+            static tile => tile.Resources.TerrainTexturePaths.Count);
 
         Console.WriteLine();
         Console.WriteLine($"Selected map: {world.Name}");
@@ -64,14 +79,33 @@ internal static class Program
         Console.WriteLine($"Tiles: {world.Tiles.Count:N0}");
         Console.WriteLine($"Objects: {world.Objects.Count:N0}");
         Console.WriteLine($"Splines: {world.Splines.Count:N0}");
-        Console.WriteLine($"Placement parse issues: {world.PlacementParseIssueCount:N0}");
-        Console.WriteLine($"Terrain files: {terrainCount:N0}");
+        Console.WriteLine(
+            $"Placement parse issues: {world.PlacementParseIssueCount:N0}");
+        Console.WriteLine($"Terrain files: {terrainFileCount:N0}");
+        Console.WriteLine($"Terrain grids loaded: {loadedTerrainCount:N0}");
+        Console.WriteLine(
+            $"Terrain parse issues: {world.TerrainParseIssueCount:N0}");
         Console.WriteLine($"Ready terrain meshes: {readyMeshCount:N0}");
         Console.WriteLine($"Terrain textures: {terrainTextureCount:N0}");
         Console.WriteLine($"Lightmaps: {lightmapCount:N0}");
         Console.WriteLine($"Water tiles: {waterCount:N0}");
-        Console.WriteLine($"Primary dependencies: {world.Dependencies.RequiredCount:N0}");
-        Console.WriteLine($"Missing primary dependencies: {world.Dependencies.MissingCount:N0}");
+        Console.WriteLine(
+            $"Primary dependencies: {world.Dependencies.RequiredCount:N0}");
+        Console.WriteLine(
+            $"Missing primary dependencies: {world.Dependencies.MissingCount:N0}");
+
+        var terrains = world.Tiles
+            .Select(static tile => tile.Terrain)
+            .OfType<WorldTerrainData>()
+            .ToArray();
+
+        if (terrains.Length > 0)
+        {
+            Console.WriteLine(
+                $"Terrain elevation range: " +
+                $"{terrains.Min(static terrain => terrain.MinimumHeight):0.00} m -> " +
+                $"{terrains.Max(static terrain => terrain.MaximumHeight):0.00} m");
+        }
 
         if (world.Bounds is not null)
         {
@@ -86,7 +120,8 @@ internal static class Program
             Console.WriteLine("Missing primary dependencies:");
             foreach (var dependency in world.Dependencies.Missing.Take(20))
             {
-                Console.WriteLine($"  [{dependency.Kind}] {dependency.SourcePath}");
+                Console.WriteLine(
+                    $"  [{dependency.Kind}] {dependency.SourcePath}");
             }
 
             if (world.Dependencies.MissingCount > 20)
@@ -117,11 +152,16 @@ internal static class Program
         return 0;
     }
 
-    private static string? GetOption(IReadOnlyList<string> args, string name)
+    private static string? GetOption(
+        IReadOnlyList<string> args,
+        string name)
     {
         for (var i = 0; i < args.Count - 1; i++)
         {
-            if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(
+                    args[i],
+                    name,
+                    StringComparison.OrdinalIgnoreCase))
             {
                 return args[i + 1];
             }
@@ -130,9 +170,14 @@ internal static class Program
         return null;
     }
 
-    private static bool HasFlag(IEnumerable<string> args, string name)
+    private static bool HasFlag(
+        IEnumerable<string> args,
+        string name)
     {
         return args.Any(argument =>
-            string.Equals(argument, name, StringComparison.OrdinalIgnoreCase));
+            string.Equals(
+                argument,
+                name,
+                StringComparison.OrdinalIgnoreCase));
     }
 }

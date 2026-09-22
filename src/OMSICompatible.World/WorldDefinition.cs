@@ -52,6 +52,15 @@ public sealed record WorldTileResources(
     IReadOnlyList<string> ReadyMeshPaths,
     IReadOnlyList<string> TerrainTexturePaths);
 
+public sealed record WorldTerrainData(
+    int CellCount,
+    IReadOnlyList<float> Heights,
+    float MinimumHeight,
+    float MaximumHeight)
+{
+    public int SampleCount => CellCount + 1;
+}
+
 public sealed record WorldTile(
     WorldTileCoordinate Coordinate,
     string SourcePath,
@@ -62,6 +71,8 @@ public sealed record WorldTile(
     IReadOnlyList<WorldObjectPlacement> Objects,
     IReadOnlyList<WorldSplinePlacement> Splines,
     WorldTileResources Resources,
+    WorldTerrainData? Terrain,
+    string? TerrainErrorCode,
     int PlacementParseIssueCount);
 
 public sealed record WorldBounds(
@@ -84,4 +95,5 @@ public sealed record WorldDefinition(
     IReadOnlyList<WorldSplinePlacement> Splines,
     WorldDependencyReport Dependencies,
     int PlacementParseIssueCount,
+    int TerrainParseIssueCount,
     WorldBounds? Bounds);

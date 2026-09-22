@@ -69,6 +69,9 @@ public static class WorldLoader
                 companions.ReadyMeshPaths,
                 companions.TerrainTexturePaths);
 
+            var (terrain, terrainErrorCode) =
+                LoadTerrain(resources.TerrainPath);
+
             tiles.Add(new WorldTile(
                 coordinate,
                 sourceTile.FilePath,
@@ -79,6 +82,8 @@ public static class WorldLoader
                 tileObjects,
                 tileSplines,
                 resources,
+                terrain,
+                terrainErrorCode,
                 placements.Issues.Count));
         }
 
@@ -124,7 +129,47 @@ public static class WorldLoader
             allSplines,
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
+            tiles.Count(static tile => tile.TerrainErrorCode is not null),
             bounds);
+    }
+
+    private static (WorldTerrainData? Terrain, string? ErrorCode)
+        LoadTerrain(string? terrainPath)
+    {
+        if (terrainPath is null)
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            var source = OmsiTerrainReader.ReadFile(terrainPath);
+
+            if (source.Heights.Count == 0)
+            {
+                return (null, "emptyTerrain");
+            }
+
+            return (
+                new WorldTerrainData(
+                    source.CellCount,
+                    source.Heights,
+                    source.Heights.Min(),
+                    source.Heights.Max()),
+                null);
+        }
+        catch (InvalidDataException)
+        {
+            return (null, "invalidTerrain");
+        }
+        catch (IOException)
+        {
+            return (null, "terrainIoError");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return (null, "terrainAccessDenied");
+        }
     }
 
     private static WorldVector3 ToWorldVector(OmsiSourceVector3 source)
@@ -150,7 +195,8 @@ public static class WorldLoader
         return path.Trim().Replace('/', '\\');
     }
 
-    private sealed class AssetKeyComparer : IEqualityComparer<(WorldAssetKind Kind, string SourcePath)>
+    private sealed class AssetKeyComparer :
+        IEqualityComparer<(WorldAssetKind Kind, string SourcePath)>
     {
         public static AssetKeyComparer Instance { get; } = new();
 
@@ -159,10 +205,14 @@ public static class WorldLoader
             (WorldAssetKind Kind, string SourcePath) y)
         {
             return x.Kind == y.Kind &&
-                   string.Equals(x.SourcePath, y.SourcePath, StringComparison.OrdinalIgnoreCase);
+                   string.Equals(
+                       x.SourcePath,
+                       y.SourcePath,
+                       StringComparison.OrdinalIgnoreCase);
         }
 
-        public int GetHashCode((WorldAssetKind Kind, string SourcePath) obj)
+        public int GetHashCode(
+            (WorldAssetKind Kind, string SourcePath) obj)
         {
             return HashCode.Combine(
                 obj.Kind,

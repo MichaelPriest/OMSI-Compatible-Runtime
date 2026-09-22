@@ -29,7 +29,7 @@ try
         Lines(
             "[object]",
             "0",
-            @"Sceneryobjects\Synthetic\object.sco",
+            @"SceneryobjectsSyntheticobject.sco",
             "1001",
             "10.5",
             "20.25",
@@ -41,7 +41,7 @@ try
             "",
             "[spline]",
             "0",
-            @"Splines\Synthetic\road.sli",
+            @"SplinesSyntheticoad.sli",
             "2001",
             "-1",
             "-1",
@@ -59,9 +59,8 @@ try
         Path.Combine(mapDirectory, "tile_9_9.map"),
         "[object]\n");
 
-    File.WriteAllBytes(
-        Path.Combine(mapDirectory, "tile_0_0.map.terrain"),
-        [0x01, 0x02, 0x03]);
+    WriteTerrain(
+        Path.Combine(mapDirectory, "tile_0_0.map.terrain"));
 
     File.WriteAllBytes(
         Path.Combine(mapDirectory, "tile_0_0.map.LM.bmp"),
@@ -86,32 +85,78 @@ try
     var map = maps[0];
     var world = WorldLoader.Load(contentRoot, map);
 
-    Require(world.Tiles.Count == 1, $"Expected 1 active tile, found {world.Tiles.Count}.");
-    Require(world.Objects.Count == 1, $"Expected 1 object, found {world.Objects.Count}.");
-    Require(world.Splines.Count == 1, $"Expected 1 spline, found {world.Splines.Count}.");
-    Require(world.PlacementParseIssueCount == 0, "Synthetic placements should parse without issues.");
+    Require(
+        world.Tiles.Count == 1,
+        $"Expected 1 active tile, found {world.Tiles.Count}.");
+    Require(
+        world.Objects.Count == 1,
+        $"Expected 1 object, found {world.Objects.Count}.");
+    Require(
+        world.Splines.Count == 1,
+        $"Expected 1 spline, found {world.Splines.Count}.");
+    Require(
+        world.PlacementParseIssueCount == 0,
+        "Synthetic placements should parse without issues.");
 
     var worldObject = world.Objects[0];
     Require(worldObject.Id == 1001, "Object ID was not preserved.");
-    Require(worldObject.Position.X == 10.5, "Object X position was not preserved.");
-    Require(worldObject.HeadingDegrees == 90, "Object heading was not preserved.");
+    Require(
+        worldObject.Position.X == 10.5,
+        "Object X position was not preserved.");
+    Require(
+        worldObject.HeadingDegrees == 90,
+        "Object heading was not preserved.");
 
     var worldSpline = world.Splines[0];
     Require(worldSpline.Id == 2001, "Spline ID was not preserved.");
-    Require(worldSpline.LengthMeters == 100, "Spline length was not preserved.");
-    Require(worldSpline.RadiusMeters == 0, "Spline radius was not preserved.");
-    Require(worldSpline.GradientStartPercent == 1.5, "Spline start gradient was not preserved.");
+    Require(
+        worldSpline.LengthMeters == 100,
+        "Spline length was not preserved.");
+    Require(
+        worldSpline.RadiusMeters == 0,
+        "Spline radius was not preserved.");
+    Require(
+        worldSpline.GradientStartPercent == 1.5,
+        "Spline start gradient was not preserved.");
 
-    Require(world.Dependencies.RequiredCount == 2, "Expected two primary dependencies.");
-    Require(world.Dependencies.MissingCount == 0, "Synthetic dependencies should resolve.");
+    Require(
+        world.Dependencies.RequiredCount == 2,
+        "Expected two primary dependencies.");
+    Require(
+        world.Dependencies.MissingCount == 0,
+        "Synthetic dependencies should resolve.");
 
-    var resources = world.Tiles[0].Resources;
-    Require(resources.TerrainPath is not null, "Terrain companion file was not discovered.");
-    Require(resources.LightmapPath is not null, "Lightmap companion file was not discovered.");
+    var tile = world.Tiles[0];
+    Require(
+        tile.Resources.TerrainPath is not null,
+        "Terrain companion file was not discovered.");
+    Require(
+        tile.Resources.LightmapPath is not null,
+        "Lightmap companion file was not discovered.");
+    Require(
+        tile.Terrain is not null,
+        "Terrain grid was not loaded.");
+    Require(
+        tile.Terrain.CellCount == 1,
+        "Terrain cell count was not preserved.");
+    Require(
+        tile.Terrain.Heights.Count == 4,
+        "Terrain height sample count is incorrect.");
+    Require(
+        tile.Terrain.MinimumHeight == 0.0f &&
+        tile.Terrain.MaximumHeight == 3.0f,
+        "Terrain elevation range is incorrect.");
+    Require(
+        world.TerrainParseIssueCount == 0,
+        "Synthetic terrain should parse without issues.");
 
     Console.WriteLine("OMSI Compatible Runtime smoke test passed.");
     Console.WriteLine(
-        $"tiles={world.Tiles.Count}; objects={world.Objects.Count}; splines={world.Splines.Count}; dependencies={world.Dependencies.RequiredCount}");
+        $"tiles={world.Tiles.Count}; " +
+        $"objects={world.Objects.Count}; " +
+        $"splines={world.Splines.Count}; " +
+        $"dependencies={world.Dependencies.RequiredCount}; " +
+        $"terrainSamples={tile.Terrain.Heights.Count}");
 
     return 0;
 }
@@ -126,6 +171,18 @@ finally
 static string Lines(params string[] values)
 {
     return string.Join(Environment.NewLine, values) + Environment.NewLine;
+}
+
+static void WriteTerrain(string path)
+{
+    using var stream = File.Create(path);
+    using var writer = new BinaryWriter(stream);
+
+    writer.Write(1);
+    writer.Write(0.0f);
+    writer.Write(1.0f);
+    writer.Write(2.0f);
+    writer.Write(3.0f);
 }
 
 static void Require(bool condition, string message)
