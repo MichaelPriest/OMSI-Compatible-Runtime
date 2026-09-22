@@ -242,7 +242,50 @@ public static class OmsiSceneryObjectReader
                 renderTypeValue)
                 ? null
                 : renderTypeValue.Trim(),
-            meshes.ToArray());
+            meshes.ToArray(),
+            ReadTree(document));
+    }
+
+    private static OmsiSceneryTreeDefinition? ReadTree(
+        OmsiSectionDocument document)
+    {
+        var section =
+            document.Sections.FirstOrDefault(
+                static item =>
+                    item.Name.Equals(
+                        "tree",
+                        StringComparison.OrdinalIgnoreCase));
+
+        if (section is null)
+        {
+            return null;
+        }
+
+        var values =
+            Data(section)
+                .Select(static line => line.Value)
+                .ToArray();
+
+        if (values.Length < 5 ||
+            string.IsNullOrWhiteSpace(values[0]) ||
+            !TryDouble(values[1], out var minimumHeight) ||
+            !TryDouble(values[2], out var maximumHeight) ||
+            !TryDouble(values[3], out var minimumAspect) ||
+            !TryDouble(values[4], out var maximumAspect) ||
+            minimumHeight <= 0 ||
+            maximumHeight < minimumHeight ||
+            minimumAspect <= 0 ||
+            maximumAspect < minimumAspect)
+        {
+            return null;
+        }
+
+        return new OmsiSceneryTreeDefinition(
+            values[0].Trim().Trim('"'),
+            minimumHeight,
+            maximumHeight,
+            minimumAspect,
+            maximumAspect);
     }
 
     private static IReadOnlyList<OmsiSectionLine> Data(
