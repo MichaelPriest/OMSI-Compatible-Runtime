@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace OMSICompatible.Renderer.D3D11;
 
 public sealed record RuntimeTerrainInfo(
@@ -89,6 +91,27 @@ public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
     double Value);
 
+public enum RuntimeVehicleAnimationKind
+{
+    Translation,
+    Rotation
+}
+
+public sealed record RuntimeVehicleAnimationInfo(
+    RuntimeVehicleAnimationKind Kind,
+    string VariableName,
+    double Delta,
+    bool OriginFromMesh,
+    double OriginX,
+    double OriginY,
+    double OriginZ,
+    double OriginRotationX,
+    double OriginRotationY,
+    double OriginRotationZ,
+    double Offset,
+    double? MaxSpeed,
+    double? Delay);
+
 public sealed record RuntimeObjectMeshInfo(
     string DeclaredPath,
     string? ResolvedPath,
@@ -101,7 +124,9 @@ public sealed record RuntimeObjectMeshInfo(
     IReadOnlyList<RuntimeO3dMaterialInfo> Materials,
     int ViewpointFlag = 0,
     double? LodThreshold = null,
-    IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null);
+    IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null,
+    IReadOnlyList<RuntimeVehicleAnimationInfo>? Animations = null,
+    Matrix4x4? SourceTransform = null);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
