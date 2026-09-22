@@ -33,8 +33,8 @@ public sealed class D3D11RenderWindow : Form
         _windowInfo = windowInfo;
 
         Text = $"OMSI Compatible Runtime — {windowInfo.WorldName}";
-        ClientSize = new Size(1280, 720);
-        MinimumSize = new Size(960, 540);
+        ClientSize = new System.Drawing.Size(1280, 720);
+        MinimumSize = new System.Drawing.Size(960, 540);
         StartPosition = FormStartPosition.CenterScreen;
 
         _renderTimer = new System.Windows.Forms.Timer
@@ -202,7 +202,7 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        _deviceContext.OMSetRenderTargets(_renderTargetView, null);
+        _deviceContext.OMSetRenderTargets((ID3D11RenderTargetView)_renderTargetView, (ID3D11DepthStencilView?)null);
         _deviceContext.RSSetViewport(new Viewport(ClientSize.Width, ClientSize.Height));
         _deviceContext.ClearRenderTargetView(
             _renderTargetView,
