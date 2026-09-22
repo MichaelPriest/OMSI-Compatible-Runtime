@@ -2364,7 +2364,9 @@ public sealed class D3D11RenderWindow : Form
         foreach (var batch in
             geometry.Batches)
         {
-            if (batch.VertexCount == 0)
+            if (!IsVehicleBatchVisible(
+                    batch) ||
+                batch.VertexCount == 0)
             {
                 continue;
             }
@@ -2440,6 +2442,38 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.RSSetState(null);
+    }
+
+    private bool IsVehicleBatchVisible(
+        RuntimeObjectBatch batch)
+    {
+        var conditions =
+            batch.VisibilityConditions;
+
+        if (conditions is null ||
+            conditions.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var condition in
+                 conditions)
+        {
+            var value =
+                _scriptRuntime?.GetLocal(
+                    condition.VariableName) ??
+                0.0;
+
+            if (Math.Abs(
+                    value -
+                    condition.Value) >
+                0.000001)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private bool TryGetVehicleTextureView(
