@@ -115,8 +115,17 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11Buffer? _vehicleVertexBuffer;
     private ID3D11Buffer? _vehicleModelBuffer;
     private ID3D11VertexShader? _vehicleVertexShader;
-    private ID3D11PixelShader? _vehiclePixelShader;
+    private ID3D11PixelShader? _vehicleColorPixelShader;
+    private ID3D11PixelShader? _vehicleTexturedPixelShader;
+    private ID3D11PixelShader? _vehicleAlphaCutoutPixelShader;
+    private ID3D11PixelShader? _vehicleAlphaBlendPixelShader;
+    private ID3D11PixelShader? _vehicleAlphaCutoutTransMapPixelShader;
+    private ID3D11PixelShader? _vehicleAlphaBlendTransMapPixelShader;
     private ID3D11InputLayout? _vehicleInputLayout;
+    private ID3D11SamplerState? _vehicleSampler;
+    private ID3D11BlendState? _vehicleAlphaBlendState;
+    private RuntimeObjectGeometry _vehicleGeometry =
+        RuntimeObjectGeometry.Empty;
     private uint _vehicleVertexCount;
 
     private FeatureLevel _featureLevel;
@@ -750,16 +759,23 @@ public sealed class D3D11RenderWindow : Form
                 "D3D11 device is not initialized.");
         }
 
-        var vertices =
-            RuntimeVehicleGeometry.BuildBusProxy();
+        _vehicleGeometry =
+            RuntimeVehicleGeometry.Build(
+                _windowInfo.Vehicle);
+
+        if (_vehicleGeometry.Vertices.Length == 0)
+        {
+            return;
+        }
 
         _vehicleVertexBuffer =
             _device.CreateBuffer(
-                vertices.AsSpan(),
+                _vehicleGeometry.Vertices.AsSpan(),
                 BindFlags.VertexBuffer);
 
         var shaderFile =
-            ShaderPath("RuntimeVehicle.hlsl");
+            ShaderPath(
+                "RuntimeVehicle.hlsl");
 
         ReadOnlyMemory<byte> vertexShaderByteCode =
             Compiler.CompileFromFile(
@@ -767,33 +783,140 @@ public sealed class D3D11RenderWindow : Form
                 "VSMain",
                 "vs_4_0");
 
-        ReadOnlyMemory<byte> pixelShaderByteCode =
+        ReadOnlyMemory<byte> colorPixelShaderByteCode =
             Compiler.CompileFromFile(
                 shaderFile,
-                "PSMain",
+                "PSColor",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> texturedPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSTextured",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> alphaCutoutPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSAlphaCutout",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> alphaBlendPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSAlphaBlend",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> alphaCutoutTransMapPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSAlphaCutoutTransMap",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> alphaBlendTransMapPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSAlphaBlendTransMap",
                 "ps_4_0");
 
         _vehicleVertexShader =
             _device.CreateVertexShader(
                 vertexShaderByteCode.Span);
-        _vehiclePixelShader =
+
+        _vehicleColorPixelShader =
             _device.CreatePixelShader(
-                pixelShaderByteCode.Span);
+                colorPixelShaderByteCode.Span);
+
+        _vehicleTexturedPixelShader =
+            _device.CreatePixelShader(
+                texturedPixelShaderByteCode.Span);
+
+        _vehicleAlphaCutoutPixelShader =
+            _device.CreatePixelShader(
+                alphaCutoutPixelShaderByteCode.Span);
+
+        _vehicleAlphaBlendPixelShader =
+            _device.CreatePixelShader(
+                alphaBlendPixelShaderByteCode.Span);
+
+        _vehicleAlphaCutoutTransMapPixelShader =
+            _device.CreatePixelShader(
+                alphaCutoutTransMapPixelShaderByteCode.Span);
+
+        _vehicleAlphaBlendTransMapPixelShader =
+            _device.CreatePixelShader(
+                alphaBlendTransMapPixelShaderByteCode.Span);
+
         _vehicleInputLayout =
             _device.CreateInputLayout(
-                CreateInputElements(),
+                CreateObjectInputElements(),
                 vertexShaderByteCode.Span);
+
+        _vehicleSampler =
+            _device.CreateSamplerState(
+                SamplerDescription.LinearWrap);
+
+        _vehicleAlphaBlendState =
+            _device.CreateBlendState(
+                BlendDescription.NonPremultiplied);
 
         _vehicleModelBuffer =
             _device.CreateConstantBuffer<
                 RuntimeModelConstants>();
 
+        _objectTextureLoader ??=
+            new RuntimeGpuTextureLoader(
+                _device);
+
+        foreach (var texturePath in
+            _vehicleGeometry.Batches
+                .SelectMany(
+                    static batch =>
+                        new[]
+                        {
+                            batch.TexturePath,
+                            batch.TransMapTexturePath
+                        })
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Select(
+                    static path =>
+                        path!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase))
+        {
+            if (_objectTextureCache.ContainsKey(
+                    texturePath))
+            {
+                continue;
+            }
+
+            var texture =
+                _objectTextureLoader.TryLoad(
+                    texturePath);
+
+            if (texture is not null)
+            {
+                _objectTextureCache[
+                    texturePath] =
+                    texture;
+            }
+            else
+            {
+                _failedObjectTexturePaths.Add(
+                    texturePath);
+            }
+        }
+
         _vehicleVertexCount =
-            (uint)vertices.Length;
+            (uint)_vehicleGeometry.Vertices.Length;
 
         _vehicle.Reset(
             _windowInfo.Splines,
-            _terrainGeometry);
+            _terrainGeometry,
+            _windowInfo.Spawn);
     }
 
     private static InputElementDescription[]
