@@ -32,6 +32,7 @@ public sealed record OmsiVehicleMeshReference(
     string DeclaredPath,
     OmsiVehicleMeshTransform Transform,
     int ViewpointFlag,
+    double? LodThreshold,
     IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides);
 
 public sealed record OmsiVehicleModel(

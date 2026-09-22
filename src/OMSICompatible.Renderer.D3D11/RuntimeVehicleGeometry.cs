@@ -20,13 +20,28 @@ internal static class RuntimeVehicleGeometry
                 : RuntimeObjectGeometry.Empty;
         }
 
+        var detailedLod =
+            vehicle.Meshes
+                .Where(
+                    static mesh =>
+                        mesh.LodThreshold.HasValue)
+                .Select(
+                    static mesh =>
+                        mesh.LodThreshold!.Value)
+                .DefaultIfEmpty(
+                    double.NaN)
+                .Max();
+
         var selectedMeshes =
             vehicle.Meshes
                 .Where(
                     mesh =>
                         IsVisibleFromViewpoint(
                             mesh.ViewpointFlag,
-                            viewpointBit))
+                            viewpointBit) &&
+                        IsSelectedPlayerLod(
+                            mesh.LodThreshold,
+                            detailedLod))
                 .ToArray();
 
         if (selectedMeshes.Length == 0)
@@ -78,6 +93,23 @@ internal static class RuntimeVehicleGeometry
         return viewpointBit == 1
             ? BuildBusProxy()
             : RuntimeObjectGeometry.Empty;
+    }
+
+    private static bool IsSelectedPlayerLod(
+        double? meshLod,
+        double detailedLod)
+    {
+        if (!meshLod.HasValue ||
+            double.IsNaN(
+                detailedLod))
+        {
+            return true;
+        }
+
+        return Math.Abs(
+                   meshLod.Value -
+                   detailedLod) <
+               0.000001;
     }
 
     private static bool IsVisibleFromViewpoint(

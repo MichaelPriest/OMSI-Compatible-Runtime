@@ -15,6 +15,7 @@ public static class OmsiVehicleModelReader
         var currentTransform =
             OmsiVehicleMeshTransform.Identity;
         var currentViewpointFlag = 0;
+        double? currentLodThreshold = null;
         var overrides = new List<OmsiVehicleMaterialOverride>();
         MaterialBuilder? material = null;
 
@@ -38,6 +39,7 @@ public static class OmsiVehicleModelReader
                     currentMeshPath,
                     currentTransform,
                     currentViewpointFlag,
+                    currentLodThreshold,
                     overrides.ToArray()));
             }
 
@@ -46,6 +48,23 @@ public static class OmsiVehicleModelReader
 
         foreach (var section in document.Sections)
         {
+            if (section.Name.Equals(
+                    "LOD",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var lodThreshold))
+                {
+                    currentLodThreshold =
+                        Math.Max(
+                            lodThreshold,
+                            0.0);
+                }
+
+                continue;
+            }
+
             if (section.Name.Equals("mesh", StringComparison.OrdinalIgnoreCase))
             {
                 CommitMesh();

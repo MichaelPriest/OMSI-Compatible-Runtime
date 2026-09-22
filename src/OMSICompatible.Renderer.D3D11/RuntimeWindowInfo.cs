@@ -95,7 +95,8 @@ public sealed record RuntimeObjectMeshInfo(
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
     IReadOnlyList<RuntimeO3dMaterialInfo> Materials,
-    int ViewpointFlag = 0);
+    int ViewpointFlag = 0,
+    double? LodThreshold = null);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,

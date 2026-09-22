@@ -249,10 +249,18 @@ try
             vehicleModelDirectory,
             "model.cfg"),
         Lines(
+            "[LOD]",
+            "0.1",
             "[mesh]",
             "triangle.o3d",
             "[viewpoint]",
-            "3"),
+            "3",
+            "[LOD]",
+            "0",
+            "[mesh]",
+            "triangle.o3d",
+            "[viewpoint]",
+            "1"),
         Encoding.Unicode);
 
     WriteSyntheticO3d(
@@ -374,15 +382,22 @@ try
             bus);
 
     Require(
-        vehicleAsset.Meshes.Count == 1 &&
-        vehicleAsset.RenderableMeshCount == 1 &&
+        vehicleAsset.Meshes.Count == 2 &&
+        vehicleAsset.RenderableMeshCount == 2 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].LodThreshold!.Value -
+            0.1) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[1].LodThreshold!.Value) < 0.0001 &&
         vehicleAsset.ProtectedMeshCount == 0 &&
         vehicleAsset.FailedMeshCount == 0,
         "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
 
     Require(
         vehicleAsset.Meshes[0].Positions.Length == 9 &&
-        vehicleAsset.Meshes[0].Indices.Length == 3,
+        vehicleAsset.Meshes[0].Indices.Length == 3 &&
+        vehicleAsset.Meshes[1].Positions.Length == 9 &&
+        vehicleAsset.Meshes[1].Indices.Length == 3,
         "Synthetic OMSI vehicle geometry counts are incorrect.");
 
     Require(

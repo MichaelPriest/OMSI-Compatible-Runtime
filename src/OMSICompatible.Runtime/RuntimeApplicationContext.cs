@@ -318,6 +318,20 @@ internal sealed class RuntimeApplicationContext :
                             $"{group.Key}={group.Count()}")
                     .ToArray();
 
+            var lodGroups =
+                vehicle.Meshes
+                    .GroupBy(
+                        static mesh =>
+                            mesh.LodThreshold)
+                    .OrderByDescending(
+                        static group =>
+                            group.Key ??
+                            double.PositiveInfinity)
+                    .Select(
+                        static group =>
+                            $"{(group.Key.HasValue ? group.Key.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) : "<none>")}:{group.Count()}")
+                    .ToArray();
+
             var failedExamples =
                 vehicle.Meshes
                     .Where(
@@ -343,6 +357,7 @@ internal sealed class RuntimeApplicationContext :
                     $"meshFailed={vehicle.FailedMeshCount}",
                     $"driverCameras={vehicle.Bus.DriverCameras.Count}",
                     $"passengerCameras={vehicle.Bus.PassengerCameras.Count}",
+                    $"lodGroups={(lodGroups.Length == 0 ? "<none>" : string.Join(", ", lodGroups))}",
                     $"errors={(errorGroups.Length == 0 ? "<none>" : string.Join("; ", errorGroups))}",
                     "",
                     "failedMeshes:"
@@ -690,7 +705,8 @@ internal sealed class RuntimeApplicationContext :
                                                 material.NoZWrite,
                                                 material.NoZCheck))
                                     .ToArray(),
-                                mesh.ViewpointFlag))
+                                mesh.ViewpointFlag,
+                                mesh.LodThreshold))
                     .ToArray(),
                 vehicle.Bus.DriverCameras
                     .Select(

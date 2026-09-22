@@ -17,6 +17,7 @@ public sealed record OmsiVehicleMeshAsset(
     string? ErrorCode,
     OmsiVehicleMeshTransform Transform,
     int ViewpointFlag,
+    double? LodThreshold,
     float[] Positions,
     float[] Uvs,
     uint[] Indices,
