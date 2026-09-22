@@ -184,6 +184,8 @@ try
             "$StrToFloat",
             "(S.L.parsed_number)",
             "(L.S.GetTime)",
+            ""announcement.wav"",
+            "(T.F.ev_IBIS_Ansagen)",
             "(L.L.horn_timer)",
             "3",
             "+",
@@ -558,6 +560,14 @@ try
     var invokedSystemMacros =
         new List<string>();
 
+    var fileSoundTriggers =
+        new List<(string Trigger, string File)>();
+
+    scriptRuntime.FileSoundTriggerRequested +=
+        (trigger, file) =>
+            fileSoundTriggers.Add(
+                (trigger, file));
+
     scriptRuntime.SystemMacroHandler =
         (name, context) =>
         {
@@ -604,6 +614,13 @@ try
                 "idle_copy") -
             650.0) < 0.0001,
         "OMSI script macro/constant execution failed.");
+    Require(
+        fileSoundTriggers.Count == 1 &&
+        fileSoundTriggers[0].Trigger ==
+            "ev_IBIS_Ansagen" &&
+        fileSoundTriggers[0].File ==
+            "announcement.wav",
+        "OMSI T.F file sound trigger execution failed.");
     Require(
         scriptRuntime.GetStringLocal(
             "IBIS_line") ==
