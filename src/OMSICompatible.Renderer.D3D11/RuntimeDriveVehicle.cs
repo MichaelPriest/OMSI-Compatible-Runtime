@@ -450,6 +450,88 @@ internal sealed class RuntimeDriveVehicle
         }
     }
 
+    public Matrix4x4 CreateDriverViewProjection(
+        RuntimeDriverCameraInfo camera,
+        float aspect,
+        RuntimeTerrainGeometry terrainGeometry)
+    {
+        var localEye =
+            new Vector3(
+                (float)camera.X,
+                (float)camera.Y,
+                (float)camera.Z);
+
+        var vehicleRotation =
+            Matrix4x4.CreateRotationY(
+                HeadingRadians);
+
+        var eye =
+            Vector3.Transform(
+                localEye,
+                vehicleRotation) +
+            Position;
+
+        var localHeading =
+            DegreesToRadians(
+                camera.HeadingDegrees);
+
+        var localPitch =
+            DegreesToRadians(
+                camera.PitchDegrees);
+
+        var localForward =
+            new Vector3(
+                MathF.Sin(localHeading) *
+                MathF.Cos(localPitch),
+                MathF.Sin(localPitch),
+                MathF.Cos(localHeading) *
+                MathF.Cos(localPitch));
+
+        var forward =
+            Vector3.Normalize(
+                Vector3.TransformNormal(
+                    localForward,
+                    vehicleRotation));
+
+        var target =
+            eye +
+            forward *
+            MathF.Max(
+                (float)camera.EyeDistance,
+                2.0f);
+
+        var view =
+            Matrix4x4.CreateLookAt(
+                eye,
+                target,
+                Vector3.UnitY);
+
+        var span =
+            MathF.Max(
+                terrainGeometry.HorizontalSpan,
+                300.0f);
+
+        var fovDegrees =
+            Math.Clamp(
+                camera.FieldOfViewDegrees,
+                25.0,
+                120.0);
+
+        var projection =
+            Matrix4x4.CreatePerspectiveFieldOfView(
+                DegreesToRadians(
+                    fovDegrees),
+                MathF.Max(
+                    aspect,
+                    0.1f),
+                0.04f,
+                MathF.Max(
+                    5_000.0f,
+                    span * 8.0f));
+
+        return view * projection;
+    }
+
     public Matrix4x4 CreateChaseViewProjection(
         float aspect,
         RuntimeTerrainGeometry terrainGeometry)
@@ -500,6 +582,13 @@ internal sealed class RuntimeDriveVehicle
             Matrix4x4.CreateTranslation(
                 Position);
     }
+
+    private static float DegreesToRadians(
+        double value) =>
+        (float)(
+            value *
+            Math.PI /
+            180.0);
 
     private static float MoveTowards(
         float current,
