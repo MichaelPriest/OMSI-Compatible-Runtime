@@ -41,7 +41,11 @@ public sealed class D3D11RenderWindow : Form
 
     private double _lastFrameTimeSeconds;
     private bool _mouseLooking;
+    private bool _mouseDriveMode;
     private bool _driveMode = true;
+    private float _mouseDriveAccelerator;
+    private float _mouseDriveBrake;
+    private float _mouseDriveSteering;
     private int _captionFrame;
     private System.Drawing.Point _lastMousePosition;
 
@@ -907,6 +911,17 @@ public sealed class D3D11RenderWindow : Form
 
         if (_driveMode)
         {
+            if (_mouseDriveMode)
+            {
+                _vehicle.UpdateOmsiMouseControls(
+                    _mouseDriveAccelerator,
+                    _mouseDriveBrake,
+                    _mouseDriveSteering,
+                    deltaSeconds);
+
+                return;
+            }
+
             var steeringDirection =
                 (_pressedKeys.Contains(Keys.NumPad6) ? 1.0f : 0.0f) -
                 (_pressedKeys.Contains(Keys.NumPad4) ? 1.0f : 0.0f);
@@ -963,6 +978,11 @@ public sealed class D3D11RenderWindow : Form
 
         if (e.KeyCode == Keys.Tab)
         {
+            if (_mouseDriveMode)
+            {
+                DisableMouseDriveMode();
+            }
+
             _driveMode = !_driveMode;
             e.SuppressKeyPress = true;
             UpdateCaption();
@@ -971,6 +991,13 @@ public sealed class D3D11RenderWindow : Form
 
         if (_driveMode)
         {
+            if (e.KeyCode == Keys.O)
+            {
+                ToggleMouseDriveMode();
+                UpdateCaption();
+                return;
+            }
+
             switch (e.KeyCode)
             {
                 case Keys.E:
@@ -1045,6 +1072,19 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (_driveMode &&
+            _mouseDriveMode)
+        {
+            DisableMouseDriveMode();
+            UpdateCaption();
+            return;
+        }
+
+        if (_driveMode)
+        {
+            return;
+        }
+
         _mouseLooking = true;
         _lastMousePosition = e.Location;
         Capture = true;
@@ -1054,19 +1094,31 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         MouseEventArgs e)
     {
-        if (e.Button != MouseButtons.Right)
+        if (e.Button != MouseButtons.Right ||
+            _mouseDriveMode)
         {
             return;
         }
 
         _mouseLooking = false;
-        Capture = false;
+
+        if (!_driveMode)
+        {
+            Capture = false;
+        }
     }
 
     private void OnRuntimeMouseMove(
         object? sender,
         MouseEventArgs e)
     {
+        if (_driveMode &&
+            _mouseDriveMode)
+        {
+            UpdateOmsiMouseAxes(e.Location);
+            return;
+        }
+
         if (!_mouseLooking ||
             _driveMode)
         {
@@ -1089,8 +1141,109 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         MouseEventArgs e)
     {
+        if (_driveMode)
+        {
+            return;
+        }
+
         _camera.AdjustSpeed(
             e.Delta / 120.0f);
+    }
+
+    private void ToggleMouseDriveMode()
+    {
+        if (_mouseDriveMode)
+        {
+            DisableMouseDriveMode();
+            return;
+        }
+
+        _mouseDriveMode = true;
+        _mouseLooking = false;
+        _mouseDriveAccelerator = 0.0f;
+        _mouseDriveBrake = 0.0f;
+        _mouseDriveSteering = 0.0f;
+        Capture = true;
+
+        Cursor.Hide();
+
+        var center =
+            new System.Drawing.Point(
+                ClientSize.Width / 2,
+                ClientSize.Height / 2);
+
+        Cursor.Position =
+            PointToScreen(center);
+    }
+
+    private void DisableMouseDriveMode()
+    {
+        if (!_mouseDriveMode)
+        {
+            return;
+        }
+
+        _mouseDriveMode = false;
+        _mouseDriveAccelerator = 0.0f;
+        _mouseDriveBrake = 0.0f;
+        _mouseDriveSteering = 0.0f;
+        Capture = false;
+
+        Cursor.Show();
+    }
+
+    private void UpdateOmsiMouseAxes(
+        System.Drawing.Point location)
+    {
+        var halfWidth =
+            Math.Max(
+                ClientSize.Width * 0.45f,
+                1.0f);
+        var halfHeight =
+            Math.Max(
+                ClientSize.Height * 0.45f,
+                1.0f);
+
+        var centerX =
+            ClientSize.Width * 0.5f;
+        var centerY =
+            ClientSize.Height * 0.5f;
+
+        _mouseDriveSteering =
+            Math.Clamp(
+                (location.X - centerX) /
+                halfWidth,
+                -1.0f,
+                1.0f);
+
+        var vertical =
+            Math.Clamp(
+                (centerY - location.Y) /
+                halfHeight,
+                -1.0f,
+                1.0f);
+
+        const float deadZone = 0.05f;
+
+        if (Math.Abs(_mouseDriveSteering) < deadZone)
+        {
+            _mouseDriveSteering = 0.0f;
+        }
+
+        if (Math.Abs(vertical) < deadZone)
+        {
+            vertical = 0.0f;
+        }
+
+        _mouseDriveAccelerator =
+            Math.Max(
+                vertical,
+                0.0f);
+
+        _mouseDriveBrake =
+            Math.Max(
+                -vertical,
+                0.0f);
     }
 
     private void DrawTileOverview()
@@ -1141,13 +1294,18 @@ public sealed class D3D11RenderWindow : Form
             _ => "N"
         };
 
+        var driveInputMode =
+            _mouseDriveMode
+                ? "MOUSE: ←/→ steer · ↑ throttle · ↓ brake · RMB exit"
+                : "KEYBOARD: Num8 throttle · Num2 brake · Num+ release · Num4/6 steer · Num5 center · O mouse";
+
         var control = _driveMode
             ? $"OMSI DRIVE {_vehicle.SpeedKph:0} km/h · gear {gear} · " +
               $"E:{(_vehicle.ElectricalSystemEnabled ? "ON" : "OFF")} " +
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              "Num8 throttle · Num2 brake · Num+ release · Num4/6 steer · Num5 center · D/N/R · E/M · Num. park · Tab free cam"
+              $"{driveInputMode} · D/N/R · E/M · Num. park · Tab free cam"
             : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · Tab OMSI drive";
 
         Text =
@@ -1162,6 +1320,11 @@ public sealed class D3D11RenderWindow : Form
     {
         if (disposing)
         {
+            if (_mouseDriveMode)
+            {
+                DisableMouseDriveMode();
+            }
+
             _renderTimer.Stop();
             _renderTimer.Tick -=
                 RenderTimerOnTick;
