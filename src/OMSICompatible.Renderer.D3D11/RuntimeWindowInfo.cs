@@ -86,7 +86,9 @@ public sealed record RuntimeO3dMaterialInfo(
     string? TransMapTexturePath,
     bool NoZWrite,
     bool NoZCheck,
-    string? AlphaScaleVariable = null);
+    string? AlphaScaleVariable = null,
+    string? LightMapTexturePath = null,
+    string? LightMapVariable = null);
 
 public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
