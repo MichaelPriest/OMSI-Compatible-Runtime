@@ -284,6 +284,9 @@ try
             "0.5",
             "[matl_envmap_mask]",
             "envmask.bmp",
+            "[matl_bumpmap]",
+            "bump.bmp",
+            "0.05",
             "[matl_lightmap]",
             "panel_lm.bmp",
             "lights_stand",
@@ -342,6 +345,12 @@ try
         Path.Combine(
             vehicleModelDirectory,
             "envmask.bmp"),
+        [0x42, 0x4D, 0x00, 0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleModelDirectory,
+            "bump.bmp"),
         [0x42, 0x4D, 0x00, 0x00]);
 
     File.WriteAllText(
@@ -523,6 +532,14 @@ try
         Path.GetFileName(
             vehicleAsset.Meshes[0].Materials[0].EnvMapMaskTexturePath!) ==
             "envmask.bmp" &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Materials[0].BumpMapStrength -
+            0.05) < 0.0001 &&
+        !string.IsNullOrWhiteSpace(
+            vehicleAsset.Meshes[0].Materials[0].BumpMapTexturePath) &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[0].Materials[0].BumpMapTexturePath!) ==
+            "bump.bmp" &&
         vehicleAsset.Meshes[1].Animations.Count == 0 &&
         Math.Abs(
             vehicleAsset.Meshes[0].SourceTransform.M41 -
