@@ -49,6 +49,7 @@ public static class OmsiBusReader
                 document,
                 "view_ticketselling"),
             ReadOutsideCameraCenter(document),
+            ReadReflectionCameras(document),
             ReadVehiclePhysics(document));
     }
 
@@ -253,6 +254,81 @@ public static class OmsiBusReader
             x,
             y,
             z);
+    }
+
+    private static IReadOnlyList<OmsiReflectionCamera>
+        ReadReflectionCameras(
+            OmsiSectionDocument document)
+    {
+        var result =
+            new List<OmsiReflectionCamera>();
+
+        foreach (var section in
+                 document.Sections.Where(
+                     static section =>
+                         section.Name.Equals(
+                             "add_camera_reflexion",
+                             StringComparison.OrdinalIgnoreCase) ||
+                         section.Name.Equals(
+                             "add_camera_reflexion_2",
+                             StringComparison.OrdinalIgnoreCase)))
+        {
+            var values =
+                section.Lines
+                    .Select(
+                        static line =>
+                            line.Value.Trim())
+                    .Where(
+                        static value =>
+                            value.Length > 0 &&
+                            !value.StartsWith('#') &&
+                            !value.StartsWith(
+                                "//",
+                                StringComparison.Ordinal))
+                    .Take(8)
+                    .ToArray();
+
+            if (values.Length < 7 ||
+                !TryDouble(values[0], out var x) ||
+                !TryDouble(values[1], out var y) ||
+                !TryDouble(values[2], out var z) ||
+                !TryDouble(values[3], out var eyeDistance) ||
+                !TryDouble(values[4], out var fieldOfView) ||
+                !TryDouble(values[5], out var heading) ||
+                !TryDouble(values[6], out var pitch))
+            {
+                continue;
+            }
+
+            double? maximumRenderDistance = null;
+
+            if (section.Name.Equals(
+                    "add_camera_reflexion_2",
+                    StringComparison.OrdinalIgnoreCase) &&
+                values.Length >= 8 &&
+                TryDouble(
+                    values[7],
+                    out var parsedMaximumDistance) &&
+                parsedMaximumDistance >= 0.0)
+            {
+                maximumRenderDistance =
+                    parsedMaximumDistance;
+            }
+
+            result.Add(
+                new OmsiReflectionCamera(
+                    result.Count,
+                    x,
+                    y,
+                    z,
+                    eyeDistance,
+                    fieldOfView,
+                    heading,
+                    pitch,
+                    maximumRenderDistance));
+        }
+
+        return result;
     }
 
     private static OmsiVehiclePhysics

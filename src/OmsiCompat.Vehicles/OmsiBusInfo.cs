@@ -23,6 +23,21 @@ public sealed record OmsiOutsideCameraCenter(
     double Y,
     double Z);
 
+public sealed record OmsiReflectionCamera(
+    int Index,
+    double X,
+    double Y,
+    double Z,
+    double EyeDistance,
+    double FieldOfViewDegrees,
+    double HeadingDegrees,
+    double PitchDegrees,
+    double? MaximumRenderDistanceMeters)
+{
+    public string RuntimeTextureName =>
+        $"reflexion{Index}.bmp";
+}
+
 public sealed record OmsiVehicleAxle(
     double LongitudinalPositionMeters,
     double? WheelDiameterMeters,
@@ -124,6 +139,7 @@ public sealed record OmsiBusInfo(
     int? ScheduleDriverCameraIndex,
     int? TicketSellingDriverCameraIndex,
     OmsiOutsideCameraCenter? OutsideCameraCenter,
+    IReadOnlyList<OmsiReflectionCamera> ReflectionCameras,
     OmsiVehiclePhysics Physics)
 {
     public override string ToString() => DisplayName;

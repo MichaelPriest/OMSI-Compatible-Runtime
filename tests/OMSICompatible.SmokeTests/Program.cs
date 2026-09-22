@@ -120,6 +120,23 @@ try
             "0",
             "-2.5",
             "1.2",
+            "[add_camera_reflexion]",
+            "-1.3",
+            "5.4",
+            "2.0",
+            "0",
+            "52",
+            "175",
+            "-10",
+            "[add_camera_reflexion_2]",
+            "1.3",
+            "5.8",
+            "2.1",
+            "0",
+            "52",
+            "200",
+            "-12",
+            "0.15",
             "[rot_pnt_long]",
             "-2.7",
             "[inv_min_turnradius]",
@@ -180,6 +197,21 @@ try
             Z: 1.2
         },
         "Outside camera center was not preserved.");
+    Require(
+        bus.ReflectionCameras.Count == 2,
+        "Synthetic reflection cameras were not parsed.");
+    Require(
+        bus.ReflectionCameras[0].RuntimeTextureName ==
+            "reflexion0.bmp" &&
+        bus.ReflectionCameras[0].MaximumRenderDistanceMeters is null,
+        "Permanent OMSI reflection camera metadata is incorrect.");
+    Require(
+        bus.ReflectionCameras[1].RuntimeTextureName ==
+            "reflexion1.bmp" &&
+        Math.Abs(
+            (bus.ReflectionCameras[1].MaximumRenderDistanceMeters ?? 0.0) -
+            0.15) < 0.0001,
+        "Distance-limited OMSI reflection camera metadata is incorrect.");
     Require(
         bus.Physics.Axles.Count == 2,
         "Synthetic vehicle axles were not parsed.");

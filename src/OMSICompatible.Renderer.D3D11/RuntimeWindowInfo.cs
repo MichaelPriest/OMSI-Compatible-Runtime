@@ -141,6 +141,18 @@ public sealed record RuntimeOutsideCameraCenterInfo(
     double Y,
     double Z);
 
+public sealed record RuntimeReflectionCameraInfo(
+    int Index,
+    double X,
+    double Y,
+    double Z,
+    double EyeDistance,
+    double FieldOfViewDegrees,
+    double HeadingDegrees,
+    double PitchDegrees,
+    double? MaximumRenderDistanceMeters,
+    string RuntimeTextureName);
+
 public sealed record RuntimeVehiclePhysicsInfo(
     double? WheelBaseMeters,
     double? MaximumSteeringAngleDegrees);
@@ -162,6 +174,7 @@ public sealed record RuntimeVehicleInfo(
     int? ScheduleDriverCameraIndex,
     int? TicketSellingDriverCameraIndex,
     RuntimeOutsideCameraCenterInfo? OutsideCameraCenter,
+    IReadOnlyList<RuntimeReflectionCameraInfo> ReflectionCameras,
     RuntimeVehiclePhysicsInfo Physics,
     RuntimeDriverPositionInfo? DriverPosition,
     int ProtectedMeshCount);

@@ -632,6 +632,21 @@ internal sealed class RuntimeApplicationContext :
                         vehicle.Bus.OutsideCameraCenter.X,
                         vehicle.Bus.OutsideCameraCenter.Z,
                         vehicle.Bus.OutsideCameraCenter.Y),
+                vehicle.Bus.ReflectionCameras
+                    .Select(
+                        static camera =>
+                            new RuntimeReflectionCameraInfo(
+                                camera.Index,
+                                camera.X,
+                                camera.Z,
+                                camera.Y,
+                                camera.EyeDistance,
+                                camera.FieldOfViewDegrees,
+                                camera.HeadingDegrees,
+                                camera.PitchDegrees,
+                                camera.MaximumRenderDistanceMeters,
+                                camera.RuntimeTextureName))
+                    .ToArray(),
                 new RuntimeVehiclePhysicsInfo(
                     vehicle.Bus.Physics.WheelBaseMeters,
                     vehicle.Bus.Physics.MaximumSteeringAngleDegrees),
