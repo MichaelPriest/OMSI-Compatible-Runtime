@@ -90,6 +90,9 @@ public sealed record OmsiScriptProgram(
 public sealed record OmsiScriptCatalog(
     IReadOnlySet<string> NumericVariables,
     IReadOnlySet<string> StringVariables,
+    IReadOnlySet<string> SystemVariables,
+    IReadOnlySet<string> VehicleCallbacks,
+    IReadOnlySet<string> ScriptTextureCallbacks,
     IReadOnlyDictionary<string, double> Constants,
     IReadOnlyDictionary<string, OmsiScriptCurve> Curves,
     OmsiScriptProgram Program,
