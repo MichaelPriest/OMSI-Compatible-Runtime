@@ -11,6 +11,7 @@ public sealed record OmsiObjectPlacement(
     double HeadingDegrees,
     double PitchDegrees,
     double BankDegrees,
+    IReadOnlyList<string> ExtraValues,
     int SourceLineNumber);
 
 public sealed record OmsiSplinePlacement(
@@ -181,6 +182,10 @@ public static class MapTilePlacementParser
             heading,
             pitch,
             bank,
+            values
+                .Skip(9)
+                .Select(static value => value.Value)
+                .ToArray(),
             section.HeaderLineNumber);
 
         return true;
