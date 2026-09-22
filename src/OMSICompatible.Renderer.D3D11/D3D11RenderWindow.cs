@@ -19,6 +19,8 @@ public sealed class D3D11RenderWindow : Form
     private struct RuntimeCameraConstants
     {
         public Matrix4x4 ViewProjection;
+        public Vector3 CameraPosition;
+        public float CameraPadding;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -33,7 +35,9 @@ public sealed class D3D11RenderWindow : Form
         public float AlphaScale;
         public float LightMapStrength;
         public float MaterialChangeStrength;
-        public float Padding;
+        public float EnvMapStrength;
+        public float EnvMapMaskEnabled;
+        public Vector3 Padding;
     }
 
     private enum RuntimeVehicleViewMode
@@ -991,7 +995,11 @@ public sealed class D3D11RenderWindow : Form
                         new[]
                         {
                             batch.TexturePath,
-                            batch.TransMapTexturePath
+                            batch.TransMapTexturePath,
+                            batch.LightMapTexturePath,
+                            batch.MaterialChangeTexturePath,
+                            batch.EnvMapTexturePath,
+                            batch.EnvMapMaskTexturePath
                         })
                 .Where(
                     static path =>
@@ -2018,7 +2026,11 @@ public sealed class D3D11RenderWindow : Form
             new RuntimeCameraConstants
             {
                 ViewProjection =
-                    CreateViewProjection()
+                    CreateViewProjection(),
+                CameraPosition =
+                    ResolveActiveCameraPosition(),
+                CameraPadding =
+                    0.0f
             };
 
         _terrainCameraBuffer.SetData(
@@ -2448,8 +2460,14 @@ public sealed class D3D11RenderWindow : Form
                     MaterialChangeStrength =
                         ResolveVehicleMaterialChangeStrength(
                             batch),
+                    EnvMapStrength =
+                        ResolveVehicleEnvMapStrength(
+                            batch),
+                    EnvMapMaskEnabled =
+                        ResolveVehicleEnvMapMaskEnabled(
+                            batch),
                     Padding =
-                        0.0f
+                        Vector3.Zero
                 };
 
             _vehicleMaterialBuffer.SetData(
@@ -2480,6 +2498,30 @@ public sealed class D3D11RenderWindow : Form
 
             _deviceContext.PSUnsetShaderResource(
                 3);
+
+            _deviceContext.PSUnsetShaderResource(
+                4);
+
+            _deviceContext.PSUnsetShaderResource(
+                5);
+
+            if (TryGetVehicleTextureView(
+                    batch.EnvMapTexturePath,
+                    out var envMapView))
+            {
+                _deviceContext.PSSetShaderResource(
+                    4,
+                    envMapView!);
+            }
+
+            if (TryGetVehicleTextureView(
+                    batch.EnvMapMaskTexturePath,
+                    out var envMapMaskView))
+            {
+                _deviceContext.PSSetShaderResource(
+                    5,
+                    envMapMaskView!);
+            }
 
             if (TryGetVehicleTextureView(
                     batch.TexturePath,
@@ -2551,7 +2593,46 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.OMSetDepthStencilState(null);
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
+        _deviceContext.PSUnsetShaderResource(2);
+        _deviceContext.PSUnsetShaderResource(3);
+        _deviceContext.PSUnsetShaderResource(4);
+        _deviceContext.PSUnsetShaderResource(5);
         _deviceContext.RSSetState(null);
+    }
+
+    private float ResolveVehicleEnvMapStrength(
+        RuntimeObjectBatch batch)
+    {
+        if (string.IsNullOrWhiteSpace(
+                batch.EnvMapTexturePath) ||
+            batch.EnvMapStrength <= 0.0 ||
+            !TryGetVehicleTextureView(
+                batch.EnvMapTexturePath,
+                out _))
+        {
+            return 0.0f;
+        }
+
+        return (float)Math.Clamp(
+            batch.EnvMapStrength,
+            0.0,
+            100.0);
+    }
+
+    private float ResolveVehicleEnvMapMaskEnabled(
+        RuntimeObjectBatch batch)
+    {
+        if (string.IsNullOrWhiteSpace(
+                batch.EnvMapMaskTexturePath))
+        {
+            return 0.0f;
+        }
+
+        return TryGetVehicleTextureView(
+                   batch.EnvMapMaskTexturePath,
+                   out _)
+            ? 1.0f
+            : 0.0f;
     }
 
     private float ResolveVehicleMaterialChangeStrength(
@@ -2896,6 +2977,48 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return false;
+    }
+
+    private Vector3 ResolveActiveCameraPosition()
+    {
+        if (!_driveMode)
+        {
+            return _camera.Position;
+        }
+
+        var vehicle =
+            _windowInfo.Vehicle;
+
+        if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Driver &&
+            vehicle?.DriverCameras.Count > 0)
+        {
+            var index =
+                Math.Clamp(
+                    _driverCameraIndex,
+                    0,
+                    vehicle.DriverCameras.Count - 1);
+
+            return _vehicle.GetDriverCameraPosition(
+                vehicle.DriverCameras[index]);
+        }
+
+        if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Passenger &&
+            vehicle?.PassengerCameras.Count > 0)
+        {
+            var index =
+                Math.Clamp(
+                    _passengerCameraIndex,
+                    0,
+                    vehicle.PassengerCameras.Count - 1);
+
+            return _vehicle.GetPassengerCameraPosition(
+                vehicle.PassengerCameras[index]);
+        }
+
+        return _vehicle.GetChaseCameraPosition(
+            vehicle?.OutsideCameraCenter);
     }
 
     private Matrix4x4 CreateViewProjection()
