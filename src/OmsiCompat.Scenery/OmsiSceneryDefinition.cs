@@ -36,11 +36,21 @@ public sealed record OmsiSceneryTreeDefinition(
     double MinimumAspect,
     double MaximumAspect);
 
+public sealed record OmsiSceneryMaterialOverride(
+    int MeshOrdinal,
+    string TextureName,
+    int MaterialIndex,
+    int? AlphaMode,
+    string? TransMapSource,
+    bool NoZWrite,
+    bool NoZCheck);
+
 public sealed record OmsiSceneryDefinition(
     bool Exists,
     bool UsesAbsoluteHeight,
     string? RenderType,
     IReadOnlyList<OmsiSceneryMeshReference> Meshes,
+    IReadOnlyList<OmsiSceneryMaterialOverride> MaterialOverrides,
     OmsiSceneryTreeDefinition? Tree)
 {
     public static OmsiSceneryDefinition Missing { get; } =
@@ -49,5 +59,6 @@ public sealed record OmsiSceneryDefinition(
             false,
             null,
             Array.Empty<OmsiSceneryMeshReference>(),
+            Array.Empty<OmsiSceneryMaterialOverride>(),
             null);
 }
