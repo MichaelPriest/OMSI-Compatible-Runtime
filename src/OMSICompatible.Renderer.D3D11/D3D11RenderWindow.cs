@@ -1111,6 +1111,8 @@ public sealed class D3D11RenderWindow : Form
             $"protected={Math.Max(_vehicleExteriorGeometry.ProtectedMeshCount, _vehicleInteriorGeometry.ProtectedMeshCount)}; " +
             $"failed={Math.Max(_vehicleExteriorGeometry.MissingMeshCount, _vehicleInteriorGeometry.MissingMeshCount)}");
 
+        AppendVehicleGeometryDiagnostics();
+
         if (_vehicleExteriorGeometry.Vertices.Length == 0 &&
             _vehicleInteriorGeometry.Vertices.Length == 0)
         {
@@ -1282,6 +1284,89 @@ public sealed class D3D11RenderWindow : Form
             _windowInfo.Splines,
             _terrainGeometry,
             _windowInfo.Spawn);
+    }
+
+    private void AppendVehicleGeometryDiagnostics()
+    {
+        try
+        {
+            var logPath =
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-load.log");
+
+            static string BoundsOf(
+                RuntimeObjectGeometry geometry)
+            {
+                if (geometry.Vertices.Length == 0)
+                {
+                    return "<empty>";
+                }
+
+                var min =
+                    new Vector3(
+                        float.PositiveInfinity);
+                var max =
+                    new Vector3(
+                        float.NegativeInfinity);
+
+                foreach (var vertex in
+                         geometry.Vertices)
+                {
+                    min =
+                        Vector3.Min(
+                            min,
+                            vertex.Position);
+                    max =
+                        Vector3.Max(
+                            max,
+                            vertex.Position);
+                }
+
+                return
+                    $"min=({min.X:F3},{min.Y:F3},{min.Z:F3}) " +
+                    $"max=({max.X:F3},{max.Y:F3},{max.Z:F3})";
+            }
+
+            var viewpointGroups =
+                _windowInfo.Vehicle?.Meshes
+                    .GroupBy(
+                        static mesh =>
+                            mesh.ViewpointFlag)
+                    .OrderBy(
+                        static group =>
+                            group.Key)
+                    .Select(
+                        static group =>
+                            $"{group.Key}:{group.Count()}")
+                    .ToArray() ??
+                Array.Empty<string>();
+
+            var lines =
+                new[]
+                {
+                    "",
+                    "runtimeGeometry:",
+                    $"exteriorVertices={_vehicleExteriorGeometry.Vertices.Length}",
+                    $"exteriorMeshes={_vehicleExteriorGeometry.RenderedMeshCount}",
+                    $"exteriorBounds={BoundsOf(_vehicleExteriorGeometry)}",
+                    $"interiorVertices={_vehicleInteriorGeometry.Vertices.Length}",
+                    $"interiorMeshes={_vehicleInteriorGeometry.RenderedMeshCount}",
+                    $"interiorBounds={BoundsOf(_vehicleInteriorGeometry)}",
+                    $"viewpointFlags={(viewpointGroups.Length == 0 ? "<none>" : string.Join(", ", viewpointGroups))}",
+                    $"spawn={_windowInfo.Spawn?.X:F3},{_windowInfo.Spawn?.Y:F3},{_windowInfo.Spawn?.Z:F3}",
+                    $"spawnHeading={_windowInfo.Spawn?.HeadingDegrees:F3}"
+                };
+
+            File.AppendAllLines(
+                logPath,
+                lines);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[vehicle-geometry] unable to append diagnostics: {ex.Message}");
+        }
     }
 
     private void CreateReflectionResources()
