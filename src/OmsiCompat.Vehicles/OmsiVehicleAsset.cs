@@ -29,6 +29,7 @@ public sealed record OmsiVehicleMeshAsset(
     IReadOnlyList<OmsiVehicleAnimation> Animations,
     Matrix4x4 SourceTransform,
     float[] Positions,
+    float[] Normals,
     float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
