@@ -549,7 +549,8 @@ internal sealed class RuntimeApplicationContext :
                                                 material.TransMapTexturePath,
                                                 false,
                                                 false))
-                                    .ToArray()))
+                                    .ToArray(),
+                                mesh.ViewpointFlag))
                     .ToArray(),
                 vehicle.Bus.DriverCameras
                     .Select(
