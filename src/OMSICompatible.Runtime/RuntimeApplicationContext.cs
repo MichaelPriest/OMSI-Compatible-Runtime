@@ -186,11 +186,17 @@ internal sealed class RuntimeApplicationContext :
             _vehicleAsset =
                 vehicle;
 
+            WriteVehicleLoadDiagnostics(
+                vehicle);
+
             ReportProgress(
                 new WorldLoadProgress(
                     90,
                     "Preparando renderização",
-                    $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · {vehicle.RenderableMeshCount:N0} meshes do ônibus..."));
+                    $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · " +
+                    $"{vehicle.RenderableMeshCount:N0} mesh(es) renderizáveis do ônibus · " +
+                    $"{vehicle.ProtectedMeshCount:N0} protegida(s) · " +
+                    $"{vehicle.FailedMeshCount:N0} com falha..."));
 
             var runtimeInfo =
                 BuildRuntimeInfo(
@@ -281,6 +287,81 @@ internal sealed class RuntimeApplicationContext :
                 _loading.ShowFailure(
                     ex.Message);
             }
+        }
+    }
+
+    private static void WriteVehicleLoadDiagnostics(
+        OmsiVehicleAsset vehicle)
+    {
+        try
+        {
+            var logPath =
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-load.log");
+
+            var errorGroups =
+                vehicle.Meshes
+                    .Where(
+                        static mesh =>
+                            !string.IsNullOrWhiteSpace(
+                                mesh.ErrorCode))
+                    .GroupBy(
+                        static mesh =>
+                            mesh.ErrorCode!,
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(
+                        static group =>
+                            group.Count())
+                    .Select(
+                        static group =>
+                            $"{group.Key}={group.Count()}")
+                    .ToArray();
+
+            var failedExamples =
+                vehicle.Meshes
+                    .Where(
+                        static mesh =>
+                            !mesh.IsRenderable)
+                    .Take(20)
+                    .Select(
+                        static mesh =>
+                            $"{mesh.DeclaredPath} | resolved={mesh.ResolvedPath ?? "<null>"} | error={mesh.ErrorCode ?? "<none>"}")
+                    .ToArray();
+
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"bus={vehicle.Bus.DisplayName}",
+                    $"busFile={vehicle.Bus.FilePath}",
+                    $"modelCfg={vehicle.Bus.ModelConfigPath ?? "<null>"}",
+                    $"modelCfgExists={vehicle.Bus.ModelConfigPath is not null && File.Exists(vehicle.Bus.ModelConfigPath)}",
+                    $"meshTotal={vehicle.Meshes.Count}",
+                    $"meshRenderable={vehicle.RenderableMeshCount}",
+                    $"meshProtected={vehicle.ProtectedMeshCount}",
+                    $"meshFailed={vehicle.FailedMeshCount}",
+                    $"driverCameras={vehicle.Bus.DriverCameras.Count}",
+                    $"passengerCameras={vehicle.Bus.PassengerCameras.Count}",
+                    $"errors={(errorGroups.Length == 0 ? "<none>" : string.Join("; ", errorGroups))}",
+                    "",
+                    "failedMeshes:"
+                };
+
+            lines.AddRange(
+                failedExamples);
+
+            File.WriteAllLines(
+                logPath,
+                lines);
+
+            Console.WriteLine(
+                $"[vehicle-load] {string.Join("; ", lines.Take(11))}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[vehicle-load] unable to write diagnostics: {ex.Message}");
         }
     }
 
