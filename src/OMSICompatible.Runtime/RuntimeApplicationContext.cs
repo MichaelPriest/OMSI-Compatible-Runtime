@@ -706,7 +706,14 @@ internal sealed class RuntimeApplicationContext :
                                                 material.NoZCheck))
                                     .ToArray(),
                                 mesh.ViewpointFlag,
-                                mesh.LodThreshold))
+                                mesh.LodThreshold,
+                                mesh.VisibilityConditions
+                                    .Select(
+                                        static condition =>
+                                            new RuntimeVehicleVisibilityConditionInfo(
+                                                condition.VariableName,
+                                                condition.Value))
+                                    .ToArray()))
                     .ToArray(),
                 vehicle.Bus.DriverCameras
                     .Select(
