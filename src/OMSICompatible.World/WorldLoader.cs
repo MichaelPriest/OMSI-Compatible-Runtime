@@ -32,7 +32,7 @@ public static class WorldLoader
                     reference.LineNumber))
                 .ToArray();
 
-            var objects = placements.Objects
+            var tileObjects = placements.Objects
                 .Select(source => new WorldObjectPlacement(
                     coordinate,
                     source.Id,
@@ -44,7 +44,7 @@ public static class WorldLoader
                     source.SourceLineNumber))
                 .ToArray();
 
-            var splines = placements.Splines
+            var tileSplines = placements.Splines
                 .Select(source => new WorldSplinePlacement(
                     coordinate,
                     source.Id,
@@ -68,8 +68,8 @@ public static class WorldLoader
                 summary.SectionCount,
                 summary.SectionCounts,
                 assetReferences,
-                objects,
-                splines,
+                tileObjects,
+                tileSplines,
                 placements.Issues.Count));
         }
 
@@ -93,26 +93,26 @@ public static class WorldLoader
             .ThenBy(static asset => asset.SourcePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var objects = tiles
+        var allObjects = tiles
             .SelectMany(static tile => tile.Objects)
             .ToArray();
 
-        var splines = tiles
+        var allSplines = tiles
             .SelectMany(static tile => tile.Splines)
             .ToArray();
 
         var dependencies = WorldAssetResolver.ResolvePrimaryDependencies(
             contentRoot,
-            objects,
-            splines);
+            allObjects,
+            allSplines);
 
         return new WorldDefinition(
             map.FolderName,
             map.DirectoryPath,
             tiles.ToArray(),
             assets,
-            objects,
-            splines,
+            allObjects,
+            allSplines,
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             bounds);
