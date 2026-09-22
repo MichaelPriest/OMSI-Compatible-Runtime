@@ -161,6 +161,7 @@ public static class WorldLoader
                 $"Lendo {allSplines.Select(static spline => spline.AssetPath).Distinct(StringComparer.OrdinalIgnoreCase).Count():N0} arquivos de spline..."));
 
         var splineAssets = LoadSplineAssets(
+            contentRoot,
             allSplines,
             dependencies);
 
@@ -198,6 +199,7 @@ public static class WorldLoader
 
     private static IReadOnlyDictionary<string, WorldSplineAsset>
         LoadSplineAssets(
+            OmsiContentRoot contentRoot,
             IReadOnlyList<WorldSplinePlacement> splines,
             WorldDependencyReport dependencies)
     {
@@ -237,20 +239,38 @@ public static class WorldLoader
                     dependency.ResolvedPath);
 
                 var surfaces = definition.Surfaces
-                    .Select(static surface => new WorldSplineSurface(
-                        surface.TextureIndex,
-                        surface.TextureName,
-                        surface.AlphaMode,
-                        new WorldSplineProfilePoint(
-                            surface.From.X,
-                            surface.From.Z,
-                            surface.From.TextureX,
-                            surface.From.TextureScale),
-                        new WorldSplineProfilePoint(
-                            surface.To.X,
-                            surface.To.Z,
-                            surface.To.TextureX,
-                            surface.To.TextureScale)))
+                    .Select(surface =>
+                    {
+                        string? texturePath = null;
+
+                        if (!string.IsNullOrWhiteSpace(
+                                surface.TextureName) &&
+                            OmsiTextureAssetPathResolver
+                                .TryResolveSplineTexture(
+                                    contentRoot.RootPath,
+                                    dependency.ResolvedPath,
+                                    surface.TextureName,
+                                    out var resolvedTexture))
+                        {
+                            texturePath = resolvedTexture;
+                        }
+
+                        return new WorldSplineSurface(
+                            surface.TextureIndex,
+                            surface.TextureName,
+                            texturePath,
+                            surface.AlphaMode,
+                            new WorldSplineProfilePoint(
+                                surface.From.X,
+                                surface.From.Z,
+                                surface.From.TextureX,
+                                surface.From.TextureScale),
+                            new WorldSplineProfilePoint(
+                                surface.To.X,
+                                surface.To.Z,
+                                surface.To.TextureX,
+                                surface.To.TextureScale));
+                    })
                     .ToArray();
 
                 result[declaredPath] = new WorldSplineAsset(
