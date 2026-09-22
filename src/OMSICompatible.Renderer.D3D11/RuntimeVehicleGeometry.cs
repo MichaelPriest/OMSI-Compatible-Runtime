@@ -39,6 +39,7 @@ internal static class RuntimeVehicleGeometry
         var asset =
             new RuntimeSceneryAssetInfo(
                 UsesAbsoluteHeight: true,
+                OnlyEditor: false,
                 RenderType: null,
                 Meshes: selectedMeshes,
                 Tree: null);
