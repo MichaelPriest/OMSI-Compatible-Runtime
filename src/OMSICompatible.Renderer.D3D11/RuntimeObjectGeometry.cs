@@ -741,21 +741,24 @@ internal static class RuntimeObjectGeometryBuilder
 
     private static Matrix4x4 CreateMeshTransform(
         RuntimeObjectMeshTransformInfo transform) =>
-        // [new_pos]/rot_x/rot_y/rot_z/model.cfg transforms use
-        // the same OMSI X/Y/Z convention as mesh vertices.
+        // CFG/model.cfg coordinates map to renderer space as
+        // (-X, Z, Y). This is a proper basis change:
+        // source X axis -> renderer -X
+        // source Y axis -> renderer +Z
+        // source Z axis -> renderer +Y
         Matrix4x4.CreateScale(
             (float)transform.ScaleX,
             (float)transform.ScaleZ,
             (float)transform.ScaleY) *
         Matrix4x4.CreateFromYawPitchRoll(
             DegreesToRadians(
-                -transform.RotationZ),
+                transform.RotationZ),
             DegreesToRadians(
                 -transform.RotationX),
             DegreesToRadians(
-                -transform.RotationY)) *
+                transform.RotationY)) *
         Matrix4x4.CreateTranslation(
-            (float)transform.PositionX,
+            (float)-transform.PositionX,
             (float)transform.PositionZ,
             (float)transform.PositionY);
 
