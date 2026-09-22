@@ -95,7 +95,10 @@ public static class WorldLoader
                 companions.LightmapPath,
                 companions.WaterPath,
                 companions.ReadyMeshPaths,
-                companions.TerrainTexturePaths);
+                companions.TerrainTexturePaths,
+                BuildTerrainMasks(
+                    sourceTile.FilePath,
+                    companions.TerrainTexturePaths));
 
             var (terrain, terrainErrorCode) =
                 LoadTerrain(resources.TerrainPath);
@@ -176,11 +179,16 @@ public static class WorldLoader
             allObjects,
             dependencies);
 
+        var groundTextures =
+            LoadGroundTextures(
+                contentRoot,
+                map);
+
         progress?.Report(
             new WorldLoadProgress(
                 90,
                 "Montando mundo",
-                $"Cenário: {sceneryAssets.Values.Count(static asset => asset.IsRenderable):N0} assets renderizáveis · finalizando modelo x64..."));
+                $"Cenário: {sceneryAssets.Values.Count(static asset => asset.IsRenderable):N0} assets renderizáveis · terreno {groundTextures.Count:N0} camada(s) · finalizando modelo x64..."));
 
         return new WorldDefinition(
             map.FolderName,
@@ -191,10 +199,111 @@ public static class WorldLoader
             allSplines,
             splineAssets,
             sceneryAssets,
+            groundTextures,
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
             bounds);
+    }
+
+    private static IReadOnlyList<WorldGroundTexture>
+        LoadGroundTextures(
+            OmsiContentRoot contentRoot,
+            OmsiMapInfo map)
+    {
+        var source =
+            OmsiGroundTextureReader.ReadFile(
+                map.GlobalConfigPath);
+
+        return source
+            .Select(
+                (ground, index) =>
+                    new WorldGroundTexture(
+                        index,
+                        ResolveGroundTexturePath(
+                            contentRoot.RootPath,
+                            map.DirectoryPath,
+                            ground.MainTexturePath),
+                        ResolveGroundTexturePath(
+                            contentRoot.RootPath,
+                            map.DirectoryPath,
+                            ground.DetailTexturePath),
+                        ground.MainTextureRepeating,
+                        ground.DetailTextureRepeating))
+            .ToArray();
+    }
+
+    private static string? ResolveGroundTexturePath(
+        string contentRoot,
+        string mapDirectory,
+        string textureName)
+    {
+        return OmsiTextureAssetPathResolver
+            .TryResolveGroundTexture(
+                contentRoot,
+                mapDirectory,
+                textureName,
+                out var resolved)
+            ? resolved
+            : null;
+    }
+
+    private static IReadOnlyList<WorldTerrainMask>
+        BuildTerrainMasks(
+            string tileFilePath,
+            IReadOnlyList<string> paths)
+    {
+        var tileFileName =
+            Path.GetFileName(
+                tileFilePath);
+
+        var prefix =
+            tileFileName + ".";
+
+        var masks =
+            new List<WorldTerrainMask>();
+
+        foreach (var path in paths)
+        {
+            var fileName =
+                Path.GetFileName(path);
+
+            if (!fileName.StartsWith(
+                    prefix,
+                    StringComparison.OrdinalIgnoreCase) ||
+                !fileName.EndsWith(
+                    ".dds",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var layerText =
+                fileName[
+                    prefix.Length..
+                    ^4];
+
+            if (!int.TryParse(
+                    layerText,
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var layerIndex) ||
+                layerIndex <= 0)
+            {
+                continue;
+            }
+
+            masks.Add(
+                new WorldTerrainMask(
+                    layerIndex,
+                    path));
+        }
+
+        return masks
+            .OrderBy(
+                static mask =>
+                    mask.LayerIndex)
+            .ToArray();
     }
 
     private static IReadOnlyDictionary<string, WorldSplineAsset>
