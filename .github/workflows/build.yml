@@ -29,3 +29,57 @@ jobs:
 
       - name: Run synthetic world smoke test
         run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
+
+      - name: Publish Runtime x64
+        run: >
+          dotnet publish src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/OMSI-Compatible-Runtime-alpha-win-x64
+
+      - name: Add test instructions
+        shell: pwsh
+        run: |
+          @'
+          OMSI Compatible Runtime x64 - PRE-ALPHA
+
+          This build does not use Omsi.exe.
+
+          Usage:
+            OMSICompatible.Runtime.exe --content "C:\path\to\OMSI" --map "Map Folder Name"
+
+          Controls in the 3D terrain view:
+            W/A/S/D  Move
+            Right Mouse Button  Look
+            Q/E      Down/Up
+            Shift    Faster
+            Ctrl     Slower
+            Mouse Wheel  Change movement speed
+            R        Reframe/reset camera
+
+          Current scope:
+            - map/global/tile discovery
+            - object/spline placement parsing
+            - real .terrain height loading
+            - D3D11 x64 terrain mesh
+            - free camera
+
+          Not implemented yet:
+            - terrain textures/lightmaps
+            - rendered splines/roads/crossings
+            - scenery O3D rendering
+            - vehicles/scripts/gameplay
+          '@ | Set-Content -Encoding UTF8 artifacts/OMSI-Compatible-Runtime-alpha-win-x64/README-TEST.txt
+
+      - name: Upload x64 alpha
+        uses: actions/upload-artifact@v4
+        with:
+          name: OMSI-Compatible-Runtime-alpha-win-x64
+          path: artifacts/OMSI-Compatible-Runtime-alpha-win-x64
+          if-no-files-found: error
+          compression-level: 6
