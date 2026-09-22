@@ -27,6 +27,13 @@ public sealed class D3D11RenderWindow : Form
         public Matrix4x4 World;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimeVehicleMaterialConstants
+    {
+        public float AlphaScale;
+        public Vector3 Padding;
+    }
+
     private enum RuntimeVehicleViewMode
     {
         Driver,
@@ -136,6 +143,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11Buffer? _vehicleExteriorVertexBuffer;
     private ID3D11Buffer? _vehicleInteriorVertexBuffer;
     private ID3D11Buffer? _vehicleModelBuffer;
+    private ID3D11Buffer? _vehicleMaterialBuffer;
     private ID3D11VertexShader? _vehicleVertexShader;
     private ID3D11PixelShader? _vehicleColorPixelShader;
     private ID3D11PixelShader? _vehicleTexturedPixelShader;
@@ -1238,6 +1246,10 @@ public sealed class D3D11RenderWindow : Form
             _device.CreateConstantBuffer<
                 RuntimeModelConstants>();
 
+        _vehicleMaterialBuffer =
+            _device.CreateConstantBuffer<
+                RuntimeVehicleMaterialConstants>();
+
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
                 _device);
@@ -2298,6 +2310,7 @@ public sealed class D3D11RenderWindow : Form
             _renderTargetView is null ||
             vertexBuffer is null ||
             _vehicleModelBuffer is null ||
+            _vehicleMaterialBuffer is null ||
             _vehicleVertexShader is null ||
             _vehicleColorPixelShader is null ||
             _vehicleTexturedPixelShader is null ||
@@ -2315,6 +2328,9 @@ public sealed class D3D11RenderWindow : Form
 
         Span<RuntimeModelConstants> model =
             stackalloc RuntimeModelConstants[1];
+
+        Span<RuntimeVehicleMaterialConstants> materialConstants =
+            stackalloc RuntimeVehicleMaterialConstants[1];
 
         var vehicleWorld =
             _vehicle.CreateWorldMatrix();
@@ -2349,6 +2365,10 @@ public sealed class D3D11RenderWindow : Form
             0,
             _vehicleSampler);
 
+        _deviceContext.PSSetConstantBuffer(
+            2,
+            _vehicleMaterialBuffer);
+
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
@@ -2374,6 +2394,21 @@ public sealed class D3D11RenderWindow : Form
             _vehicleModelBuffer.SetData(
                 _deviceContext,
                 model,
+                MapMode.WriteDiscard);
+
+            materialConstants[0] =
+                new RuntimeVehicleMaterialConstants
+                {
+                    AlphaScale =
+                        ResolveVehicleAlphaScale(
+                            batch),
+                    Padding =
+                        Vector3.Zero
+                };
+
+            _vehicleMaterialBuffer.SetData(
+                _deviceContext,
+                materialConstants,
                 MapMode.WriteDiscard);
 
             _deviceContext.OMSetBlendState(
@@ -2447,6 +2482,32 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.RSSetState(null);
+    }
+
+    private float ResolveVehicleAlphaScale(
+        RuntimeObjectBatch batch)
+    {
+        if (string.IsNullOrWhiteSpace(
+                batch.AlphaScaleVariable))
+        {
+            return 1.0f;
+        }
+
+        var value =
+            _scriptRuntime?.GetLocal(
+                batch.AlphaScaleVariable) ??
+            0.0;
+
+        if (!double.IsFinite(
+                value))
+        {
+            return 0.0f;
+        }
+
+        return (float)Math.Clamp(
+            value,
+            0.0,
+            1.0);
     }
 
     private bool IsVehicleBatchVisible(
@@ -3587,6 +3648,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleTexturedPixelShader?.Dispose();
             _vehicleColorPixelShader?.Dispose();
             _vehicleVertexShader?.Dispose();
+            _vehicleMaterialBuffer?.Dispose();
             _vehicleModelBuffer?.Dispose();
             _vehicleInteriorVertexBuffer?.Dispose();
             _vehicleExteriorVertexBuffer?.Dispose();
