@@ -10,7 +10,9 @@ public sealed record OmsiVehicleMaterialOverride(
     bool NoZCheck,
     string? AlphaScaleVariable,
     string? LightMapSource,
-    string? LightMapVariable);
+    string? LightMapVariable,
+    string? MaterialChangeVariable,
+    string? MaterialChangeMapSource);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
