@@ -56,3 +56,28 @@ The x64 startup/configuration application. The current bootstrap is intentionall
 ## Compatibility and legal boundary
 
 This project uses an independent compatibility implementation. Proprietary binaries, assets, DRM components, or copied game code must not be committed to the repository.
+
+
+## Compatibility-first x64 goal
+
+The product goal is not to redesign OMSI gameplay. The runtime should preserve the user-facing behavior of OMSI content while replacing the legacy 32-bit execution layer with a modern 64-bit runtime.
+
+Compatibility-facing behavior includes:
+
+- OMSI keyboard/control semantics;
+- vehicle electrical, engine, gearbox and brake state;
+- map, spline, scenery, O3D, HOF and script behavior;
+- existing add-on content expectations.
+
+The x64 runtime is free to modernize the implementation underneath that compatibility surface:
+
+- 64-bit address space;
+- multi-threaded simulation work;
+- asynchronous asset and tile streaming;
+- modern D3D11/D3D12 rendering;
+- GPU instancing, culling and batching;
+- texture streaming and modern cache management;
+- parallel content parsing and background preparation;
+- modern audio/input backends.
+
+The guiding rule is: **preserve observable OMSI behavior where compatibility matters; optimize the implementation behind it.**
