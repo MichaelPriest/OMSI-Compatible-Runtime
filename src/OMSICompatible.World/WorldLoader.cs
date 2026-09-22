@@ -278,7 +278,7 @@ public static class WorldLoader
 
     private static string NormalizePath(string path)
     {
-        return path.Trim().Replace('/', '\');
+        return path.Trim().Replace('/', Path.DirectorySeparatorChar);
     }
 
     private sealed class AssetKeyComparer :
