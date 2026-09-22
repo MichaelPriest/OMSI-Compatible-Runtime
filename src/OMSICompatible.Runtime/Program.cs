@@ -1,5 +1,6 @@
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Vehicles;
 using OMSICompatible.World;
 
 namespace OMSICompatible.Runtime;
@@ -18,6 +19,16 @@ internal static class Program
             GetOption(
                 args,
                 "--map");
+
+        var busRelativePath =
+            GetOption(
+                args,
+                "--bus");
+
+        var spawnName =
+            GetOption(
+                args,
+                "--spawn");
 
         var headless =
             HasFlag(
@@ -82,12 +93,59 @@ internal static class Program
             return 0;
         }
 
+        var buses =
+            BusDiscovery.Discover(
+                contentRoot);
+
+        var selectedBus =
+            buses.FirstOrDefault(
+                bus =>
+                    string.Equals(
+                        bus.RelativePath,
+                        busRelativePath,
+                        StringComparison.OrdinalIgnoreCase))
+            ?? buses.FirstOrDefault();
+
+        if (selectedBus is null)
+        {
+            Console.Error.WriteLine(
+                "No OMSI .bus vehicle was found.");
+            return 4;
+        }
+
+        var entryPointGroups =
+            MapEntryPointDiscovery.Discover(
+                selectedMap);
+
+        var selectedEntryPointGroup =
+            entryPointGroups.FirstOrDefault(
+                point =>
+                    string.Equals(
+                        point.Name,
+                        spawnName,
+                        StringComparison.OrdinalIgnoreCase))
+            ?? entryPointGroups.FirstOrDefault();
+
+        var selectedEntryPoint =
+            selectedEntryPointGroup
+                ?.Alternatives
+                .FirstOrDefault();
+
+        if (selectedEntryPoint is null)
+        {
+            Console.Error.WriteLine(
+                "No OMSI bus entry point was found in the selected map.");
+            return 5;
+        }
+
         ApplicationConfiguration.Initialize();
 
         using var context =
             new RuntimeApplicationContext(
                 contentRoot,
-                selectedMap);
+                selectedMap,
+                selectedBus,
+                selectedEntryPoint);
 
         Application.Run(context);
         return 0;
