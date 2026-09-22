@@ -107,6 +107,7 @@ public sealed record RuntimeTreeInfo(
 
 public sealed record RuntimeSceneryAssetInfo(
     bool UsesAbsoluteHeight,
+    bool OnlyEditor,
     string? RenderType,
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
     RuntimeTreeInfo? Tree);
