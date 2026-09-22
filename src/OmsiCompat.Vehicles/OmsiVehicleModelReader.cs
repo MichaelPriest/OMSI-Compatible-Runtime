@@ -9,6 +9,8 @@ public static class OmsiVehicleModelReader
     {
         var document = OmsiSectionDocument.ParseFile(path);
         var meshes = new List<OmsiVehicleMeshReference>();
+        var textTextures =
+            new List<OmsiVehicleTextTexture>();
 
         string? currentMeshPath = null;
         var currentOrdinal = -1;
@@ -80,6 +82,30 @@ public static class OmsiVehicleModelReader
 
         foreach (var section in document.Sections)
         {
+            if (section.Name.Equals(
+                    "texttexture",
+                    StringComparison.OrdinalIgnoreCase) ||
+                section.Name.Equals(
+                    "texttexture_enh",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var definition =
+                    TryParseTextTexture(
+                        section,
+                        textTextures.Count,
+                        section.Name.Equals(
+                            "texttexture_enh",
+                            StringComparison.OrdinalIgnoreCase));
+
+                if (definition is not null)
+                {
+                    textTextures.Add(
+                        definition);
+                }
+
+                continue;
+            }
+
             if (section.Name.Equals(
                     "LOD",
                     StringComparison.OrdinalIgnoreCase))
@@ -609,6 +635,57 @@ public static class OmsiVehicleModelReader
             }
 
             if (section.Name.Equals(
+                    "matl_freetex",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length >= 2)
+                {
+                    var source =
+                        values[0]
+                            .Trim()
+                            .Trim('"');
+
+                    var variable =
+                        values[1]
+                            .Trim()
+                            .Trim('"');
+
+                    if (source.Length > 0 &&
+                        variable.Length > 0)
+                    {
+                        material.FreeTextures.Add(
+                            new OmsiVehicleFreeTexture(
+                                source,
+                                variable));
+                    }
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "useTextTexture",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (int.TryParse(
+                        Values(section)
+                            .FirstOrDefault(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var textTextureIndex) &&
+                    textTextureIndex >= 0)
+                {
+                    material.TextTextureIndex =
+                        textTextureIndex;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
                     "matl_bumpmap",
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -718,7 +795,102 @@ public static class OmsiVehicleModelReader
 
         CommitMesh();
 
-        return new OmsiVehicleModel(path, meshes.ToArray());
+        return new OmsiVehicleModel(
+            path,
+            meshes.ToArray(),
+            textTextures.ToArray());
+    }
+
+    private static OmsiVehicleTextTexture?
+        TryParseTextTexture(
+            OmsiSection section,
+            int index,
+            bool enhanced)
+    {
+        var values =
+            Values(section).ToArray();
+
+        if (values.Length < 8 ||
+            !int.TryParse(
+                values[2],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var width) ||
+            !int.TryParse(
+                values[3],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var height) ||
+            width <= 0 ||
+            height <= 0 ||
+            !int.TryParse(
+                values[4],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var fullColorValue) ||
+            !byte.TryParse(
+                values[5],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var red) ||
+            !byte.TryParse(
+                values[6],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var green) ||
+            !byte.TryParse(
+                values[7],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var blue))
+        {
+            return null;
+        }
+
+        int? alignment = null;
+        bool? gridAligned = null;
+
+        if (enhanced)
+        {
+            if (values.Length >= 9 &&
+                int.TryParse(
+                    values[8],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var parsedAlignment))
+            {
+                alignment =
+                    parsedAlignment;
+            }
+
+            if (values.Length >= 10 &&
+                int.TryParse(
+                    values[9],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var parsedGrid))
+            {
+                gridAligned =
+                    parsedGrid != 0;
+            }
+        }
+
+        return new OmsiVehicleTextTexture(
+            index,
+            values[0]
+                .Trim()
+                .Trim('"'),
+            values[1]
+                .Trim()
+                .Trim('"'),
+            width,
+            height,
+            fullColorValue != 0,
+            red,
+            green,
+            blue,
+            alignment,
+            gridAligned);
     }
 
     private static IEnumerable<string> Values(OmsiSection section) =>
@@ -1075,6 +1247,8 @@ public static class OmsiVehicleModelReader
         public string? EnvMapMaskSource { get; set; }
         public string? BumpMapSource { get; set; }
         public double BumpMapStrength { get; set; }
+        public List<OmsiVehicleFreeTexture> FreeTextures { get; } = [];
+        public int? TextTextureIndex { get; set; }
 
         public OmsiVehicleMaterialOverride Build() =>
             new(
@@ -1094,6 +1268,8 @@ public static class OmsiVehicleModelReader
                 EnvMapStrength,
                 EnvMapMaskSource,
                 BumpMapSource,
-                BumpMapStrength);
+                BumpMapStrength,
+                FreeTextures.ToArray(),
+                TextTextureIndex);
     }
 }
