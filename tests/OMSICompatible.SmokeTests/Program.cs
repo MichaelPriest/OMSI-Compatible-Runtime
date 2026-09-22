@@ -29,7 +29,7 @@ try
         Lines(
             "[object]",
             "0",
-            @"SceneryobjectsSyntheticobject.sco",
+            @"Sceneryobjects\Synthetic\object.sco",
             "1001",
             "10.5",
             "20.25",
@@ -41,7 +41,7 @@ try
             "",
             "[spline]",
             "0",
-            @"SplinesSyntheticoad.sli",
+            @"Splines\Synthetic\road.sli",
             "2001",
             "-1",
             "-1",
@@ -74,10 +74,15 @@ try
         Path.Combine(splineDirectory, "road.sli"),
         Lines("[friendlyname]", "Synthetic Road"));
 
-    Require(
-        OmsiContentRoot.TryCreate(root, out var contentRoot, out var contentError) &&
-        contentRoot is not null,
-        $"Content root validation failed: {contentError}");
+    if (!OmsiContentRoot.TryCreate(
+            root,
+            out var contentRoot,
+            out var contentError) ||
+        contentRoot is null)
+    {
+        throw new InvalidOperationException(
+            $"Content root validation failed: {contentError}");
+    }
 
     var maps = MapDiscovery.Discover(contentRoot);
     Require(maps.Count == 1, $"Expected 1 map, found {maps.Count}.");
@@ -133,18 +138,19 @@ try
     Require(
         tile.Resources.LightmapPath is not null,
         "Lightmap companion file was not discovered.");
+
+    var terrain = tile.Terrain
+        ?? throw new InvalidOperationException("Terrain grid was not loaded.");
+
     Require(
-        tile.Terrain is not null,
-        "Terrain grid was not loaded.");
-    Require(
-        tile.Terrain.CellCount == 1,
+        terrain.CellCount == 1,
         "Terrain cell count was not preserved.");
     Require(
-        tile.Terrain.Heights.Count == 4,
+        terrain.Heights.Count == 4,
         "Terrain height sample count is incorrect.");
     Require(
-        tile.Terrain.MinimumHeight == 0.0f &&
-        tile.Terrain.MaximumHeight == 3.0f,
+        terrain.MinimumHeight == 0.0f &&
+        terrain.MaximumHeight == 3.0f,
         "Terrain elevation range is incorrect.");
     Require(
         world.TerrainParseIssueCount == 0,
@@ -156,7 +162,7 @@ try
         $"objects={world.Objects.Count}; " +
         $"splines={world.Splines.Count}; " +
         $"dependencies={world.Dependencies.RequiredCount}; " +
-        $"terrainSamples={tile.Terrain.Heights.Count}");
+        $"terrainSamples={terrain.Heights.Count}");
 
     return 0;
 }
