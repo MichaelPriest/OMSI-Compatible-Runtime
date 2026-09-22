@@ -202,7 +202,8 @@ internal sealed class RuntimeApplicationContext :
                             item.Position.Z,
                             item.HeadingDegrees,
                             item.PitchDegrees,
-                            item.BankDegrees))
+                            item.BankDegrees,
+                            item.ExtraValues))
                 .ToArray();
 
         var runtimeSceneryAssets =
@@ -242,7 +243,15 @@ internal sealed class RuntimeApplicationContext :
                                                             material.DiffuseB,
                                                             material.DiffuseA))
                                                 .ToArray()))
-                                .ToArray()),
+                                .ToArray(),
+                            pair.Value.Tree is null
+                                ? null
+                                : new RuntimeTreeInfo(
+                                    pair.Value.Tree.TextureName,
+                                    pair.Value.Tree.MinimumHeight,
+                                    pair.Value.Tree.MaximumHeight,
+                                    pair.Value.Tree.MinimumAspect,
+                                    pair.Value.Tree.MaximumAspect)),
                     StringComparer.OrdinalIgnoreCase);
 
         return new RuntimeWindowInfo(
