@@ -24,7 +24,9 @@ internal sealed record RuntimeObjectBatch(
     string? MaterialChangeVariable = null,
     string? EnvMapTexturePath = null,
     double EnvMapStrength = 0.0,
-    string? EnvMapMaskTexturePath = null);
+    string? EnvMapMaskTexturePath = null,
+    string? BumpMapTexturePath = null,
+    double BumpMapStrength = 0.0);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -73,7 +75,9 @@ internal static class RuntimeObjectGeometryBuilder
         string? MaterialChangeVariable = null,
         string? EnvMapTexturePath = null,
         double EnvMapStrength = 0.0,
-        string? EnvMapMaskTexturePath = null);
+        string? EnvMapMaskTexturePath = null,
+        string? BumpMapTexturePath = null,
+        double BumpMapStrength = 0.0);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -317,7 +321,9 @@ internal static class RuntimeObjectGeometryBuilder
                     key.MaterialChangeVariable,
                     key.EnvMapTexturePath,
                     key.EnvMapStrength,
-                    key.EnvMapMaskTexturePath));
+                    key.EnvMapMaskTexturePath,
+                    key.BumpMapTexturePath,
+                    key.BumpMapStrength));
         }
 
         return new RuntimeObjectGeometry(
@@ -409,7 +415,9 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.MaterialChangeVariable,
                     material?.EnvMapTexturePath,
                     material?.EnvMapStrength ?? 0.0,
-                    material?.EnvMapMaskTexturePath);
+                    material?.EnvMapMaskTexturePath,
+                    material?.BumpMapTexturePath,
+                    material?.BumpMapStrength ?? 0.0);
 
             var output =
                 GetBatch(
