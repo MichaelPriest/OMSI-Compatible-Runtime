@@ -696,7 +696,7 @@ internal sealed class RuntimeApplicationContext :
                     .Select(
                         static camera =>
                             new RuntimeDriverCameraInfo(
-                                camera.X,
+                                -camera.X,
                                 camera.Z,
                                 camera.Y,
                                 camera.EyeDistance,
@@ -708,7 +708,7 @@ internal sealed class RuntimeApplicationContext :
                     .Select(
                         static camera =>
                             new RuntimePassengerCameraInfo(
-                                camera.X,
+                                -camera.X,
                                 camera.Z,
                                 camera.Y,
                                 camera.EyeDistance,
@@ -722,7 +722,7 @@ internal sealed class RuntimeApplicationContext :
                 vehicle.Bus.OutsideCameraCenter is null
                     ? null
                     : new RuntimeOutsideCameraCenterInfo(
-                        vehicle.Bus.OutsideCameraCenter.X,
+                        -vehicle.Bus.OutsideCameraCenter.X,
                         vehicle.Bus.OutsideCameraCenter.Z,
                         vehicle.Bus.OutsideCameraCenter.Y),
                 vehicle.Bus.ReflectionCameras
@@ -730,7 +730,7 @@ internal sealed class RuntimeApplicationContext :
                         static camera =>
                             new RuntimeReflectionCameraInfo(
                                 camera.Index,
-                                camera.X,
+                                -camera.X,
                                 camera.Z,
                                 camera.Y,
                                 camera.EyeDistance,
@@ -747,7 +747,7 @@ internal sealed class RuntimeApplicationContext :
                 vehicle.DriverPosition is null
                     ? null
                     : new RuntimeDriverPositionInfo(
-                        vehicle.DriverPosition.X,
+                        -vehicle.DriverPosition.X,
                         vehicle.DriverPosition.Z,
                         vehicle.DriverPosition.Y,
                         vehicle.DriverPosition.SeatHeight,
