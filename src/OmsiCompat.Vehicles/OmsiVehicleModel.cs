@@ -8,7 +8,9 @@ public sealed record OmsiVehicleMaterialOverride(
     bool HasTransMapDirective,
     bool NoZWrite,
     bool NoZCheck,
-    string? AlphaScaleVariable);
+    string? AlphaScaleVariable,
+    string? LightMapSource,
+    string? LightMapVariable);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
