@@ -9,6 +9,7 @@ public sealed record WorldSplineProfilePoint(
 public sealed record WorldSplineSurface(
     int TextureIndex,
     string? TextureName,
+    string? TexturePath,
     int AlphaMode,
     WorldSplineProfilePoint From,
     WorldSplineProfilePoint To);
