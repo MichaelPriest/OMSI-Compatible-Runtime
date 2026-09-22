@@ -279,6 +279,11 @@ try
             "2",
             "[alphascale]",
             "mesh_alpha",
+            "[matl_envmap]",
+            "envmap.bmp",
+            "0.5",
+            "[matl_envmap_mask]",
+            "envmask.bmp",
             "[matl_lightmap]",
             "panel_lm.bmp",
             "lights_stand",
@@ -325,6 +330,18 @@ try
         Path.Combine(
             vehicleModelDirectory,
             "panel_n.bmp"),
+        [0x42, 0x4D, 0x00, 0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleModelDirectory,
+            "envmap.bmp"),
+        [0x42, 0x4D, 0x00, 0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleModelDirectory,
+            "envmask.bmp"),
         [0x42, 0x4D, 0x00, 0x00]);
 
     File.WriteAllText(
@@ -493,6 +510,19 @@ try
         Path.GetFileName(
             vehicleAsset.Meshes[0].Materials[0].MaterialChangeTexturePath!) ==
             "panel_n.bmp" &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Materials[0].EnvMapStrength -
+            0.5) < 0.0001 &&
+        !string.IsNullOrWhiteSpace(
+            vehicleAsset.Meshes[0].Materials[0].EnvMapTexturePath) &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[0].Materials[0].EnvMapTexturePath!) ==
+            "envmap.bmp" &&
+        !string.IsNullOrWhiteSpace(
+            vehicleAsset.Meshes[0].Materials[0].EnvMapMaskTexturePath) &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[0].Materials[0].EnvMapMaskTexturePath!) ==
+            "envmask.bmp" &&
         vehicleAsset.Meshes[1].Animations.Count == 0 &&
         Math.Abs(
             vehicleAsset.Meshes[0].SourceTransform.M41 -
@@ -509,8 +539,13 @@ try
 
     Require(
         vehicleAsset.Meshes[0].Positions.Length == 9 &&
+        vehicleAsset.Meshes[0].Normals.Length == 9 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Normals[2] -
+            1.0f) < 0.0001 &&
         vehicleAsset.Meshes[0].Indices.Length == 3 &&
         vehicleAsset.Meshes[1].Positions.Length == 9 &&
+        vehicleAsset.Meshes[1].Normals.Length == 9 &&
         vehicleAsset.Meshes[1].Indices.Length == 3,
         "Synthetic OMSI vehicle geometry counts are incorrect.");
 
