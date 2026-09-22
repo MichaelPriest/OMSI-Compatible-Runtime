@@ -18,8 +18,11 @@ public static class OmsiVehicleModelReader
         double? currentLodThreshold = null;
         var visibilityConditions =
             new List<OmsiVehicleVisibilityCondition>();
+        var animations =
+            new List<OmsiVehicleAnimation>();
         var overrides = new List<OmsiVehicleMaterialOverride>();
         MaterialBuilder? material = null;
+        AnimationBuilder? animation = null;
 
         void CommitMaterial()
         {
@@ -30,9 +33,29 @@ public static class OmsiVehicleModelReader
             }
         }
 
+        void CommitAnimation()
+        {
+            if (animation is null)
+            {
+                return;
+            }
+
+            var built =
+                animation.Build();
+
+            if (built is not null)
+            {
+                animations.Add(
+                    built);
+            }
+
+            animation = null;
+        }
+
         void CommitMesh()
         {
             CommitMaterial();
+            CommitAnimation();
 
             if (!string.IsNullOrWhiteSpace(currentMeshPath))
             {
@@ -43,12 +66,15 @@ public static class OmsiVehicleModelReader
                     currentViewpointFlag,
                     currentLodThreshold,
                     visibilityConditions.ToArray(),
+                    animations.ToArray(),
                     overrides.ToArray()));
             }
 
             currentMeshPath = null;
             visibilityConditions =
                 new List<OmsiVehicleVisibilityCondition>();
+            animations =
+                new List<OmsiVehicleAnimation>();
             overrides = new List<OmsiVehicleMaterialOverride>();
         }
 
@@ -162,6 +188,196 @@ public static class OmsiVehicleModelReader
                                 variableName,
                                 visibleValue));
                     }
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "newanim",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                CommitAnimation();
+                animation =
+                    new AnimationBuilder();
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "origin_from_mesh",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                animation.OriginFromMesh = true;
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "origin_trans",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (TryVector3(
+                        values,
+                        out var x,
+                        out var y,
+                        out var z))
+                {
+                    animation.OriginFromMesh = false;
+                    animation.OriginX = x;
+                    animation.OriginY = y;
+                    animation.OriginZ = z;
+                }
+
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "origin_rot_x",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    animation.OriginRotationX =
+                        value;
+                }
+
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "origin_rot_y",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    animation.OriginRotationY =
+                        value;
+                }
+
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "origin_rot_z",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    animation.OriginRotationZ =
+                        value;
+                }
+
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "anim_trans",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length >= 2 &&
+                    TrySingle(
+                        values[1],
+                        out var delta))
+                {
+                    animation.Kind =
+                        OmsiVehicleAnimationKind.Translation;
+                    animation.VariableName =
+                        values[0]
+                            .Trim()
+                            .Trim('"');
+                    animation.Delta =
+                        delta;
+                }
+
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "anim_rot",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length >= 2 &&
+                    TrySingle(
+                        values[1],
+                        out var delta))
+                {
+                    animation.Kind =
+                        OmsiVehicleAnimationKind.Rotation;
+                    animation.VariableName =
+                        values[0]
+                            .Trim()
+                            .Trim('"');
+                    animation.Delta =
+                        delta;
+                }
+
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "offset",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    animation.Offset =
+                        value;
+                }
+
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "maxspeed",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    animation.MaxSpeed =
+                        value;
+                }
+
+                continue;
+            }
+
+            if (animation is not null &&
+                section.Name.Equals(
+                    "delay",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    animation.Delay =
+                        value;
                 }
 
                 continue;
@@ -371,6 +587,114 @@ public static class OmsiVehicleModelReader
                    CultureInfo.InvariantCulture,
                    out result) &&
                double.IsFinite(result);
+    }
+
+    private sealed class AnimationBuilder
+    {
+        public OmsiVehicleAnimationKind?
+            Kind
+        {
+            get;
+            set;
+        }
+
+        public string VariableName
+        {
+            get;
+            set;
+        } = string.Empty;
+
+        public double Delta
+        {
+            get;
+            set;
+        }
+
+        public bool OriginFromMesh
+        {
+            get;
+            set;
+        } = true;
+
+        public double OriginX
+        {
+            get;
+            set;
+        }
+
+        public double OriginY
+        {
+            get;
+            set;
+        }
+
+        public double OriginZ
+        {
+            get;
+            set;
+        }
+
+        public double OriginRotationX
+        {
+            get;
+            set;
+        }
+
+        public double OriginRotationY
+        {
+            get;
+            set;
+        }
+
+        public double OriginRotationZ
+        {
+            get;
+            set;
+        }
+
+        public double Offset
+        {
+            get;
+            set;
+        }
+
+        public double? MaxSpeed
+        {
+            get;
+            set;
+        }
+
+        public double? Delay
+        {
+            get;
+            set;
+        }
+
+        public OmsiVehicleAnimation?
+            Build()
+        {
+            if (!Kind.HasValue ||
+                string.IsNullOrWhiteSpace(
+                    VariableName))
+            {
+                return null;
+            }
+
+            return new OmsiVehicleAnimation(
+                Kind.Value,
+                VariableName,
+                Delta,
+                OriginFromMesh,
+                OriginX,
+                OriginY,
+                OriginZ,
+                OriginRotationX,
+                OriginRotationY,
+                OriginRotationZ,
+                Offset,
+                MaxSpeed,
+                Delay);
+        }
     }
 
     private sealed class MaterialBuilder(
