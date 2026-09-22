@@ -28,6 +28,7 @@ public sealed record OmsiVehicleMeshReference(
     int Ordinal,
     string DeclaredPath,
     OmsiVehicleMeshTransform Transform,
+    int ViewpointFlag,
     IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides);
 
 public sealed record OmsiVehicleModel(
