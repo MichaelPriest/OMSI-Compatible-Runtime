@@ -16,6 +16,52 @@ public static class OmsiTextureAssetPathResolver
             ],
             StringComparer.OrdinalIgnoreCase);
 
+    public static bool TryResolveGroundTexture(
+        string omsiRoot,
+        string mapDirectory,
+        string textureName,
+        out string fullPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            omsiRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            mapDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            textureName);
+
+        fullPath = string.Empty;
+
+        var root =
+            Path.GetFullPath(
+                omsiRoot);
+
+        var mapRoot =
+            Path.GetFullPath(
+                mapDirectory);
+
+        var requiredRootPrefix =
+            root.TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar) +
+            Path.DirectorySeparatorChar;
+
+        if (!mapRoot.StartsWith(
+                requiredRootPrefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return TryResolve(
+            root,
+            textureName,
+            [
+                mapRoot,
+                root
+            ],
+            out fullPath);
+    }
+
     public static bool TryResolveSceneryTexture(
         string omsiRoot,
         string sceneryObjectFullPath,
