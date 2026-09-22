@@ -4,11 +4,67 @@ namespace OmsiCompat.Scripting;
 
 public sealed class OmsiScriptRuntime
 {
+    private sealed class FloatStack
+    {
+        private readonly double[] _values =
+            new double[8];
+
+        public double Top =>
+            _values[0];
+
+        public double this[int index]
+        {
+            get => _values[index];
+            set => _values[index] = value;
+        }
+
+        public void Push(
+            double value)
+        {
+            for (var index = _values.Length - 1;
+                 index > 0;
+                 index--)
+            {
+                _values[index] =
+                    _values[index - 1];
+            }
+
+            _values[0] =
+                double.IsFinite(value)
+                    ? value
+                    : 0.0;
+        }
+
+        public void Clear() =>
+            Array.Clear(
+                _values);
+    }
+
+    private sealed record ConditionalFrame(
+        bool ParentActive,
+        bool Condition,
+        bool InElse)
+    {
+        public bool Active =>
+            ParentActive &&
+            (InElse
+                ? !Condition
+                : Condition);
+    }
+
     private readonly OmsiScriptCatalog _catalog;
     private readonly Dictionary<string, double>
         _locals;
     private readonly Dictionary<string, string>
         _stringLocals;
+    private readonly Dictionary<string, double>
+        _mapVariables =
+            new(
+                StringComparer.Ordinal);
+    private readonly Dictionary<string, double>
+        _systemVariables =
+            new(
+                StringComparer.Ordinal);
     private readonly double[] _registers =
         new double[8];
 
@@ -33,14 +89,16 @@ public sealed class OmsiScriptRuntime
                 StringComparer.Ordinal);
     }
 
+    public event Action<string>?
+        SoundTriggerRequested;
+
     public void ExecuteInit()
     {
         foreach (var block in
                  _catalog.Program.InitBlocks)
         {
-            ExecuteBlock(
-                block,
-                0);
+            ExecuteEntryBlock(
+                block);
         }
     }
 
@@ -49,9 +107,8 @@ public sealed class OmsiScriptRuntime
         foreach (var block in
                  _catalog.Program.FrameBlocks)
         {
-            ExecuteBlock(
-                block,
-                0);
+            ExecuteEntryBlock(
+                block);
         }
     }
 
@@ -65,19 +122,16 @@ public sealed class OmsiScriptRuntime
                 name,
                 out var block))
         {
-            ExecuteBlock(
-                block,
-                0);
+            ExecuteEntryBlock(
+                block);
         }
     }
 
     public double GetLocal(
         string name) =>
-            _locals.TryGetValue(
-                name,
-                out var value)
-                ? value
-                : 0.0;
+            Read(
+                _locals,
+                name);
 
     public void SetLocal(
         string name,
@@ -87,9 +141,36 @@ public sealed class OmsiScriptRuntime
                 name))
         {
             _locals[name] =
-                value;
+                Normalize(
+                    value);
         }
     }
+
+    public double GetMap(
+        string name) =>
+            Read(
+                _mapVariables,
+                name);
+
+    public void SetMap(
+        string name,
+        double value) =>
+            _mapVariables[name] =
+                Normalize(
+                    value);
+
+    public double GetSystem(
+        string name) =>
+            Read(
+                _systemVariables,
+                name);
+
+    public void SetSystem(
+        string name,
+        double value) =>
+            _systemVariables[name] =
+                Normalize(
+                    value);
 
     public string GetStringLocal(
         string name) =>
@@ -111,8 +192,21 @@ public sealed class OmsiScriptRuntime
         }
     }
 
+    private void ExecuteEntryBlock(
+        OmsiScriptBlock block)
+    {
+        var stack =
+            new FloatStack();
+
+        ExecuteBlock(
+            block,
+            stack,
+            0);
+    }
+
     private void ExecuteBlock(
         OmsiScriptBlock block,
+        FloatStack stack,
         int depth)
     {
         if (depth > 64)
@@ -121,12 +215,66 @@ public sealed class OmsiScriptRuntime
                 "OMSI macro recursion limit exceeded.");
         }
 
-        var stack =
-            new Stack<double>();
+        var conditions =
+            new Stack<ConditionalFrame>();
 
         foreach (var token in
                  block.Tokens)
         {
+            if (token.Equals(
+                    "{if}",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var parentActive =
+                    IsActive(
+                        conditions);
+
+                conditions.Push(
+                    new ConditionalFrame(
+                        parentActive,
+                        parentActive &&
+                        stack.Top != 0.0,
+                        false));
+                continue;
+            }
+
+            if (token.Equals(
+                    "{else}",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (conditions.Count > 0)
+                {
+                    var current =
+                        conditions.Pop();
+
+                    conditions.Push(
+                        current with
+                        {
+                            InElse = true
+                        });
+                }
+
+                continue;
+            }
+
+            if (token.Equals(
+                    "{endif}",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (conditions.Count > 0)
+                {
+                    conditions.Pop();
+                }
+
+                continue;
+            }
+
+            if (!IsActive(
+                    conditions))
+            {
+                continue;
+            }
+
             if (double.TryParse(
                     token,
                     NumberStyles.Float,
@@ -153,13 +301,66 @@ public sealed class OmsiScriptRuntime
 
             if (TryCommand(
                     token,
+                    "(L.M.",
+                    out var mapName))
+            {
+                stack.Push(
+                    GetMap(
+                        mapName));
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
+                    "(L.S.",
+                    out var systemName))
+            {
+                stack.Push(
+                    GetSystem(
+                        systemName));
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
                     "(S.L.",
                     out localName))
             {
                 SetLocal(
                     localName,
-                    Peek(
-                        stack));
+                    stack.Top);
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
+                    "(S.M.",
+                    out mapName))
+            {
+                SetMap(
+                    mapName,
+                    stack.Top);
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
+                    "(S.S.",
+                    out systemName))
+            {
+                SetSystem(
+                    systemName,
+                    stack.Top);
+                continue;
+            }
+
+            if (TryCommand(
+                    token,
+                    "(T.L.",
+                    out var triggerName))
+            {
+                SoundTriggerRequested?.Invoke(
+                    triggerName);
                 continue;
             }
 
@@ -182,16 +383,12 @@ public sealed class OmsiScriptRuntime
                     "(F.L.",
                     out var curveName))
             {
-                var input =
-                    Pop(
-                        stack);
-
                 stack.Push(
                     _catalog.Curves.TryGetValue(
                         curveName,
                         out var curve)
                             ? curve.Evaluate(
-                                input)
+                                stack.Top)
                             : 0.0);
                 continue;
             }
@@ -207,6 +404,7 @@ public sealed class OmsiScriptRuntime
                 {
                     ExecuteBlock(
                         macro,
+                        stack,
                         depth + 1);
                 }
 
@@ -220,8 +418,7 @@ public sealed class OmsiScriptRuntime
             {
                 _registers[
                     registerIndex] =
-                    Peek(
-                        stack);
+                    stack.Top;
                 continue;
             }
 
@@ -241,39 +438,39 @@ public sealed class OmsiScriptRuntime
                 case "+":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a + b);
+                        static (left, right) =>
+                            left + right);
                     break;
 
                 case "-":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a - b);
+                        static (left, right) =>
+                            left - right);
                     break;
 
                 case "*":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a * b);
+                        static (left, right) =>
+                            left * right);
                     break;
 
                 case "/":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            Math.Abs(b) <
+                        static (left, right) =>
+                            Math.Abs(right) <
                                 double.Epsilon
                                 ? 0.0
-                                : a / b);
+                                : left / right);
                     break;
 
                 case "=":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a == b
+                        static (left, right) =>
+                            left == right
                                 ? 1.0
                                 : 0.0);
                     break;
@@ -281,8 +478,8 @@ public sealed class OmsiScriptRuntime
                 case "!=":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a != b
+                        static (left, right) =>
+                            left != right
                                 ? 1.0
                                 : 0.0);
                     break;
@@ -290,8 +487,8 @@ public sealed class OmsiScriptRuntime
                 case "<":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a < b
+                        static (left, right) =>
+                            left < right
                                 ? 1.0
                                 : 0.0);
                     break;
@@ -299,8 +496,8 @@ public sealed class OmsiScriptRuntime
                 case ">":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a > b
+                        static (left, right) =>
+                            left > right
                                 ? 1.0
                                 : 0.0);
                     break;
@@ -308,8 +505,8 @@ public sealed class OmsiScriptRuntime
                 case "<=":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a <= b
+                        static (left, right) =>
+                            left <= right
                                 ? 1.0
                                 : 0.0);
                     break;
@@ -317,8 +514,8 @@ public sealed class OmsiScriptRuntime
                 case ">=":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a >= b
+                        static (left, right) =>
+                            left >= right
                                 ? 1.0
                                 : 0.0);
                     break;
@@ -326,9 +523,9 @@ public sealed class OmsiScriptRuntime
                 case "&&":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a != 0.0 &&
-                            b != 0.0
+                        static (left, right) =>
+                            left != 0.0 &&
+                            right != 0.0
                                 ? 1.0
                                 : 0.0);
                     break;
@@ -336,23 +533,46 @@ public sealed class OmsiScriptRuntime
                 case "||":
                     Binary(
                         stack,
-                        static (a, b) =>
-                            a != 0.0 ||
-                            b != 0.0
+                        static (left, right) =>
+                            left != 0.0 ||
+                            right != 0.0
                                 ? 1.0
                                 : 0.0);
                     break;
 
                 case "!":
                     stack.Push(
-                        Pop(
-                            stack) == 0.0
+                        stack.Top == 0.0
                             ? 1.0
                             : 0.0);
+                    break;
+
+                case "pi":
+                    stack.Push(
+                        Math.PI);
+                    break;
+
+                case "sin":
+                    stack.Push(
+                        Math.Sin(
+                            stack.Top));
+                    break;
+
+                case "random":
+                    stack.Push(
+                        Random.Shared.NextDouble() *
+                        Math.Max(
+                            stack.Top,
+                            0.0));
                     break;
             }
         }
     }
+
+    private static bool IsActive(
+        Stack<ConditionalFrame> conditions) =>
+            conditions.Count == 0 ||
+            conditions.Peek().Active;
 
     private static bool TryCommand(
         string token,
@@ -396,15 +616,13 @@ public sealed class OmsiScriptRuntime
     }
 
     private static void Binary(
-        Stack<double> stack,
+        FloatStack stack,
         Func<double, double, double> operation)
     {
-        var right =
-            Pop(
-                stack);
         var left =
-            Pop(
-                stack);
+            stack[1];
+        var right =
+            stack[0];
 
         stack.Push(
             operation(
@@ -412,15 +630,19 @@ public sealed class OmsiScriptRuntime
                 right));
     }
 
-    private static double Peek(
-        Stack<double> stack) =>
-            stack.Count > 0
-                ? stack.Peek()
+    private static double Read(
+        IReadOnlyDictionary<string, double> source,
+        string name) =>
+            source.TryGetValue(
+                name,
+                out var value)
+                ? value
                 : 0.0;
 
-    private static double Pop(
-        Stack<double> stack) =>
-            stack.Count > 0
-                ? stack.Pop()
+    private static double Normalize(
+        double value) =>
+            double.IsFinite(
+                value)
+                ? value
                 : 0.0;
 }
