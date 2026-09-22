@@ -160,6 +160,18 @@ try
             "(F.L.engine_curve)",
             "(S.L.engine_output)",
             "(M.L.helper)",
+            ""Linha 342P"",
+            "(S.$.IBIS_line)",
+            "(L.$.IBIS_line)",
+            "" - PENHA"",
+            "$+",
+            "(S.$.number)",
+            "(L.$.number)",
+            "$length",
+            "(S.L.string_length)",
+            ""125"",
+            "$StrToFloat",
+            "(S.L.parsed_number)",
             "(L.S.GetTime)",
             "(L.L.horn_timer)",
             "3",
@@ -194,7 +206,9 @@ try
             "engine_speed",
             "engine_output",
             "idle_copy",
-            "horn_timer"),
+            "horn_timer",
+            "string_length",
+            "parsed_number"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -439,6 +453,28 @@ try
                 "idle_copy") -
             650.0) < 0.0001,
         "OMSI script macro/constant execution failed.");
+    Require(
+        scriptRuntime.GetStringLocal(
+            "IBIS_line") ==
+            "Linha 342P",
+        "Quoted OMSI string literal/tokenizer failed.");
+    Require(
+        scriptRuntime.GetStringLocal(
+            "number") ==
+            "Linha 342P - PENHA",
+        "OMSI string stack concatenation failed.");
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "string_length") -
+            18.0) < 0.0001,
+        "OMSI string length operation failed.");
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "parsed_number") -
+            125.0) < 0.0001,
+        "OMSI string-to-float conversion failed.");
 
     var requestedSoundTriggers =
         new List<string>();
