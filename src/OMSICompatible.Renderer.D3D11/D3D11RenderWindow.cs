@@ -1557,8 +1557,14 @@ public sealed class D3D11RenderWindow : Form
             _vehicleVertexBuffer is null ||
             _vehicleModelBuffer is null ||
             _vehicleVertexShader is null ||
-            _vehiclePixelShader is null ||
+            _vehicleColorPixelShader is null ||
+            _vehicleTexturedPixelShader is null ||
+            _vehicleAlphaCutoutPixelShader is null ||
+            _vehicleAlphaBlendPixelShader is null ||
+            _vehicleAlphaCutoutTransMapPixelShader is null ||
+            _vehicleAlphaBlendTransMapPixelShader is null ||
             _vehicleInputLayout is null ||
+            _vehicleSampler is null ||
             _terrainCameraBuffer is null ||
             _vehicleVertexCount == 0)
         {
@@ -1583,32 +1589,107 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.OMSetRenderTargets(
             _renderTargetView,
             _depthStencilView);
+
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
+
         _deviceContext.IASetInputLayout(
             _vehicleInputLayout);
+
         _deviceContext.IASetVertexBuffer(
             0,
             _vehicleVertexBuffer,
-            RuntimeVehicleVertex.SizeInBytes);
+            RuntimeObjectVertex.SizeInBytes);
 
         _deviceContext.VSSetShader(
             _vehicleVertexShader);
-        _deviceContext.PSSetShader(
-            _vehiclePixelShader);
+
         _deviceContext.VSSetConstantBuffer(
             0,
             _terrainCameraBuffer);
+
         _deviceContext.VSSetConstantBuffer(
             1,
             _vehicleModelBuffer);
+
+        _deviceContext.PSSetSampler(
+            0,
+            _vehicleSampler);
+
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
-        _deviceContext.Draw(
-            _vehicleVertexCount,
-            0);
+        foreach (var batch in
+            _vehicleGeometry.Batches)
+        {
+            if (batch.VertexCount == 0)
+            {
+                continue;
+            }
 
+            _deviceContext.OMSetBlendState(
+                batch.AlphaBlend
+                    ? _vehicleAlphaBlendState
+                    : null);
+
+            _deviceContext.PSUnsetShaderResource(
+                0);
+
+            _deviceContext.PSUnsetShaderResource(
+                1);
+
+            if (!string.IsNullOrWhiteSpace(
+                    batch.TexturePath) &&
+                _objectTextureCache.TryGetValue(
+                    batch.TexturePath,
+                    out var texture))
+            {
+                RuntimeGpuTexture? transMap =
+                    null;
+
+                var hasTransMap =
+                    !string.IsNullOrWhiteSpace(
+                        batch.TransMapTexturePath) &&
+                    _objectTextureCache.TryGetValue(
+                        batch.TransMapTexturePath,
+                        out transMap);
+
+                if (hasTransMap)
+                {
+                    _deviceContext.PSSetShaderResource(
+                        1,
+                        transMap!.View);
+                }
+
+                _deviceContext.PSSetShader(
+                    batch.AlphaCutout
+                        ? hasTransMap
+                            ? _vehicleAlphaCutoutTransMapPixelShader
+                            : _vehicleAlphaCutoutPixelShader
+                        : batch.AlphaBlend
+                            ? hasTransMap
+                                ? _vehicleAlphaBlendTransMapPixelShader
+                                : _vehicleAlphaBlendPixelShader
+                            : _vehicleTexturedPixelShader);
+
+                _deviceContext.PSSetShaderResource(
+                    0,
+                    texture.View);
+            }
+            else
+            {
+                _deviceContext.PSSetShader(
+                    _vehicleColorPixelShader);
+            }
+
+            _deviceContext.Draw(
+                batch.VertexCount,
+                batch.StartVertex);
+        }
+
+        _deviceContext.OMSetBlendState(null);
+        _deviceContext.PSUnsetShaderResource(0);
+        _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.RSSetState(null);
     }
 
@@ -1781,7 +1862,8 @@ public sealed class D3D11RenderWindow : Form
                     {
                         _vehicle.Reset(
                             _windowInfo.Splines,
-                            _terrainGeometry);
+                            _terrainGeometry,
+                            _windowInfo.Spawn);
                     }
 
                     break;
@@ -2120,8 +2202,15 @@ public sealed class D3D11RenderWindow : Form
             _objectVertexShader?.Dispose();
             _objectVertexBuffer?.Dispose();
 
+            _vehicleAlphaBlendState?.Dispose();
+            _vehicleSampler?.Dispose();
             _vehicleInputLayout?.Dispose();
-            _vehiclePixelShader?.Dispose();
+            _vehicleAlphaBlendTransMapPixelShader?.Dispose();
+            _vehicleAlphaCutoutTransMapPixelShader?.Dispose();
+            _vehicleAlphaBlendPixelShader?.Dispose();
+            _vehicleAlphaCutoutPixelShader?.Dispose();
+            _vehicleTexturedPixelShader?.Dispose();
+            _vehicleColorPixelShader?.Dispose();
             _vehicleVertexShader?.Dispose();
             _vehicleModelBuffer?.Dispose();
             _vehicleVertexBuffer?.Dispose();
