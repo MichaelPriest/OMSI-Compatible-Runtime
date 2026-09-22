@@ -106,7 +106,8 @@ internal static class RuntimeObjectGeometryBuilder
         {
             if (!assets.TryGetValue(
                     instance.AssetPath,
-                    out var asset))
+                    out var asset) ||
+                asset.OnlyEditor)
             {
                 continue;
             }
