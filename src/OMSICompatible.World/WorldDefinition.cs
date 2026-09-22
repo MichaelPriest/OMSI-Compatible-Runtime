@@ -28,6 +28,7 @@ public sealed record WorldObjectPlacement(
     double HeadingDegrees,
     double PitchDegrees,
     double BankDegrees,
+    IReadOnlyList<string> ExtraValues,
     int SourceLineNumber);
 
 public sealed record WorldSplinePlacement(
