@@ -32,7 +32,8 @@ public sealed class D3D11RenderWindow : Form
     {
         public float AlphaScale;
         public float LightMapStrength;
-        public Vector2 Padding;
+        public float MaterialChangeStrength;
+        public float Padding;
     }
 
     private enum RuntimeVehicleViewMode
@@ -386,7 +387,8 @@ public sealed class D3D11RenderWindow : Form
                         {
                             batch.TexturePath,
                             batch.TransMapTexturePath,
-                            batch.LightMapTexturePath
+                            batch.LightMapTexturePath,
+                            batch.MaterialChangeTexturePath
                         })
                 .Concat(
                     _terrainGeometry.Batches
@@ -2117,6 +2119,7 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.PSUnsetShaderResource(2);
+        _deviceContext.PSUnsetShaderResource(3);
         _deviceContext.RSSetState(null);
     }
 
@@ -2413,8 +2416,11 @@ public sealed class D3D11RenderWindow : Form
                     LightMapStrength =
                         ResolveVehicleLightMapStrength(
                             batch),
+                    MaterialChangeStrength =
+                        ResolveVehicleMaterialChangeStrength(
+                            batch),
                     Padding =
-                        Vector2.Zero
+                        0.0f
                 };
 
             _vehicleMaterialBuffer.SetData(
@@ -2443,6 +2449,9 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.PSUnsetShaderResource(
                 2);
 
+            _deviceContext.PSUnsetShaderResource(
+                3);
+
             if (TryGetVehicleTextureView(
                     batch.TexturePath,
                     out var textureView))
@@ -2466,6 +2475,15 @@ public sealed class D3D11RenderWindow : Form
                     _deviceContext.PSSetShaderResource(
                         2,
                         lightMapView!);
+                }
+
+                if (TryGetVehicleTextureView(
+                        batch.MaterialChangeTexturePath,
+                        out var materialChangeView))
+                {
+                    _deviceContext.PSSetShaderResource(
+                        3,
+                        materialChangeView!);
                 }
 
                 _deviceContext.PSSetShader(
@@ -2505,6 +2523,29 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.RSSetState(null);
+    }
+
+    private float ResolveVehicleMaterialChangeStrength(
+        RuntimeObjectBatch batch)
+    {
+        if (string.IsNullOrWhiteSpace(
+                batch.MaterialChangeTexturePath) ||
+            string.IsNullOrWhiteSpace(
+                batch.MaterialChangeVariable))
+        {
+            return 0.0f;
+        }
+
+        var value =
+            _scriptRuntime?.GetLocal(
+                batch.MaterialChangeVariable) ??
+            0.0;
+
+        return double.IsFinite(
+                   value) &&
+               value >= 0.5
+            ? 1.0f
+            : 0.0f;
     }
 
     private float ResolveVehicleLightMapStrength(
