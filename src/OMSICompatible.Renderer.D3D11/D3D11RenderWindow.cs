@@ -43,6 +43,8 @@ public sealed class D3D11RenderWindow : Form
     private bool _mouseLooking;
     private bool _mouseDriveMode;
     private bool _driveMode = true;
+    private bool _driverView = true;
+    private int _driverCameraIndex;
     private float _mouseDriveAccelerator;
     private float _mouseDriveBrake;
     private float _mouseDriveSteering;
@@ -117,7 +119,8 @@ public sealed class D3D11RenderWindow : Form
         RuntimeObjectGeometry.Empty;
     private uint _objectVertexCount;
 
-    private ID3D11Buffer? _vehicleVertexBuffer;
+    private ID3D11Buffer? _vehicleExteriorVertexBuffer;
+    private ID3D11Buffer? _vehicleInteriorVertexBuffer;
     private ID3D11Buffer? _vehicleModelBuffer;
     private ID3D11VertexShader? _vehicleVertexShader;
     private ID3D11PixelShader? _vehicleColorPixelShader;
@@ -129,9 +132,10 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11InputLayout? _vehicleInputLayout;
     private ID3D11SamplerState? _vehicleSampler;
     private ID3D11BlendState? _vehicleAlphaBlendState;
-    private RuntimeObjectGeometry _vehicleGeometry =
+    private RuntimeObjectGeometry _vehicleExteriorGeometry =
         RuntimeObjectGeometry.Empty;
-    private uint _vehicleVertexCount;
+    private RuntimeObjectGeometry _vehicleInteriorGeometry =
+        RuntimeObjectGeometry.Empty;
 
     private FeatureLevel _featureLevel;
 
@@ -313,7 +317,9 @@ public sealed class D3D11RenderWindow : Form
                 .Concat(
                     _splineGeometry.Batches)
                 .Concat(
-                    _vehicleGeometry.Batches)
+                    _vehicleExteriorGeometry.Batches)
+                .Concat(
+                    _vehicleInteriorGeometry.Batches)
                 .SelectMany(
                     static batch =>
                         new[]
@@ -1042,19 +1048,37 @@ public sealed class D3D11RenderWindow : Form
                 "D3D11 device is not initialized.");
         }
 
-        _vehicleGeometry =
+        _vehicleExteriorGeometry =
             RuntimeVehicleGeometry.Build(
-                _windowInfo.Vehicle);
+                _windowInfo.Vehicle,
+                viewpointBit: 1);
 
-        if (_vehicleGeometry.Vertices.Length == 0)
+        _vehicleInteriorGeometry =
+            RuntimeVehicleGeometry.Build(
+                _windowInfo.Vehicle,
+                viewpointBit: 2);
+
+        if (_vehicleExteriorGeometry.Vertices.Length == 0 &&
+            _vehicleInteriorGeometry.Vertices.Length == 0)
         {
             return;
         }
 
-        _vehicleVertexBuffer =
-            _device.CreateBuffer(
-                _vehicleGeometry.Vertices.AsSpan(),
-                BindFlags.VertexBuffer);
+        if (_vehicleExteriorGeometry.Vertices.Length > 0)
+        {
+            _vehicleExteriorVertexBuffer =
+                _device.CreateBuffer(
+                    _vehicleExteriorGeometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+        }
+
+        if (_vehicleInteriorGeometry.Vertices.Length > 0)
+        {
+            _vehicleInteriorVertexBuffer =
+                _device.CreateBuffer(
+                    _vehicleInteriorGeometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+        }
 
         var shaderFile =
             ShaderPath(
@@ -1152,7 +1176,9 @@ public sealed class D3D11RenderWindow : Form
                 _device);
 
         foreach (var texturePath in
-            _vehicleGeometry.Batches
+            _vehicleExteriorGeometry.Batches
+                .Concat(
+                    _vehicleInteriorGeometry.Batches)
                 .SelectMany(
                     static batch =>
                         new[]
@@ -1192,9 +1218,6 @@ public sealed class D3D11RenderWindow : Form
                     texturePath);
             }
         }
-
-        _vehicleVertexCount =
-            (uint)_vehicleGeometry.Vertices.Length;
 
         _vehicle.Reset(
             _windowInfo.Splines,
@@ -1875,9 +1898,19 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawVehicle()
     {
+        var geometry =
+            _driverView
+                ? _vehicleInteriorGeometry
+                : _vehicleExteriorGeometry;
+
+        var vertexBuffer =
+            _driverView
+                ? _vehicleInteriorVertexBuffer
+                : _vehicleExteriorVertexBuffer;
+
         if (_deviceContext is null ||
             _renderTargetView is null ||
-            _vehicleVertexBuffer is null ||
+            vertexBuffer is null ||
             _vehicleModelBuffer is null ||
             _vehicleVertexShader is null ||
             _vehicleColorPixelShader is null ||
@@ -1889,7 +1922,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleInputLayout is null ||
             _vehicleSampler is null ||
             _terrainCameraBuffer is null ||
-            _vehicleVertexCount == 0)
+            geometry.Vertices.Length == 0)
         {
             return;
         }
@@ -1921,7 +1954,7 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.IASetVertexBuffer(
             0,
-            _vehicleVertexBuffer,
+            vertexBuffer,
             RuntimeObjectVertex.SizeInBytes);
 
         _deviceContext.VSSetShader(
@@ -1943,7 +1976,7 @@ public sealed class D3D11RenderWindow : Form
             _terrainRasterizerState);
 
         foreach (var batch in
-            _vehicleGeometry.Batches)
+            geometry.Batches)
         {
             if (batch.VertexCount == 0)
             {
@@ -2024,13 +2057,32 @@ public sealed class D3D11RenderWindow : Form
                 ClientSize.Height,
                 1);
 
-        return _driveMode
-            ? _vehicle.CreateChaseViewProjection(
-                aspect,
-                _terrainGeometry)
-            : _camera.CreateViewProjection(
+        if (!_driveMode)
+        {
+            return _camera.CreateViewProjection(
                 aspect,
                 _terrainGeometry);
+        }
+
+        if (_driverView &&
+            _windowInfo.Vehicle?.DriverCameras.Count > 0)
+        {
+            _driverCameraIndex =
+                Math.Clamp(
+                    _driverCameraIndex,
+                    0,
+                    _windowInfo.Vehicle.DriverCameras.Count - 1);
+
+            return _vehicle.CreateDriverViewProjection(
+                _windowInfo.Vehicle.DriverCameras[
+                    _driverCameraIndex],
+                aspect,
+                _terrainGeometry);
+        }
+
+        return _vehicle.CreateChaseViewProjection(
+            aspect,
+            _terrainGeometry);
     }
 
     private void UpdateSimulation()
@@ -2121,6 +2173,24 @@ public sealed class D3D11RenderWindow : Form
 
         if (!firstPress)
         {
+            return;
+        }
+
+        if (e.KeyCode == Keys.F1)
+        {
+            _driveMode = true;
+            _driverView = true;
+            UpdateCaption();
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        if (e.KeyCode == Keys.F3)
+        {
+            _driveMode = true;
+            _driverView = false;
+            UpdateCaption();
+            e.SuppressKeyPress = true;
             return;
         }
 
@@ -2453,18 +2523,23 @@ public sealed class D3D11RenderWindow : Form
                 ? "MOUSE: ←/→ steer · ↑ throttle · ↓ brake · RMB exit"
                 : "KEYBOARD: Num8 throttle · Num2 brake · Num+ release · Num4/6 steer · Num5 center · O mouse";
 
+        var vehicleView =
+            _driverView
+                ? "F1 cockpit"
+                : "F3 exterior";
+
         var control = _driveMode
-            ? $"OMSI DRIVE {_vehicle.SpeedKph:0} km/h · gear {gear} · " +
+            ? $"OMSI DRIVE · {vehicleView} · {_vehicle.SpeedKph:0} km/h · gear {gear} · " +
               $"E:{(_vehicle.ElectricalSystemEnabled ? "ON" : "OFF")} " +
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              $"{driveInputMode} · D/N/R · E/M · Num. park · Tab free cam"
+              $"{driveInputMode} · F1/F3 view · D/N/R · E/M · Num. park · Tab free cam"
             : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · Tab OMSI drive";
 
         Text =
             $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
-            $"{_windowInfo.TileCount:N0} tiles — " +
+            $"{_windowInfo.TileCount:N0}/{_windowInfo.TotalTileCount:N0} tiles — " +
             $"{_windowInfo.ObjectCount:N0} objects — " +
             $"{_windowInfo.SplineCount:N0} splines — " +
             $"{mode} — {control}";
@@ -2536,7 +2611,8 @@ public sealed class D3D11RenderWindow : Form
             _vehicleColorPixelShader?.Dispose();
             _vehicleVertexShader?.Dispose();
             _vehicleModelBuffer?.Dispose();
-            _vehicleVertexBuffer?.Dispose();
+            _vehicleInteriorVertexBuffer?.Dispose();
+            _vehicleExteriorVertexBuffer?.Dispose();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
