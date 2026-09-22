@@ -4,11 +4,19 @@ using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
+internal sealed record RuntimeObjectBatch(
+    uint StartVertex,
+    uint VertexCount,
+    string? TexturePath,
+    bool AlphaCutout);
+
 internal sealed record RuntimeObjectGeometry(
-    RuntimeTerrainVertex[] Vertices,
+    RuntimeObjectVertex[] Vertices,
+    IReadOnlyList<RuntimeObjectBatch> Batches,
     int RenderedObjectCount,
     int RenderedMeshCount,
     int RenderedTreeCount,
+    int TexturedBatchCount,
     int ProtectedMeshCount,
     int MissingMeshCount,
     bool HitVertexBudget)
@@ -16,6 +24,8 @@ internal sealed record RuntimeObjectGeometry(
     public static RuntimeObjectGeometry Empty { get; } =
         new(
             [],
+            Array.Empty<RuntimeObjectBatch>(),
+            0,
             0,
             0,
             0,
@@ -28,6 +38,10 @@ internal static class RuntimeObjectGeometryBuilder
 {
     private const int MaximumVertices = 4_000_000;
     private const double TileSizeMeters = 300.0;
+
+    private readonly record struct BatchKey(
+        string? TexturePath,
+        bool AlphaCutout);
 
     private static readonly Matrix4x4 SourceToRendererBasis =
         new(
@@ -50,15 +64,18 @@ internal static class RuntimeObjectGeometryBuilder
         var terrain =
             new RuntimeTerrainSampler(tiles);
 
-        var vertices =
-            new List<RuntimeTerrainVertex>(
-                Math.Min(
-                    256_000,
-                    MaximumVertices));
+        var batches =
+            new Dictionary<
+                BatchKey,
+                List<RuntimeObjectVertex>>();
+
+        var batchOrder =
+            new List<BatchKey>();
 
         var renderedObjects = 0;
         var renderedMeshes = 0;
         var renderedTrees = 0;
+
         var protectedMeshes =
             assets.Values.Sum(
                 static asset =>
@@ -68,6 +85,7 @@ internal static class RuntimeObjectGeometryBuilder
                                 mesh.ErrorCode,
                                 "protectedO3dUnsupported",
                                 StringComparison.OrdinalIgnoreCase)));
+
         var missingMeshes =
             assets.Values.Sum(
                 static asset =>
@@ -80,6 +98,7 @@ internal static class RuntimeObjectGeometryBuilder
                                 "protectedO3dUnsupported",
                                 StringComparison.OrdinalIgnoreCase)));
 
+        var totalVertices = 0;
         var hitBudget = false;
 
         foreach (var instance in objects)
@@ -146,10 +165,8 @@ internal static class RuntimeObjectGeometryBuilder
                     continue;
                 }
 
-                var needed =
-                    mesh.Indices.Length;
-
-                if (vertices.Count + needed >
+                if (totalVertices +
+                    mesh.Indices.Length >
                     MaximumVertices)
                 {
                     hitBudget = true;
@@ -164,19 +181,29 @@ internal static class RuntimeObjectGeometryBuilder
                     localTransform *
                     objectTransform;
 
-                if (AppendMesh(
+                var appended =
+                    AppendMesh(
                         mesh,
                         worldTransform,
-                        vertices))
+                        batches,
+                        batchOrder,
+                        ref totalVertices);
+
+                if (appended)
                 {
                     renderedMeshes++;
                     objectContributed = true;
                 }
             }
 
+            if (hitBudget)
+            {
+                break;
+            }
+
             if (asset.Tree is not null)
             {
-                if (vertices.Count + 12 >
+                if (totalVertices + 12 >
                     MaximumVertices)
                 {
                     hitBudget = true;
@@ -189,7 +216,9 @@ internal static class RuntimeObjectGeometryBuilder
                     (float)instance.Y +
                     terrainOffset +
                     renderLift,
-                    vertices))
+                    batches,
+                    batchOrder,
+                    ref totalVertices))
                 {
                     renderedTrees++;
                     objectContributed = true;
@@ -207,11 +236,48 @@ internal static class RuntimeObjectGeometryBuilder
             }
         }
 
+        var vertices =
+            new List<RuntimeObjectVertex>(
+                totalVertices);
+
+        var runtimeBatches =
+            new List<RuntimeObjectBatch>(
+                batchOrder.Count);
+
+        foreach (var key in batchOrder)
+        {
+            var batchVertices =
+                batches[key];
+
+            if (batchVertices.Count == 0)
+            {
+                continue;
+            }
+
+            var start =
+                (uint)vertices.Count;
+
+            vertices.AddRange(
+                batchVertices);
+
+            runtimeBatches.Add(
+                new RuntimeObjectBatch(
+                    start,
+                    (uint)batchVertices.Count,
+                    key.TexturePath,
+                    key.AlphaCutout));
+        }
+
         return new RuntimeObjectGeometry(
             vertices.ToArray(),
+            runtimeBatches.ToArray(),
             renderedObjects,
             renderedMeshes,
             renderedTrees,
+            runtimeBatches.Count(
+                static batch =>
+                    !string.IsNullOrWhiteSpace(
+                        batch.TexturePath)),
             protectedMeshes,
             missingMeshes,
             hitBudget);
@@ -220,7 +286,9 @@ internal static class RuntimeObjectGeometryBuilder
     private static bool AppendMesh(
         RuntimeObjectMeshInfo mesh,
         Matrix4x4 worldTransform,
-        ICollection<RuntimeTerrainVertex> output)
+        IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
+        ICollection<BatchKey> batchOrder,
+        ref int totalVertices)
     {
         var vertexCount =
             mesh.Positions.Length / 3;
@@ -228,8 +296,7 @@ internal static class RuntimeObjectGeometryBuilder
         var triangleCount =
             mesh.Indices.Length / 3;
 
-        var before =
-            output.Count;
+        var contributed = false;
 
         for (var triangle = 0;
              triangle < triangleCount;
@@ -243,7 +310,6 @@ internal static class RuntimeObjectGeometryBuilder
                     (int)mesh.Indices[
                         baseIndex]);
 
-            // Swapping OMSI model Y/Z changes handedness.
             var index1 =
                 checked(
                     (int)mesh.Indices[
@@ -264,10 +330,24 @@ internal static class RuntimeObjectGeometryBuilder
                 continue;
             }
 
-            var color =
-                TriangleColor(
+            var material =
+                ResolveMaterial(
                     mesh,
                     triangle);
+
+            var color =
+                MaterialColor(material);
+
+            var key =
+                new BatchKey(
+                    material?.TexturePath,
+                    false);
+
+            var output =
+                GetBatch(
+                    key,
+                    batches,
+                    batchOrder);
 
             AddVertex(
                 mesh,
@@ -289,9 +369,65 @@ internal static class RuntimeObjectGeometryBuilder
                 worldTransform,
                 color,
                 output);
+
+            totalVertices += 3;
+            contributed = true;
         }
 
-        return output.Count > before;
+        return contributed;
+    }
+
+    private static RuntimeO3dMaterialInfo? ResolveMaterial(
+        RuntimeObjectMeshInfo mesh,
+        int triangle)
+    {
+        if (triangle < 0 ||
+            triangle >=
+            mesh.TriangleMaterialIndices.Length)
+        {
+            return null;
+        }
+
+        var materialIndex =
+            mesh.TriangleMaterialIndices[
+                triangle];
+
+        return materialIndex <
+               mesh.Materials.Count
+            ? mesh.Materials[
+                materialIndex]
+            : null;
+    }
+
+    private static Color4 MaterialColor(
+        RuntimeO3dMaterialInfo? material)
+    {
+        if (material is null)
+        {
+            return new Color4(
+                0.62f,
+                0.68f,
+                0.72f,
+                1.0f);
+        }
+
+        return new Color4(
+            Math.Clamp(
+                material.DiffuseR,
+                0.04f,
+                1.0f),
+            Math.Clamp(
+                material.DiffuseG,
+                0.04f,
+                1.0f),
+            Math.Clamp(
+                material.DiffuseB,
+                0.04f,
+                1.0f),
+            Math.Clamp(
+                material.DiffuseA,
+                0.0f,
+                1.0f));
     }
 
     private static void AddVertex(
@@ -299,16 +435,16 @@ internal static class RuntimeObjectGeometryBuilder
         int vertexIndex,
         Matrix4x4 worldTransform,
         Color4 color,
-        ICollection<RuntimeTerrainVertex> output)
+        ICollection<RuntimeObjectVertex> output)
     {
-        var offset =
+        var positionOffset =
             vertexIndex * 3;
 
         var source =
             new Vector3(
-                mesh.Positions[offset],
-                mesh.Positions[offset + 1],
-                mesh.Positions[offset + 2]);
+                mesh.Positions[positionOffset],
+                mesh.Positions[positionOffset + 1],
+                mesh.Positions[positionOffset + 2]);
 
         var rendererLocal =
             new Vector3(
@@ -328,53 +464,27 @@ internal static class RuntimeObjectGeometryBuilder
             return;
         }
 
-        output.Add(
-            new RuntimeTerrainVertex(
-                world,
-                color));
-    }
+        var uv =
+            Vector2.Zero;
 
-    private static Color4 TriangleColor(
-        RuntimeObjectMeshInfo mesh,
-        int triangle)
-    {
-        if (triangle >= 0 &&
-            triangle <
-            mesh.TriangleMaterialIndices.Length)
+        var uvOffset =
+            vertexIndex * 2;
+
+        if (uvOffset >= 0 &&
+            uvOffset + 1 <
+            mesh.Uvs.Length)
         {
-            var materialIndex =
-                mesh.TriangleMaterialIndices[
-                    triangle];
-
-            if (materialIndex <
-                mesh.Materials.Count)
-            {
-                var material =
-                    mesh.Materials[
-                        materialIndex];
-
-                return new Color4(
-                    Math.Clamp(
-                        material.DiffuseR,
-                        0.04f,
-                        1.0f),
-                    Math.Clamp(
-                        material.DiffuseG,
-                        0.04f,
-                        1.0f),
-                    Math.Clamp(
-                        material.DiffuseB,
-                        0.04f,
-                        1.0f),
-                    1.0f);
-            }
+            uv =
+                new Vector2(
+                    mesh.Uvs[uvOffset],
+                    mesh.Uvs[uvOffset + 1]);
         }
 
-        return new Color4(
-            0.62f,
-            0.68f,
-            0.72f,
-            1.0f);
+        output.Add(
+            new RuntimeObjectVertex(
+                world,
+                color,
+                uv));
     }
 
     private static bool AppendTree(
@@ -383,7 +493,9 @@ internal static class RuntimeObjectGeometryBuilder
         double worldX,
         double worldZ,
         float baseY,
-        ICollection<RuntimeTerrainVertex> output)
+        IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
+        ICollection<BatchKey> batchOrder,
+        ref int totalVertices)
     {
         var height =
             ResolveTreePlacementValue(
@@ -438,12 +550,33 @@ internal static class RuntimeObjectGeometryBuilder
                 Vector3.UnitZ,
                 rotation);
 
+        var hasTexture =
+            !string.IsNullOrWhiteSpace(
+                tree.TexturePath);
+
+        var key =
+            new BatchKey(
+                tree.TexturePath,
+                hasTexture);
+
+        var output =
+            GetBatch(
+                key,
+                batches,
+                batchOrder);
+
         var color =
-            new Color4(
-                0.18f,
-                0.48f,
-                0.20f,
-                1.0f);
+            hasTexture
+                ? new Color4(
+                    1,
+                    1,
+                    1,
+                    1)
+                : new Color4(
+                    0.18f,
+                    0.48f,
+                    0.20f,
+                    1.0f);
 
         AppendTreeQuad(
             basePosition,
@@ -459,6 +592,7 @@ internal static class RuntimeObjectGeometryBuilder
             color,
             output);
 
+        totalVertices += 12;
         return true;
     }
 
@@ -467,7 +601,7 @@ internal static class RuntimeObjectGeometryBuilder
         Vector3 heightVector,
         Vector3 halfWidthVector,
         Color4 color,
-        ICollection<RuntimeTerrainVertex> output)
+        ICollection<RuntimeObjectVertex> output)
     {
         var bottomLeft =
             basePosition -
@@ -486,30 +620,57 @@ internal static class RuntimeObjectGeometryBuilder
             heightVector;
 
         output.Add(
-            new RuntimeTerrainVertex(
+            new RuntimeObjectVertex(
                 bottomLeft,
-                color));
+                color,
+                new Vector2(0, 1)));
         output.Add(
-            new RuntimeTerrainVertex(
+            new RuntimeObjectVertex(
                 topLeft,
-                color));
+                color,
+                new Vector2(0, 0)));
         output.Add(
-            new RuntimeTerrainVertex(
+            new RuntimeObjectVertex(
                 topRight,
-                color));
+                color,
+                new Vector2(1, 0)));
 
         output.Add(
-            new RuntimeTerrainVertex(
+            new RuntimeObjectVertex(
                 bottomLeft,
-                color));
+                color,
+                new Vector2(0, 1)));
         output.Add(
-            new RuntimeTerrainVertex(
+            new RuntimeObjectVertex(
                 topRight,
-                color));
+                color,
+                new Vector2(1, 0)));
         output.Add(
-            new RuntimeTerrainVertex(
+            new RuntimeObjectVertex(
                 bottomRight,
-                color));
+                color,
+                new Vector2(1, 1)));
+    }
+
+    private static List<RuntimeObjectVertex> GetBatch(
+        BatchKey key,
+        IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
+        ICollection<BatchKey> batchOrder)
+    {
+        if (batches.TryGetValue(
+                key,
+                out var existing))
+        {
+            return existing;
+        }
+
+        var created =
+            new List<RuntimeObjectVertex>();
+
+        batches[key] = created;
+        batchOrder.Add(key);
+
+        return created;
     }
 
     private static double ResolveTreePlacementValue(
@@ -568,4 +729,23 @@ internal static class RuntimeObjectGeometryBuilder
             value *
             Math.PI /
             180.0);
+}
+
+internal readonly struct RuntimeObjectVertex
+{
+    public const uint SizeInBytes = 36;
+
+    public RuntimeObjectVertex(
+        Vector3 position,
+        Color4 color,
+        Vector2 uv)
+    {
+        Position = position;
+        Color = color;
+        Uv = uv;
+    }
+
+    public readonly Vector3 Position;
+    public readonly Color4 Color;
+    public readonly Vector2 Uv;
 }

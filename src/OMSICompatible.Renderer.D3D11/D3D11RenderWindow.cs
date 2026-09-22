@@ -80,6 +80,21 @@ public sealed class D3D11RenderWindow : Form
     private uint _splineVertexCount;
 
     private ID3D11Buffer? _objectVertexBuffer;
+    private ID3D11VertexShader? _objectVertexShader;
+    private ID3D11PixelShader? _objectColorPixelShader;
+    private ID3D11PixelShader? _objectTexturedPixelShader;
+    private ID3D11PixelShader? _objectAlphaCutoutPixelShader;
+    private ID3D11InputLayout? _objectInputLayout;
+    private ID3D11SamplerState? _objectSampler;
+    private RuntimeGpuTextureLoader? _objectTextureLoader;
+    private readonly Dictionary<string, RuntimeGpuTexture>
+        _objectTextureCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string>
+        _failedObjectTexturePaths =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private RuntimeObjectGeometry _objectGeometry =
         RuntimeObjectGeometry.Empty;
     private uint _objectVertexCount;
@@ -423,6 +438,94 @@ public sealed class D3D11RenderWindow : Form
                 _objectGeometry.Vertices.AsSpan(),
                 BindFlags.VertexBuffer);
 
+        var shaderFile =
+            ShaderPath("RuntimeObject.hlsl");
+
+        ReadOnlyMemory<byte> vertexShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "VSMain",
+                "vs_4_0");
+
+        ReadOnlyMemory<byte> colorPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSColor",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> texturedPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSTextured",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> alphaCutoutPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSAlphaCutout",
+                "ps_4_0");
+
+        _objectVertexShader =
+            _device.CreateVertexShader(
+                vertexShaderByteCode.Span);
+
+        _objectColorPixelShader =
+            _device.CreatePixelShader(
+                colorPixelShaderByteCode.Span);
+
+        _objectTexturedPixelShader =
+            _device.CreatePixelShader(
+                texturedPixelShaderByteCode.Span);
+
+        _objectAlphaCutoutPixelShader =
+            _device.CreatePixelShader(
+                alphaCutoutPixelShaderByteCode.Span);
+
+        _objectInputLayout =
+            _device.CreateInputLayout(
+                CreateObjectInputElements(),
+                vertexShaderByteCode.Span);
+
+        _objectSampler =
+            _device.CreateSamplerState(
+                SamplerDescription.LinearWrap);
+
+        _objectTextureLoader =
+            new RuntimeGpuTextureLoader(
+                _device);
+
+        foreach (var texturePath in
+            _objectGeometry.Batches
+                .Select(
+                    static batch =>
+                        batch.TexturePath)
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Select(
+                    static path =>
+                        path!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase))
+        {
+            var texture =
+                _objectTextureLoader.TryLoad(
+                    texturePath);
+
+            if (texture is not null)
+            {
+                _objectTextureCache[
+                    texturePath] =
+                    texture;
+            }
+            else
+            {
+                _failedObjectTexturePaths.Add(
+                    texturePath);
+            }
+        }
+
         _objectVertexCount =
             (uint)_objectGeometry.Vertices.Length;
     }
@@ -495,6 +598,29 @@ public sealed class D3D11RenderWindow : Form
             0,
             Format.R32G32B32A32_Float,
             12,
+            0)
+    ];
+
+    private static InputElementDescription[]
+        CreateObjectInputElements() =>
+    [
+        new InputElementDescription(
+            "POSITION",
+            0,
+            Format.R32G32B32_Float,
+            0,
+            0),
+        new InputElementDescription(
+            "COLOR",
+            0,
+            Format.R32G32B32A32_Float,
+            12,
+            0),
+        new InputElementDescription(
+            "TEXCOORD",
+            0,
+            Format.R32G32_Float,
+            28,
             0)
     ];
 
@@ -847,9 +973,12 @@ public sealed class D3D11RenderWindow : Form
             _renderTargetView is null ||
             _objectVertexBuffer is null ||
             _terrainCameraBuffer is null ||
-            _terrainVertexShader is null ||
-            _terrainPixelShader is null ||
-            _terrainInputLayout is null ||
+            _objectVertexShader is null ||
+            _objectColorPixelShader is null ||
+            _objectTexturedPixelShader is null ||
+            _objectAlphaCutoutPixelShader is null ||
+            _objectInputLayout is null ||
+            _objectSampler is null ||
             _objectVertexCount == 0)
         {
             return;
@@ -862,26 +991,62 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
         _deviceContext.IASetInputLayout(
-            _terrainInputLayout);
+            _objectInputLayout);
         _deviceContext.IASetVertexBuffer(
             0,
             _objectVertexBuffer,
-            RuntimeTerrainVertex.SizeInBytes);
+            RuntimeObjectVertex.SizeInBytes);
 
         _deviceContext.VSSetShader(
-            _terrainVertexShader);
-        _deviceContext.PSSetShader(
-            _terrainPixelShader);
-        _deviceContext.RSSetState(
-            _terrainRasterizerState);
+            _objectVertexShader);
         _deviceContext.VSSetConstantBuffer(
             0,
             _terrainCameraBuffer);
+        _deviceContext.PSSetSampler(
+            0,
+            _objectSampler);
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
 
-        _deviceContext.Draw(
-            _objectVertexCount,
+        foreach (var batch in
+            _objectGeometry.Batches)
+        {
+            if (batch.VertexCount == 0)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(
+                    batch.TexturePath) &&
+                _objectTextureCache.TryGetValue(
+                    batch.TexturePath,
+                    out var texture))
+            {
+                _deviceContext.PSSetShader(
+                    batch.AlphaCutout
+                        ? _objectAlphaCutoutPixelShader
+                        : _objectTexturedPixelShader);
+
+                _deviceContext.PSSetShaderResource(
+                    0,
+                    texture.View);
+            }
+            else
+            {
+                _deviceContext.PSSetShader(
+                    _objectColorPixelShader);
+
+                _deviceContext.PSUnsetShaderResource(
+                    0);
+            }
+
+            _deviceContext.Draw(
+                batch.VertexCount,
+                batch.StartVertex);
+        }
+
+        _deviceContext.PSUnsetShaderResource(
             0);
-
         _deviceContext.RSSetState(null);
     }
 
@@ -1368,7 +1533,7 @@ public sealed class D3D11RenderWindow : Form
                 : string.Empty;
 
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · roads {_splineGeometry.RenderedSplineCount:N0} · rendered objects {_objectGeometry.RenderedObjectCount:N0}/{_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicle.Gear switch
@@ -1424,6 +1589,22 @@ public sealed class D3D11RenderWindow : Form
             _terrainCameraBuffer?.Dispose();
             _terrainVertexBuffer?.Dispose();
             _splineVertexBuffer?.Dispose();
+
+            foreach (var texture in
+                _objectTextureCache.Values)
+            {
+                texture.Dispose();
+            }
+
+            _objectTextureCache.Clear();
+            _failedObjectTexturePaths.Clear();
+
+            _objectSampler?.Dispose();
+            _objectInputLayout?.Dispose();
+            _objectAlphaCutoutPixelShader?.Dispose();
+            _objectTexturedPixelShader?.Dispose();
+            _objectColorPixelShader?.Dispose();
+            _objectVertexShader?.Dispose();
             _objectVertexBuffer?.Dispose();
 
             _vehicleInputLayout?.Dispose();

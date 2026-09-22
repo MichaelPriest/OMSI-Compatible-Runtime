@@ -232,6 +232,7 @@ internal sealed class RuntimeApplicationContext :
                                                 mesh.Transform.ScaleY,
                                                 mesh.Transform.ScaleZ),
                                             mesh.Positions,
+                                            mesh.Uvs,
                                             mesh.Indices,
                                             mesh.TriangleMaterialIndices,
                                             mesh.Materials
@@ -241,13 +242,15 @@ internal sealed class RuntimeApplicationContext :
                                                             material.DiffuseR,
                                                             material.DiffuseG,
                                                             material.DiffuseB,
-                                                            material.DiffuseA))
+                                                            material.DiffuseA,
+                                                            material.TexturePath))
                                                 .ToArray()))
                                 .ToArray(),
                             pair.Value.Tree is null
                                 ? null
                                 : new RuntimeTreeInfo(
                                     pair.Value.Tree.TextureName,
+                                    pair.Value.Tree.TexturePath,
                                     pair.Value.Tree.MinimumHeight,
                                     pair.Value.Tree.MaximumHeight,
                                     pair.Value.Tree.MinimumAspect,

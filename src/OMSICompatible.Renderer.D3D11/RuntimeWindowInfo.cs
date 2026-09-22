@@ -61,7 +61,8 @@ public sealed record RuntimeO3dMaterialInfo(
     float DiffuseR,
     float DiffuseG,
     float DiffuseB,
-    float DiffuseA);
+    float DiffuseA,
+    string? TexturePath);
 
 public sealed record RuntimeObjectMeshInfo(
     string DeclaredPath,
@@ -69,12 +70,14 @@ public sealed record RuntimeObjectMeshInfo(
     string? ErrorCode,
     RuntimeObjectMeshTransformInfo Transform,
     float[] Positions,
+    float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
     IReadOnlyList<RuntimeO3dMaterialInfo> Materials);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
+    string? TexturePath,
     double MinimumHeight,
     double MaximumHeight,
     double MinimumAspect,

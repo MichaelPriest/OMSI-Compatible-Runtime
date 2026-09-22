@@ -396,17 +396,36 @@ public static class WorldLoader
                             ConvertTransform(
                                 mesh.Transform),
                             geometry.Positions,
+                            geometry.Uvs,
                             geometry.Indices,
                             geometry.TriangleMaterialIndices,
                             geometry.Materials
                                 .Select(
-                                    static material =>
-                                        new WorldO3dMaterial(
+                                    material =>
+                                    {
+                                        string? texturePath = null;
+
+                                        if (!string.IsNullOrWhiteSpace(
+                                                material.TextureName) &&
+                                            OmsiTextureAssetPathResolver
+                                                .TryResolveSceneryTexture(
+                                                    contentRoot.RootPath,
+                                                    dependency.ResolvedPath,
+                                                    meshPath,
+                                                    material.TextureName,
+                                                    out var resolvedTexture))
+                                        {
+                                            texturePath = resolvedTexture;
+                                        }
+
+                                        return new WorldO3dMaterial(
                                             material.DiffuseR,
                                             material.DiffuseG,
                                             material.DiffuseB,
                                             material.DiffuseA,
-                                            material.TextureName))
+                                            material.TextureName,
+                                            texturePath);
+                                    })
                                 .ToArray()));
                 }
 
@@ -422,6 +441,10 @@ public static class WorldLoader
                             ? null
                             : new WorldSceneryTreeDefinition(
                                 definition.Tree.TextureName,
+                                ResolveTreeTexturePath(
+                                    contentRoot.RootPath,
+                                    dependency.ResolvedPath,
+                                    definition.Tree.TextureName),
                                 definition.Tree.MinimumHeight,
                                 definition.Tree.MaximumHeight,
                                 definition.Tree.MinimumAspect,
@@ -460,9 +483,25 @@ public static class WorldLoader
             errorCode,
             ConvertTransform(transform),
             Array.Empty<float>(),
+            Array.Empty<float>(),
             Array.Empty<uint>(),
             Array.Empty<ushort>(),
             Array.Empty<WorldO3dMaterial>());
+
+    private static string? ResolveTreeTexturePath(
+        string contentRoot,
+        string sceneryObjectPath,
+        string textureName)
+    {
+        return OmsiTextureAssetPathResolver
+            .TryResolveSceneryObjectTexture(
+                contentRoot,
+                sceneryObjectPath,
+                textureName,
+                out var resolved)
+            ? resolved
+            : null;
+    }
 
     private static WorldSceneryMeshTransform ConvertTransform(
         OmsiSceneryMeshTransform transform) =>

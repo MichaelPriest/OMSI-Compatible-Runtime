@@ -5,7 +5,8 @@ public sealed record WorldO3dMaterial(
     float DiffuseG,
     float DiffuseB,
     float DiffuseA,
-    string? TextureName);
+    string? TextureName,
+    string? TexturePath);
 
 public sealed record WorldSceneryMeshTransform(
     double PositionX,
@@ -25,6 +26,7 @@ public sealed record WorldSceneryMeshAsset(
     string? ErrorCode,
     WorldSceneryMeshTransform Transform,
     float[] Positions,
+    float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
     IReadOnlyList<WorldO3dMaterial> Materials)
@@ -38,6 +40,7 @@ public sealed record WorldSceneryMeshAsset(
 
 public sealed record WorldSceneryTreeDefinition(
     string TextureName,
+    string? TexturePath,
     double MinimumHeight,
     double MaximumHeight,
     double MinimumAspect,
