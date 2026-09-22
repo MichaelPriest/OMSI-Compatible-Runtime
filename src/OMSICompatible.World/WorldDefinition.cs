@@ -46,12 +46,24 @@ public sealed record WorldSplinePlacement(
     bool UsesHeightProfile,
     int SourceLineNumber);
 
+public sealed record WorldTerrainMask(
+    int LayerIndex,
+    string Path);
+
+public sealed record WorldGroundTexture(
+    int LayerIndex,
+    string? MainTexturePath,
+    string? DetailTexturePath,
+    double MainTextureRepeating,
+    double DetailTextureRepeating);
+
 public sealed record WorldTileResources(
     string? TerrainPath,
     string? LightmapPath,
     string? WaterPath,
     IReadOnlyList<string> ReadyMeshPaths,
-    IReadOnlyList<string> TerrainTexturePaths);
+    IReadOnlyList<string> TerrainTexturePaths,
+    IReadOnlyList<WorldTerrainMask> TerrainMasks);
 
 public sealed record WorldTerrainData(
     int CellCount,
@@ -95,6 +107,7 @@ public sealed record WorldDefinition(
     IReadOnlyList<WorldSplinePlacement> Splines,
     IReadOnlyDictionary<string, WorldSplineAsset> SplineAssets,
     IReadOnlyDictionary<string, WorldSceneryAsset> SceneryAssets,
+    IReadOnlyList<WorldGroundTexture> GroundTextures,
     WorldDependencyReport Dependencies,
     int PlacementParseIssueCount,
     int TerrainParseIssueCount,
