@@ -55,6 +55,7 @@ public sealed record WorldSceneryAsset(
     string? ResolvedPath,
     bool Exists,
     bool UsesAbsoluteHeight,
+    bool OnlyEditor,
     string? RenderType,
     IReadOnlyList<WorldSceneryMeshAsset> Meshes,
     WorldSceneryTreeDefinition? Tree)
@@ -74,6 +75,7 @@ public sealed record WorldSceneryAsset(
 
     public bool IsRenderable =>
         Exists &&
+        !OnlyEditor &&
         (RenderableMeshCount > 0 ||
          Tree is not null);
 }
