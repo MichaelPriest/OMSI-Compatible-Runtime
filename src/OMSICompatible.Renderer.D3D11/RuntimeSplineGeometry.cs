@@ -4,15 +4,25 @@ using Vortice.Mathematics;
 namespace OMSICompatible.Renderer.D3D11;
 
 internal sealed record RuntimeSplineGeometry(
-    RuntimeTerrainVertex[] Vertices,
-    int RenderedSplineCount)
+    RuntimeObjectVertex[] Vertices,
+    IReadOnlyList<RuntimeObjectBatch> Batches,
+    int RenderedSplineCount,
+    int TexturedBatchCount)
 {
     public static RuntimeSplineGeometry Empty { get; } =
-        new([], 0);
+        new(
+            [],
+            Array.Empty<RuntimeObjectBatch>(),
+            0,
+            0);
 }
 
 internal static class RuntimeSplineGeometryBuilder
 {
+    private readonly record struct BatchKey(
+        string? TexturePath,
+        bool AlphaCutout);
+
     public static RuntimeSplineGeometry Build(
         IReadOnlyList<RuntimeSplineInfo> splines)
     {
@@ -21,7 +31,14 @@ internal static class RuntimeSplineGeometryBuilder
             return RuntimeSplineGeometry.Empty;
         }
 
-        var vertices = new List<RuntimeTerrainVertex>(64_000);
+        var batches =
+            new Dictionary<
+                BatchKey,
+                List<RuntimeObjectVertex>>();
+
+        var batchOrder =
+            new List<BatchKey>();
+
         var rendered = 0;
 
         foreach (var spline in splines)
@@ -32,14 +49,48 @@ internal static class RuntimeSplineGeometryBuilder
                 continue;
             }
 
-            var before = vertices.Count;
+            var contributed = false;
+
             var segmentCount = Math.Clamp(
-                (int)Math.Ceiling(spline.LengthMeters / 4.0),
+                (int)Math.Ceiling(
+                    spline.LengthMeters / 4.0),
                 1,
                 256);
 
             foreach (var surface in spline.Surfaces)
             {
+                var hasTexture =
+                    !string.IsNullOrWhiteSpace(
+                        surface.TexturePath);
+
+                var key =
+                    new BatchKey(
+                        surface.TexturePath,
+                        hasTexture &&
+                        surface.AlphaMode > 0);
+
+                var output =
+                    GetBatch(
+                        key,
+                        batches,
+                        batchOrder);
+
+                var color =
+                    hasTexture
+                        ? new Color4(
+                            1,
+                            1,
+                            1,
+                            1)
+                        : new Color4(
+                            0.24f,
+                            0.25f,
+                            0.27f,
+                            1.0f);
+
+                var before =
+                    output.Count;
+
                 for (var segment = 0;
                      segment < segmentCount;
                      segment++)
@@ -54,37 +105,152 @@ internal static class RuntimeSplineGeometryBuilder
                         (segment + 1) /
                         segmentCount;
 
-                    var frame0 = GetFrame(spline, distance0);
-                    var frame1 = GetFrame(spline, distance1);
+                    var frame0 =
+                        GetFrame(
+                            spline,
+                            distance0);
 
-                    var a = Transform(frame0, surface.From);
-                    var b = Transform(frame1, surface.From);
-                    var c = Transform(frame1, surface.To);
-                    var d = Transform(frame0, surface.To);
+                    var frame1 =
+                        GetFrame(
+                            spline,
+                            distance1);
 
-                    var vertical =
-                        Math.Abs(
-                            surface.From.Z -
-                            surface.To.Z) > 0.10;
+                    var left0 =
+                        Transform(
+                            frame0,
+                            surface.From);
 
-                    var color = vertical
-                        ? new Color4(0.32f, 0.32f, 0.32f, 1.0f)
-                        : new Color4(0.24f, 0.25f, 0.27f, 1.0f);
+                    var left1 =
+                        Transform(
+                            frame1,
+                            surface.From);
 
-                    AddTriangle(a, b, c, color, vertices);
-                    AddTriangle(a, c, d, color, vertices);
+                    var right1 =
+                        Transform(
+                            frame1,
+                            surface.To);
+
+                    var right0 =
+                        Transform(
+                            frame0,
+                            surface.To);
+
+                    var leftUv0 =
+                        new Vector2(
+                            (float)surface.From.TextureX,
+                            (float)(
+                                distance0 *
+                                surface.From.TextureScale));
+
+                    var leftUv1 =
+                        new Vector2(
+                            (float)surface.From.TextureX,
+                            (float)(
+                                distance1 *
+                                surface.From.TextureScale));
+
+                    var rightUv1 =
+                        new Vector2(
+                            (float)surface.To.TextureX,
+                            (float)(
+                                distance1 *
+                                surface.To.TextureScale));
+
+                    var rightUv0 =
+                        new Vector2(
+                            (float)surface.To.TextureX,
+                            (float)(
+                                distance0 *
+                                surface.To.TextureScale));
+
+                    AppendQuad(
+                        left0,
+                        left1,
+                        right1,
+                        right0,
+                        leftUv0,
+                        leftUv1,
+                        rightUv1,
+                        rightUv0,
+                        color,
+                        output);
+                }
+
+                if (output.Count > before)
+                {
+                    contributed = true;
                 }
             }
 
-            if (vertices.Count > before)
+            if (contributed)
             {
                 rendered++;
             }
         }
 
+        var vertices =
+            new List<RuntimeObjectVertex>();
+
+        var runtimeBatches =
+            new List<RuntimeObjectBatch>(
+                batchOrder.Count);
+
+        foreach (var key in batchOrder)
+        {
+            var batchVertices =
+                batches[key];
+
+            if (batchVertices.Count == 0)
+            {
+                continue;
+            }
+
+            var start =
+                (uint)vertices.Count;
+
+            vertices.AddRange(
+                batchVertices);
+
+            runtimeBatches.Add(
+                new RuntimeObjectBatch(
+                    start,
+                    (uint)batchVertices.Count,
+                    key.TexturePath,
+                    key.AlphaCutout));
+        }
+
         return new RuntimeSplineGeometry(
             vertices.ToArray(),
-            rendered);
+            runtimeBatches.ToArray(),
+            rendered,
+            runtimeBatches.Count(
+                static batch =>
+                    !string.IsNullOrWhiteSpace(
+                        batch.TexturePath)));
+    }
+
+    private static List<RuntimeObjectVertex> GetBatch(
+        BatchKey key,
+        IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
+        ICollection<BatchKey> batchOrder)
+    {
+        if (batches.TryGetValue(
+                key,
+                out var existing))
+        {
+            return existing;
+        }
+
+        var created =
+            new List<RuntimeObjectVertex>();
+
+        batches[key] =
+            created;
+
+        batchOrder.Add(
+            key);
+
+        return created;
     }
 
     private static (
@@ -106,53 +272,70 @@ internal static class RuntimeSplineGeometryBuilder
             180.0;
 
         var hasCurve =
-            Math.Abs(spline.RadiusMeters) >
+            Math.Abs(
+                spline.RadiusMeters) >
             0.001;
 
         var curveAngle = hasCurve
-            ? clamped / spline.RadiusMeters
+            ? clamped /
+              spline.RadiusMeters
             : 0.0;
 
         var localX = hasCurve
             ? spline.RadiusMeters *
-              (1.0 - Math.Cos(curveAngle))
+              (1.0 -
+               Math.Cos(
+                   curveAngle))
             : 0.0;
 
         var localZ = hasCurve
             ? spline.RadiusMeters *
-              Math.Sin(curveAngle)
+              Math.Sin(
+                  curveAngle)
             : clamped;
 
-        var cosYaw = Math.Cos(yaw);
-        var sinYaw = Math.Sin(yaw);
+        var cosYaw =
+            Math.Cos(yaw);
+
+        var sinYaw =
+            Math.Sin(yaw);
 
         var startX =
-            spline.TileX * 300.0 +
+            spline.TileX *
+            300.0 +
             spline.X;
 
         var startZ =
-            spline.TileY * 300.0 +
+            spline.TileY *
+            300.0 +
             spline.Z;
 
         var worldX =
             startX +
-            localX * cosYaw +
-            localZ * sinYaw;
+            localX *
+            cosYaw +
+            localZ *
+            sinYaw;
 
         var worldZ =
             startZ -
-            localX * sinYaw +
-            localZ * cosYaw;
+            localX *
+            sinYaw +
+            localZ *
+            cosYaw;
 
         var heading =
             yaw +
             curveAngle;
 
-        var forward = Vector3.Normalize(
-            new Vector3(
-                (float)Math.Sin(heading),
-                0.0f,
-                (float)Math.Cos(heading)));
+        var forward =
+            Vector3.Normalize(
+                new Vector3(
+                    (float)Math.Sin(
+                        heading),
+                    0.0f,
+                    (float)Math.Cos(
+                        heading)));
 
         var lateral =
             new Vector3(
@@ -187,8 +370,10 @@ internal static class RuntimeSplineGeometryBuilder
         RuntimeSplineProfilePointInfo point)
     {
         return frame.Center +
-               frame.Lateral * (float)point.X +
-               Vector3.UnitY * (float)point.Z;
+               frame.Lateral *
+               (float)point.X +
+               Vector3.UnitY *
+               (float)point.Z;
     }
 
     private static double GradientRise(
@@ -207,10 +392,16 @@ internal static class RuntimeSplineGeometryBuilder
             0.0,
             length);
 
-        var startSlope = start / 100.0;
-        var slopeDelta = (end - start) / 100.0;
+        var startSlope =
+            start /
+            100.0;
 
-        return startSlope * clamped +
+        var slopeDelta =
+            (end - start) /
+            100.0;
+
+        return startSlope *
+               clamped +
                0.5 *
                slopeDelta *
                clamped *
@@ -218,15 +409,65 @@ internal static class RuntimeSplineGeometryBuilder
                length;
     }
 
-    private static void AddTriangle(
+    private static void AppendQuad(
+        Vector3 left0,
+        Vector3 left1,
+        Vector3 right1,
+        Vector3 right0,
+        Vector2 leftUv0,
+        Vector2 leftUv1,
+        Vector2 rightUv1,
+        Vector2 rightUv0,
+        Color4 color,
+        ICollection<RuntimeObjectVertex> output)
+    {
+        AppendTriangle(
+            left0,
+            left1,
+            right1,
+            leftUv0,
+            leftUv1,
+            rightUv1,
+            color,
+            output);
+
+        AppendTriangle(
+            left0,
+            right1,
+            right0,
+            leftUv0,
+            rightUv1,
+            rightUv0,
+            color,
+            output);
+    }
+
+    private static void AppendTriangle(
         Vector3 a,
         Vector3 b,
         Vector3 c,
+        Vector2 uvA,
+        Vector2 uvB,
+        Vector2 uvC,
         Color4 color,
-        ICollection<RuntimeTerrainVertex> output)
+        ICollection<RuntimeObjectVertex> output)
     {
-        output.Add(new RuntimeTerrainVertex(a, color));
-        output.Add(new RuntimeTerrainVertex(b, color));
-        output.Add(new RuntimeTerrainVertex(c, color));
+        output.Add(
+            new RuntimeObjectVertex(
+                a,
+                color,
+                uvA));
+
+        output.Add(
+            new RuntimeObjectVertex(
+                b,
+                color,
+                uvB));
+
+        output.Add(
+            new RuntimeObjectVertex(
+                c,
+                color,
+                uvC));
     }
 }
