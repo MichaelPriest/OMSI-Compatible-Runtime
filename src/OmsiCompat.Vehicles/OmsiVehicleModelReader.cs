@@ -43,6 +43,7 @@ public static class OmsiVehicleModelReader
                     overrides.ToArray()));
             }
 
+            currentMeshPath = null;
             overrides = new List<OmsiVehicleMaterialOverride>();
         }
 
@@ -52,6 +53,8 @@ public static class OmsiVehicleModelReader
                     "LOD",
                     StringComparison.OrdinalIgnoreCase))
             {
+                CommitMesh();
+
                 if (TrySingle(
                         Values(section).FirstOrDefault(),
                         out var lodThreshold))
