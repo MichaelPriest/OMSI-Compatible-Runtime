@@ -21,7 +21,10 @@ internal sealed record RuntimeObjectBatch(
     string? LightMapTexturePath = null,
     string? LightMapVariable = null,
     string? MaterialChangeTexturePath = null,
-    string? MaterialChangeVariable = null);
+    string? MaterialChangeVariable = null,
+    string? EnvMapTexturePath = null,
+    double EnvMapStrength = 0.0,
+    string? EnvMapMaskTexturePath = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -67,7 +70,10 @@ internal static class RuntimeObjectGeometryBuilder
         string? LightMapTexturePath = null,
         string? LightMapVariable = null,
         string? MaterialChangeTexturePath = null,
-        string? MaterialChangeVariable = null);
+        string? MaterialChangeVariable = null,
+        string? EnvMapTexturePath = null,
+        double EnvMapStrength = 0.0,
+        string? EnvMapMaskTexturePath = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -308,7 +314,10 @@ internal static class RuntimeObjectGeometryBuilder
                     key.LightMapTexturePath,
                     key.LightMapVariable,
                     key.MaterialChangeTexturePath,
-                    key.MaterialChangeVariable));
+                    key.MaterialChangeVariable,
+                    key.EnvMapTexturePath,
+                    key.EnvMapStrength,
+                    key.EnvMapMaskTexturePath));
         }
 
         return new RuntimeObjectGeometry(
@@ -397,7 +406,10 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.LightMapTexturePath,
                     material?.LightMapVariable,
                     material?.MaterialChangeTexturePath,
-                    material?.MaterialChangeVariable);
+                    material?.MaterialChangeVariable,
+                    material?.EnvMapTexturePath,
+                    material?.EnvMapStrength ?? 0.0,
+                    material?.EnvMapMaskTexturePath);
 
             var output =
                 GetBatch(
