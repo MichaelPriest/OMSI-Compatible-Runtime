@@ -153,6 +153,8 @@ try
             "main.osc"),
         Lines(
             "{init}",
+            "1",
+            "(S.L.mesh_visible)",
             "650",
             "(S.L.engine_speed)",
             "{end}",
@@ -216,7 +218,8 @@ try
             "horn_timer",
             "string_length",
             "callback_result",
-            "parsed_number"),
+            "parsed_number",
+            "mesh_visible"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -255,6 +258,9 @@ try
             "triangle.o3d",
             "[viewpoint]",
             "3",
+            "[visible]",
+            "mesh_visible",
+            "1",
             "[LOD]",
             "0",
             "[mesh]",
@@ -389,6 +395,13 @@ try
             0.1) < 0.0001 &&
         Math.Abs(
             vehicleAsset.Meshes[1].LodThreshold!.Value) < 0.0001 &&
+        vehicleAsset.Meshes[0].VisibilityConditions.Count == 1 &&
+        vehicleAsset.Meshes[0].VisibilityConditions[0].VariableName ==
+            "mesh_visible" &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].VisibilityConditions[0].Value -
+            1.0) < 0.0001 &&
+        vehicleAsset.Meshes[1].VisibilityConditions.Count == 0 &&
         vehicleAsset.ProtectedMeshCount == 0 &&
         vehicleAsset.FailedMeshCount == 0,
         "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
