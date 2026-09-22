@@ -147,7 +147,15 @@ internal sealed class RuntimeApplicationContext :
                                     tile.Terrain.CellCount,
                                     tile.Terrain.Heights,
                                     tile.Terrain.MinimumHeight,
-                                    tile.Terrain.MaximumHeight)))
+                                    tile.Terrain.MaximumHeight),
+                            tile.Resources.LightmapPath,
+                            tile.Resources.TerrainMasks
+                                .Select(
+                                    static mask =>
+                                        new RuntimeTerrainMaskInfo(
+                                            mask.LayerIndex,
+                                            mask.Path))
+                                .ToArray()))
                 .ToArray();
 
         var runtimeSplines =
@@ -263,6 +271,18 @@ internal sealed class RuntimeApplicationContext :
                                     pair.Value.Tree.MaximumAspect)),
                     StringComparer.OrdinalIgnoreCase);
 
+        var runtimeGroundTextures =
+            world.GroundTextures
+                .Select(
+                    static layer =>
+                        new RuntimeGroundTextureInfo(
+                            layer.LayerIndex,
+                            layer.MainTexturePath,
+                            layer.DetailTexturePath,
+                            layer.MainTextureRepeating,
+                            layer.DetailTextureRepeating))
+                .ToArray();
+
         return new RuntimeWindowInfo(
             world.Name,
             world.Tiles.Count,
@@ -272,7 +292,8 @@ internal sealed class RuntimeApplicationContext :
             runtimeTiles,
             runtimeSplines,
             runtimeObjects,
-            runtimeSceneryAssets);
+            runtimeSceneryAssets,
+            runtimeGroundTextures);
     }
 
     private static string? ResolveMapImage(
