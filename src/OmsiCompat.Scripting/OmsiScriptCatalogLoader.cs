@@ -7,7 +7,26 @@ namespace OmsiCompat.Scripting;
 public static class OmsiScriptCatalogLoader
 {
     public static OmsiScriptCatalog Load(
+        OmsiVehicleScriptManifest manifest) =>
+        LoadCore(
+            manifest,
+            null);
+
+    public static OmsiScriptCatalog Load(
+        OmsiContentRoot contentRoot,
         OmsiVehicleScriptManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(
+            contentRoot);
+
+        return LoadCore(
+            manifest,
+            contentRoot.ProgramPath);
+    }
+
+    private static OmsiScriptCatalog LoadCore(
+        OmsiVehicleScriptManifest manifest,
+        string? programPath)
     {
         ArgumentNullException.ThrowIfNull(
             manifest);
@@ -24,6 +43,52 @@ public static class OmsiScriptCatalogLoader
             LoadVariableNames(
                 manifest.StringVariableLists,
                 diagnostics);
+
+        var systemVariables =
+            new HashSet<string>(
+                StringComparer.Ordinal);
+
+        var vehicleCallbacks =
+            new HashSet<string>(
+                StringComparer.Ordinal);
+
+        var scriptTextureCallbacks =
+            new HashSet<string>(
+                StringComparer.Ordinal);
+
+        if (!string.IsNullOrWhiteSpace(
+                programPath))
+        {
+            UnionOptionalNameFile(
+                numeric,
+                Path.Combine(
+                    programPath,
+                    "varlist_roadvehicle.txt"));
+
+            UnionOptionalNameFile(
+                strings,
+                Path.Combine(
+                    programPath,
+                    "stringvarlist_roadvehicle.txt"));
+
+            UnionOptionalNameFile(
+                systemVariables,
+                Path.Combine(
+                    programPath,
+                    "varlist_system.txt"));
+
+            UnionOptionalNameFile(
+                vehicleCallbacks,
+                Path.Combine(
+                    programPath,
+                    "callbacklist_roadvehicle.txt"));
+
+            UnionOptionalNameFile(
+                scriptTextureCallbacks,
+                Path.Combine(
+                    programPath,
+                    "callbacklist_scripttex.txt"));
+        }
 
         var constants =
             new Dictionary<string, double>(
@@ -58,6 +123,9 @@ public static class OmsiScriptCatalogLoader
         return new OmsiScriptCatalog(
             numeric,
             strings,
+            systemVariables,
+            vehicleCallbacks,
+            scriptTextureCallbacks,
             constants,
             curves,
             program,
@@ -82,27 +150,52 @@ public static class OmsiScriptCatalogLoader
                 continue;
             }
 
-            foreach (var raw in
-                     OmsiText.ReadAllLines(
-                         file.ResolvedPath))
-            {
-                if (IsComment(raw))
-                {
-                    continue;
-                }
-
-                var value =
-                    raw.Trim();
-
-                if (value.Length > 0)
-                {
-                    result.Add(
-                        value);
-                }
-            }
+            UnionNameFile(
+                result,
+                file.ResolvedPath);
         }
 
         return result;
+    }
+
+    private static void UnionOptionalNameFile(
+        ISet<string> target,
+        string path)
+    {
+        if (!File.Exists(
+                path))
+        {
+            return;
+        }
+
+        UnionNameFile(
+            target,
+            path);
+    }
+
+    private static void UnionNameFile(
+        ISet<string> target,
+        string path)
+    {
+        foreach (var raw in
+                 OmsiText.ReadAllLines(
+                     path))
+        {
+            if (IsComment(
+                    raw))
+            {
+                continue;
+            }
+
+            var value =
+                raw.Trim();
+
+            if (value.Length > 0)
+            {
+                target.Add(
+                    value);
+            }
+        }
     }
 
     private static void LoadConstFile(
@@ -150,7 +243,8 @@ public static class OmsiScriptCatalogLoader
             var raw =
                 lines[index];
 
-            if (IsComment(raw))
+            if (IsComment(
+                    raw))
             {
                 continue;
             }
@@ -255,7 +349,8 @@ public static class OmsiScriptCatalogLoader
             var raw =
                 lines[index];
 
-            if (IsComment(raw))
+            if (IsComment(
+                    raw))
             {
                 continue;
             }
@@ -279,7 +374,7 @@ public static class OmsiScriptCatalogLoader
     private static bool IsComment(
         string line) =>
             line.Length > 0 &&
-            line[0] == '\'';
+            line[0] == ''';
 
     private static bool TryDouble(
         string value,
