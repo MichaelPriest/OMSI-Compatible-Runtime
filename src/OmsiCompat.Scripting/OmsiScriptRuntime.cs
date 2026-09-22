@@ -35,6 +35,25 @@ public sealed class OmsiScriptRuntime
                     : 0.0;
         }
 
+        public double Pop()
+        {
+            var value =
+                _values[0];
+
+            for (var index = 0;
+                 index < _values.Length - 1;
+                 index++)
+            {
+                _values[index] =
+                    _values[index + 1];
+            }
+
+            _values[^1] =
+                0.0;
+
+            return value;
+        }
+
         public void Clear() =>
             Array.Clear(
                 _values);
@@ -541,10 +560,17 @@ public sealed class OmsiScriptRuntime
                     break;
 
                 case "!":
+                    Unary(
+                        stack,
+                        static value =>
+                            value == 0.0
+                                ? 1.0
+                                : 0.0);
+                    break;
+
+                case "d":
                     stack.Push(
-                        stack.Top == 0.0
-                            ? 1.0
-                            : 0.0);
+                        stack.Top);
                     break;
 
                 case "pi":
@@ -553,17 +579,110 @@ public sealed class OmsiScriptRuntime
                     break;
 
                 case "sin":
-                    stack.Push(
-                        Math.Sin(
-                            stack.Top));
+                    Unary(
+                        stack,
+                        Math.Sin);
+                    break;
+
+                case "arcsin":
+                    Unary(
+                        stack,
+                        Math.Asin);
+                    break;
+
+                case "arctan":
+                    Unary(
+                        stack,
+                        Math.Atan);
+                    break;
+
+                case "/-/":
+                    Unary(
+                        stack,
+                        static value =>
+                            -value);
+                    break;
+
+                case "abs":
+                    Unary(
+                        stack,
+                        Math.Abs);
+                    break;
+
+                case "sqrt":
+                    Unary(
+                        stack,
+                        static value =>
+                            value < 0.0
+                                ? 0.0
+                                : Math.Sqrt(value));
+                    break;
+
+                case "sqr":
+                    Unary(
+                        stack,
+                        static value =>
+                            value * value);
+                    break;
+
+                case "sgn":
+                    Unary(
+                        stack,
+                        Math.Sign);
+                    break;
+
+                case "trunc":
+                    Unary(
+                        stack,
+                        Math.Truncate);
+                    break;
+
+                case "exp":
+                    Unary(
+                        stack,
+                        Math.Exp);
+                    break;
+
+                case "min":
+                    Binary(
+                        stack,
+                        Math.Min);
+                    break;
+
+                case "max":
+                    Binary(
+                        stack,
+                        Math.Max);
+                    break;
+
+                case "%":
+                    Binary(
+                        stack,
+                        static (left, right) =>
+                            Math.Abs(right) <
+                                double.Epsilon
+                                ? 0.0
+                                : left -
+                                  Math.Truncate(
+                                      left / right) *
+                                  right);
                     break;
 
                 case "random":
-                    stack.Push(
-                        Random.Shared.NextDouble() *
-                        Math.Max(
-                            stack.Top,
-                            0.0));
+                    Unary(
+                        stack,
+                        static maximum =>
+                        {
+                            var limit =
+                                (int)Math.Max(
+                                    Math.Truncate(maximum),
+                                    0.0);
+
+                            return limit <= 0
+                                ? 0.0
+                                : Random.Shared.Next(
+                                    limit);
+                        });
                     break;
             }
         }
@@ -619,15 +738,27 @@ public sealed class OmsiScriptRuntime
         FloatStack stack,
         Func<double, double, double> operation)
     {
-        var left =
-            stack[1];
         var right =
-            stack[0];
+            stack.Pop();
+        var left =
+            stack.Pop();
 
         stack.Push(
             operation(
                 left,
                 right));
+    }
+
+    private static void Unary(
+        FloatStack stack,
+        Func<double, double> operation)
+    {
+        var value =
+            stack.Pop();
+
+        stack.Push(
+            operation(
+                value));
     }
 
     private static double Read(
