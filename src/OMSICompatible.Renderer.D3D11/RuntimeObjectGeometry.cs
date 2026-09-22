@@ -528,6 +528,42 @@ internal static class RuntimeObjectGeometryBuilder
                 source,
                 worldTransform);
 
+        var sourceNormal =
+            Vector3.UnitY;
+
+        if (positionOffset + 2 <
+            mesh.Normals.Length)
+        {
+            sourceNormal =
+                isO3d
+                    ? new Vector3(
+                        -mesh.Normals[positionOffset],
+                        mesh.Normals[positionOffset + 1],
+                        mesh.Normals[positionOffset + 2])
+                    : new Vector3(
+                        mesh.Normals[positionOffset],
+                        mesh.Normals[positionOffset + 2],
+                        mesh.Normals[positionOffset + 1]);
+        }
+
+        var worldNormal =
+            Vector3.TransformNormal(
+                sourceNormal,
+                worldTransform);
+
+        if (worldNormal.LengthSquared() >
+            0.000001f)
+        {
+            worldNormal =
+                Vector3.Normalize(
+                    worldNormal);
+        }
+        else
+        {
+            worldNormal =
+                Vector3.UnitY;
+        }
+
         if (!float.IsFinite(world.X) ||
             !float.IsFinite(world.Y) ||
             !float.IsFinite(world.Z))
@@ -555,7 +591,8 @@ internal static class RuntimeObjectGeometryBuilder
             new RuntimeObjectVertex(
                 world,
                 color,
-                uv));
+                uv,
+                worldNormal));
     }
 
     private static bool AppendTree(
@@ -808,19 +845,34 @@ internal static class RuntimeObjectGeometryBuilder
 
 internal readonly struct RuntimeObjectVertex
 {
-    public const uint SizeInBytes = 36;
+    public const uint SizeInBytes = 48;
+
+    public RuntimeObjectVertex(
+        Vector3 position,
+        Color4 color,
+        Vector2 uv,
+        Vector3 normal)
+    {
+        Position = position;
+        Color = color;
+        Uv = uv;
+        Normal = normal;
+    }
 
     public RuntimeObjectVertex(
         Vector3 position,
         Color4 color,
         Vector2 uv)
+        : this(
+            position,
+            color,
+            uv,
+            Vector3.UnitY)
     {
-        Position = position;
-        Color = color;
-        Uv = uv;
     }
 
     public readonly Vector3 Position;
     public readonly Color4 Color;
     public readonly Vector2 Uv;
+    public readonly Vector3 Normal;
 }
