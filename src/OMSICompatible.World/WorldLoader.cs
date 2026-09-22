@@ -69,6 +69,7 @@ public static class WorldLoader
                     source.HeadingDegrees,
                     source.PitchDegrees,
                     source.BankDegrees,
+                    source.ExtraValues,
                     source.SourceLineNumber))
                 .ToArray();
 
