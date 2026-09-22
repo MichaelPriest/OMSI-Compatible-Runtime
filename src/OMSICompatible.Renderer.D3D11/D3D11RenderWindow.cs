@@ -2285,6 +2285,24 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (e.KeyCode == Keys.Insert)
+        {
+            ActivateSpecialDriverCamera(
+                _windowInfo.Vehicle?.ScheduleDriverCameraIndex);
+            UpdateCaption();
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        if (e.KeyCode == Keys.Home)
+        {
+            ActivateSpecialDriverCamera(
+                _windowInfo.Vehicle?.TicketSellingDriverCameraIndex);
+            UpdateCaption();
+            e.SuppressKeyPress = true;
+            return;
+        }
+
         if (e.KeyCode == Keys.Tab)
         {
             if (_mouseDriveMode)
@@ -2375,6 +2393,29 @@ public sealed class D3D11RenderWindow : Form
             _camera.Reset(
                 _terrainGeometry);
         }
+    }
+
+    private void ActivateSpecialDriverCamera(
+        int? cameraIndex)
+    {
+        var vehicle =
+            _windowInfo.Vehicle;
+
+        if (vehicle is null ||
+            vehicle.DriverCameras.Count == 0)
+        {
+            return;
+        }
+
+        _driveMode = true;
+        _vehicleViewMode =
+            RuntimeVehicleViewMode.Driver;
+        _driverCameraIndex =
+            Math.Clamp(
+                cameraIndex ??
+                    vehicle.StandardDriverCameraIndex,
+                0,
+                vehicle.DriverCameras.Count - 1);
     }
 
     private void CycleInteriorCamera(
@@ -2690,7 +2731,7 @@ public sealed class D3D11RenderWindow : Form
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · F4 free cam · D/N/R · E/M · Num. park · Tab free cam"
+              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · Insert schedule · Home tickets · F4 free cam · D/N/R · E/M · Num. park · Tab free cam"
             : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · F1/F2/F3 OMSI view · Tab OMSI drive";
 
         Text =

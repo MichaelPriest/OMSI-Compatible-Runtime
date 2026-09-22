@@ -159,6 +159,8 @@ public sealed record RuntimeVehicleInfo(
     IReadOnlyList<RuntimeDriverCameraInfo> DriverCameras,
     IReadOnlyList<RuntimePassengerCameraInfo> PassengerCameras,
     int StandardDriverCameraIndex,
+    int? ScheduleDriverCameraIndex,
+    int? TicketSellingDriverCameraIndex,
     RuntimeOutsideCameraCenterInfo? OutsideCameraCenter,
     RuntimeVehiclePhysicsInfo Physics,
     RuntimeDriverPositionInfo? DriverPosition,

@@ -42,6 +42,12 @@ public static class OmsiBusReader
             ReadDriverCameras(document),
             ReadPassengerCameras(document),
             ReadStandardDriverCameraIndex(document),
+            ReadSpecialDriverCameraIndex(
+                document,
+                "view_schedule"),
+            ReadSpecialDriverCameraIndex(
+                document,
+                "view_ticketselling"),
             ReadOutsideCameraCenter(document),
             ReadVehiclePhysics(document));
     }
@@ -172,6 +178,36 @@ public static class OmsiBusReader
                index >= 0
             ? index
             : 0;
+    }
+
+    private static int?
+        ReadSpecialDriverCameraIndex(
+            OmsiSectionDocument document,
+            string markerName)
+    {
+        var cameraIndex = -1;
+
+        foreach (var section in
+                 document.Sections)
+        {
+            if (section.Name.Equals(
+                    "add_camera_driver",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                cameraIndex++;
+                continue;
+            }
+
+            if (cameraIndex >= 0 &&
+                section.Name.Equals(
+                    markerName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return cameraIndex;
+            }
+        }
+
+        return null;
     }
 
     private static OmsiOutsideCameraCenter?

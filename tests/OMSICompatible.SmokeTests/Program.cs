@@ -104,6 +104,8 @@ try
             "48",
             "-30",
             "4",
+            "[view_schedule]",
+            "[view_ticketselling]",
             "[add_camera_pax]",
             "0.8",
             "-2.0",
@@ -164,6 +166,12 @@ try
     Require(
         bus.StandardDriverCameraIndex == 1,
         "Standard driver camera index was not preserved.");
+    Require(
+        bus.ScheduleDriverCameraIndex == 1,
+        "Schedule camera marker was not preserved.");
+    Require(
+        bus.TicketSellingDriverCameraIndex == 1,
+        "Ticket-selling camera marker was not preserved.");
     Require(
         bus.OutsideCameraCenter is
         {

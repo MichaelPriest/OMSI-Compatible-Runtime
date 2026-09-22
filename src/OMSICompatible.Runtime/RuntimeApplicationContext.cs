@@ -577,6 +577,8 @@ internal sealed class RuntimeApplicationContext :
                                 camera.PitchDegrees))
                     .ToArray(),
                 vehicle.Bus.StandardDriverCameraIndex,
+                vehicle.Bus.ScheduleDriverCameraIndex,
+                vehicle.Bus.TicketSellingDriverCameraIndex,
                 vehicle.Bus.OutsideCameraCenter is null
                     ? null
                     : new RuntimeOutsideCameraCenterInfo(

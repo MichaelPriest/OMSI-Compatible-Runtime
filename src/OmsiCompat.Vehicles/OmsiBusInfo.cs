@@ -121,6 +121,8 @@ public sealed record OmsiBusInfo(
     IReadOnlyList<OmsiDriverCamera> DriverCameras,
     IReadOnlyList<OmsiPassengerCamera> PassengerCameras,
     int StandardDriverCameraIndex,
+    int? ScheduleDriverCameraIndex,
+    int? TicketSellingDriverCameraIndex,
     OmsiOutsideCameraCenter? OutsideCameraCenter,
     OmsiVehiclePhysics Physics)
 {
