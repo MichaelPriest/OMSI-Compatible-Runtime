@@ -45,6 +45,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
     private readonly OmsiScriptRuntime? _scriptRuntime;
+    private readonly HashSet<string> _reportedUnhandledSystemMacros =
+        new(
+            StringComparer.Ordinal);
     private readonly HashSet<Keys> _pressedKeys = [];
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
 
@@ -168,6 +171,15 @@ public sealed class D3D11RenderWindow : Form
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
+
+        if (_scriptRuntime is not null)
+        {
+            _scriptRuntime.UnhandledSystemMacro +=
+                OnUnhandledSystemMacro;
+            _scriptRuntime.DebugMessageRequested +=
+                OnScriptDebugMessage;
+        }
+
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
             windowInfo.Vehicle?.Physics);
@@ -2404,6 +2416,26 @@ public sealed class D3D11RenderWindow : Form
             now);
     }
 
+    private void OnUnhandledSystemMacro(
+        string name)
+    {
+        if (!_reportedUnhandledSystemMacros.Add(
+                name))
+        {
+            return;
+        }
+
+        Console.WriteLine(
+            $"[script] unhandled OMSI system macro: {name}");
+    }
+
+    private static void OnScriptDebugMessage(
+        string message)
+    {
+        Console.WriteLine(
+            $"[script:$msg] {message}");
+    }
+
     private void InitializeVehicleScripts()
     {
         if (_scriptRuntime is null)
@@ -3006,6 +3038,14 @@ public sealed class D3D11RenderWindow : Form
     {
         if (disposing)
         {
+            if (_scriptRuntime is not null)
+            {
+                _scriptRuntime.UnhandledSystemMacro -=
+                    OnUnhandledSystemMacro;
+                _scriptRuntime.DebugMessageRequested -=
+                    OnScriptDebugMessage;
+            }
+
             if (_mouseDriveMode)
             {
                 DisableMouseDriveMode();
