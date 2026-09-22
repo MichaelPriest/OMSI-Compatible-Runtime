@@ -16,6 +16,8 @@ public static class OmsiVehicleModelReader
             OmsiVehicleMeshTransform.Identity;
         var currentViewpointFlag = 0;
         double? currentLodThreshold = null;
+        var visibilityConditions =
+            new List<OmsiVehicleVisibilityCondition>();
         var overrides = new List<OmsiVehicleMaterialOverride>();
         MaterialBuilder? material = null;
 
@@ -40,10 +42,13 @@ public static class OmsiVehicleModelReader
                     currentTransform,
                     currentViewpointFlag,
                     currentLodThreshold,
+                    visibilityConditions.ToArray(),
                     overrides.ToArray()));
             }
 
             currentMeshPath = null;
+            visibilityConditions =
+                new List<OmsiVehicleVisibilityCondition>();
             overrides = new List<OmsiVehicleMaterialOverride>();
         }
 
@@ -128,6 +133,35 @@ public static class OmsiVehicleModelReader
                 {
                     currentViewpointFlag =
                         viewpoint;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "visible",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length >= 2 &&
+                    TrySingle(
+                        values[1],
+                        out var visibleValue))
+                {
+                    var variableName =
+                        values[0]
+                            .Trim()
+                            .Trim('"');
+
+                    if (variableName.Length > 0)
+                    {
+                        visibilityConditions.Add(
+                            new OmsiVehicleVisibilityCondition(
+                                variableName,
+                                visibleValue));
+                    }
                 }
 
                 continue;
