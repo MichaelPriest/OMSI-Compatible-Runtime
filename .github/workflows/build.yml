@@ -36,8 +36,8 @@ jobs:
           -c Release
           -r win-x64
           --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:PublishSingleFile=false
+          -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
@@ -48,8 +48,8 @@ jobs:
           -c Release
           -r win-x64
           --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:PublishSingleFile=false
+          -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime
@@ -58,10 +58,14 @@ jobs:
         shell: pwsh
         run: |
           @'
-          OMSI Compatible Runtime x64 - PRE-ALPHA UI
+          OMSI Compatible Runtime x64 - PRE-ALPHA UI (PORTABLE SELF-CONTAINED)
 
           INÍCIO
           ======
+          IMPORTANTE:
+          Extraia TODO o conteúdo do ZIP antes de executar.
+          Não execute o EXE de dentro do ZIP.
+
           Abra:
             OMSICompatible.Launcher.exe
 
@@ -124,22 +128,24 @@ jobs:
           - Leitura de mapas/tiles
           - Terreno 3D real
           - Splines/ruas em desenvolvimento
-          - Veículo protótipo dirigível
-          - Controles OMSI em desenvolvimento
+          - Ônibus OMSI real carregado por .bus/model.cfg
+          - Câmeras F1/F2/F3/F4, horário e bilhetagem
+          - Espelhos/reflexões D3D11 iniciais
+          - Física baseada em eixos/raio de giro do .bus
+          - Manifesto de scripts OMSI
+          - VM RPN inicial em desenvolvimento
 
           Ainda em desenvolvimento:
-          - texturas/lightmaps completos
-          - crossings completos
-          - Sceneryobjects/O3D
-          - ônibus OMSI reais
-          - scripts OMSI
-          - som/IBIS/tráfego/passageiros
+          - compatibilidade total de scripts/animações
+          - portas/luzes/instrumentos dinâmicos
+          - sons/IBIS/tráfego/passageiros
+          - veículos articulados/acoplados completos
           '@ | Set-Content -Encoding UTF8 artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/README-TEST.txt
 
       - name: Upload x64 UI alpha
         uses: actions/upload-artifact@v4
         with:
-          name: OMSI-Compatible-Runtime-alpha-ui-win-x64
+          name: OMSI-Compatible-Runtime-alpha-ui-win-x64-portable
           path: artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
           if-no-files-found: error
           compression-level: 6
