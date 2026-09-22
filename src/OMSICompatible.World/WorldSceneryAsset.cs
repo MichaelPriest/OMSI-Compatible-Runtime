@@ -30,6 +30,7 @@ public sealed record WorldSceneryMeshAsset(
     string? ErrorCode,
     WorldSceneryMeshTransform Transform,
     float[] Positions,
+    float[] Normals,
     float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
