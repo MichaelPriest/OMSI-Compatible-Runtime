@@ -36,13 +36,21 @@ public sealed record WorldSceneryMeshAsset(
         Indices.Length >= 3;
 }
 
+public sealed record WorldSceneryTreeDefinition(
+    string TextureName,
+    double MinimumHeight,
+    double MaximumHeight,
+    double MinimumAspect,
+    double MaximumAspect);
+
 public sealed record WorldSceneryAsset(
     string DeclaredPath,
     string? ResolvedPath,
     bool Exists,
     bool UsesAbsoluteHeight,
     string? RenderType,
-    IReadOnlyList<WorldSceneryMeshAsset> Meshes)
+    IReadOnlyList<WorldSceneryMeshAsset> Meshes,
+    WorldSceneryTreeDefinition? Tree)
 {
     public int RenderableMeshCount =>
         Meshes.Count(
@@ -59,5 +67,6 @@ public sealed record WorldSceneryAsset(
 
     public bool IsRenderable =>
         Exists &&
-        RenderableMeshCount > 0;
+        (RenderableMeshCount > 0 ||
+         Tree is not null);
 }
