@@ -1,3 +1,4 @@
+using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Vehicles;
 
@@ -179,9 +180,8 @@ public static class OmsiScriptProgramLoader
             }
 
             foreach (var token in
-                     trimmed.Split(
-                         (char[]?)null,
-                         StringSplitOptions.RemoveEmptyEntries))
+                     TokenizeLine(
+                         trimmed))
             {
                 tokens.Add(
                     token);
@@ -194,6 +194,64 @@ public static class OmsiScriptProgramLoader
                 $"Unclosed OMSI script block: {path}:{headerLine}");
             Commit();
         }
+    }
+
+    private static IReadOnlyList<string>
+        TokenizeLine(
+            string line)
+    {
+        var tokens =
+            new List<string>();
+
+        var current =
+            new StringBuilder();
+
+        var inString = false;
+
+        void Commit()
+        {
+            if (current.Length == 0)
+            {
+                return;
+            }
+
+            tokens.Add(
+                current.ToString());
+            current.Clear();
+        }
+
+        foreach (var character in line)
+        {
+            if (!inString &&
+                character == (char)39)
+            {
+                break;
+            }
+
+            if (character == '"')
+            {
+                current.Append(
+                    character);
+                inString =
+                    !inString;
+                continue;
+            }
+
+            if (!inString &&
+                char.IsWhiteSpace(
+                    character))
+            {
+                Commit();
+                continue;
+            }
+
+            current.Append(
+                character);
+        }
+
+        Commit();
+
+        return tokens;
     }
 
     private static bool TryEntryPoint(
