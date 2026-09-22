@@ -3263,6 +3263,13 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private static float DegreesToRadians(
+        double degrees) =>
+        (float)(
+            degrees *
+            Math.PI /
+            180.0);
+
     private static int WrapCameraIndex(
         int index,
         int count)
