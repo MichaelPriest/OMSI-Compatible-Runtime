@@ -1456,7 +1456,7 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.IASetVertexBuffer(
             0,
             _vehicleVertexBuffer,
-            RuntimeTerrainVertex.SizeInBytes);
+            RuntimeVehicleVertex.SizeInBytes);
 
         _deviceContext.VSSetShader(
             _vehicleVertexShader);
