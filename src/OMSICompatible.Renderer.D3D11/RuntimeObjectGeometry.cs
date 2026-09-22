@@ -51,13 +51,6 @@ internal static class RuntimeObjectGeometryBuilder
         bool NoZWrite = false,
         bool NoZCheck = false);
 
-    private static readonly Matrix4x4 SourceToRendererBasis =
-        new(
-            1, 0, 0, 0,
-            0, 0, 1, 0,
-            0, 1, 0, 0,
-            0, 0, 0, 1);
-
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
         IReadOnlyList<RuntimeObjectInfo> objects,
@@ -462,15 +455,11 @@ internal static class RuntimeObjectGeometryBuilder
                 mesh.Positions[positionOffset + 1],
                 mesh.Positions[positionOffset + 2]);
 
-        var rendererLocal =
-            new Vector3(
-                source.X,
-                source.Z,
-                source.Y);
-
+        // O3D and legacy DirectX .x model vertices are already Y-up.
+        // Map/SCO placement axes are normalized before this renderer.
         var world =
             Vector3.Transform(
-                rendererLocal,
+                source,
                 worldTransform);
 
         if (!float.IsFinite(world.X) ||
@@ -721,30 +710,22 @@ internal static class RuntimeObjectGeometryBuilder
     }
 
     private static Matrix4x4 CreateMeshTransform(
-        RuntimeObjectMeshTransformInfo transform)
-    {
-        var sourceTransform =
-            Matrix4x4.CreateScale(
-                (float)transform.ScaleX,
-                (float)transform.ScaleY,
-                (float)transform.ScaleZ) *
-            Matrix4x4.CreateFromYawPitchRoll(
-                DegreesToRadians(
-                    transform.RotationY),
-                DegreesToRadians(
-                    transform.RotationX),
-                DegreesToRadians(
-                    transform.RotationZ)) *
-            Matrix4x4.CreateTranslation(
-                (float)transform.PositionX,
-                (float)transform.PositionY,
-                (float)transform.PositionZ);
-
-        return
-            SourceToRendererBasis *
-            sourceTransform *
-            SourceToRendererBasis;
-    }
+        RuntimeObjectMeshTransformInfo transform) =>
+        Matrix4x4.CreateScale(
+            (float)transform.ScaleX,
+            (float)transform.ScaleY,
+            (float)transform.ScaleZ) *
+        Matrix4x4.CreateFromYawPitchRoll(
+            DegreesToRadians(
+                transform.RotationY),
+            DegreesToRadians(
+                transform.RotationX),
+            DegreesToRadians(
+                transform.RotationZ)) *
+        Matrix4x4.CreateTranslation(
+            (float)transform.PositionX,
+            (float)transform.PositionY,
+            (float)transform.PositionZ);
 
     private static float DegreesToRadians(
         double value) =>
