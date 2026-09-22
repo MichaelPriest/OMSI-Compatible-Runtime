@@ -12,12 +12,14 @@ cbuffer RuntimeMaterial : register(b2)
 {
     float AlphaScale;
     float LightMapStrength;
-    float2 MaterialPadding;
+    float MaterialChangeStrength;
+    float MaterialPadding;
 };
 
 Texture2D DiffuseTexture : register(t0);
 Texture2D TransMapTexture : register(t1);
 Texture2D LightMapTexture : register(t2);
+Texture2D MaterialChangeTexture : register(t3);
 SamplerState DiffuseSampler : register(s0);
 
 struct VertexInput
@@ -80,6 +82,15 @@ float4 SampleDiffuse(
             LightMapStrength;
     }
 
+    if (MaterialChangeStrength > 0.0f)
+    {
+        sampled.rgb +=
+            MaterialChangeTexture.Sample(
+                DiffuseSampler,
+                input.Uv).rgb *
+            MaterialChangeStrength;
+    }
+
     return sampled;
 }
 
@@ -120,6 +131,15 @@ float4 PSColor(
                 DiffuseSampler,
                 input.Uv).rgb *
             LightMapStrength;
+    }
+
+    if (MaterialChangeStrength > 0.0f)
+    {
+        color.rgb +=
+            MaterialChangeTexture.Sample(
+                DiffuseSampler,
+                input.Uv).rgb *
+            MaterialChangeStrength;
     }
 
     return color;
