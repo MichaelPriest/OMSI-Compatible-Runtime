@@ -123,6 +123,7 @@ public sealed record RuntimeObjectMeshInfo(
     string? ErrorCode,
     RuntimeObjectMeshTransformInfo Transform,
     float[] Positions,
+    float[] Normals,
     float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
