@@ -141,14 +141,22 @@ internal static class RuntimeObjectGeometryBuilder
                     ? 0.015f
                     : 0.0f;
 
+            // OMSI map/object rotations are expressed in the OMSI
+            // coordinate system: X=lateral, Y=forward, Z=up.
+            // Renderer coordinates are X=lateral, Y=up, Z=forward.
+            // Swapping Y/Z reverses handedness, so all three
+            // corresponding Euler angles change sign:
+            // OMSI Z(rot) -> renderer Y(yaw)
+            // OMSI X(pitch) -> renderer X(pitch)
+            // OMSI Y(bank) -> renderer Z(roll).
             var objectTransform =
                 Matrix4x4.CreateFromYawPitchRoll(
                     DegreesToRadians(
-                        instance.HeadingDegrees),
+                        -instance.HeadingDegrees),
                     DegreesToRadians(
-                        instance.PitchDegrees),
+                        -instance.PitchDegrees),
                     DegreesToRadians(
-                        instance.BankDegrees)) *
+                        -instance.BankDegrees)) *
                 Matrix4x4.CreateTranslation(
                     (float)worldX,
                     (float)instance.Y +
@@ -451,14 +459,23 @@ internal static class RuntimeObjectGeometryBuilder
         var positionOffset =
             vertexIndex * 3;
 
+        // OMSI model coordinates:
+        //   X = lateral
+        //   Y = forward/backward
+        //   Z = height
+        // Renderer coordinates:
+        //   X = lateral
+        //   Y = height
+        //   Z = forward/backward
+        //
+        // Both O3D and legacy DirectX .x assets must therefore swap
+        // source Y/Z before any renderer-side transform is applied.
         var source =
             new Vector3(
                 mesh.Positions[positionOffset],
-                mesh.Positions[positionOffset + 1],
-                mesh.Positions[positionOffset + 2]);
+                mesh.Positions[positionOffset + 2],
+                mesh.Positions[positionOffset + 1]);
 
-        // O3D and legacy DirectX .x model vertices are already Y-up.
-        // Map/SCO placement axes are normalized before this renderer.
         var world =
             Vector3.Transform(
                 source,
@@ -713,21 +730,23 @@ internal static class RuntimeObjectGeometryBuilder
 
     private static Matrix4x4 CreateMeshTransform(
         RuntimeObjectMeshTransformInfo transform) =>
+        // [new_pos]/rot_x/rot_y/rot_z/model.cfg transforms use
+        // the same OMSI X/Y/Z convention as mesh vertices.
         Matrix4x4.CreateScale(
             (float)transform.ScaleX,
-            (float)transform.ScaleY,
-            (float)transform.ScaleZ) *
+            (float)transform.ScaleZ,
+            (float)transform.ScaleY) *
         Matrix4x4.CreateFromYawPitchRoll(
             DegreesToRadians(
-                transform.RotationY),
+                -transform.RotationZ),
             DegreesToRadians(
-                transform.RotationX),
+                -transform.RotationX),
             DegreesToRadians(
-                transform.RotationZ)) *
+                -transform.RotationY)) *
         Matrix4x4.CreateTranslation(
             (float)transform.PositionX,
-            (float)transform.PositionY,
-            (float)transform.PositionZ);
+            (float)transform.PositionZ,
+            (float)transform.PositionY);
 
     private static float DegreesToRadians(
         double value) =>
