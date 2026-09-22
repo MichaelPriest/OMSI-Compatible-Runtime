@@ -10,10 +10,13 @@ public static class OmsiO3dGeometryReader
     private const byte BoneSection = 0x54;
     private const byte TransformSection = 0x79;
 
-    private const uint MaxVertices = 150_000;
-    private const uint MaxTriangles = 300_000;
+    // Detailed modern OMSI vehicle meshes can be substantially larger than
+    // scenery meshes. Keep a bounded parser, but align the geometry ceiling
+    // with mature O3D tooling instead of rejecting valid bus bodies early.
+    private const uint MaxVertices = 1_000_000;
+    private const uint MaxTriangles = 1_000_000;
     private const uint MaxBones = 1_000_000;
-    private const ushort MaxMaterials = 4_096;
+    private const ushort MaxMaterials = 10_000;
 
     public static OmsiO3dGeometry ReadFile(string path)
     {
