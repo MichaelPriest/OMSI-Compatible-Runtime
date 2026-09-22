@@ -198,8 +198,15 @@ public static class OmsiVehicleModelReader
                     StringComparison.OrdinalIgnoreCase))
             {
                 CommitAnimation();
+
                 animation =
                     new AnimationBuilder();
+
+                ParseAnimationValues(
+                    animation,
+                    Values(section).ToArray());
+
+                CommitAnimation();
                 continue;
             }
 
@@ -569,6 +576,192 @@ public static class OmsiVehicleModelReader
                 value.Length > 0 &&
                 !value.StartsWith('#') &&
                 !value.StartsWith("//", StringComparison.Ordinal));
+
+    private static void ParseAnimationValues(
+        AnimationBuilder animation,
+        IReadOnlyList<string> values)
+    {
+        for (var index = 0;
+             index < values.Count;
+             index++)
+        {
+            var command =
+                values[index]
+                    .Trim();
+
+            if (command.Equals(
+                    "origin_from_mesh",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                animation.OriginFromMesh = true;
+                continue;
+            }
+
+            if (command.Equals(
+                    "origin_trans",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 3 < values.Count &&
+                    TrySingle(
+                        values[index + 1],
+                        out var x) &&
+                    TrySingle(
+                        values[index + 2],
+                        out var y) &&
+                    TrySingle(
+                        values[index + 3],
+                        out var z))
+                {
+                    animation.OriginFromMesh = false;
+                    animation.OriginX = x;
+                    animation.OriginY = y;
+                    animation.OriginZ = z;
+                    index += 3;
+                }
+
+                continue;
+            }
+
+            if (command.Equals(
+                    "origin_rot_x",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 < values.Count &&
+                    TrySingle(
+                        values[index + 1],
+                        out var value))
+                {
+                    animation.OriginRotationX =
+                        value;
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (command.Equals(
+                    "origin_rot_y",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 < values.Count &&
+                    TrySingle(
+                        values[index + 1],
+                        out var value))
+                {
+                    animation.OriginRotationY =
+                        value;
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (command.Equals(
+                    "origin_rot_z",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 < values.Count &&
+                    TrySingle(
+                        values[index + 1],
+                        out var value))
+                {
+                    animation.OriginRotationZ =
+                        value;
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (command.Equals(
+                    "anim_trans",
+                    StringComparison.OrdinalIgnoreCase) ||
+                command.Equals(
+                    "anim_rot",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 2 < values.Count &&
+                    TrySingle(
+                        values[index + 2],
+                        out var delta))
+                {
+                    var variableName =
+                        values[index + 1]
+                            .Trim()
+                            .Trim('"');
+
+                    if (variableName.Length > 0)
+                    {
+                        animation.Kind =
+                            command.Equals(
+                                "anim_trans",
+                                StringComparison.OrdinalIgnoreCase)
+                                ? OmsiVehicleAnimationKind.Translation
+                                : OmsiVehicleAnimationKind.Rotation;
+
+                        animation.VariableName =
+                            variableName;
+
+                        animation.Delta =
+                            delta;
+                    }
+
+                    index += 2;
+                }
+
+                continue;
+            }
+
+            if (command.Equals(
+                    "offset",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 < values.Count &&
+                    TrySingle(
+                        values[index + 1],
+                        out var value))
+                {
+                    animation.Offset =
+                        value;
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (command.Equals(
+                    "delay",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 < values.Count &&
+                    TrySingle(
+                        values[index + 1],
+                        out var value))
+                {
+                    animation.Delay =
+                        value;
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (command.Equals(
+                    "maxspeed",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 < values.Count &&
+                    TrySingle(
+                        values[index + 1],
+                        out var value))
+                {
+                    animation.MaxSpeed =
+                        value;
+                    index++;
+                }
+            }
+        }
+    }
 
     private static bool TryVector3(
         IReadOnlyList<string> values,
