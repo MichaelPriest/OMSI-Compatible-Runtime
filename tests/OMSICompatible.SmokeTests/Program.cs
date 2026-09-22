@@ -261,6 +261,19 @@ try
             "[visible]",
             "mesh_visible",
             "1",
+            "[newanim]",
+            "origin_from_mesh",
+            "origin_rot_y",
+            "90",
+            "anim_rot",
+            "Axle_Steering_0_L",
+            "1680",
+            "offset",
+            "2",
+            "delay",
+            "10",
+            "maxspeed",
+            "360",
             "[LOD]",
             "0",
             "[mesh]",
@@ -402,6 +415,37 @@ try
             vehicleAsset.Meshes[0].VisibilityConditions[0].Value -
             1.0) < 0.0001 &&
         vehicleAsset.Meshes[1].VisibilityConditions.Count == 0 &&
+        vehicleAsset.Meshes[0].Animations.Count == 1 &&
+        vehicleAsset.Meshes[0].Animations[0].Kind ==
+            OmsiVehicleAnimationKind.Rotation &&
+        vehicleAsset.Meshes[0].Animations[0].VariableName ==
+            "Axle_Steering_0_L" &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Animations[0].Delta -
+            1680.0) < 0.0001 &&
+        vehicleAsset.Meshes[0].Animations[0].OriginFromMesh &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Animations[0].OriginRotationY -
+            90.0) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Animations[0].Offset -
+            2.0) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Animations[0].Delay!.Value -
+            10.0) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Animations[0].MaxSpeed!.Value -
+            360.0) < 0.0001 &&
+        vehicleAsset.Meshes[1].Animations.Count == 0 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].SourceTransform.M41 -
+            1.25f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].SourceTransform.M42 -
+            2.5f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].SourceTransform.M43 -
+            3.75f) < 0.0001 &&
         vehicleAsset.ProtectedMeshCount == 0 &&
         vehicleAsset.FailedMeshCount == 0,
         "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
@@ -840,19 +884,20 @@ static void WriteSyntheticO3d(string path)
 
     writer.Write((byte)0x79);
 
-    for (var row = 0;
-         row < 4;
-         row++)
-    {
-        for (var column = 0;
-             column < 4;
-             column++)
+    var transform =
+        new float[]
         {
-            writer.Write(
-                row == column
-                    ? 1.0f
-                    : 0.0f);
-        }
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            1.25f, 2.5f, 3.75f, 1
+        };
+
+    foreach (var value in
+             transform)
+    {
+        writer.Write(
+            value);
     }
 }
 
