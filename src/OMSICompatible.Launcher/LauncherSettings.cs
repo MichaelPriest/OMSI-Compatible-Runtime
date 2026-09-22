@@ -4,7 +4,9 @@ namespace OMSICompatible.Launcher;
 
 internal sealed record LauncherSettings(
     string? ContentPath,
-    string? MapName)
+    string? MapName,
+    string? BusRelativePath,
+    string? EntryPointName)
 {
     private static string SettingsDirectory =>
         Path.Combine(
@@ -24,6 +26,8 @@ internal sealed record LauncherSettings(
             if (!File.Exists(SettingsPath))
             {
                 return new LauncherSettings(
+                    null,
+                    null,
                     null,
                     null);
             }
