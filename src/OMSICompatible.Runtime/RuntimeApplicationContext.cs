@@ -166,10 +166,16 @@ internal sealed class RuntimeApplicationContext :
                                         new RuntimeSplineSurfaceInfo(
                                             new RuntimeSplineProfilePointInfo(
                                                 surface.From.X,
-                                                surface.From.Z),
+                                                surface.From.Z,
+                                                surface.From.TextureX,
+                                                surface.From.TextureScale),
                                             new RuntimeSplineProfilePointInfo(
                                                 surface.To.X,
-                                                surface.To.Z)))
+                                                surface.To.Z,
+                                                surface.To.TextureX,
+                                                surface.To.TextureScale),
+                                            surface.TexturePath,
+                                            surface.AlphaMode))
                                 .ToArray()
                             ?? Array.Empty<
                                 RuntimeSplineSurfaceInfo>();
