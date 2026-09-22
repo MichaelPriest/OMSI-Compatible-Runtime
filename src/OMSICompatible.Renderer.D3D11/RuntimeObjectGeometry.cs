@@ -498,18 +498,22 @@ internal static class RuntimeObjectGeometryBuilder
         ref int totalVertices)
     {
         var height =
-            ResolveTreePlacementValue(
-                instance.ExtraValues,
-                2,
-                tree.MinimumHeight,
-                tree.MaximumHeight);
+            Math.Min(
+                ResolveTreePlacementValue(
+                    instance.ExtraValues,
+                    2,
+                    tree.MinimumHeight,
+                    tree.MaximumHeight),
+                30.0);
 
         var aspect =
-            ResolveTreePlacementValue(
-                instance.ExtraValues,
-                3,
-                tree.MinimumAspect,
-                tree.MaximumAspect);
+            Math.Min(
+                ResolveTreePlacementValue(
+                    instance.ExtraValues,
+                    3,
+                    tree.MinimumAspect,
+                    tree.MaximumAspect),
+                3.0);
 
         if (!double.IsFinite(height) ||
             !double.IsFinite(aspect) ||
