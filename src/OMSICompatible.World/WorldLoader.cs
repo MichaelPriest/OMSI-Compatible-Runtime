@@ -8,16 +8,40 @@ public static class WorldLoader
 {
     public static WorldDefinition Load(
         OmsiContentRoot contentRoot,
-        OmsiMapInfo map)
+        OmsiMapInfo map,
+        IProgress<WorldLoadProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(contentRoot);
         ArgumentNullException.ThrowIfNull(map);
 
+        progress?.Report(
+            new WorldLoadProgress(
+                8,
+                "Lendo mapa",
+                "Descobrindo tiles e estrutura do mundo..."));
+
         var sourceTiles = MapTileDiscovery.Discover(map);
         var tiles = new List<WorldTile>(sourceTiles.Count);
+        var tileIndex = 0;
 
         foreach (var sourceTile in sourceTiles)
         {
+            tileIndex++;
+
+            var tilePercent =
+                sourceTiles.Count == 0
+                    ? 45
+                    : 10 +
+                      (int)Math.Round(
+                          45.0 *
+                          tileIndex /
+                          sourceTiles.Count);
+
+            progress?.Report(
+                new WorldLoadProgress(
+                    tilePercent,
+                    "Carregando mundo",
+                    $"Tile {tileIndex:N0}/{sourceTiles.Count:N0} · {sourceTile.Coordinate.X},{sourceTile.Coordinate.Y}"));
             var coordinate = new WorldTileCoordinate(
                 sourceTile.Coordinate.X,
                 sourceTile.Coordinate.Y);
@@ -116,14 +140,32 @@ public static class WorldLoader
             .SelectMany(static tile => tile.Splines)
             .ToArray();
 
+        progress?.Report(
+            new WorldLoadProgress(
+                62,
+                "Resolvendo conteúdo",
+                $"{allObjects.Length:N0} objetos · {allSplines.Length:N0} splines"));
+
         var dependencies = WorldAssetResolver.ResolvePrimaryDependencies(
             contentRoot,
             allObjects,
             allSplines);
 
+        progress?.Report(
+            new WorldLoadProgress(
+                74,
+                "Preparando vias",
+                $"Lendo {allSplines.Select(static spline => spline.AssetPath).Distinct(StringComparer.OrdinalIgnoreCase).Count():N0} arquivos de spline..."));
+
         var splineAssets = LoadSplineAssets(
             allSplines,
             dependencies);
+
+        progress?.Report(
+            new WorldLoadProgress(
+                84,
+                "Montando mundo",
+                "Finalizando modelo normalizado x64..."));
 
         return new WorldDefinition(
             map.FolderName,
