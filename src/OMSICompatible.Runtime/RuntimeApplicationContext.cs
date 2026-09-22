@@ -498,6 +498,7 @@ internal sealed class RuntimeApplicationContext :
                     static pair =>
                         new RuntimeSceneryAssetInfo(
                             pair.Value.UsesAbsoluteHeight,
+                            pair.Value.OnlyEditor,
                             pair.Value.RenderType,
                             pair.Value.Meshes
                                 .Select(
@@ -655,8 +656,8 @@ internal sealed class RuntimeApplicationContext :
                     ? null
                     : new RuntimeDriverPositionInfo(
                         vehicle.DriverPosition.X,
-                        vehicle.DriverPosition.Y,
                         vehicle.DriverPosition.Z,
+                        vehicle.DriverPosition.Y,
                         vehicle.DriverPosition.SeatHeight,
                         vehicle.DriverPosition.RotationDegrees),
                 vehicle.ProtectedMeshCount);
