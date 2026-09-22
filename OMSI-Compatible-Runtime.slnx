@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/OmsiCompat.Core/OmsiCompat.Core.csproj" />
+  <Project Path="src/OmsiCompat.Map/OmsiCompat.Map.csproj" />
+  <Project Path="src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj" />
+  <Project Path="src/OMSICompatible.Launcher/OMSICompatible.Launcher.csproj" />
+</Solution>
