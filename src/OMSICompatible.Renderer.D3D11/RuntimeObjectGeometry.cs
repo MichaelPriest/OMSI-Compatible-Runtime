@@ -8,7 +8,11 @@ internal sealed record RuntimeObjectBatch(
     uint StartVertex,
     uint VertexCount,
     string? TexturePath,
-    bool AlphaCutout);
+    bool AlphaCutout,
+    bool AlphaBlend = false,
+    string? TransMapTexturePath = null,
+    bool NoZWrite = false,
+    bool NoZCheck = false);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -41,7 +45,11 @@ internal static class RuntimeObjectGeometryBuilder
 
     private readonly record struct BatchKey(
         string? TexturePath,
-        bool AlphaCutout);
+        bool AlphaCutout,
+        bool AlphaBlend = false,
+        string? TransMapTexturePath = null,
+        bool NoZWrite = false,
+        bool NoZCheck = false);
 
     private static readonly Matrix4x4 SourceToRendererBasis =
         new(
@@ -265,7 +273,11 @@ internal static class RuntimeObjectGeometryBuilder
                     start,
                     (uint)batchVertices.Count,
                     key.TexturePath,
-                    key.AlphaCutout));
+                    key.AlphaCutout,
+                    key.AlphaBlend,
+                    key.TransMapTexturePath,
+                    key.NoZWrite,
+                    key.NoZCheck));
         }
 
         return new RuntimeObjectGeometry(
@@ -341,7 +353,11 @@ internal static class RuntimeObjectGeometryBuilder
             var key =
                 new BatchKey(
                     material?.TexturePath,
-                    false);
+                    material?.AlphaMode == 1,
+                    material?.AlphaMode == 2,
+                    material?.TransMapTexturePath,
+                    material?.NoZWrite ?? false,
+                    material?.NoZCheck ?? false);
 
             var output =
                 GetBatch(
