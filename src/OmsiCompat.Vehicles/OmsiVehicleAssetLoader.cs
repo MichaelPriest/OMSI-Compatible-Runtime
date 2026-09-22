@@ -209,6 +209,40 @@ public static class OmsiVehicleAssetLoader
                             out materialChangePath);
                     }
 
+                    string? envMapPath = null;
+                    var envMapSource =
+                        materialOverride?
+                            .EnvMapSource;
+
+                    if (!string.IsNullOrWhiteSpace(
+                            envMapSource))
+                    {
+                        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+                            contentRoot.RootPath,
+                            bus.DirectoryPath,
+                            model.SourcePath,
+                            meshPath,
+                            envMapSource,
+                            out envMapPath);
+                    }
+
+                    string? envMapMaskPath = null;
+                    var envMapMaskSource =
+                        materialOverride?
+                            .EnvMapMaskSource;
+
+                    if (!string.IsNullOrWhiteSpace(
+                            envMapMaskSource))
+                    {
+                        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+                            contentRoot.RootPath,
+                            bus.DirectoryPath,
+                            model.SourcePath,
+                            meshPath,
+                            envMapMaskSource,
+                            out envMapMaskPath);
+                    }
+
                     var alphaMode =
                         materialOverride?.AlphaMode ??
                         (material.DiffuseA < 0.999f
@@ -237,7 +271,10 @@ public static class OmsiVehicleAssetLoader
                         materialOverride?.LightMapVariable,
                         materialChangePath,
                         materialChangeOverride?
-                            .MaterialChangeVariable);
+                            .MaterialChangeVariable,
+                        envMapPath,
+                        materialOverride?.EnvMapStrength ?? 0.0,
+                        envMapMaskPath);
                 })
                 .ToArray();
 
