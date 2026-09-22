@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Vehicles;
 
 namespace OMSICompatible.Launcher;
 
@@ -13,6 +14,12 @@ internal sealed class LauncherForm : Form
         new();
 
     private readonly ComboBox _mapBox =
+        new();
+
+    private readonly ComboBox _busBox =
+        new();
+
+    private readonly ComboBox _spawnBox =
         new();
 
     private Button _playButton =
@@ -37,6 +44,12 @@ internal sealed class LauncherForm : Form
 
     private IReadOnlyList<OmsiMapInfo> _maps =
         Array.Empty<OmsiMapInfo>();
+
+    private IReadOnlyList<OmsiBusInfo> _buses =
+        Array.Empty<OmsiBusInfo>();
+
+    private IReadOnlyList<OmsiMapEntryPointGroup> _entryPoints =
+        Array.Empty<OmsiMapEntryPointGroup>();
 
     public LauncherForm(
         string? explicitContentPath)
@@ -353,6 +366,88 @@ internal sealed class LauncherForm : Form
             0,
             3);
 
+        var vehicleSpawnRow =
+            new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 2,
+                AutoSize = true,
+                Padding = new Padding(0, 10, 0, 0)
+            };
+
+        vehicleSpawnRow.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Percent, 55));
+        vehicleSpawnRow.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Percent, 45));
+
+        var vehiclePanel =
+            new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 1,
+                AutoSize = true,
+                Margin = new Padding(0, 0, 10, 0)
+            };
+
+        vehiclePanel.Controls.Add(
+            CreateFieldLabel("ÔNIBUS"),
+            0,
+            0);
+
+        StyleComboBox(_busBox);
+        _busBox.SelectedIndexChanged +=
+            (_, _) =>
+            {
+                UpdatePlayAvailability();
+                SaveSettings();
+            };
+
+        vehiclePanel.Controls.Add(
+            _busBox,
+            0,
+            1);
+
+        var spawnPanel =
+            new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 1,
+                AutoSize = true
+            };
+
+        spawnPanel.Controls.Add(
+            CreateFieldLabel("PONTO INICIAL"),
+            0,
+            0);
+
+        StyleComboBox(_spawnBox);
+        _spawnBox.SelectedIndexChanged +=
+            (_, _) =>
+            {
+                UpdatePlayAvailability();
+                SaveSettings();
+            };
+
+        spawnPanel.Controls.Add(
+            _spawnBox,
+            0,
+            1);
+
+        vehicleSpawnRow.Controls.Add(
+            vehiclePanel,
+            0,
+            0);
+
+        vehicleSpawnRow.Controls.Add(
+            spawnPanel,
+            1,
+            0);
+
+        panel.Controls.Add(
+            vehicleSpawnRow,
+            0,
+            4);
+
         var shortcuts =
             new FlowLayoutPanel
             {
@@ -409,7 +504,7 @@ internal sealed class LauncherForm : Form
         panel.Controls.Add(
             shortcuts,
             0,
-            4);
+            5);
 
         return panel;
     }
@@ -616,6 +711,31 @@ internal sealed class LauncherForm : Form
                     6)
         };
 
+    private static void StyleComboBox(
+        ComboBox box)
+    {
+        box.Dock = DockStyle.Fill;
+        box.DropDownStyle =
+            ComboBoxStyle.DropDownList;
+        box.FlatStyle =
+            FlatStyle.Flat;
+        box.BackColor =
+            Color.FromArgb(
+                31,
+                36,
+                46);
+        box.ForeColor =
+            Color.White;
+        box.Font =
+            new Font(
+                "Segoe UI",
+                10.5f);
+        box.MinimumSize =
+            new Size(
+                100,
+                38);
+    }
+
     private static void StyleTextBox(
         TextBox box)
     {
@@ -765,8 +885,15 @@ internal sealed class LauncherForm : Form
         string? selectMap)
     {
         _mapBox.Items.Clear();
+        _busBox.Items.Clear();
+        _spawnBox.Items.Clear();
+
         _maps =
             Array.Empty<OmsiMapInfo>();
+        _buses =
+            Array.Empty<OmsiBusInfo>();
+        _entryPoints =
+            Array.Empty<OmsiMapEntryPointGroup>();
 
         if (!OmsiContentRoot.TryCreate(
                 _contentPathBox.Text,
@@ -789,6 +916,30 @@ internal sealed class LauncherForm : Form
         _maps =
             MapDiscovery.Discover(
                 contentRoot);
+
+        _buses =
+            BusDiscovery.Discover(
+                contentRoot);
+
+        foreach (var bus in _buses)
+        {
+            _busBox.Items.Add(bus);
+        }
+
+        if (_buses.Count > 0)
+        {
+            var selectedBus =
+                _buses.FirstOrDefault(
+                    bus =>
+                        string.Equals(
+                            bus.RelativePath,
+                            _settings.BusRelativePath,
+                            StringComparison.OrdinalIgnoreCase));
+
+            _busBox.SelectedItem =
+                selectedBus ??
+                _buses[0];
+        }
 
         foreach (var map in _maps)
         {
@@ -824,7 +975,7 @@ internal sealed class LauncherForm : Form
             _maps[0].FolderName;
 
         AppendRuntimeLog(
-            $"{_maps.Count:N0} mapa(s) encontrado(s).");
+            $"{_maps.Count:N0} mapa(s) · {_buses.Count:N0} ônibus encontrado(s).");
     }
 
     private void MapSelectionChanged()
@@ -832,9 +983,31 @@ internal sealed class LauncherForm : Form
         var map =
             SelectedMap();
 
-        _playButton.Enabled =
-            map is not null &&
-            !_runtime.IsRunning;
+        _spawnBox.Items.Clear();
+        _entryPoints =
+            map is null
+                ? Array.Empty<OmsiMapEntryPointGroup>()
+                : MapEntryPointDiscovery.Discover(map);
+
+        foreach (var entryPoint in _entryPoints)
+        {
+            _spawnBox.Items.Add(entryPoint);
+        }
+
+        if (_entryPoints.Count > 0)
+        {
+            var selectedSpawn =
+                _entryPoints.FirstOrDefault(
+                    point =>
+                        string.Equals(
+                            point.Name,
+                            _settings.EntryPointName,
+                            StringComparison.OrdinalIgnoreCase));
+
+            _spawnBox.SelectedItem =
+                selectedSpawn ??
+                _entryPoints[0];
+        }
 
         _hero.SetPresentation(
             map is null
@@ -842,6 +1015,7 @@ internal sealed class LauncherForm : Form
                 : MapPresentationReader.Read(
                     map));
 
+        UpdatePlayAvailability();
         SaveSettings();
     }
 
@@ -859,6 +1033,22 @@ internal sealed class LauncherForm : Form
                     StringComparison.OrdinalIgnoreCase));
     }
 
+
+    private OmsiBusInfo? SelectedBus() =>
+        _busBox.SelectedItem as OmsiBusInfo;
+
+    private OmsiMapEntryPointGroup? SelectedEntryPoint() =>
+        _spawnBox.SelectedItem as OmsiMapEntryPointGroup;
+
+    private void UpdatePlayAvailability()
+    {
+        _playButton.Enabled =
+            SelectedMap() is not null &&
+            SelectedBus() is not null &&
+            SelectedEntryPoint() is not null &&
+            !_runtime.IsRunning;
+    }
+
     private void StartRuntime()
     {
         if (_runtime.IsRunning)
@@ -873,6 +1063,26 @@ internal sealed class LauncherForm : Form
         {
             ShowError(
                 "Selecione um mapa.");
+            return;
+        }
+
+        var bus =
+            SelectedBus();
+
+        if (bus is null)
+        {
+            ShowError(
+                "Selecione um ônibus.");
+            return;
+        }
+
+        var entryPoint =
+            SelectedEntryPoint();
+
+        if (entryPoint is null)
+        {
+            ShowError(
+                "Selecione um ponto inicial do mapa.");
             return;
         }
 
@@ -894,11 +1104,13 @@ internal sealed class LauncherForm : Form
             _playButton.Enabled = false;
 
             AppendRuntimeLog(
-                $"Iniciando {map.FolderName}...");
+                $"Iniciando {map.FolderName} · {bus.DisplayName} · {entryPoint.Name}...");
 
             if (!_runtime.Start(
                     _contentPathBox.Text,
-                    map.FolderName))
+                    map.FolderName,
+                    bus.RelativePath,
+                    entryPoint.Name))
             {
                 throw new InvalidOperationException(
                     "O runtime não pôde ser iniciado.");
@@ -924,8 +1136,7 @@ internal sealed class LauncherForm : Form
                 ? "Encerrado"
                 : $"Erro {exitCode}";
 
-        _playButton.Enabled =
-            SelectedMap() is not null;
+        UpdatePlayAvailability();
 
         AppendRuntimeLog(
             $"Runtime encerrado com código {exitCode}.");
@@ -987,7 +1198,9 @@ internal sealed class LauncherForm : Form
         new LauncherSettings(
             _contentPathBox.Text,
             _mapBox.SelectedItem
-                ?.ToString())
+                ?.ToString(),
+            SelectedBus()?.RelativePath,
+            SelectedEntryPoint()?.Name)
             .Save();
     }
 
