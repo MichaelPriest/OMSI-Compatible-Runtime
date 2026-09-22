@@ -2316,17 +2316,8 @@ public sealed class D3D11RenderWindow : Form
         Span<RuntimeModelConstants> model =
             stackalloc RuntimeModelConstants[1];
 
-        model[0] =
-            new RuntimeModelConstants
-            {
-                World =
-                    _vehicle.CreateWorldMatrix()
-            };
-
-        _vehicleModelBuffer.SetData(
-            _deviceContext,
-            model,
-            MapMode.WriteDiscard);
+        var vehicleWorld =
+            _vehicle.CreateWorldMatrix();
 
         _deviceContext.OMSetRenderTargets(
             _renderTargetView,
@@ -2370,6 +2361,20 @@ public sealed class D3D11RenderWindow : Form
             {
                 continue;
             }
+
+            model[0] =
+                new RuntimeModelConstants
+                {
+                    World =
+                        CreateVehicleAnimationMatrix(
+                            batch) *
+                        vehicleWorld
+                };
+
+            _vehicleModelBuffer.SetData(
+                _deviceContext,
+                model,
+                MapMode.WriteDiscard);
 
             _deviceContext.OMSetBlendState(
                 batch.AlphaBlend
@@ -2474,6 +2479,204 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return true;
+    }
+
+    private Matrix4x4 CreateVehicleAnimationMatrix(
+        RuntimeObjectBatch batch)
+    {
+        var animations =
+            batch.Animations;
+
+        if (animations is null ||
+            animations.Count == 0)
+        {
+            return Matrix4x4.Identity;
+        }
+
+        var result =
+            Matrix4x4.Identity;
+
+        foreach (var animation in
+                 animations)
+        {
+            var variableValue =
+                _scriptRuntime?.GetLocal(
+                    animation.VariableName) ??
+                0.0;
+
+            var amount =
+                variableValue *
+                animation.Delta +
+                animation.Offset;
+
+            if (!double.IsFinite(
+                    amount) ||
+                Math.Abs(
+                    amount) <
+                0.0000001)
+            {
+                continue;
+            }
+
+            ResolveAnimationFrame(
+                batch,
+                animation,
+                out var pivot,
+                out var orientation);
+
+            var axis =
+                Vector3.TransformNormal(
+                    Vector3.UnitX,
+                    orientation);
+
+            if (axis.LengthSquared() <
+                0.000001f)
+            {
+                axis =
+                    Vector3.UnitX;
+            }
+            else
+            {
+                axis =
+                    Vector3.Normalize(
+                        axis);
+            }
+
+            Matrix4x4 animationTransform;
+
+            if (animation.Kind ==
+                RuntimeVehicleAnimationKind.Translation)
+            {
+                animationTransform =
+                    Matrix4x4.CreateTranslation(
+                        axis *
+                        (float)amount);
+            }
+            else
+            {
+                animationTransform =
+                    Matrix4x4.CreateTranslation(
+                        -pivot) *
+                    Matrix4x4.CreateFromAxisAngle(
+                        axis,
+                        DegreesToRadians(
+                            amount)) *
+                    Matrix4x4.CreateTranslation(
+                        pivot);
+            }
+
+            result *=
+                animationTransform;
+        }
+
+        return result;
+    }
+
+    private static void ResolveAnimationFrame(
+        RuntimeObjectBatch batch,
+        RuntimeVehicleAnimationInfo animation,
+        out Vector3 pivot,
+        out Matrix4x4 orientation)
+    {
+        orientation =
+            Matrix4x4.Identity;
+
+        if (animation.OriginFromMesh &&
+            batch.SourceTransform is
+                Matrix4x4 sourceTransform)
+        {
+            var mirror =
+                Matrix4x4.CreateScale(
+                    -1.0f,
+                    1.0f,
+                    1.0f);
+
+            var converted =
+                mirror *
+                sourceTransform *
+                mirror;
+
+            if (batch.StaticTransform is
+                Matrix4x4 staticTransform)
+            {
+                converted *=
+                    staticTransform;
+            }
+
+            if (Matrix4x4.Decompose(
+                    converted,
+                    out _,
+                    out var rotation,
+                    out pivot))
+            {
+                orientation =
+                    Matrix4x4.CreateFromQuaternion(
+                        rotation);
+            }
+            else
+            {
+                pivot =
+                    new Vector3(
+                        converted.M41,
+                        converted.M42,
+                        converted.M43);
+            }
+        }
+        else
+        {
+            pivot =
+                ConvertCfgPosition(
+                    animation.OriginX,
+                    animation.OriginY,
+                    animation.OriginZ);
+        }
+
+        var originRotation =
+            CreateCfgOriginRotation(
+                animation.OriginRotationX,
+                animation.OriginRotationY,
+                animation.OriginRotationZ);
+
+        orientation =
+            originRotation *
+            orientation;
+    }
+
+    private static Vector3 ConvertCfgPosition(
+        double x,
+        double y,
+        double z) =>
+        new(
+            (float)-x,
+            (float)z,
+            (float)y);
+
+    private static Matrix4x4 CreateCfgOriginRotation(
+        double xDegrees,
+        double yDegrees,
+        double zDegrees)
+    {
+        var sourceRotation =
+            Matrix4x4.CreateRotationX(
+                DegreesToRadians(
+                    xDegrees)) *
+            Matrix4x4.CreateRotationY(
+                DegreesToRadians(
+                    yDegrees)) *
+            Matrix4x4.CreateRotationZ(
+                DegreesToRadians(
+                    zDegrees));
+
+        var basis =
+            new Matrix4x4(
+                -1, 0, 0, 0,
+                 0, 0, 1, 0,
+                 0, 1, 0, 0,
+                 0, 0, 0, 1);
+
+        return basis *
+               sourceRotation *
+               basis;
     }
 
     private bool TryGetVehicleTextureView(
