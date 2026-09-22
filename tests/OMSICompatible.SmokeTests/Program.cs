@@ -80,7 +80,10 @@ try
 
     File.WriteAllText(
         Path.Combine(sceneryDirectory, "object.sco"),
-        Lines("[friendlyname]", "Synthetic Object"),
+        Lines(
+            "[friendlyname]",
+            "Synthetic Object",
+            "[onlyeditor]"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -436,6 +439,14 @@ try
     Require(
         worldSpline.GradientStartPercent == 1.5,
         "Spline start gradient was not preserved.");
+
+    Require(
+        world.SceneryAssets.TryGetValue(
+            @"Sceneryobjects\Synthetic\object.sco",
+            out var editorOnlyAsset) &&
+        editorOnlyAsset.OnlyEditor &&
+        !editorOnlyAsset.IsRenderable,
+        "[onlyeditor] scenery must remain in the world but be hidden in game rendering.");
 
     Require(
         world.Dependencies.RequiredCount == 2,
