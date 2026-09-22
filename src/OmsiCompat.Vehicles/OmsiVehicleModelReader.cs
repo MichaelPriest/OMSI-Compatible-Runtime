@@ -12,6 +12,8 @@ public static class OmsiVehicleModelReader
 
         string? currentMeshPath = null;
         var currentOrdinal = -1;
+        var currentTransform =
+            OmsiVehicleMeshTransform.Identity;
         var overrides = new List<OmsiVehicleMaterialOverride>();
         MaterialBuilder? material = null;
 
@@ -33,6 +35,7 @@ public static class OmsiVehicleModelReader
                 meshes.Add(new OmsiVehicleMeshReference(
                     currentOrdinal,
                     currentMeshPath,
+                    currentTransform,
                     overrides.ToArray()));
             }
 
@@ -45,6 +48,8 @@ public static class OmsiVehicleModelReader
             {
                 CommitMesh();
                 currentOrdinal++;
+                currentTransform =
+                    OmsiVehicleMeshTransform.Identity;
 
                 currentMeshPath = Values(section).FirstOrDefault();
                 if (currentMeshPath is not null)
@@ -76,6 +81,123 @@ public static class OmsiVehicleModelReader
                     material = new MaterialBuilder(
                         values[0].Trim().Trim('"'),
                         materialIndex);
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "newpos",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (TryVector3(
+                        values,
+                        out var x,
+                        out var y,
+                        out var z))
+                {
+                    currentTransform =
+                        currentTransform with
+                        {
+                            PositionX = x,
+                            PositionY = y,
+                            PositionZ = z
+                        };
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "newrot_x",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    currentTransform =
+                        currentTransform with
+                        {
+                            RotationX = value
+                        };
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "newrot_y",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    currentTransform =
+                        currentTransform with
+                        {
+                            RotationY = value
+                        };
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "newrot_z",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (TrySingle(
+                        Values(section).FirstOrDefault(),
+                        out var value))
+                {
+                    currentTransform =
+                        currentTransform with
+                        {
+                            RotationZ = value
+                        };
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "newscale",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length == 1 &&
+                    TrySingle(
+                        values[0],
+                        out var uniform))
+                {
+                    currentTransform =
+                        currentTransform with
+                        {
+                            ScaleX = uniform,
+                            ScaleY = uniform,
+                            ScaleZ = uniform
+                        };
+                }
+                else if (TryVector3(
+                             values,
+                             out var sx,
+                             out var sy,
+                             out var sz))
+                {
+                    currentTransform =
+                        currentTransform with
+                        {
+                            ScaleX = sx,
+                            ScaleY = sy,
+                            ScaleZ = sz
+                        };
                 }
 
                 continue;
@@ -120,6 +242,37 @@ public static class OmsiVehicleModelReader
                 value.Length > 0 &&
                 !value.StartsWith('#') &&
                 !value.StartsWith("//", StringComparison.Ordinal));
+
+    private static bool TryVector3(
+        IReadOnlyList<string> values,
+        out double x,
+        out double y,
+        out double z)
+    {
+        x = 0;
+        y = 0;
+        z = 0;
+
+        return values.Count >= 3 &&
+               TrySingle(values[0], out x) &&
+               TrySingle(values[1], out y) &&
+               TrySingle(values[2], out z);
+    }
+
+    private static bool TrySingle(
+        string? value,
+        out double result)
+    {
+        result = 0;
+
+        return !string.IsNullOrWhiteSpace(value) &&
+               double.TryParse(
+                   value,
+                   NumberStyles.Float,
+                   CultureInfo.InvariantCulture,
+                   out result) &&
+               double.IsFinite(result);
+    }
 
     private sealed class MaterialBuilder(
         string textureName,
