@@ -270,8 +270,13 @@ internal static class RuntimeSplineGeometryBuilder
             0.0,
             spline.LengthMeters);
 
+        // OMSI map coordinates use X/Y on the ground plane
+        // with Z up. The renderer maps them to X/Z with Y up.
+        // This Y<->Z swap reverses handedness, so OMSI rot/heading
+        // around source Z becomes renderer yaw around Y with
+        // the opposite sign.
         var yaw =
-            spline.HeadingDegrees *
+            -spline.HeadingDegrees *
             Math.PI /
             180.0;
 
