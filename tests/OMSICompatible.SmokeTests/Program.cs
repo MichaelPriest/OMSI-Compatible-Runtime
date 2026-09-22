@@ -114,11 +114,22 @@ try
         worldObject.Position.X == 10.5,
         "Object X position was not preserved.");
     Require(
+        worldObject.Position.Y == 3.0,
+        "Object height axis was not normalized.");
+    Require(
+        worldObject.Position.Z == 20.25,
+        "Object horizontal Y axis was not normalized to renderer Z.");
+    Require(
         worldObject.HeadingDegrees == 90,
         "Object heading was not preserved.");
 
     var worldSpline = world.Splines[0];
     Require(worldSpline.Id == 2001, "Spline ID was not preserved.");
+    Require(
+        worldSpline.Position.X == 5.0 &&
+        worldSpline.Position.Y == 7.0 &&
+        worldSpline.Position.Z == 6.0,
+        "Spline axes were not normalized to renderer coordinates.");
     Require(
         worldSpline.LengthMeters == 100,
         "Spline length was not preserved.");
