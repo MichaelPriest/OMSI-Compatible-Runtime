@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Text;
 
 namespace OmsiCompat.Models;
@@ -83,6 +84,9 @@ public static class OmsiO3dGeometryReader
             ushort[]? triangleMaterialIndices = null;
             IReadOnlyList<OmsiO3dMaterial> materials =
                 Array.Empty<OmsiO3dMaterial>();
+
+            var sourceTransform =
+                Matrix4x4.Identity;
 
             uint vertexCount = 0;
 
@@ -226,11 +230,32 @@ public static class OmsiO3dGeometryReader
                         break;
 
                     case TransformSection:
-                        if (!TrySkip(stream, 64))
+                        if (!HasRemaining(
+                                stream,
+                                64))
                         {
                             return OmsiO3dGeometry.Error(
                                 "invalidTransformSection");
                         }
+
+                        sourceTransform =
+                            new Matrix4x4(
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle(),
+                                reader.ReadSingle());
 
                         break;
 
@@ -267,7 +292,8 @@ public static class OmsiO3dGeometryReader
                 uvs,
                 indices,
                 triangleMaterialIndices,
-                materials);
+                materials,
+                sourceTransform);
         }
         catch (EndOfStreamException)
         {
