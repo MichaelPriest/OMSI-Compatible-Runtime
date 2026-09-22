@@ -12,7 +12,10 @@ public sealed record OmsiVehicleMaterialOverride(
     string? LightMapSource,
     string? LightMapVariable,
     string? MaterialChangeVariable,
-    string? MaterialChangeMapSource);
+    string? MaterialChangeMapSource,
+    string? EnvMapSource,
+    double EnvMapStrength,
+    string? EnvMapMaskSource);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
