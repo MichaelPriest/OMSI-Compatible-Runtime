@@ -477,8 +477,12 @@ public static class WorldLoader
                 var meshes =
                     new List<WorldSceneryMeshAsset>();
 
-                foreach (var mesh in definition.Meshes)
+                for (var meshOrdinal = 0;
+                     meshOrdinal < definition.Meshes.Count;
+                     meshOrdinal++)
                 {
+                    var mesh =
+                        definition.Meshes[meshOrdinal];
                     if (mesh.LodThreshold.HasValue &&
                         lodThresholds.Length > 0 &&
                         Math.Abs(
@@ -530,7 +534,7 @@ public static class WorldLoader
                             geometry.TriangleMaterialIndices,
                             geometry.Materials
                                 .Select(
-                                    material =>
+                                    (material, materialIndex) =>
                                     {
                                         string? texturePath = null;
 
@@ -547,13 +551,60 @@ public static class WorldLoader
                                             texturePath = resolvedTexture;
                                         }
 
+                                        var materialOverride =
+                                            definition.MaterialOverrides
+                                                .Where(
+                                                    item =>
+                                                        item.MeshOrdinal ==
+                                                            meshOrdinal &&
+                                                        item.MaterialIndex ==
+                                                            materialIndex)
+                                                .OrderByDescending(
+                                                    item =>
+                                                        string.Equals(
+                                                            Path.GetFileName(
+                                                                item.TextureName),
+                                                            Path.GetFileName(
+                                                                material.TextureName),
+                                                            StringComparison.OrdinalIgnoreCase))
+                                                .FirstOrDefault();
+
+                                        string? transMapTexturePath =
+                                            null;
+
+                                        if (materialOverride?.TransMapSource is
+                                                { Length: > 0 } transMapSource &&
+                                            !transMapSource.StartsWith(
+                                                "\\",
+                                                StringComparison.Ordinal) &&
+                                            OmsiTextureAssetPathResolver
+                                                .TryResolveSceneryTexture(
+                                                    contentRoot.RootPath,
+                                                    dependency.ResolvedPath,
+                                                    meshPath,
+                                                    transMapSource,
+                                                    out var resolvedTransMap))
+                                        {
+                                            transMapTexturePath =
+                                                resolvedTransMap;
+                                        }
+
                                         return new WorldO3dMaterial(
                                             material.DiffuseR,
                                             material.DiffuseG,
                                             material.DiffuseB,
                                             material.DiffuseA,
                                             material.TextureName,
-                                            texturePath);
+                                            texturePath,
+                                            materialOverride?.AlphaMode ??
+                                                (material.DiffuseA < 0.999f
+                                                    ? 2
+                                                    : 0),
+                                            transMapTexturePath,
+                                            materialOverride?.NoZWrite ??
+                                                false,
+                                            materialOverride?.NoZCheck ??
+                                                false);
                                     })
                                 .ToArray()));
                 }
