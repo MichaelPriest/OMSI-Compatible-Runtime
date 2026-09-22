@@ -6,7 +6,11 @@ public sealed record WorldO3dMaterial(
     float DiffuseB,
     float DiffuseA,
     string? TextureName,
-    string? TexturePath);
+    string? TexturePath,
+    int AlphaMode,
+    string? TransMapTexturePath,
+    bool NoZWrite,
+    bool NoZCheck);
 
 public sealed record WorldSceneryMeshTransform(
     double PositionX,
