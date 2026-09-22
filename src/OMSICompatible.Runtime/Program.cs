@@ -52,6 +52,12 @@ internal static class Program
         var globalSummary = GlobalConfigProbe.ReadSummary(selectedMap);
         var world = WorldLoader.Load(contentRoot, selectedMap);
 
+        var terrainCount = world.Tiles.Count(static tile => tile.Resources.TerrainPath is not null);
+        var lightmapCount = world.Tiles.Count(static tile => tile.Resources.LightmapPath is not null);
+        var waterCount = world.Tiles.Count(static tile => tile.Resources.WaterPath is not null);
+        var readyMeshCount = world.Tiles.Sum(static tile => tile.Resources.ReadyMeshPaths.Count);
+        var terrainTextureCount = world.Tiles.Sum(static tile => tile.Resources.TerrainTexturePaths.Count);
+
         Console.WriteLine();
         Console.WriteLine($"Selected map: {world.Name}");
         Console.WriteLine($"global.cfg: {globalSummary.Path}");
@@ -59,6 +65,11 @@ internal static class Program
         Console.WriteLine($"Objects: {world.Objects.Count:N0}");
         Console.WriteLine($"Splines: {world.Splines.Count:N0}");
         Console.WriteLine($"Placement parse issues: {world.PlacementParseIssueCount:N0}");
+        Console.WriteLine($"Terrain files: {terrainCount:N0}");
+        Console.WriteLine($"Ready terrain meshes: {readyMeshCount:N0}");
+        Console.WriteLine($"Terrain textures: {terrainTextureCount:N0}");
+        Console.WriteLine($"Lightmaps: {lightmapCount:N0}");
+        Console.WriteLine($"Water tiles: {waterCount:N0}");
         Console.WriteLine($"Primary dependencies: {world.Dependencies.RequiredCount:N0}");
         Console.WriteLine($"Missing primary dependencies: {world.Dependencies.MissingCount:N0}");
 

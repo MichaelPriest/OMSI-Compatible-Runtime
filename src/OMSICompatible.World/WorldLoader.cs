@@ -23,6 +23,7 @@ public static class WorldLoader
 
             var summary = MapTileProbe.ReadSummary(sourceTile);
             var placements = MapTilePlacementParser.Parse(sourceTile);
+            var companions = MapTileCompanionDiscovery.Discover(sourceTile);
 
             var assetReferences = AssetReferenceScanner.Scan(sourceTile)
                 .Select(static reference => new WorldAssetReference(
@@ -61,6 +62,13 @@ public static class WorldLoader
                     source.SourceLineNumber))
                 .ToArray();
 
+            var resources = new WorldTileResources(
+                companions.TerrainPath,
+                companions.LightmapPath,
+                companions.WaterPath,
+                companions.ReadyMeshPaths,
+                companions.TerrainTexturePaths);
+
             tiles.Add(new WorldTile(
                 coordinate,
                 sourceTile.FilePath,
@@ -70,6 +78,7 @@ public static class WorldLoader
                 assetReferences,
                 tileObjects,
                 tileSplines,
+                resources,
                 placements.Issues.Count));
         }
 

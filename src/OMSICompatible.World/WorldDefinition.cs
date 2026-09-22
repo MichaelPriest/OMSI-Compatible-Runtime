@@ -45,6 +45,13 @@ public sealed record WorldSplinePlacement(
     bool UsesHeightProfile,
     int SourceLineNumber);
 
+public sealed record WorldTileResources(
+    string? TerrainPath,
+    string? LightmapPath,
+    string? WaterPath,
+    IReadOnlyList<string> ReadyMeshPaths,
+    IReadOnlyList<string> TerrainTexturePaths);
+
 public sealed record WorldTile(
     WorldTileCoordinate Coordinate,
     string SourcePath,
@@ -54,6 +61,7 @@ public sealed record WorldTile(
     IReadOnlyList<WorldAssetReference> AssetReferences,
     IReadOnlyList<WorldObjectPlacement> Objects,
     IReadOnlyList<WorldSplinePlacement> Splines,
+    WorldTileResources Resources,
     int PlacementParseIssueCount);
 
 public sealed record WorldBounds(
