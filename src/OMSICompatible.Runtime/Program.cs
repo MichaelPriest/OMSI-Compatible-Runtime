@@ -138,6 +138,14 @@ internal static class Program
             return 0;
         }
 
+        var runtimeTiles = world.Tiles
+            .Select(static tile => new RuntimeTileInfo(
+                tile.Coordinate.X,
+                tile.Coordinate.Y,
+                tile.Objects.Count,
+                tile.Splines.Count))
+            .ToArray();
+
         ApplicationConfiguration.Initialize();
 
         using var window = new D3D11RenderWindow(
@@ -146,7 +154,8 @@ internal static class Program
                 world.Tiles.Count,
                 world.Objects.Count,
                 world.Splines.Count,
-                contentRoot.RootPath));
+                contentRoot.RootPath,
+                runtimeTiles));
 
         Application.Run(window);
         return 0;

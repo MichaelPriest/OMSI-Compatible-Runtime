@@ -1,5 +1,6 @@
-using System.Drawing;
+using System.Numerics;
 using System.Windows.Forms;
+using Vortice.D3DCompiler;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -26,6 +27,13 @@ public sealed class D3D11RenderWindow : Form
     private IDXGISwapChain1? _swapChain;
     private ID3D11Texture2D? _backBuffer;
     private ID3D11RenderTargetView? _renderTargetView;
+
+    private ID3D11Buffer? _tileVertexBuffer;
+    private ID3D11VertexShader? _tileVertexShader;
+    private ID3D11PixelShader? _tilePixelShader;
+    private ID3D11InputLayout? _tileInputLayout;
+    private uint _tileVertexCount;
+
     private FeatureLevel _featureLevel;
 
     public D3D11RenderWindow(RuntimeWindowInfo windowInfo)
@@ -101,6 +109,7 @@ public sealed class D3D11RenderWindow : Form
 
         CreateSwapChain();
         CreateBackBuffer();
+        CreateTileOverviewResources();
     }
 
     private static IDXGIAdapter1 GetHardwareAdapter(IDXGIFactory2 factory)
@@ -170,6 +179,121 @@ public sealed class D3D11RenderWindow : Form
         _renderTargetView = _device.CreateRenderTargetView(_backBuffer);
     }
 
+    private void CreateTileOverviewResources()
+    {
+        if (_device is null)
+        {
+            throw new InvalidOperationException("D3D11 device is not initialized.");
+        }
+
+        var vertices = BuildTileVertices(_windowInfo.Tiles);
+        if (vertices.Length == 0)
+        {
+            return;
+        }
+
+        _tileVertexBuffer = _device.CreateBuffer(
+            vertices.AsSpan(),
+            BindFlags.VertexBuffer);
+
+        var shaderFile = Path.Combine(
+            AppContext.BaseDirectory,
+            "Shaders",
+            "RuntimeGrid.hlsl");
+
+        if (!File.Exists(shaderFile))
+        {
+            throw new FileNotFoundException(
+                "Runtime grid shader was not copied to the output directory.",
+                shaderFile);
+        }
+
+        ReadOnlyMemory<byte> vertexShaderByteCode =
+            Compiler.CompileFromFile(shaderFile, "VSMain", "vs_4_0");
+
+        ReadOnlyMemory<byte> pixelShaderByteCode =
+            Compiler.CompileFromFile(shaderFile, "PSMain", "ps_4_0");
+
+        _tileVertexShader = _device.CreateVertexShader(vertexShaderByteCode.Span);
+        _tilePixelShader = _device.CreatePixelShader(pixelShaderByteCode.Span);
+
+        InputElementDescription[] inputElements =
+        [
+            new InputElementDescription(
+                "POSITION",
+                0,
+                Format.R32G32B32_Float,
+                0,
+                0),
+            new InputElementDescription(
+                "COLOR",
+                0,
+                Format.R32G32B32A32_Float,
+                12,
+                0)
+        ];
+
+        _tileInputLayout = _device.CreateInputLayout(
+            inputElements,
+            vertexShaderByteCode.Span);
+
+        _tileVertexCount = (uint)vertices.Length;
+    }
+
+    private static RuntimeVertex[] BuildTileVertices(IReadOnlyList<RuntimeTileInfo> tiles)
+    {
+        if (tiles.Count == 0)
+        {
+            return [];
+        }
+
+        var minimumX = tiles.Min(static tile => tile.X);
+        var maximumX = tiles.Max(static tile => tile.X);
+        var minimumY = tiles.Min(static tile => tile.Y);
+        var maximumY = tiles.Max(static tile => tile.Y);
+
+        var width = Math.Max(maximumX - minimumX + 1, 1);
+        var height = Math.Max(maximumY - minimumY + 1, 1);
+        var cellSize = MathF.Min(1.8f / width, 1.8f / height);
+        var halfSize = cellSize * 0.43f;
+
+        var middleX = (minimumX + maximumX) * 0.5f;
+        var middleY = (minimumY + maximumY) * 0.5f;
+
+        var vertices = new List<RuntimeVertex>(tiles.Count * 6);
+
+        foreach (var tile in tiles)
+        {
+            var centerX = (tile.X - middleX) * cellSize;
+            var centerY = -(tile.Y - middleY) * cellSize;
+
+            var density = MathF.Min(
+                1.0f,
+                (tile.ObjectCount + tile.SplineCount) / 250.0f);
+
+            var color = new Color4(
+                0.18f + density * 0.35f,
+                0.38f + density * 0.22f,
+                0.72f,
+                1.0f);
+
+            var left = centerX - halfSize;
+            var right = centerX + halfSize;
+            var top = centerY + halfSize;
+            var bottom = centerY - halfSize;
+
+            vertices.Add(new RuntimeVertex(new Vector3(left, top, 0.0f), color));
+            vertices.Add(new RuntimeVertex(new Vector3(right, top, 0.0f), color));
+            vertices.Add(new RuntimeVertex(new Vector3(right, bottom, 0.0f), color));
+
+            vertices.Add(new RuntimeVertex(new Vector3(left, top, 0.0f), color));
+            vertices.Add(new RuntimeVertex(new Vector3(right, bottom, 0.0f), color));
+            vertices.Add(new RuntimeVertex(new Vector3(left, bottom, 0.0f), color));
+        }
+
+        return vertices.ToArray();
+    }
+
     private void OnClientSizeChanged(object? sender, EventArgs e)
     {
         if (_swapChain is null ||
@@ -215,11 +339,31 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.ClearRenderTargetView(
             _renderTargetView,
             new Color4(0.025f, 0.035f, 0.055f, 1.0f));
+
         _deviceContext.OMSetRenderTargets(
             _renderTargetView,
             (ID3D11DepthStencilView?)null);
+
         _deviceContext.RSSetViewport(
             new Viewport(ClientSize.Width, ClientSize.Height));
+
+        if (_tileVertexBuffer is not null &&
+            _tileVertexShader is not null &&
+            _tilePixelShader is not null &&
+            _tileInputLayout is not null &&
+            _tileVertexCount > 0)
+        {
+            _deviceContext.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+            _deviceContext.IASetInputLayout(_tileInputLayout);
+            _deviceContext.IASetVertexBuffer(
+                0,
+                _tileVertexBuffer,
+                RuntimeVertex.SizeInBytes);
+
+            _deviceContext.VSSetShader(_tileVertexShader);
+            _deviceContext.PSSetShader(_tilePixelShader);
+            _deviceContext.Draw(_tileVertexCount, 0);
+        }
 
         _swapChain.Present(1, PresentFlags.None).CheckError();
     }
@@ -243,6 +387,12 @@ public sealed class D3D11RenderWindow : Form
 
             _deviceContext?.ClearState();
             _deviceContext?.Flush();
+
+            _tileInputLayout?.Dispose();
+            _tilePixelShader?.Dispose();
+            _tileVertexShader?.Dispose();
+            _tileVertexBuffer?.Dispose();
+
             _renderTargetView?.Dispose();
             _backBuffer?.Dispose();
             _swapChain?.Dispose();
@@ -252,5 +402,20 @@ public sealed class D3D11RenderWindow : Form
         }
 
         base.Dispose(disposing);
+    }
+
+    private readonly struct RuntimeVertex
+    {
+        public const uint SizeInBytes = 28;
+
+        public RuntimeVertex(Vector3 position, Color4 color)
+        {
+            Position = position;
+            Color = color;
+        }
+
+        public readonly Vector3 Position;
+
+        public readonly Color4 Color;
     }
 }
