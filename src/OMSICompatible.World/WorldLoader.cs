@@ -378,8 +378,14 @@ public static class WorldLoader
                     }
 
                     var geometry =
-                        OmsiO3dGeometryReader.ReadFile(
-                            meshPath);
+                        string.Equals(
+                            Path.GetExtension(meshPath),
+                            ".x",
+                            StringComparison.OrdinalIgnoreCase)
+                            ? new OmsiDirectXTextGeometryReader()
+                                .Read(meshPath)
+                            : OmsiO3dGeometryReader.ReadFile(
+                                meshPath);
 
                     meshes.Add(
                         new WorldSceneryMeshAsset(
