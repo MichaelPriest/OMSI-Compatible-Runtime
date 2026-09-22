@@ -56,6 +56,9 @@ internal static class Program
         Console.WriteLine($"Selected map: {world.Name}");
         Console.WriteLine($"global.cfg: {globalSummary.Path}");
         Console.WriteLine($"Tiles: {world.Tiles.Count:N0}");
+        Console.WriteLine($"Objects: {world.Objects.Count:N0}");
+        Console.WriteLine($"Splines: {world.Splines.Count:N0}");
+        Console.WriteLine($"Placement parse issues: {world.PlacementParseIssueCount:N0}");
         Console.WriteLine($"Distinct referenced assets: {world.Assets.Count:N0}");
 
         if (world.Bounds is not null)
@@ -80,28 +83,6 @@ internal static class Program
             }
         }
 
-        var sectionCounts = world.Tiles
-            .SelectMany(static tile => tile.SourceSectionCounts)
-            .GroupBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(static group => new
-            {
-                Name = group.Key,
-                Count = group.Sum(static pair => pair.Value)
-            })
-            .OrderByDescending(static item => item.Count)
-            .ThenBy(static item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(12)
-            .ToArray();
-
-        if (sectionCounts.Length > 0)
-        {
-            Console.WriteLine("Most frequent tile sections:");
-            foreach (var section in sectionCounts)
-            {
-                Console.WriteLine($"  {section.Name}: {section.Count:N0}");
-            }
-        }
-
         if (headless)
         {
             Console.WriteLine();
@@ -115,6 +96,8 @@ internal static class Program
             new RuntimeWindowInfo(
                 world.Name,
                 world.Tiles.Count,
+                world.Objects.Count,
+                world.Splines.Count,
                 contentRoot.RootPath));
 
         Application.Run(window);

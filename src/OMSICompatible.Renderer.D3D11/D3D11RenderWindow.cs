@@ -215,7 +215,9 @@ public sealed class D3D11RenderWindow : Form
     {
         Text =
             $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
-            $"{_windowInfo.TileCount:N0} tiles — D3D11 {_featureLevel}";
+            $"{_windowInfo.TileCount:N0} tiles — " +
+            $"{_windowInfo.ObjectCount:N0} objects — " +
+            $"{_windowInfo.SplineCount:N0} splines — D3D11 {_featureLevel}";
     }
 
     protected override void Dispose(bool disposing)

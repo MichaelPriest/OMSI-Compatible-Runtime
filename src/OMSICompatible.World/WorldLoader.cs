@@ -13,7 +13,13 @@ public static class WorldLoader
 
         foreach (var sourceTile in sourceTiles)
         {
+            var coordinate = new WorldTileCoordinate(
+                sourceTile.Coordinate.X,
+                sourceTile.Coordinate.Y);
+
             var summary = MapTileProbe.ReadSummary(sourceTile);
+            var placements = MapTilePlacementParser.Parse(sourceTile);
+
             var assetReferences = AssetReferenceScanner.Scan(sourceTile)
                 .Select(static reference => new WorldAssetReference(
                     Classify(reference.Extension),
@@ -22,13 +28,45 @@ public static class WorldLoader
                     reference.LineNumber))
                 .ToArray();
 
+            var objects = placements.Objects
+                .Select(source => new WorldObjectPlacement(
+                    coordinate,
+                    source.Id,
+                    NormalizePath(source.AssetPath),
+                    ToWorldVector(source.Position),
+                    source.HeadingDegrees,
+                    source.PitchDegrees,
+                    source.BankDegrees,
+                    source.SourceLineNumber))
+                .ToArray();
+
+            var splines = placements.Splines
+                .Select(source => new WorldSplinePlacement(
+                    coordinate,
+                    source.Id,
+                    source.PreviousId,
+                    source.NextId,
+                    NormalizePath(source.AssetPath),
+                    ToWorldVector(source.Position),
+                    source.HeadingDegrees,
+                    source.LengthMeters,
+                    source.RadiusMeters,
+                    source.GradientStartPercent,
+                    source.GradientEndPercent,
+                    source.UsesHeightProfile,
+                    source.SourceLineNumber))
+                .ToArray();
+
             tiles.Add(new WorldTile(
-                new WorldTileCoordinate(sourceTile.Coordinate.X, sourceTile.Coordinate.Y),
+                coordinate,
                 sourceTile.FilePath,
                 sourceTile.Bytes,
                 summary.SectionCount,
                 summary.SectionCounts,
-                assetReferences));
+                assetReferences,
+                objects,
+                splines,
+                placements.Issues.Count));
         }
 
         WorldBounds? bounds = null;
@@ -51,12 +89,28 @@ public static class WorldLoader
             .ThenBy(static asset => asset.SourcePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var objects = tiles
+            .SelectMany(static tile => tile.Objects)
+            .ToArray();
+
+        var splines = tiles
+            .SelectMany(static tile => tile.Splines)
+            .ToArray();
+
         return new WorldDefinition(
             map.FolderName,
             map.DirectoryPath,
             tiles.ToArray(),
             assets,
+            objects,
+            splines,
+            tiles.Sum(static tile => tile.PlacementParseIssueCount),
             bounds);
+    }
+
+    private static WorldVector3 ToWorldVector(OmsiSourceVector3 source)
+    {
+        return new WorldVector3(source.X, source.Y, source.Z);
     }
 
     private static WorldAssetKind Classify(string extension)

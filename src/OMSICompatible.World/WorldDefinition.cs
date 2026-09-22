@@ -2,6 +2,8 @@ namespace OMSICompatible.World;
 
 public readonly record struct WorldTileCoordinate(int X, int Y);
 
+public readonly record struct WorldVector3(double X, double Y, double Z);
+
 public enum WorldAssetKind
 {
     Unknown,
@@ -18,13 +20,41 @@ public sealed record WorldAssetReference(
     string SourceSection,
     int SourceLineNumber);
 
+public sealed record WorldObjectPlacement(
+    WorldTileCoordinate Tile,
+    long Id,
+    string AssetPath,
+    WorldVector3 Position,
+    double HeadingDegrees,
+    double PitchDegrees,
+    double BankDegrees,
+    int SourceLineNumber);
+
+public sealed record WorldSplinePlacement(
+    WorldTileCoordinate Tile,
+    long Id,
+    long PreviousId,
+    long NextId,
+    string AssetPath,
+    WorldVector3 Position,
+    double HeadingDegrees,
+    double LengthMeters,
+    double RadiusMeters,
+    double GradientStartPercent,
+    double GradientEndPercent,
+    bool UsesHeightProfile,
+    int SourceLineNumber);
+
 public sealed record WorldTile(
     WorldTileCoordinate Coordinate,
     string SourcePath,
     long SourceBytes,
     int SourceSectionCount,
     IReadOnlyDictionary<string, int> SourceSectionCounts,
-    IReadOnlyList<WorldAssetReference> AssetReferences);
+    IReadOnlyList<WorldAssetReference> AssetReferences,
+    IReadOnlyList<WorldObjectPlacement> Objects,
+    IReadOnlyList<WorldSplinePlacement> Splines,
+    int PlacementParseIssueCount);
 
 public sealed record WorldBounds(
     int MinimumX,
@@ -42,4 +72,7 @@ public sealed record WorldDefinition(
     string SourceDirectory,
     IReadOnlyList<WorldTile> Tiles,
     IReadOnlyList<WorldAssetReference> Assets,
+    IReadOnlyList<WorldObjectPlacement> Objects,
+    IReadOnlyList<WorldSplinePlacement> Splines,
+    int PlacementParseIssueCount,
     WorldBounds? Bounds);
