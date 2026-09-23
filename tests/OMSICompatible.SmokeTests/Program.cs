@@ -458,6 +458,28 @@ try
             vehicleModelDirectory,
             "triangle.o3d"));
 
+    var zeroKeyO3dPath =
+        Path.Combine(
+            vehicleModelDirectory,
+            "triangle-zero-key.o3d");
+
+    WriteSyntheticO3d(
+        zeroKeyO3dPath,
+        extendedHeader: true,
+        protectionKey: 0);
+
+    var zeroKeyGeometry =
+        OmsiO3dGeometryReader.ReadFile(
+            zeroKeyO3dPath);
+
+    Require(
+        zeroKeyGeometry.IsLoaded &&
+        zeroKeyGeometry.ErrorCode is null &&
+        zeroKeyGeometry.Positions.Length == 9 &&
+        zeroKeyGeometry.Indices.Length == 3 &&
+        zeroKeyGeometry.Materials.Count == 1,
+        "Readable OMSI v5 O3D with zero protection key must load as plain geometry.");
+
     File.WriteAllBytes(
         Path.Combine(
             vehicleModelDirectory,
@@ -1206,7 +1228,10 @@ static string Lines(params string[] values)
     return string.Join(Environment.NewLine, values) + Environment.NewLine;
 }
 
-static void WriteSyntheticO3d(string path)
+static void WriteSyntheticO3d(
+    string path,
+    bool extendedHeader = false,
+    uint protectionKey = uint.MaxValue)
 {
     using var stream =
         File.Create(path);
@@ -1216,10 +1241,28 @@ static void WriteSyntheticO3d(string path)
 
     writer.Write((byte)0x84);
     writer.Write((byte)0x19);
-    writer.Write((byte)3);
+
+    if (extendedHeader)
+    {
+        writer.Write((byte)5);
+        writer.Write((byte)0);
+        writer.Write(protectionKey);
+    }
+    else
+    {
+        writer.Write((byte)3);
+    }
 
     writer.Write((byte)0x17);
-    writer.Write((ushort)3);
+
+    if (extendedHeader)
+    {
+        writer.Write((uint)3);
+    }
+    else
+    {
+        writer.Write((ushort)3);
+    }
 
     static void Vertex(
         BinaryWriter writer,
@@ -1246,7 +1289,16 @@ static void WriteSyntheticO3d(string path)
     Vertex(writer, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f);
 
     writer.Write((byte)0x49);
-    writer.Write((ushort)1);
+
+    if (extendedHeader)
+    {
+        writer.Write((uint)1);
+    }
+    else
+    {
+        writer.Write((ushort)1);
+    }
+
     writer.Write((ushort)0);
     writer.Write((ushort)1);
     writer.Write((ushort)2);
