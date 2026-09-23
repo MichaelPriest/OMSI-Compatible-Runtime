@@ -411,7 +411,8 @@ public static class OmsiVehicleAssetLoader
                         materialOverride?.FreeTextures ??
                             Array.Empty<OmsiVehicleFreeTexture>(),
                         materialOverride?.TextTextureIndex,
-                        materialChangeSets);
+                        materialChangeSets,
+                        materialOverride?.HasTransMapDirective ?? false);
                 })
                 .ToArray();
 
