@@ -69,9 +69,12 @@ public static class OmsiO3dGeometryReader
                     (options & 0x01) != 0;
             }
 
-            // Compatibility is implemented without bypassing protected O3D
-            // content. Protected files are reported and skipped.
-            if (protectionKey != uint.MaxValue)
+            // OMSI v5+ files in the wild also use a zero key while
+            // keeping the section payload fully readable. Treat both zero
+            // and 0xFFFFFFFF as plain O3D containers. Any other non-default
+            // key remains unsupported and is not decrypted here.
+            if (protectionKey != 0 &&
+                protectionKey != uint.MaxValue)
             {
                 return OmsiO3dGeometry.Error(
                     "protectedO3dUnsupported");
