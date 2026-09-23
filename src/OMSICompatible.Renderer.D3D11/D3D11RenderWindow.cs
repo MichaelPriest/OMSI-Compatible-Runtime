@@ -64,6 +64,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly HashSet<string> _reportedUnhandledSystemMacros =
         new(
             StringComparer.Ordinal);
+    private readonly HashSet<string> _reportedMissingVehicleFonts =
+        new(
+            StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Keys> _pressedKeys = [];
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
 
@@ -137,6 +140,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11InputLayout? _objectInputLayout;
     private ID3D11SamplerState? _objectSampler;
     private RuntimeGpuTextureLoader? _objectTextureLoader;
+    private RuntimeOmsiTextTextureRenderer? _vehicleTextTextureRenderer;
     private readonly Dictionary<string, RuntimeGpuTexture>
         _objectTextureCache =
             new(
@@ -1273,6 +1277,11 @@ public sealed class D3D11RenderWindow : Form
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
                 _device);
+
+        _vehicleTextTextureRenderer ??=
+            new RuntimeOmsiTextTextureRenderer(
+                _windowInfo.ContentRoot,
+                _objectTextureLoader);
 
         CreateReflectionResources();
 
@@ -2543,13 +2552,23 @@ public sealed class D3D11RenderWindow : Form
                     bumpMapView!);
             }
 
-            var diffuseTexturePath =
-                ResolveVehicleDiffuseTexturePath(
-                    batch);
+            ID3D11ShaderResourceView?
+                textureView;
 
-            if (TryGetVehicleTextureView(
-                    diffuseTexturePath,
-                    out var textureView))
+            var requiresTextTexture =
+                batch.TextTextureIndex.HasValue;
+
+            var hasDiffuseTexture =
+                requiresTextTexture
+                    ? TryGetVehicleTextTextureView(
+                        batch,
+                        out textureView)
+                    : TryGetVehicleTextureView(
+                        ResolveVehicleDiffuseTexturePath(
+                            batch),
+                        out textureView);
+
+            if (hasDiffuseTexture)
             {
                 var hasTransMap =
                     TryGetVehicleTextureView(
@@ -2598,7 +2617,8 @@ public sealed class D3D11RenderWindow : Form
             }
             else
             {
-                if (batch.AlphaCutout ||
+                if (requiresTextTexture ||
+                    batch.AlphaCutout ||
                     batch.AlphaBlend)
                 {
                     continue;
@@ -2987,6 +3007,61 @@ public sealed class D3D11RenderWindow : Form
         return basis *
                sourceRotation *
                basis;
+    }
+
+    private bool TryGetVehicleTextTextureView(
+        RuntimeObjectBatch batch,
+        out ID3D11ShaderResourceView? view)
+    {
+        view =
+            null;
+
+        if (!batch.TextTextureIndex.HasValue ||
+            _vehicleTextTextureRenderer is null ||
+            _windowInfo.Vehicle is null)
+        {
+            return false;
+        }
+
+        var definition =
+            _windowInfo.Vehicle.TextTextures
+                .FirstOrDefault(
+                    texture =>
+                        texture.Index ==
+                        batch.TextTextureIndex.Value);
+
+        if (definition is null)
+        {
+            return false;
+        }
+
+        var value =
+            _scriptRuntime?.GetStringLocal(
+                definition.StringVariable) ??
+            string.Empty;
+
+        var texture =
+            _vehicleTextTextureRenderer
+                .GetOrCreate(
+                    definition,
+                    value);
+
+        if (texture is null)
+        {
+            if (_reportedMissingVehicleFonts.Add(
+                    definition.FontName))
+            {
+                Console.WriteLine(
+                    $"[texttexture] OMSI font unavailable: {definition.FontName}");
+            }
+
+            return false;
+        }
+
+        view =
+            texture.View;
+
+        return true;
     }
 
     private string? ResolveVehicleDiffuseTexturePath(
@@ -4211,6 +4286,9 @@ public sealed class D3D11RenderWindow : Form
 
             _objectTextureCache.Clear();
             _failedObjectTexturePaths.Clear();
+
+            _vehicleTextTextureRenderer?.Dispose();
+            _vehicleTextTextureRenderer = null;
 
             _objectSampler?.Dispose();
             _objectAlphaBlendState?.Dispose();
