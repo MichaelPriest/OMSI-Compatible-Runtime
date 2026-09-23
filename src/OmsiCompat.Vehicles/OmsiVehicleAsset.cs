@@ -69,7 +69,8 @@ public sealed record OmsiVehicleMeshAsset(
     float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
-    IReadOnlyList<OmsiVehicleMaterial> Materials)
+    IReadOnlyList<OmsiVehicleMaterial> Materials,
+    IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null)
 {
     public bool IsRenderable =>
         ErrorCode is null &&
