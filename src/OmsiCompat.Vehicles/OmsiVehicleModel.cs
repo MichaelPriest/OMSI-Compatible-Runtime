@@ -77,6 +77,33 @@ public sealed record OmsiVehicleMeshTransform(
             1, 1, 1);
 }
 
+public sealed record OmsiVehicleLightEffect(
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double DirectionX,
+    double DirectionY,
+    double DirectionZ,
+    double UpX,
+    double UpY,
+    double UpZ,
+    int Omni,
+    int Rotating,
+    byte Red,
+    byte Green,
+    byte Blue,
+    double SizeMeters,
+    double InnerConeAngleDegrees,
+    double OuterConeAngleDegrees,
+    string BrightnessVariable,
+    double BrightnessFactor,
+    double CameraOffsetMeters,
+    int Parameters,
+    bool ConeEffect,
+    double TimeConstantSeconds,
+    string? BitmapSource,
+    bool Enhanced);
+
 public sealed record OmsiVehicleVisibilityCondition(
     string VariableName,
     double Value);
@@ -110,7 +137,8 @@ public sealed record OmsiVehicleMeshReference(
     double? LodThreshold,
     IReadOnlyList<OmsiVehicleVisibilityCondition> VisibilityConditions,
     IReadOnlyList<OmsiVehicleAnimation> Animations,
-    IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides);
+    IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides,
+    IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null);
 
 public sealed record OmsiVehicleModel(
     string SourcePath,
