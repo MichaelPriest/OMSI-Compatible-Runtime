@@ -787,12 +787,6 @@ public sealed class D3D11RenderWindow : Form
                 "PSColor",
                 "ps_4_0");
 
-        ReadOnlyMemory<byte> lightPixelShaderByteCode =
-            Compiler.CompileFromFile(
-                shaderFile,
-                "PSLightEffect",
-                "ps_4_0");
-
         ReadOnlyMemory<byte> texturedPixelShaderByteCode =
             Compiler.CompileFromFile(
                 shaderFile,
@@ -962,12 +956,6 @@ public sealed class D3D11RenderWindow : Form
             Compiler.CompileFromFile(
                 shaderFile,
                 "PSTextured",
-                "ps_4_0");
-
-        ReadOnlyMemory<byte> lightPixelShaderByteCode =
-            Compiler.CompileFromFile(
-                shaderFile,
-                "PSLightEffect",
                 "ps_4_0");
 
         ReadOnlyMemory<byte> alphaCutoutPixelShaderByteCode =
@@ -1288,6 +1276,12 @@ public sealed class D3D11RenderWindow : Form
             Compiler.CompileFromFile(
                 shaderFile,
                 "PSTextured",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> lightPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSLightEffect",
                 "ps_4_0");
 
         ReadOnlyMemory<byte> alphaCutoutPixelShaderByteCode =
