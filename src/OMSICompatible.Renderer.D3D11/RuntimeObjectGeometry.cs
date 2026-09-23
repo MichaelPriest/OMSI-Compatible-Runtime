@@ -573,8 +573,8 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.Positions[positionOffset + 2])
                 : new Vector3(
                     mesh.Positions[positionOffset],
-                    mesh.Positions[positionOffset + 2],
-                    mesh.Positions[positionOffset + 1]);
+                    mesh.Positions[positionOffset + 1],
+                    mesh.Positions[positionOffset + 2]);
 
         var world =
             Vector3.Transform(
@@ -595,8 +595,8 @@ internal static class RuntimeObjectGeometryBuilder
                         mesh.Normals[positionOffset + 2])
                     : new Vector3(
                         mesh.Normals[positionOffset],
-                        mesh.Normals[positionOffset + 2],
-                        mesh.Normals[positionOffset + 1]);
+                        mesh.Normals[positionOffset + 1],
+                        mesh.Normals[positionOffset + 2]);
         }
 
         var worldNormal =
