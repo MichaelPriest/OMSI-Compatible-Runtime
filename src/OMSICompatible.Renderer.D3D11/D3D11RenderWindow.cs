@@ -2767,6 +2767,419 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(null);
     }
 
+    private void DrawVehicleLights()
+    {
+        var vehicle =
+            _windowInfo.Vehicle;
+
+        if (vehicle is null ||
+            _deviceContext is null ||
+            _renderTargetView is null ||
+            _depthStencilView is null ||
+            _vehicleLightVertexBuffer is null ||
+            _vehicleModelBuffer is null ||
+            _vehicleMaterialBuffer is null ||
+            _vehicleVertexShader is null ||
+            _vehicleLightPixelShader is null ||
+            _vehicleInputLayout is null ||
+            _terrainCameraBuffer is null ||
+            _terrainAdditiveBlendState is null ||
+            _vehicleDepthReadState is null)
+        {
+            return;
+        }
+
+        var allLightMeshes =
+            vehicle.Meshes
+                .Where(
+                    static mesh =>
+                        mesh.LightEffects is
+                            { Count: > 0 })
+                .ToArray();
+
+        if (allLightMeshes.Length == 0)
+        {
+            return;
+        }
+
+        var viewpointBit =
+            UseExteriorVehicleView()
+                ? 1
+                : 2;
+
+        var viewpointMeshes =
+            allLightMeshes
+                .Where(
+                    mesh =>
+                        IsVehicleMeshVisibleFromViewpoint(
+                            mesh.ViewpointFlag,
+                            viewpointBit))
+                .ToArray();
+
+        var selectionSource =
+            viewpointMeshes.Length > 0
+                ? viewpointMeshes
+                : allLightMeshes;
+
+        var detailedLod =
+            selectionSource
+                .Where(
+                    static mesh =>
+                        mesh.LodThreshold.HasValue)
+                .Select(
+                    static mesh =>
+                        mesh.LodThreshold!.Value)
+                .DefaultIfEmpty(
+                    double.NaN)
+                .Max();
+
+        var cameraPosition =
+            ResolveActiveCameraPosition();
+
+        var vehicleWorld =
+            _vehicle.CreateWorldMatrix();
+
+        Span<RuntimeModelConstants> model =
+            stackalloc RuntimeModelConstants[1];
+
+        Span<RuntimeVehicleMaterialConstants> material =
+            stackalloc RuntimeVehicleMaterialConstants[1];
+
+        _deviceContext.OMSetRenderTargets(
+            _renderTargetView,
+            _depthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            _vehicleInputLayout);
+
+        _deviceContext.IASetVertexBuffer(
+            0,
+            _vehicleLightVertexBuffer,
+            RuntimeObjectVertex.SizeInBytes);
+
+        _deviceContext.VSSetShader(
+            _vehicleVertexShader);
+
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            1,
+            _vehicleModelBuffer);
+
+        _deviceContext.PSSetShader(
+            _vehicleLightPixelShader);
+
+        _deviceContext.PSSetConstantBuffer(
+            2,
+            _vehicleMaterialBuffer);
+
+        _deviceContext.OMSetBlendState(
+            _terrainAdditiveBlendState);
+
+        _deviceContext.OMSetDepthStencilState(
+            _vehicleDepthReadState);
+
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+
+        foreach (var mesh in
+                 selectionSource)
+        {
+            if (mesh.LodThreshold.HasValue &&
+                !double.IsNaN(
+                    detailedLod) &&
+                Math.Abs(
+                    mesh.LodThreshold.Value -
+                    detailedLod) >
+                0.000001)
+            {
+                continue;
+            }
+
+            if (!AreVehicleVisibilityConditionsMet(
+                    mesh.VisibilityConditions))
+            {
+                continue;
+            }
+
+            var staticTransform =
+                RuntimeObjectGeometryBuilder
+                    .CreateMeshTransform(
+                        mesh.Transform);
+
+            var animationTransform =
+                CreateVehicleAnimationMatrix(
+                    mesh.Animations,
+                    mesh.SourceTransform,
+                    staticTransform);
+
+            var parentTransform =
+                staticTransform *
+                animationTransform *
+                vehicleWorld;
+
+            foreach (var light in
+                     mesh.LightEffects!)
+            {
+                var brightness =
+                    ResolveVehicleLightValue(
+                        light);
+
+                if (brightness <=
+                    0.0001)
+                {
+                    continue;
+                }
+
+                var center =
+                    Vector3.Transform(
+                        ConvertCfgPosition(
+                            light.PositionX,
+                            light.PositionY,
+                            light.PositionZ),
+                        parentTransform);
+
+                var toCamera =
+                    cameraPosition -
+                    center;
+
+                var cameraDistanceSquared =
+                    toCamera.LengthSquared();
+
+                if (cameraDistanceSquared <
+                    0.000001f)
+                {
+                    continue;
+                }
+
+                var cameraDirection =
+                    Vector3.Normalize(
+                        toCamera);
+
+                var directionalAttenuation =
+                    ResolveVehicleLightDirectionalAttenuation(
+                        light,
+                        parentTransform,
+                        cameraDirection);
+
+                brightness *=
+                    directionalAttenuation;
+
+                if (brightness <=
+                    0.0001)
+                {
+                    continue;
+                }
+
+                center +=
+                    cameraDirection *
+                    (float)light.CameraOffsetMeters;
+
+                var size =
+                    (float)Math.Clamp(
+                        light.SizeMeters,
+                        0.005,
+                        20.0);
+
+                var billboard =
+                    Matrix4x4.CreateScale(
+                        size) *
+                    Matrix4x4.CreateBillboard(
+                        center,
+                        cameraPosition,
+                        Vector3.UnitY,
+                        Vector3.UnitZ);
+
+                model[0] =
+                    new RuntimeModelConstants
+                    {
+                        World =
+                            billboard
+                    };
+
+                _vehicleModelBuffer.SetData(
+                    _deviceContext,
+                    model,
+                    MapMode.WriteDiscard);
+
+                var normalizedBrightness =
+                    (float)Math.Clamp(
+                        brightness,
+                        0.0,
+                        16.0);
+
+                material[0] =
+                    new RuntimeVehicleMaterialConstants
+                    {
+                        AlphaScale = 1.0f,
+                        MaterialChangeDiffuse =
+                            new Vector4(
+                                light.Red / 255.0f *
+                                    normalizedBrightness,
+                                light.Green / 255.0f *
+                                    normalizedBrightness,
+                                light.Blue / 255.0f *
+                                    normalizedBrightness,
+                                1.0f)
+                    };
+
+                _vehicleMaterialBuffer.SetData(
+                    _deviceContext,
+                    material,
+                    MapMode.WriteDiscard);
+
+                _deviceContext.Draw(
+                    6,
+                    0);
+            }
+        }
+
+        _deviceContext.OMSetBlendState(
+            null);
+
+        _deviceContext.OMSetDepthStencilState(
+            null);
+
+        _deviceContext.RSSetState(
+            null);
+    }
+
+    private bool AreVehicleVisibilityConditionsMet(
+        IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? conditions)
+    {
+        if (conditions is null ||
+            conditions.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var condition in
+                 conditions)
+        {
+            var value =
+                _scriptRuntime?.GetLocal(
+                    condition.VariableName) ??
+                0.0;
+
+            if (Math.Abs(
+                    value -
+                    condition.Value) >
+                0.000001)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsVehicleMeshVisibleFromViewpoint(
+        int viewpointFlag,
+        int requestedBit) =>
+        viewpointFlag is 0 or 7 ||
+        (viewpointFlag &
+         requestedBit) != 0;
+
+    private static double ResolveVehicleLightDirectionalAttenuation(
+        RuntimeVehicleLightEffectInfo light,
+        Matrix4x4 parentTransform,
+        Vector3 cameraDirection)
+    {
+        if (light.Omni != 0 ||
+            light.Rotating != 0)
+        {
+            return 1.0;
+        }
+
+        var direction =
+            new Vector3(
+                (float)-light.DirectionX,
+                (float)light.DirectionZ,
+                (float)light.DirectionY);
+
+        direction =
+            Vector3.TransformNormal(
+                direction,
+                parentTransform);
+
+        if (direction.LengthSquared() <
+            0.000001f)
+        {
+            return 1.0;
+        }
+
+        direction =
+            Vector3.Normalize(
+                direction);
+
+        var alignment =
+            Math.Clamp(
+                Vector3.Dot(
+                    direction,
+                    cameraDirection),
+                -1.0f,
+                1.0f);
+
+        var outer =
+            Math.Clamp(
+                Math.Abs(
+                    light.OuterConeAngleDegrees),
+                0.0,
+                180.0);
+
+        if (outer >=
+            179.999)
+        {
+            return 1.0;
+        }
+
+        var inner =
+            Math.Clamp(
+                Math.Abs(
+                    light.InnerConeAngleDegrees),
+                0.0,
+                outer);
+
+        var outerCos =
+            Math.Cos(
+                DegreesToRadians(
+                    outer *
+                    0.5));
+
+        var innerCos =
+            Math.Cos(
+                DegreesToRadians(
+                    inner *
+                    0.5));
+
+        if (alignment <=
+            outerCos)
+        {
+            return 0.0;
+        }
+
+        if (alignment >=
+                innerCos ||
+            Math.Abs(
+                innerCos -
+                outerCos) <
+            0.000001)
+        {
+            return 1.0;
+        }
+
+        return Math.Clamp(
+            (alignment - outerCos) /
+            (innerCos - outerCos),
+            0.0,
+            1.0);
+    }
+
     private ResolvedVehicleMaterialState ResolveVehicleMaterialState(
         RuntimeObjectBatch batch)
     {
@@ -3136,36 +3549,9 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool IsVehicleBatchVisible(
-        RuntimeObjectBatch batch)
-    {
-        var conditions =
-            batch.VisibilityConditions;
-
-        if (conditions is null ||
-            conditions.Count == 0)
-        {
-            return true;
-        }
-
-        foreach (var condition in
-                 conditions)
-        {
-            var value =
-                _scriptRuntime?.GetLocal(
-                    condition.VariableName) ??
-                0.0;
-
-            if (Math.Abs(
-                    value -
-                    condition.Value) >
-                0.000001)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+        RuntimeObjectBatch batch) =>
+        AreVehicleVisibilityConditionsMet(
+            batch.VisibilityConditions);
 
     private Matrix4x4 CreateVehicleAnimationMatrix(
         RuntimeObjectBatch batch) =>
