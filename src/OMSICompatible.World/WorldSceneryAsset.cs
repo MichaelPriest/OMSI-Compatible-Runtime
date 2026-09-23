@@ -76,7 +76,7 @@ public sealed record WorldSceneryAsset(
 
     public bool IsRenderable =>
         Exists &&
-        !OnlyEditor &&
-        (RenderableMeshCount > 0 ||
+        ((!OnlyEditor &&
+          RenderableMeshCount > 0) ||
          Tree is not null);
 }
