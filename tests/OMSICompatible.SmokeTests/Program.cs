@@ -1095,7 +1095,15 @@ static void WriteSyntheticO3d(string path)
     writer.Write(0.0f);
 
     writer.Write(0.0f);
-    writer.Write((byte)0);
+
+    var textureName =
+        Encoding.Latin1.GetBytes(
+            "regen.tga");
+
+    writer.Write(
+        (byte)textureName.Length);
+    writer.Write(
+        textureName);
 
     writer.Write((byte)0x79);
 
