@@ -36,7 +36,9 @@ public sealed record OmsiVehicleMaterialOverride(
     string? BumpMapSource,
     double BumpMapStrength,
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
-    int? TextTextureIndex);
+    int? TextTextureIndex,
+    string? TextureCoordinateXVariable,
+    string? TextureCoordinateYVariable);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
