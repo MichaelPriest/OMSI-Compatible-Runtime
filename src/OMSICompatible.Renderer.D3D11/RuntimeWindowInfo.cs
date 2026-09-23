@@ -161,6 +161,33 @@ public sealed record RuntimeO3dMaterialInfo(
     IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
     bool HasTransMapDirective = false);
 
+public sealed record RuntimeVehicleLightEffectInfo(
+    double PositionX,
+    double PositionY,
+    double PositionZ,
+    double DirectionX,
+    double DirectionY,
+    double DirectionZ,
+    double UpX,
+    double UpY,
+    double UpZ,
+    int Omni,
+    int Rotating,
+    byte Red,
+    byte Green,
+    byte Blue,
+    double SizeMeters,
+    double InnerConeAngleDegrees,
+    double OuterConeAngleDegrees,
+    string BrightnessVariable,
+    double BrightnessFactor,
+    double CameraOffsetMeters,
+    int Parameters,
+    bool ConeEffect,
+    double TimeConstantSeconds,
+    string? BitmapSource,
+    bool Enhanced);
+
 public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
     double Value);
@@ -201,7 +228,8 @@ public sealed record RuntimeObjectMeshInfo(
     double? LodThreshold = null,
     IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null,
     IReadOnlyList<RuntimeVehicleAnimationInfo>? Animations = null,
-    Matrix4x4? SourceTransform = null);
+    Matrix4x4? SourceTransform = null,
+    IReadOnlyList<RuntimeVehicleLightEffectInfo>? LightEffects = null);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
