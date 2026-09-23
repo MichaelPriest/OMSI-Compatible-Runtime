@@ -51,7 +51,8 @@ public sealed record OmsiVehicleMaterial(
     double BumpMapStrength,
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
     int? TextTextureIndex,
-    IReadOnlyList<OmsiVehicleMaterialChangeSet>? MaterialChangeSets = null);
+    IReadOnlyList<OmsiVehicleMaterialChangeSet>? MaterialChangeSets = null,
+    bool HasTransMapDirective = false);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
