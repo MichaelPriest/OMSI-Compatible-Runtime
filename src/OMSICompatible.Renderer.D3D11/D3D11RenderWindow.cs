@@ -78,6 +78,10 @@ public sealed class D3D11RenderWindow : Form
         _vehicleAnimationValues =
             new(
                 ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<RuntimeVehicleLightEffectInfo, double>
+        _vehicleLightValues =
+            new(
+                ReferenceEqualityComparer.Instance);
 
     private double _lastFrameTimeSeconds;
     private bool _graphicsPrepared;
@@ -165,10 +169,12 @@ public sealed class D3D11RenderWindow : Form
 
     private ID3D11Buffer? _vehicleExteriorVertexBuffer;
     private ID3D11Buffer? _vehicleInteriorVertexBuffer;
+    private ID3D11Buffer? _vehicleLightVertexBuffer;
     private ID3D11Buffer? _vehicleModelBuffer;
     private ID3D11Buffer? _vehicleMaterialBuffer;
     private ID3D11VertexShader? _vehicleVertexShader;
     private ID3D11PixelShader? _vehicleColorPixelShader;
+    private ID3D11PixelShader? _vehicleLightPixelShader;
     private ID3D11PixelShader? _vehicleTexturedPixelShader;
     private ID3D11PixelShader? _vehicleAlphaCutoutPixelShader;
     private ID3D11PixelShader? _vehicleAlphaBlendPixelShader;
