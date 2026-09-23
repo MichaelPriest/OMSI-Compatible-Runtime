@@ -276,6 +276,18 @@ internal sealed class RuntimeApplicationContext :
                     ExitThread();
                 };
 
+            // Let the 96% loading-state paint before the heavier GPU
+            // resource preparation runs on the UI thread.
+            await Task.Yield();
+
+            _runtimeWindow.PrepareForDisplay();
+
+            ReportProgress(
+                new WorldLoadProgress(
+                    99,
+                    "Finalizando",
+                    "Renderização preparada · apresentando primeiro frame..."));
+
             MainForm =
                 _runtimeWindow;
 
