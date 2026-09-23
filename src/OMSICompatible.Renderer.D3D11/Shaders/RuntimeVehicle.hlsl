@@ -409,6 +409,36 @@ float4 PSTextured(
     return SampleDiffuse(input);
 }
 
+float4 PSLightEffect(
+    VertexOutput input) : SV_TARGET
+{
+    float2 centered =
+        input.Uv * 2.0f - 1.0f;
+
+    float radiusSquared =
+        dot(
+            centered,
+            centered);
+
+    clip(
+        1.0f -
+        radiusSquared);
+
+    float falloff =
+        saturate(
+            1.0f -
+            radiusSquared);
+
+    falloff *=
+        falloff;
+
+    return float4(
+        input.Color.rgb *
+            falloff,
+        falloff);
+}
+
+
 float4 PSAlphaCutout(
     VertexOutput input) : SV_TARGET
 {
