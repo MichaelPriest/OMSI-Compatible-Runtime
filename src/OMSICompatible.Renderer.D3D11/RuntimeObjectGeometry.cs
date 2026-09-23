@@ -192,7 +192,7 @@ internal static class RuntimeObjectGeometryBuilder
             var objectTransform =
                 Matrix4x4.CreateFromYawPitchRoll(
                     DegreesToRadians(
-                        -instance.HeadingDegrees),
+                        instance.HeadingDegrees),
                     DegreesToRadians(
                         -instance.PitchDegrees),
                     DegreesToRadians(
