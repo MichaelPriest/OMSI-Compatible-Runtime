@@ -303,7 +303,6 @@ try
             "[matl_bumpmap]",
             "bump.bmp",
             "0.05",
-            "[matl_item]",
             "[matl_allcolor]",
             "0.8",
             "0.7",
@@ -327,8 +326,13 @@ try
             "0",
             "cockpit_light_test",
             "[matl_item]",
-            "[matl_allcolor]",
+            "[matl_alpha]",
             "1",
+            "[matl_transmap]",
+            "panel_mask.bmp",
+            "[matl_noZwrite]",
+            "[matl_allcolor]",
+            "1"
             "1",
             "1",
             "1",
@@ -380,6 +384,12 @@ try
         Path.Combine(
             vehicleModelDirectory,
             "panel_n.bmp"),
+        [0x42, 0x4D, 0x00, 0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleModelDirectory,
+            "panel_mask.bmp"),
         [0x42, 0x4D, 0x00, 0x00]);
 
     File.WriteAllBytes(
@@ -598,6 +608,18 @@ try
         Path.GetFileName(
             vehicleAsset.Meshes[0].Materials[0].MaterialChangeTexturePath!) ==
             "panel_n.bmp" &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets is
+            { Count: 1 } &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].VariableName ==
+            "cockpit_light_test" &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items.Count == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].ItemIndex == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].AlphaMode == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].HasTransMapDirective &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].NoZWrite &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].TransMapTexturePath!) ==
+            "panel_mask.bmp" &&
         Math.Abs(
             vehicleAsset.Meshes[0].Materials[0].EnvMapStrength -
             0.5) < 0.0001 &&
