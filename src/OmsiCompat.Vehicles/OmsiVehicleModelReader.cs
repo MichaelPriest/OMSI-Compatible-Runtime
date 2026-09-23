@@ -1249,6 +1249,8 @@ public static class OmsiVehicleModelReader
         public double BumpMapStrength { get; set; }
         public List<OmsiVehicleFreeTexture> FreeTextures { get; } = [];
         public int? TextTextureIndex { get; set; }
+        public string? TextureCoordinateXVariable { get; set; }
+        public string? TextureCoordinateYVariable { get; set; }
 
         public OmsiVehicleMaterialOverride Build() =>
             new(
@@ -1270,6 +1272,8 @@ public static class OmsiVehicleModelReader
                 BumpMapSource,
                 BumpMapStrength,
                 FreeTextures.ToArray(),
-                TextTextureIndex);
+                TextTextureIndex,
+                TextureCoordinateXVariable,
+                TextureCoordinateYVariable);
     }
 }
