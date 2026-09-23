@@ -2543,8 +2543,12 @@ public sealed class D3D11RenderWindow : Form
                     bumpMapView!);
             }
 
+            var diffuseTexturePath =
+                ResolveVehicleDiffuseTexturePath(
+                    batch);
+
             if (TryGetVehicleTextureView(
-                    batch.TexturePath,
+                    diffuseTexturePath,
                     out var textureView))
             {
                 var hasTransMap =
@@ -2985,6 +2989,204 @@ public sealed class D3D11RenderWindow : Form
                basis;
     }
 
+    private string? ResolveVehicleDiffuseTexturePath(
+        RuntimeObjectBatch batch)
+    {
+        var bindings =
+            batch.FreeTextures;
+
+        if (bindings is null ||
+            bindings.Count == 0 ||
+            _scriptRuntime is null)
+        {
+            return batch.TexturePath;
+        }
+
+        var baseFileName =
+            Path.GetFileName(
+                batch.TexturePath);
+
+        foreach (var binding in
+                 bindings)
+        {
+            if (!string.IsNullOrWhiteSpace(
+                    binding.SourceTextureName) &&
+                !string.Equals(
+                    Path.GetFileName(
+                        binding.SourceTextureName),
+                    baseFileName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value =
+                _scriptRuntime.GetStringLocal(
+                    binding.VariableName);
+
+            if (string.IsNullOrWhiteSpace(
+                    value))
+            {
+                continue;
+            }
+
+            if (TryResolveVehicleDynamicTexturePath(
+                    value,
+                    out var resolved))
+            {
+                return resolved;
+            }
+        }
+
+        return batch.TexturePath;
+    }
+
+    private bool TryResolveVehicleDynamicTexturePath(
+        string value,
+        out string? resolved)
+    {
+        resolved =
+            null;
+
+        var normalized =
+            value
+                .Trim()
+                .Trim('"')
+                .Replace(
+                    '/',
+                    Path.DirectorySeparatorChar)
+                .Replace(
+                    '\\',
+                    Path.DirectorySeparatorChar);
+
+        if (normalized.Length == 0)
+        {
+            return false;
+        }
+
+        string root;
+
+        try
+        {
+            root =
+                EnsureTrailingDirectorySeparator(
+                    Path.GetFullPath(
+                        _windowInfo.ContentRoot));
+        }
+        catch
+        {
+            return false;
+        }
+
+        var candidates =
+            new List<string>();
+
+        if (Path.IsPathRooted(
+                normalized))
+        {
+            candidates.Add(
+                normalized);
+        }
+        else
+        {
+            candidates.Add(
+                Path.Combine(
+                    _windowInfo.ContentRoot,
+                    normalized));
+
+            var relativeBus =
+                _windowInfo.Vehicle?
+                    .RelativePath;
+
+            if (!string.IsNullOrWhiteSpace(
+                    relativeBus))
+            {
+                try
+                {
+                    var busPath =
+                        Path.GetFullPath(
+                            Path.Combine(
+                                _windowInfo.ContentRoot,
+                                "Vehicles",
+                                relativeBus
+                                    .Replace(
+                                        '/',
+                                        Path.DirectorySeparatorChar)
+                                    .Replace(
+                                        '\\',
+                                        Path.DirectorySeparatorChar)));
+
+                    var vehicleDirectory =
+                        Path.GetDirectoryName(
+                            busPath);
+
+                    if (!string.IsNullOrWhiteSpace(
+                            vehicleDirectory))
+                    {
+                        candidates.Add(
+                            Path.Combine(
+                                vehicleDirectory,
+                                normalized));
+
+                        if (!normalized.StartsWith(
+                                "Texture" +
+                                Path.DirectorySeparatorChar,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            candidates.Add(
+                                Path.Combine(
+                                    vehicleDirectory,
+                                    "Texture",
+                                    normalized));
+                        }
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        foreach (var candidate in
+                 candidates)
+        {
+            try
+            {
+                var fullPath =
+                    Path.GetFullPath(
+                        candidate);
+
+                if (!fullPath.StartsWith(
+                        root,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !File.Exists(
+                        fullPath))
+                {
+                    continue;
+                }
+
+                resolved =
+                    fullPath;
+                return true;
+            }
+            catch
+            {
+            }
+        }
+
+        return false;
+    }
+
+    private static string EnsureTrailingDirectorySeparator(
+        string path) =>
+        path.EndsWith(
+            Path.DirectorySeparatorChar) ||
+        path.EndsWith(
+            Path.AltDirectorySeparatorChar)
+            ? path
+            : path +
+              Path.DirectorySeparatorChar;
+
     private bool TryGetVehicleTextureView(
         string? texturePath,
         out ID3D11ShaderResourceView? view)
@@ -3016,7 +3218,33 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
-        return false;
+        if (_failedObjectTexturePaths.Contains(
+                texturePath) ||
+            _objectTextureLoader is null ||
+            !File.Exists(
+                texturePath))
+        {
+            return false;
+        }
+
+        var loaded =
+            _objectTextureLoader.TryLoad(
+                texturePath);
+
+        if (loaded is null)
+        {
+            _failedObjectTexturePaths.Add(
+                texturePath);
+            return false;
+        }
+
+        _objectTextureCache[
+            texturePath] =
+            loaded;
+
+        view =
+            loaded.View;
+        return true;
     }
 
     private Vector3 ResolveActiveCameraPosition()
