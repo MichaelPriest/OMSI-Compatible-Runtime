@@ -352,6 +352,44 @@ try
             "lights_stand",
             "[matl_nightmap]",
             "panel_n.bmp",
+            "[light_enh]",
+            "0.1",
+            "2.2",
+            "1.3",
+            "255",
+            "128",
+            "0",
+            "0.03",
+            "cockpit_light_test",
+            "1.5",
+            "0.01",
+            "3",
+            "0.05",
+            "[light_enh_2]",
+            "0.998",
+            "5.634",
+            "0.827",
+            "0",
+            "1",
+            "0",
+            "0",
+            "0",
+            "1",
+            "0",
+            "0",
+            "200",
+            "200",
+            "255",
+            "0.4",
+            "50",
+            "150",
+            "lights_stand",
+            "3.0",
+            "0.15",
+            "1",
+            "1",
+            "0.1",
+            "D_Scheinwerfer.bmp",
             "[newanim]",
             "origin_from_mesh",
             "origin_rot_y",
@@ -569,6 +607,26 @@ try
         Math.Abs(
             vehicleAsset.Meshes[0].Animations[0].MaxSpeed!.Value -
             360.0) < 0.0001 &&
+        vehicleAsset.Meshes[0].LightEffects is
+            { Count: 2 } &&
+        !vehicleAsset.Meshes[0].LightEffects![0].Enhanced &&
+        vehicleAsset.Meshes[0].LightEffects![0].Red == 255 &&
+        vehicleAsset.Meshes[0].LightEffects![0].Green == 128 &&
+        vehicleAsset.Meshes[0].LightEffects![0].BrightnessVariable ==
+            "cockpit_light_test" &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].LightEffects![0].BrightnessFactor -
+            1.5) < 0.0001 &&
+        vehicleAsset.Meshes[0].LightEffects![1].Enhanced &&
+        vehicleAsset.Meshes[0].LightEffects![1].Omni == 0 &&
+        vehicleAsset.Meshes[0].LightEffects![1].Rotating == 0 &&
+        vehicleAsset.Meshes[0].LightEffects![1].BrightnessVariable ==
+            "lights_stand" &&
+        vehicleAsset.Meshes[0].LightEffects![1].BitmapSource ==
+            "D_Scheinwerfer.bmp" &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].LightEffects![1].OuterConeAngleDegrees -
+            150.0) < 0.0001 &&
         vehicleAsset.TextTextures.Count == 1 &&
         vehicleAsset.TextTextures[0].Index == 0 &&
         vehicleAsset.TextTextures[0].StringVariable ==
