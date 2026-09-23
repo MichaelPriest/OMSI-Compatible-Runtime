@@ -784,7 +784,59 @@ internal sealed class RuntimeApplicationContext :
                                                                 freeTexture.SourceTextureName,
                                                                 freeTexture.VariableName))
                                                     .ToArray(),
-                                                material.TextTextureIndex))
+                                                material.TextTextureIndex,
+                                                material.MaterialChangeSets?
+                                                    .Select(
+                                                        static changeSet =>
+                                                            new RuntimeVehicleMaterialChangeSetInfo(
+                                                                changeSet.VariableName,
+                                                                changeSet.GroupIndex,
+                                                                changeSet.Items
+                                                                    .Select(
+                                                                        static item =>
+                                                                            new RuntimeVehicleMaterialChangeItemInfo(
+                                                                                item.ItemIndex,
+                                                                                item.AlphaMode,
+                                                                                item.TransMapTexturePath,
+                                                                                item.HasTransMapDirective,
+                                                                                item.NoZWrite,
+                                                                                item.NoZCheck,
+                                                                                item.AlphaScaleVariable,
+                                                                                item.LightMapTexturePath,
+                                                                                item.LightMapVariable,
+                                                                                item.MaterialChangeTexturePath,
+                                                                                item.AllColor is null
+                                                                                    ? null
+                                                                                    : new RuntimeVehicleMaterialColorInfo(
+                                                                                        item.AllColor.DiffuseR,
+                                                                                        item.AllColor.DiffuseG,
+                                                                                        item.AllColor.DiffuseB,
+                                                                                        item.AllColor.DiffuseA,
+                                                                                        item.AllColor.AmbientR,
+                                                                                        item.AllColor.AmbientG,
+                                                                                        item.AllColor.AmbientB,
+                                                                                        item.AllColor.SpecularR,
+                                                                                        item.AllColor.SpecularG,
+                                                                                        item.AllColor.SpecularB,
+                                                                                        item.AllColor.EmissiveR,
+                                                                                        item.AllColor.EmissiveG,
+                                                                                        item.AllColor.EmissiveB,
+                                                                                        item.AllColor.Power),
+                                                                                item.EnvMapTexturePath,
+                                                                                item.EnvMapStrength,
+                                                                                item.EnvMapMaskTexturePath,
+                                                                                item.BumpMapTexturePath,
+                                                                                item.BumpMapStrength,
+                                                                                item.FreeTextures
+                                                                                    .Select(
+                                                                                        static freeTexture =>
+                                                                                            new RuntimeVehicleFreeTextureInfo(
+                                                                                                freeTexture.SourceTextureName,
+                                                                                                freeTexture.VariableName))
+                                                                                    .ToArray(),
+                                                                                item.TextTextureIndex))
+                                                                    .ToArray()))
+                                                    .ToArray()))
                                     .ToArray(),
                                 mesh.ViewpointFlag,
                                 mesh.LodThreshold,
