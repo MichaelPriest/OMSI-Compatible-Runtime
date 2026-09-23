@@ -69,6 +69,10 @@ public sealed class D3D11RenderWindow : Form
             StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Keys> _pressedKeys = [];
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
+    private readonly Dictionary<RuntimeVehicleAnimationInfo, double>
+        _vehicleAnimationValues =
+            new(
+                ReferenceEqualityComparer.Instance);
 
     private double _lastFrameTimeSeconds;
     private bool _mouseLooking;
@@ -2830,9 +2834,8 @@ public sealed class D3D11RenderWindow : Form
                  animations)
         {
             var variableValue =
-                _scriptRuntime?.GetLocal(
-                    animation.VariableName) ??
-                0.0;
+                ResolveVehicleAnimationValue(
+                    animation);
 
             var amount =
                 variableValue *
@@ -3522,6 +3525,173 @@ public sealed class D3D11RenderWindow : Form
         UpdateVehicleScripts(
             deltaSeconds,
             now);
+
+        UpdateVehicleAnimationStates(
+            deltaSeconds);
+    }
+
+    private void UpdateVehicleAnimationStates(
+        double deltaSeconds)
+    {
+        if (deltaSeconds <= 0.0)
+        {
+            return;
+        }
+
+        var seen =
+            new HashSet<RuntimeVehicleAnimationInfo>(
+                ReferenceEqualityComparer.Instance);
+
+        foreach (var batch in
+                 _vehicleExteriorGeometry.Batches
+                     .Concat(
+                         _vehicleInteriorGeometry.Batches))
+        {
+            if (batch.Animations is null)
+            {
+                continue;
+            }
+
+            foreach (var animation in
+                     batch.Animations)
+            {
+                if (!seen.Add(
+                        animation))
+                {
+                    continue;
+                }
+
+                var target =
+                    _scriptRuntime?.GetLocal(
+                        animation.VariableName) ??
+                    0.0;
+
+                if (!double.IsFinite(
+                        target))
+                {
+                    target = 0.0;
+                }
+
+                if (!_vehicleAnimationValues.TryGetValue(
+                        animation,
+                        out var current))
+                {
+                    _vehicleAnimationValues[
+                        animation] =
+                        target;
+                    continue;
+                }
+
+                var hasDelay =
+                    animation.Delay is > 0.0;
+
+                var hasMaxSpeed =
+                    animation.MaxSpeed is > 0.0;
+
+                if (!hasDelay &&
+                    !hasMaxSpeed)
+                {
+                    _vehicleAnimationValues[
+                        animation] =
+                        target;
+                    continue;
+                }
+
+                var delta =
+                    target -
+                    current;
+
+                if (Math.Abs(
+                        delta) <
+                    0.000000001)
+                {
+                    _vehicleAnimationValues[
+                        animation] =
+                        target;
+                    continue;
+                }
+
+                var step =
+                    delta;
+
+                if (hasDelay)
+                {
+                    // OMSI delay values behave as reciprocal response
+                    // values: larger numbers reduce damping. Exponential
+                    // convergence reproduces that stable first-order lag
+                    // without depending on frame rate.
+                    var response =
+                        1.0 -
+                        Math.Exp(
+                            -animation.Delay!.Value *
+                            deltaSeconds);
+
+                    step *=
+                        Math.Clamp(
+                            response,
+                            0.0,
+                            1.0);
+                }
+
+                if (hasMaxSpeed)
+                {
+                    // OMSI documents maxspeed as 1 / animation duration,
+                    // therefore it is a maximum normalized animation rate.
+                    var maximumStep =
+                        animation.MaxSpeed!.Value *
+                        deltaSeconds;
+
+                    step =
+                        Math.Clamp(
+                            step,
+                            -maximumStep,
+                            maximumStep);
+                }
+
+                var next =
+                    current +
+                    step;
+
+                if ((delta > 0.0 &&
+                     next > target) ||
+                    (delta < 0.0 &&
+                     next < target))
+                {
+                    next =
+                        target;
+                }
+
+                _vehicleAnimationValues[
+                    animation] =
+                    double.IsFinite(
+                        next)
+                        ? next
+                        : target;
+            }
+        }
+    }
+
+    private double ResolveVehicleAnimationValue(
+        RuntimeVehicleAnimationInfo animation)
+    {
+        if (_vehicleAnimationValues.TryGetValue(
+                animation,
+                out var value) &&
+            double.IsFinite(
+                value))
+        {
+            return value;
+        }
+
+        var raw =
+            _scriptRuntime?.GetLocal(
+                animation.VariableName) ??
+            0.0;
+
+        return double.IsFinite(
+                raw)
+            ? raw
+            : 0.0;
     }
 
     private bool HandleOmsiSystemMacro(
