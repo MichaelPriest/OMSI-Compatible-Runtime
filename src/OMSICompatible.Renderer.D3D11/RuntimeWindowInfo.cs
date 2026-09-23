@@ -158,7 +158,8 @@ public sealed record RuntimeO3dMaterialInfo(
     double BumpMapStrength = 0.0,
     IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
     int? TextTextureIndex = null,
-    IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null);
+    IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
+    bool HasTransMapDirective = false);
 
 public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
