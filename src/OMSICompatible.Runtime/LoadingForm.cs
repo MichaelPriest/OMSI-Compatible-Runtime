@@ -27,6 +27,12 @@ internal sealed class LoadingForm : Form
         BackColor = Color.FromArgb(8, 11, 16);
         ForeColor = Color.White;
         DoubleBuffered = true;
+        SetStyle(
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.UserPaint |
+            ControlStyles.OptimizedDoubleBuffer,
+            true);
+        UpdateStyles();
 
         TryLoadImage(imagePath);
         BuildInterface(mapName);
@@ -50,7 +56,10 @@ internal sealed class LoadingForm : Form
             $"{_percent}%";
 
         UpdateProgressFill();
-        Invalidate();
+
+        // Labels and progress panels invalidate their own regions.
+        // Repainting the whole form on every progress event caused the
+        // background to flash black on slower loads.
     }
 
     public void SetStage(
