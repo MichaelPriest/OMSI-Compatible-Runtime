@@ -715,7 +715,15 @@ internal sealed class RuntimeApplicationContext :
                                                 material.EnvMapStrength,
                                                 material.EnvMapMaskTexturePath,
                                                 material.BumpMapTexturePath,
-                                                material.BumpMapStrength))
+                                                material.BumpMapStrength,
+                                                material.FreeTextures
+                                                    .Select(
+                                                        static freeTexture =>
+                                                            new RuntimeVehicleFreeTextureInfo(
+                                                                freeTexture.SourceTextureName,
+                                                                freeTexture.VariableName))
+                                                    .ToArray(),
+                                                material.TextTextureIndex))
                                     .ToArray(),
                                 mesh.ViewpointFlag,
                                 mesh.LodThreshold,
@@ -809,7 +817,23 @@ internal sealed class RuntimeApplicationContext :
                         vehicle.DriverPosition.Y,
                         vehicle.DriverPosition.SeatHeight,
                         vehicle.DriverPosition.RotationDegrees),
-                vehicle.ProtectedMeshCount);
+                vehicle.ProtectedMeshCount,
+                vehicle.TextTextures
+                    .Select(
+                        static texture =>
+                            new RuntimeVehicleTextTextureInfo(
+                                texture.Index,
+                                texture.StringVariable,
+                                texture.FontName,
+                                texture.Width,
+                                texture.Height,
+                                texture.FullColor,
+                                texture.Red,
+                                texture.Green,
+                                texture.Blue,
+                                texture.Alignment,
+                                texture.GridAligned))
+                    .ToArray());
 
         var runtimeSpawn =
             new RuntimeSpawnInfo(
