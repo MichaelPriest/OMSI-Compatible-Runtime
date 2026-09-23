@@ -80,6 +80,7 @@ public sealed class D3D11RenderWindow : Form
                 ReferenceEqualityComparer.Instance);
 
     private double _lastFrameTimeSeconds;
+    private bool _graphicsPrepared;
     private bool _mouseLooking;
     private bool _mouseDriveMode;
     private bool _driveMode = true;
@@ -529,13 +530,32 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    public void PrepareForDisplay()
+    {
+        if (_graphicsPrepared)
+        {
+            return;
+        }
+
+        InitializeGraphics();
+        InitializeVehicleScripts();
+        UpdateCaption();
+
+        _graphicsPrepared =
+            true;
+    }
+
     private void OnWindowShown(object? sender, EventArgs e)
     {
         try
         {
-            InitializeGraphics();
-            InitializeVehicleScripts();
-            UpdateCaption();
+            PrepareForDisplay();
+
+            // Present a complete frame immediately. This avoids exposing
+            // the default black WinForms/DXGI surface between Show() and
+            // the first timer tick.
+            RenderFrame();
+
             _renderTimer.Start();
         }
         catch (Exception ex)
