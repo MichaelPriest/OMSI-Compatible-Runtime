@@ -347,6 +347,9 @@ try
             "0.23",
             "0.2",
             "0",
+            "[matl_lightmap]",
+            "panel_item_lm.bmp",
+            "lights_stand",
             "[matl_nightmap]",
             "panel_n.bmp",
             "[newanim]",
@@ -385,6 +388,12 @@ try
         Path.Combine(
             vehicleModelDirectory,
             "panel_n.bmp"),
+        [0x42, 0x4D, 0x00, 0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleModelDirectory,
+            "panel_item_lm.bmp"),
         [0x42, 0x4D, 0x00, 0x00]);
 
     File.WriteAllBytes(
@@ -625,6 +634,14 @@ try
         Path.GetFileName(
             vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].TransMapTexturePath!) ==
             "panel_mask.bmp" &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].LightMapVariable ==
+            "lights_stand" &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].LightMapTexturePath!) ==
+            "panel_item_lm.bmp" &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].MaterialChangeTexturePath!) ==
+            "panel_n.bmp" &&
         Math.Abs(
             vehicleAsset.Meshes[0].Materials[0].EnvMapStrength -
             0.5) < 0.0001 &&
