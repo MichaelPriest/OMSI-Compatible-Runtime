@@ -4676,6 +4676,143 @@ public sealed class D3D11RenderWindow : Form
             0.0);
 
         _scriptRuntime.ExecuteInit();
+
+        WriteVehicleRuntimeStateDiagnostics();
+    }
+
+    private void WriteVehicleRuntimeStateDiagnostics()
+    {
+        if (_scriptRuntime is null ||
+            _windowInfo.Vehicle is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"vehicle={_windowInfo.Vehicle.DisplayName}",
+                    "",
+                    "meshRuntimeState:"
+                };
+
+            foreach (var mesh in
+                     _windowInfo.Vehicle.Meshes)
+            {
+                var visibility =
+                    mesh.VisibilityConditions is
+                        { Count: > 0 }
+                        ? string.Join(
+                            ",",
+                            mesh.VisibilityConditions.Select(
+                                condition =>
+                                    $"{condition.VariableName}:actual={_scriptRuntime.GetLocal(condition.VariableName).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} expected={condition.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}"))
+                        : "<none>";
+
+                var visible =
+                    AreVehicleVisibilityConditionsMet(
+                        mesh.VisibilityConditions);
+
+                lines.Add(
+                    $"mesh={mesh.DeclaredPath} | viewpoint={mesh.ViewpointFlag} | visibleNow={visible} | visibleConditions={visibility}");
+
+                for (var materialIndex = 0;
+                     materialIndex < mesh.Materials.Count;
+                     materialIndex++)
+                {
+                    var material =
+                        mesh.Materials[materialIndex];
+
+                    var alphaScaleValue =
+                        string.IsNullOrWhiteSpace(
+                            material.AlphaScaleVariable)
+                            ? "<none>"
+                            : _scriptRuntime
+                                .GetLocal(
+                                    material.AlphaScaleVariable)
+                                .ToString(
+                                    "0.###",
+                                    System.Globalization.CultureInfo.InvariantCulture);
+
+                    var lightMapValue =
+                        string.IsNullOrWhiteSpace(
+                            material.LightMapVariable)
+                            ? "<none>"
+                            : _scriptRuntime
+                                .GetLocal(
+                                    material.LightMapVariable)
+                                .ToString(
+                                    "0.###",
+                                    System.Globalization.CultureInfo.InvariantCulture);
+
+                    var legacyChangeValue =
+                        string.IsNullOrWhiteSpace(
+                            material.MaterialChangeVariable)
+                            ? "<none>"
+                            : _scriptRuntime
+                                .GetLocal(
+                                    material.MaterialChangeVariable)
+                                .ToString(
+                                    "0.###",
+                                    System.Globalization.CultureInfo.InvariantCulture);
+
+                    var changeSets =
+                        material.MaterialChangeSets is
+                            { Count: > 0 }
+                            ? string.Join(
+                                ";",
+                                material.MaterialChangeSets.Select(
+                                    set =>
+                                    {
+                                        var value =
+                                            _scriptRuntime.GetLocal(
+                                                set.VariableName);
+
+                                        var rounded =
+                                            double.IsFinite(
+                                                value)
+                                                ? Math.Round(
+                                                    value,
+                                                    MidpointRounding.ToEven)
+                                                : double.NaN;
+
+                                        return $"{set.VariableName}:actual={value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} selected={rounded.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} items=[{string.Join(",", set.Items.Select(static item => item.ItemIndex))}]";
+                                    }))
+                            : "<none>";
+
+                    if (material.AlphaMode != 0 ||
+                        material.HasTransMapDirective ||
+                        material.NoZWrite ||
+                        material.NoZCheck ||
+                        !string.IsNullOrWhiteSpace(
+                            material.AlphaScaleVariable) ||
+                        !string.IsNullOrWhiteSpace(
+                            material.LightMapVariable) ||
+                        !string.IsNullOrWhiteSpace(
+                            material.MaterialChangeVariable) ||
+                        material.MaterialChangeSets is
+                            { Count: > 0 })
+                    {
+                        lines.Add(
+                            $"  mat#{materialIndex} tex={Path.GetFileName(material.TexturePath) ?? "<none>"} | alpha={material.AlphaMode} | transmapDirective={material.HasTransMapDirective} | transmap={Path.GetFileName(material.TransMapTexturePath) ?? "<none>"} | noZwrite={material.NoZWrite} | noZcheck={material.NoZCheck} | alphaScale={material.AlphaScaleVariable ?? "<none>"}:{alphaScaleValue} | lightmapVar={material.LightMapVariable ?? "<none>"}:{lightMapValue} | matlChange={material.MaterialChangeVariable ?? "<none>"}:{legacyChangeValue} | changeSets={changeSets}");
+                    }
+                }
+            }
+
+            File.WriteAllLines(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-runtime-state.log"),
+                lines);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[vehicle-runtime-state] unable to write diagnostics: {ex.Message}");
+        }
     }
 
     private void UpdateVehicleScripts(
