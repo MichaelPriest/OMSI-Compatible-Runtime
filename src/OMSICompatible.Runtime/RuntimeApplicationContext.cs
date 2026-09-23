@@ -203,6 +203,9 @@ internal sealed class RuntimeApplicationContext :
             WriteVehicleLoadDiagnostics(
                 vehicle);
 
+            WriteWorldLoadDiagnostics(
+                world);
+
             ReportProgress(
                 new WorldLoadProgress(
                     90,
@@ -313,6 +316,141 @@ internal sealed class RuntimeApplicationContext :
                 _loading.ShowFailure(
                     ex.Message);
             }
+        }
+    }
+
+    private static void WriteWorldLoadDiagnostics(
+        WorldDefinition world)
+    {
+        try
+        {
+            var logPath =
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "world-load.log");
+
+            var placementCounts =
+                world.Objects
+                    .GroupBy(
+                        static item =>
+                            item.AssetPath,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(
+                        static group =>
+                            group.Key,
+                        static group =>
+                            group.Count(),
+                        StringComparer.OrdinalIgnoreCase);
+
+            var scenery =
+                world.SceneryAssets
+                    .OrderBy(
+                        static pair =>
+                            pair.Key,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            var renderable =
+                scenery.Count(
+                    static pair =>
+                        pair.Value.IsRenderable);
+
+            var protectedAssets =
+                scenery.Count(
+                    static pair =>
+                        pair.Value.ProtectedMeshCount > 0);
+
+            var missingAssets =
+                scenery.Count(
+                    static pair =>
+                        !pair.Value.Exists);
+
+            var editorOnlyAssets =
+                scenery.Count(
+                    static pair =>
+                        pair.Value.OnlyEditor);
+
+            var failedMeshGroups =
+                scenery
+                    .SelectMany(
+                        static pair =>
+                            pair.Value.Meshes)
+                    .Where(
+                        static mesh =>
+                            !string.IsNullOrWhiteSpace(
+                                mesh.ErrorCode))
+                    .GroupBy(
+                        static mesh =>
+                            mesh.ErrorCode!,
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(
+                        static group =>
+                            group.Count())
+                    .Select(
+                        static group =>
+                            $"{group.Key}={group.Count()}")
+                    .ToArray();
+
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"world={world.Name}",
+                    $"tilesActive={world.Tiles.Count}",
+                    $"tilesTotal={world.TotalTileCount}",
+                    $"objects={world.Objects.Count}",
+                    $"splines={world.Splines.Count}",
+                    $"sceneryAssetTypes={scenery.Length}",
+                    $"sceneryRenderable={renderable}",
+                    $"sceneryMissing={missingAssets}",
+                    $"sceneryProtected={protectedAssets}",
+                    $"sceneryOnlyEditor={editorOnlyAssets}",
+                    $"placementParseIssues={world.PlacementParseIssueCount}",
+                    $"terrainParseIssues={world.TerrainParseIssueCount}",
+                    $"meshErrors={(failedMeshGroups.Length == 0 ? "<none>" : string.Join("; ", failedMeshGroups))}",
+                    "",
+                    "sceneryAssets:"
+                };
+
+            foreach (var pair in scenery)
+            {
+                var asset =
+                    pair.Value;
+
+                placementCounts.TryGetValue(
+                    pair.Key,
+                    out var placements);
+
+                var errors =
+                    asset.Meshes
+                        .Where(
+                            static mesh =>
+                                !string.IsNullOrWhiteSpace(
+                                    mesh.ErrorCode))
+                        .GroupBy(
+                            static mesh =>
+                                mesh.ErrorCode!,
+                            StringComparer.OrdinalIgnoreCase)
+                        .Select(
+                            static group =>
+                                $"{group.Key}:{group.Count()}")
+                        .ToArray();
+
+                lines.Add(
+                    $"{pair.Key} | placements={placements} | exists={asset.Exists} | renderable={asset.IsRenderable} | editorOnly={asset.OnlyEditor} | meshes={asset.Meshes.Count} | renderableMeshes={asset.RenderableMeshCount} | protectedMeshes={asset.ProtectedMeshCount} | tree={asset.Tree is not null} | resolved={asset.ResolvedPath ?? "<null>"} | errors={(errors.Length == 0 ? "<none>" : string.Join(",", errors))}");
+            }
+
+            File.WriteAllLines(
+                logPath,
+                lines);
+
+            Console.WriteLine(
+                $"[world-load] tiles={world.Tiles.Count}/{world.TotalTileCount}; objects={world.Objects.Count}; scenery={renderable}/{scenery.Length} renderable; missing={missingAssets}; protected={protectedAssets}; editorOnly={editorOnlyAssets}; meshErrors={(failedMeshGroups.Length == 0 ? "<none>" : string.Join("; ", failedMeshGroups))}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[world-load] unable to write diagnostics: {ex.Message}");
         }
     }
 
