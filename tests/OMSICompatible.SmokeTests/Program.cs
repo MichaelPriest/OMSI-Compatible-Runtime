@@ -60,6 +60,20 @@ try
             "1",
             "0",
             "",
+            "[object]",
+            "0",
+            @"Sceneryobjects\Synthetic\tree.sco",
+            "1002",
+            "15",
+            "25",
+            "0",
+            "0",
+            "0",
+            "0",
+            "3",
+            "tree.tga",
+            "12",
+            "1",
             "[spline]",
             "0",
             @"Splines\Synthetic\road.sli",
@@ -93,6 +107,34 @@ try
         Lines(
             "[friendlyname]",
             "Synthetic Object",
+            "[onlyeditor]"),
+        Encoding.Unicode);
+
+    Directory.CreateDirectory(
+        Path.Combine(
+            sceneryDirectory,
+            "texture"));
+
+    File.WriteAllBytes(
+        Path.Combine(
+            sceneryDirectory,
+            "texture",
+            "tree.tga"),
+        [0x00]);
+
+    File.WriteAllText(
+        Path.Combine(
+            sceneryDirectory,
+            "tree.sco"),
+        Lines(
+            "[friendlyname]",
+            "Synthetic Tree",
+            "[tree]",
+            "tree.tga",
+            "8",
+            "14",
+            "0.8",
+            "1.2",
             "[onlyeditor]"),
         Encoding.Unicode);
 
@@ -1030,8 +1072,8 @@ try
         world.Tiles.Count == 1,
         $"Expected 1 active tile, found {world.Tiles.Count}.");
     Require(
-        world.Objects.Count == 1,
-        $"Expected 1 object, found {world.Objects.Count}.");
+        world.Objects.Count == 2,
+        $"Expected 2 objects, found {world.Objects.Count}.");
     Require(
         world.Splines.Count == 1,
         $"Expected 1 spline, found {world.Splines.Count}.");
@@ -1080,8 +1122,17 @@ try
         "[onlyeditor] scenery must remain in the world but be hidden in game rendering.");
 
     Require(
-        world.Dependencies.RequiredCount == 2,
-        "Expected two primary dependencies.");
+        world.SceneryAssets.TryGetValue(
+            @"Sceneryobjects\Synthetic\tree.sco",
+            out var editorOnlyTreeAsset) &&
+        editorOnlyTreeAsset.OnlyEditor &&
+        editorOnlyTreeAsset.Tree is not null &&
+        editorOnlyTreeAsset.IsRenderable,
+        "[tree] scenery must remain runtime-renderable even when its helper mesh is [onlyeditor].");
+
+    Require(
+        world.Dependencies.RequiredCount == 3,
+        "Expected three primary dependencies.");
     Require(
         world.Dependencies.MissingCount == 0,
         "Synthetic dependencies should resolve.");
