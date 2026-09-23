@@ -303,6 +303,7 @@ try
             "[matl_bumpmap]",
             "bump.bmp",
             "0.05",
+            "[matl_transmap]",
             "[matl_allcolor]",
             "0.8",
             "0.7",
@@ -574,6 +575,10 @@ try
             "Matrix_SchildFrnt" &&
         vehicleAsset.Meshes[0].Materials[0].AlphaScaleVariable ==
             "mesh_alpha" &&
+        vehicleAsset.Meshes[0].Materials[0].HasTransMapDirective &&
+        vehicleAsset.Meshes[0].Materials[0].AlphaMode == 0 &&
+        string.IsNullOrWhiteSpace(
+            vehicleAsset.Meshes[0].Materials[0].TransMapTexturePath) &&
         vehicleAsset.Meshes[0].Materials[0].LightMapVariable ==
             "lights_stand" &&
         !string.IsNullOrWhiteSpace(
