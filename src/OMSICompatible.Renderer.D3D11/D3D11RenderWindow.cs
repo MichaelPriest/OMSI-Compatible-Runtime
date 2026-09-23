@@ -3164,11 +3164,17 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private Matrix4x4 CreateVehicleAnimationMatrix(
-        RuntimeObjectBatch batch)
-    {
-        var animations =
-            batch.Animations;
+        RuntimeObjectBatch batch) =>
+        CreateVehicleAnimationMatrix(
+            batch.Animations,
+            batch.SourceTransform,
+            batch.StaticTransform);
 
+    private Matrix4x4 CreateVehicleAnimationMatrix(
+        IReadOnlyList<RuntimeVehicleAnimationInfo>? animations,
+        Matrix4x4? sourceTransform,
+        Matrix4x4? staticTransform)
+    {
         if (animations is null ||
             animations.Count == 0)
         {
@@ -3200,7 +3206,8 @@ public sealed class D3D11RenderWindow : Form
             }
 
             ResolveAnimationFrame(
-                batch,
+                sourceTransform,
+                staticTransform,
                 animation,
                 out var pivot,
                 out var orientation);
@@ -3254,7 +3261,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private static void ResolveAnimationFrame(
-        RuntimeObjectBatch batch,
+        Matrix4x4? sourceTransform,
+        Matrix4x4? staticTransform,
         RuntimeVehicleAnimationInfo animation,
         out Vector3 pivot,
         out Matrix4x4 orientation)
@@ -3263,8 +3271,8 @@ public sealed class D3D11RenderWindow : Form
             Matrix4x4.Identity;
 
         if (animation.OriginFromMesh &&
-            batch.SourceTransform is
-                Matrix4x4 sourceTransform)
+            sourceTransform is
+                Matrix4x4 source)
         {
             var mirror =
                 Matrix4x4.CreateScale(
@@ -3274,14 +3282,14 @@ public sealed class D3D11RenderWindow : Form
 
             var converted =
                 mirror *
-                sourceTransform *
+                source *
                 mirror;
 
-            if (batch.StaticTransform is
-                Matrix4x4 staticTransform)
+            if (staticTransform is
+                Matrix4x4 localTransform)
             {
                 converted *=
-                    staticTransform;
+                    localTransform;
             }
 
             if (Matrix4x4.Decompose(
