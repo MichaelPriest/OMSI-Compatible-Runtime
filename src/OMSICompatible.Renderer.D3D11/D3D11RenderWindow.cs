@@ -112,6 +112,11 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11Texture2D? _depthTexture;
     private ID3D11DepthStencilView? _depthStencilView;
 
+    private ID3D11VertexShader? _skyVertexShader;
+    private ID3D11PixelShader? _skyPixelShader;
+    private ID3D11SamplerState? _skySampler;
+    private RuntimeGpuTexture? _skyTexture;
+
     private ID3D11Buffer? _tileVertexBuffer;
     private ID3D11VertexShader? _tileVertexShader;
     private ID3D11PixelShader? _tilePixelShader;
@@ -610,6 +615,7 @@ public sealed class D3D11RenderWindow : Form
 
         CreateSwapChain();
         CreateBackBufferResources();
+        CreateSkyResources();
         CreateTileOverviewResources();
         CreateTerrainResources();
         CreateSplineResources();
@@ -700,6 +706,100 @@ public sealed class D3D11RenderWindow : Form
 
         _depthStencilView = _device.CreateDepthStencilView(
             _depthTexture);
+    }
+
+    private void CreateSkyResources()
+    {
+        if (_device is null)
+        {
+            return;
+        }
+
+        var shaderFile =
+            ShaderPath(
+                "RuntimeSky.hlsl");
+
+        ReadOnlyMemory<byte> vertexShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "VSMain",
+                "vs_4_0");
+
+        ReadOnlyMemory<byte> pixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSMain",
+                "ps_4_0");
+
+        _skyVertexShader =
+            _device.CreateVertexShader(
+                vertexShaderByteCode.Span);
+
+        _skyPixelShader =
+            _device.CreatePixelShader(
+                pixelShaderByteCode.Span);
+
+        _skySampler =
+            _device.CreateSamplerState(
+                SamplerDescription.LinearClamp);
+
+        _objectTextureLoader ??=
+            new RuntimeGpuTextureLoader(
+                _device);
+
+        var skyPath =
+            Path.Combine(
+                _windowInfo.ContentRoot,
+                "Texture",
+                "himmel01.bmp");
+
+        _skyTexture =
+            _objectTextureLoader.TryLoad(
+                skyPath);
+    }
+
+    private void DrawSky()
+    {
+        if (_deviceContext is null ||
+            CurrentRenderTargetView is null ||
+            _skyVertexShader is null ||
+            _skyPixelShader is null ||
+            _skySampler is null ||
+            _skyTexture is null)
+        {
+            return;
+        }
+
+        _deviceContext.OMSetRenderTargets(
+            CurrentRenderTargetView,
+            null);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            null);
+
+        _deviceContext.VSSetShader(
+            _skyVertexShader);
+
+        _deviceContext.PSSetShader(
+            _skyPixelShader);
+
+        _deviceContext.PSSetSampler(
+            0,
+            _skySampler);
+
+        _deviceContext.PSSetShaderResource(
+            0,
+            _skyTexture.View);
+
+        _deviceContext.Draw(
+            3,
+            0);
+
+        _deviceContext.PSUnsetShaderResource(
+            0);
     }
 
     private void CreateTileOverviewResources()
@@ -1960,9 +2060,9 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.ClearRenderTargetView(
             _renderTargetView,
             new Color4(
-                0.025f,
-                0.035f,
-                0.055f,
+                0.38f,
+                0.58f,
+                0.78f,
                 1.0f));
 
         if (_depthStencilView is not null)
@@ -1979,6 +2079,8 @@ public sealed class D3D11RenderWindow : Form
             0,
             (uint)Math.Max(ClientSize.Width, 1),
             (uint)Math.Max(ClientSize.Height, 1));
+
+        DrawSky();
 
         if (CanDrawTerrain())
         {
@@ -5447,6 +5549,12 @@ public sealed class D3D11RenderWindow : Form
 
             _deviceContext?.ClearState();
             _deviceContext?.Flush();
+
+            _skyTexture?.Dispose();
+            _skyTexture = null;
+            _skySampler?.Dispose();
+            _skyPixelShader?.Dispose();
+            _skyVertexShader?.Dispose();
 
             _terrainRasterizerState?.Dispose();
             _terrainAdditiveBlendState?.Dispose();
