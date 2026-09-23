@@ -433,7 +433,7 @@ float4 PSLightEffect(
         falloff;
 
     return float4(
-        input.Color.rgb *
+        MaterialChangeDiffuse.rgb *
             falloff,
         falloff);
 }
