@@ -36,10 +36,15 @@ public sealed class D3D11RenderWindow : Form
         public float LightMapStrength;
         public float MaterialChangeStrength;
         public float EnvMapStrength;
+
         public float EnvMapMaskEnabled;
         public float BumpMapStrength;
-        public float Padding0;
-        public float Padding1;
+        public float MaterialChangeTextureEnabled;
+        public float MaterialChangeColorEnabled;
+
+        public Vector4 MaterialChangeDiffuse;
+        public Vector4 BaseEmissive;
+        public Vector4 MaterialChangeEmissive;
     }
 
     private enum RuntimeVehicleViewMode
@@ -2485,10 +2490,23 @@ public sealed class D3D11RenderWindow : Form
                     BumpMapStrength =
                         ResolveVehicleBumpMapStrength(
                             batch),
-                    Padding0 =
-                        0.0f,
-                    Padding1 =
-                        0.0f
+                    MaterialChangeTextureEnabled =
+                        ResolveVehicleMaterialChangeTextureEnabled(
+                            batch),
+                    MaterialChangeColorEnabled =
+                        batch.MaterialChangeAllColor is null
+                            ? 0.0f
+                            : 1.0f,
+                    MaterialChangeDiffuse =
+                        ResolveVehicleAllColorDiffuse(
+                            batch.MaterialChangeAllColor,
+                            Vector4.One),
+                    BaseEmissive =
+                        ResolveVehicleAllColorEmissive(
+                            batch.BaseAllColor),
+                    MaterialChangeEmissive =
+                        ResolveVehicleAllColorEmissive(
+                            batch.MaterialChangeAllColor)
                 };
 
             _vehicleMaterialBuffer.SetData(
@@ -2707,9 +2725,10 @@ public sealed class D3D11RenderWindow : Form
         RuntimeObjectBatch batch)
     {
         if (string.IsNullOrWhiteSpace(
-                batch.MaterialChangeTexturePath) ||
-            string.IsNullOrWhiteSpace(
-                batch.MaterialChangeVariable))
+                batch.MaterialChangeVariable) ||
+            (string.IsNullOrWhiteSpace(
+                 batch.MaterialChangeTexturePath) &&
+             batch.MaterialChangeAllColor is null))
         {
             return 0.0f;
         }
@@ -2724,6 +2743,71 @@ public sealed class D3D11RenderWindow : Form
                value >= 0.5
             ? 1.0f
             : 0.0f;
+    }
+
+    private float ResolveVehicleMaterialChangeTextureEnabled(
+        RuntimeObjectBatch batch)
+    {
+        if (string.IsNullOrWhiteSpace(
+                batch.MaterialChangeTexturePath))
+        {
+            return 0.0f;
+        }
+
+        return TryGetVehicleTextureView(
+                   batch.MaterialChangeTexturePath,
+                   out _)
+            ? 1.0f
+            : 0.0f;
+    }
+
+    private static Vector4 ResolveVehicleAllColorDiffuse(
+        RuntimeVehicleMaterialColorInfo? color,
+        Vector4 fallback)
+    {
+        if (color is null)
+        {
+            return fallback;
+        }
+
+        return new Vector4(
+            (float)Math.Clamp(
+                color.DiffuseR,
+                0.0,
+                1.0),
+            (float)Math.Clamp(
+                color.DiffuseG,
+                0.0,
+                1.0),
+            (float)Math.Clamp(
+                color.DiffuseB,
+                0.0,
+                1.0),
+            (float)Math.Clamp(
+                color.DiffuseA,
+                0.0,
+                1.0));
+    }
+
+    private static Vector4 ResolveVehicleAllColorEmissive(
+        RuntimeVehicleMaterialColorInfo? color)
+    {
+        if (color is null)
+        {
+            return Vector4.Zero;
+        }
+
+        return new Vector4(
+            (float)Math.Max(
+                color.EmissiveR,
+                0.0),
+            (float)Math.Max(
+                color.EmissiveG,
+                0.0),
+            (float)Math.Max(
+                color.EmissiveB,
+                0.0),
+            0.0f);
     }
 
     private float ResolveVehicleLightMapStrength(
