@@ -2309,11 +2309,11 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 _deviceContext.PSSetShader(
-                    batch.AlphaCutout
+                    materialState.AlphaCutout
                         ? hasTransMap
                             ? _objectAlphaCutoutTransMapPixelShader
                             : _objectAlphaCutoutPixelShader
-                        : batch.AlphaBlend
+                        : materialState.AlphaBlend
                             ? hasTransMap
                                 ? _objectAlphaBlendTransMapPixelShader
                                 : _objectAlphaBlendPixelShader
@@ -2475,6 +2475,10 @@ public sealed class D3D11RenderWindow : Form
                 continue;
             }
 
+            var materialState =
+                ResolveVehicleMaterialState(
+                    batch);
+
             model[0] =
                 new RuntimeModelConstants
                 {
@@ -2494,39 +2498,43 @@ public sealed class D3D11RenderWindow : Form
                 {
                     AlphaScale =
                         ResolveVehicleAlphaScale(
-                            batch),
+                            materialState.AlphaScaleVariable),
                     LightMapStrength =
                         ResolveVehicleLightMapStrength(
-                            batch),
+                            materialState.LightMapTexturePath,
+                            materialState.LightMapVariable),
                     MaterialChangeStrength =
-                        ResolveVehicleMaterialChangeStrength(
-                            batch),
+                        materialState.HasMaterialChange
+                            ? 1.0f
+                            : 0.0f,
                     EnvMapStrength =
                         ResolveVehicleEnvMapStrength(
-                            batch),
+                            materialState.EnvMapTexturePath,
+                            materialState.EnvMapStrength),
                     EnvMapMaskEnabled =
                         ResolveVehicleEnvMapMaskEnabled(
-                            batch),
+                            materialState.EnvMapMaskTexturePath),
                     BumpMapStrength =
                         ResolveVehicleBumpMapStrength(
-                            batch),
+                            materialState.BumpMapTexturePath,
+                            materialState.BumpMapStrength),
                     MaterialChangeTextureEnabled =
                         ResolveVehicleMaterialChangeTextureEnabled(
-                            batch),
+                            materialState.MaterialChangeTexturePath),
                     MaterialChangeColorEnabled =
-                        batch.MaterialChangeAllColor is null
+                        materialState.MaterialChangeAllColor is null
                             ? 0.0f
                             : 1.0f,
                     MaterialChangeDiffuse =
                         ResolveVehicleAllColorDiffuse(
-                            batch.MaterialChangeAllColor,
+                            materialState.MaterialChangeAllColor,
                             Vector4.One),
                     BaseEmissive =
                         ResolveVehicleAllColorEmissive(
                             batch.BaseAllColor),
                     MaterialChangeEmissive =
                         ResolveVehicleAllColorEmissive(
-                            batch.MaterialChangeAllColor)
+                            materialState.MaterialChangeAllColor)
                 };
 
             _vehicleMaterialBuffer.SetData(
@@ -2535,14 +2543,14 @@ public sealed class D3D11RenderWindow : Form
                 MapMode.WriteDiscard);
 
             _deviceContext.OMSetBlendState(
-                batch.AlphaBlend
+                materialState.AlphaBlend
                     ? _vehicleAlphaBlendState
                     : null);
 
             _deviceContext.OMSetDepthStencilState(
-                batch.NoZCheck
+                materialState.NoZCheck
                     ? _vehicleDepthDisabledState
-                    : batch.NoZWrite
+                    : materialState.NoZWrite
                         ? _vehicleDepthReadState
                         : null);
 
@@ -2568,7 +2576,7 @@ public sealed class D3D11RenderWindow : Form
                 6);
 
             if (TryGetVehicleTextureView(
-                    batch.EnvMapTexturePath,
+                    materialState.EnvMapTexturePath,
                     out var envMapView))
             {
                 _deviceContext.PSSetShaderResource(
@@ -2577,7 +2585,7 @@ public sealed class D3D11RenderWindow : Form
             }
 
             if (TryGetVehicleTextureView(
-                    batch.EnvMapMaskTexturePath,
+                    materialState.EnvMapMaskTexturePath,
                     out var envMapMaskView))
             {
                 _deviceContext.PSSetShaderResource(
@@ -2586,7 +2594,7 @@ public sealed class D3D11RenderWindow : Form
             }
 
             if (TryGetVehicleTextureView(
-                    batch.BumpMapTexturePath,
+                    materialState.BumpMapTexturePath,
                     out var bumpMapView))
             {
                 _deviceContext.PSSetShaderResource(
@@ -2598,23 +2606,24 @@ public sealed class D3D11RenderWindow : Form
                 textureView;
 
             var requiresTextTexture =
-                batch.TextTextureIndex.HasValue;
+                materialState.TextTextureIndex.HasValue;
 
             var hasDiffuseTexture =
                 requiresTextTexture
                     ? TryGetVehicleTextTextureView(
-                        batch,
+                        materialState.TextTextureIndex,
                         out textureView)
                     : TryGetVehicleTextureView(
                         ResolveVehicleDiffuseTexturePath(
-                            batch),
+                            batch,
+                            materialState.FreeTextures),
                         out textureView);
 
             if (hasDiffuseTexture)
             {
                 var hasTransMap =
                     TryGetVehicleTextureView(
-                        batch.TransMapTexturePath,
+                        materialState.TransMapTexturePath,
                         out var transMapView);
 
                 if (hasTransMap)
@@ -2625,7 +2634,7 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 if (TryGetVehicleTextureView(
-                        batch.LightMapTexturePath,
+                        materialState.LightMapTexturePath,
                         out var lightMapView))
                 {
                     _deviceContext.PSSetShaderResource(
@@ -2634,7 +2643,7 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 if (TryGetVehicleTextureView(
-                        batch.MaterialChangeTexturePath,
+                        materialState.MaterialChangeTexturePath,
                         out var materialChangeView))
                 {
                     _deviceContext.PSSetShaderResource(
@@ -2660,8 +2669,8 @@ public sealed class D3D11RenderWindow : Form
             else
             {
                 if (requiresTextTexture ||
-                    batch.AlphaCutout ||
-                    batch.AlphaBlend)
+                    materialState.AlphaCutout ||
+                    materialState.AlphaBlend)
                 {
                     continue;
                 }
@@ -2687,95 +2696,233 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(null);
     }
 
-    private float ResolveVehicleBumpMapStrength(
+    private ResolvedVehicleMaterialState ResolveVehicleMaterialState(
         RuntimeObjectBatch batch)
     {
-        if (string.IsNullOrWhiteSpace(
-                batch.BumpMapTexturePath) ||
-            batch.BumpMapStrength <= 0.0 ||
-            !TryGetVehicleTextureView(
+        RuntimeVehicleMaterialChangeItemInfo? selectedItem =
+            null;
+
+        if (batch.MaterialChangeSets is
+            { Count: > 0 } changeSets)
+        {
+            foreach (var changeSet in
+                     changeSets.OrderBy(
+                         static set =>
+                             set.GroupIndex))
+            {
+                var value =
+                    _scriptRuntime?.GetLocal(
+                        changeSet.VariableName) ??
+                    0.0;
+
+                if (!double.IsFinite(
+                        value))
+                {
+                    continue;
+                }
+
+                var rounded =
+                    Math.Round(
+                        value,
+                        MidpointRounding.ToEven);
+
+                if (rounded < 1.0 ||
+                    rounded > int.MaxValue)
+                {
+                    continue;
+                }
+
+                var requestedItem =
+                    (int)rounded;
+
+                var item =
+                    changeSet.Items
+                        .FirstOrDefault(
+                            candidate =>
+                                candidate.ItemIndex ==
+                                requestedItem);
+
+                if (item is not null)
+                {
+                    selectedItem =
+                        item;
+                }
+            }
+        }
+
+        var hasNativeItem =
+            selectedItem is not null;
+
+        var legacyActive =
+            !hasNativeItem &&
+            (batch.MaterialChangeSets is null ||
+             batch.MaterialChangeSets.Count == 0) &&
+            !string.IsNullOrWhiteSpace(
+                batch.MaterialChangeVariable) &&
+            double.IsFinite(
+                _scriptRuntime?.GetLocal(
+                    batch.MaterialChangeVariable) ??
+                0.0) &&
+            (_scriptRuntime?.GetLocal(
+                 batch.MaterialChangeVariable) ??
+             0.0) >= 0.5;
+
+        var alphaMode =
+            selectedItem?.AlphaMode ??
+            (batch.AlphaCutout
+                ? 1
+                : batch.AlphaBlend
+                    ? 2
+                    : 0);
+
+        var transMap =
+            selectedItem is null
+                ? batch.TransMapTexturePath
+                : selectedItem.HasTransMapDirective
+                    ? selectedItem.TransMapTexturePath
+                    : batch.TransMapTexturePath;
+
+        var changeTexture =
+            hasNativeItem
+                ? selectedItem!.MaterialChangeTexturePath
+                : legacyActive
+                    ? batch.MaterialChangeTexturePath
+                    : null;
+
+        var changeColor =
+            hasNativeItem
+                ? selectedItem!.AllColor
+                : legacyActive
+                    ? batch.MaterialChangeAllColor
+                    : null;
+
+        var itemFreeTextures =
+            selectedItem?.FreeTextures;
+
+        return new ResolvedVehicleMaterialState(
+            alphaMode == 1,
+            alphaMode == 2,
+            transMap,
+            batch.NoZWrite ||
+                (selectedItem?.NoZWrite ?? false),
+            batch.NoZCheck ||
+                (selectedItem?.NoZCheck ?? false),
+            selectedItem?.AlphaScaleVariable ??
+                batch.AlphaScaleVariable,
+            selectedItem?.LightMapTexturePath ??
+                batch.LightMapTexturePath,
+            selectedItem?.LightMapVariable ??
+                batch.LightMapVariable,
+            changeTexture,
+            changeColor,
+            selectedItem?.EnvMapTexturePath ??
+                batch.EnvMapTexturePath,
+            selectedItem?.EnvMapTexturePath is not null
+                ? selectedItem.EnvMapStrength
+                : batch.EnvMapStrength,
+            selectedItem?.EnvMapMaskTexturePath ??
+                batch.EnvMapMaskTexturePath,
+            selectedItem?.BumpMapTexturePath ??
                 batch.BumpMapTexturePath,
+            selectedItem?.BumpMapTexturePath is not null
+                ? selectedItem.BumpMapStrength
+                : batch.BumpMapStrength,
+            itemFreeTextures is { Count: > 0 }
+                ? itemFreeTextures
+                : batch.FreeTextures,
+            selectedItem?.TextTextureIndex ??
+                batch.TextTextureIndex,
+            hasNativeItem ||
+                legacyActive);
+    }
+
+    private readonly record struct ResolvedVehicleMaterialState(
+        bool AlphaCutout,
+        bool AlphaBlend,
+        string? TransMapTexturePath,
+        bool NoZWrite,
+        bool NoZCheck,
+        string? AlphaScaleVariable,
+        string? LightMapTexturePath,
+        string? LightMapVariable,
+        string? MaterialChangeTexturePath,
+        RuntimeVehicleMaterialColorInfo? MaterialChangeAllColor,
+        string? EnvMapTexturePath,
+        double EnvMapStrength,
+        string? EnvMapMaskTexturePath,
+        string? BumpMapTexturePath,
+        double BumpMapStrength,
+        IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures,
+        int? TextTextureIndex,
+        bool HasMaterialChange);
+
+    private float ResolveVehicleBumpMapStrength(
+        string? texturePath,
+        double strength)
+    {
+        if (string.IsNullOrWhiteSpace(
+                texturePath) ||
+            strength <= 0.0 ||
+            !TryGetVehicleTextureView(
+                texturePath,
                 out _))
         {
             return 0.0f;
         }
 
         return (float)Math.Clamp(
-            batch.BumpMapStrength,
+            strength,
             0.0,
             10.0);
     }
 
     private float ResolveVehicleEnvMapStrength(
-        RuntimeObjectBatch batch)
+        string? texturePath,
+        double strength)
     {
         if (string.IsNullOrWhiteSpace(
-                batch.EnvMapTexturePath) ||
-            batch.EnvMapStrength <= 0.0 ||
+                texturePath) ||
+            strength <= 0.0 ||
             !TryGetVehicleTextureView(
-                batch.EnvMapTexturePath,
+                texturePath,
                 out _))
         {
             return 0.0f;
         }
 
         return (float)Math.Clamp(
-            batch.EnvMapStrength,
+            strength,
             0.0,
             100.0);
     }
 
     private float ResolveVehicleEnvMapMaskEnabled(
-        RuntimeObjectBatch batch)
+        string? texturePath)
     {
         if (string.IsNullOrWhiteSpace(
-                batch.EnvMapMaskTexturePath))
+                texturePath))
         {
             return 0.0f;
         }
 
         return TryGetVehicleTextureView(
-                   batch.EnvMapMaskTexturePath,
+                   texturePath,
                    out _)
             ? 1.0f
             : 0.0f;
     }
 
-    private float ResolveVehicleMaterialChangeStrength(
-        RuntimeObjectBatch batch)
-    {
-        if (string.IsNullOrWhiteSpace(
-                batch.MaterialChangeVariable) ||
-            (string.IsNullOrWhiteSpace(
-                 batch.MaterialChangeTexturePath) &&
-             batch.MaterialChangeAllColor is null))
-        {
-            return 0.0f;
-        }
-
-        var value =
-            _scriptRuntime?.GetLocal(
-                batch.MaterialChangeVariable) ??
-            0.0;
-
-        return double.IsFinite(
-                   value) &&
-               value >= 0.5
-            ? 1.0f
-            : 0.0f;
-    }
-
     private float ResolveVehicleMaterialChangeTextureEnabled(
-        RuntimeObjectBatch batch)
+        string? texturePath)
     {
         if (string.IsNullOrWhiteSpace(
-                batch.MaterialChangeTexturePath))
+                texturePath))
         {
             return 0.0f;
         }
 
         return TryGetVehicleTextureView(
-                   batch.MaterialChangeTexturePath,
+                   texturePath,
                    out _)
             ? 1.0f
             : 0.0f;
@@ -2831,23 +2978,24 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private float ResolveVehicleLightMapStrength(
-        RuntimeObjectBatch batch)
+        string? texturePath,
+        string? variableName)
     {
         if (string.IsNullOrWhiteSpace(
-                batch.LightMapTexturePath))
+                texturePath))
         {
             return 0.0f;
         }
 
         if (string.IsNullOrWhiteSpace(
-                batch.LightMapVariable))
+                variableName))
         {
             return 1.0f;
         }
 
         var value =
             _scriptRuntime?.GetLocal(
-                batch.LightMapVariable) ??
+                variableName) ??
             0.0;
 
         if (!double.IsFinite(
@@ -2862,17 +3010,17 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private float ResolveVehicleAlphaScale(
-        RuntimeObjectBatch batch)
+        string? variableName)
     {
         if (string.IsNullOrWhiteSpace(
-                batch.AlphaScaleVariable))
+                variableName))
         {
             return 1.0f;
         }
 
         var value =
             _scriptRuntime?.GetLocal(
-                batch.AlphaScaleVariable) ??
+                variableName) ??
             0.0;
 
         if (!double.IsFinite(
@@ -3117,13 +3265,13 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool TryGetVehicleTextTextureView(
-        RuntimeObjectBatch batch,
+        int? textTextureIndex,
         out ID3D11ShaderResourceView? view)
     {
         view =
             null;
 
-        if (!batch.TextTextureIndex.HasValue ||
+        if (!textTextureIndex.HasValue ||
             _vehicleTextTextureRenderer is null ||
             _windowInfo.Vehicle is null)
         {
@@ -3135,7 +3283,7 @@ public sealed class D3D11RenderWindow : Form
                 .FirstOrDefault(
                     texture =>
                         texture.Index ==
-                        batch.TextTextureIndex.Value);
+                        textTextureIndex.Value);
 
         if (definition is null)
         {
@@ -3172,10 +3320,9 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private string? ResolveVehicleDiffuseTexturePath(
-        RuntimeObjectBatch batch)
+        RuntimeObjectBatch batch,
+        IReadOnlyList<RuntimeVehicleFreeTextureInfo>? bindings)
     {
-        var bindings =
-            batch.FreeTextures;
 
         if (bindings is null ||
             bindings.Count == 0 ||
