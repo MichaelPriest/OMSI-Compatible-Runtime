@@ -605,6 +605,116 @@ internal sealed class RuntimeGpuTextureLoader
         return true;
     }
 
+    public bool TryReadRgba(
+        string path,
+        out byte[] pixels,
+        out int width,
+        out int height)
+    {
+        pixels =
+            Array.Empty<byte>();
+        width =
+            0;
+        height =
+            0;
+
+        if (string.IsNullOrWhiteSpace(
+                path) ||
+            !File.Exists(
+                path))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var factory =
+                new IWICImagingFactory2();
+
+            using var decoder =
+                factory
+                    .CreateDecoderFromFileName(
+                        path);
+
+            using var frame =
+                decoder.GetFrame(0);
+
+            using var converter =
+                factory.CreateFormatConverter();
+
+            converter.Initialize(
+                frame,
+                WICPixelFormat.Format32bppRGBA);
+
+            var size =
+                converter.Size;
+
+            if (size.Width <= 0 ||
+                size.Height <= 0 ||
+                size.Width > 16_384 ||
+                size.Height > 16_384)
+            {
+                return false;
+            }
+
+            var stride =
+                checked(
+                    (uint)size.Width *
+                    4u);
+
+            pixels =
+                new byte[
+                    checked(
+                        size.Width *
+                        size.Height *
+                        4)];
+
+            converter.CopyPixels(
+                stride,
+                pixels);
+
+            width =
+                size.Width;
+            height =
+                size.Height;
+
+            return true;
+        }
+        catch (
+            Exception exception)
+            when (
+                exception is
+                    IOException or
+                    UnauthorizedAccessException or
+                    ArgumentException or
+                    NotSupportedException or
+                    OverflowException ||
+                exception.GetType()
+                    .Namespace?
+                    .StartsWith(
+                        "SharpGen",
+                        StringComparison.Ordinal) ==
+                    true)
+        {
+            pixels =
+                Array.Empty<byte>();
+            width =
+                0;
+            height =
+                0;
+            return false;
+        }
+    }
+
+    public RuntimeGpuTexture CreateFromRgba(
+        byte[] pixels,
+        int width,
+        int height) =>
+        CreateRgbaTexture(
+            pixels,
+            width,
+            height);
+
     private RuntimeGpuTexture CreateRgbaTexture(
         byte[] pixels,
         int width,
