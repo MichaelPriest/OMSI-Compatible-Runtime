@@ -16,10 +16,15 @@ cbuffer RuntimeMaterial : register(b2)
     float LightMapStrength;
     float MaterialChangeStrength;
     float EnvMapStrength;
+
     float EnvMapMaskEnabled;
     float BumpMapStrength;
-    float MaterialPadding0;
-    float MaterialPadding1;
+    float MaterialChangeTextureEnabled;
+    float MaterialChangeColorEnabled;
+
+    float4 MaterialChangeDiffuse;
+    float4 BaseEmissive;
+    float4 MaterialChangeEmissive;
 };
 
 Texture2D DiffuseTexture : register(t0);
@@ -264,14 +269,52 @@ float4 ApplyEnvMap(
     return color;
 }
 
+float4 ResolveMaterialColor(
+    float4 baseColor)
+{
+    if (MaterialChangeColorEnabled <= 0.0f ||
+        MaterialChangeStrength <= 0.0f)
+    {
+        return baseColor;
+    }
+
+    return lerp(
+        baseColor,
+        MaterialChangeDiffuse,
+        saturate(
+            MaterialChangeStrength));
+}
+
+float3 ResolveMaterialEmissive()
+{
+    if (MaterialChangeColorEnabled <= 0.0f ||
+        MaterialChangeStrength <= 0.0f)
+    {
+        return BaseEmissive.rgb;
+    }
+
+    return lerp(
+        BaseEmissive.rgb,
+        MaterialChangeEmissive.rgb,
+        saturate(
+            MaterialChangeStrength));
+}
+
 float4 SampleDiffuse(
     VertexOutput input)
 {
+    float4 materialColor =
+        ResolveMaterialColor(
+            input.Color);
+
     float4 sampled =
         DiffuseTexture.Sample(
             DiffuseSampler,
             input.Uv) *
-        input.Color;
+        materialColor;
+
+    sampled.rgb +=
+        ResolveMaterialEmissive();
 
     if (LightMapStrength > 0.0f)
     {
@@ -282,7 +325,8 @@ float4 SampleDiffuse(
             LightMapStrength;
     }
 
-    if (MaterialChangeStrength > 0.0f)
+    if (MaterialChangeTextureEnabled > 0.0f &&
+        MaterialChangeStrength > 0.0f)
     {
         sampled.rgb +=
             MaterialChangeTexture.Sample(
@@ -327,7 +371,11 @@ float4 PSColor(
     VertexOutput input) : SV_TARGET
 {
     float4 color =
-        input.Color;
+        ResolveMaterialColor(
+            input.Color);
+
+    color.rgb +=
+        ResolveMaterialEmissive();
 
     if (LightMapStrength > 0.0f)
     {
@@ -338,7 +386,8 @@ float4 PSColor(
             LightMapStrength;
     }
 
-    if (MaterialChangeStrength > 0.0f)
+    if (MaterialChangeTextureEnabled > 0.0f &&
+        MaterialChangeStrength > 0.0f)
     {
         color.rgb +=
             MaterialChangeTexture.Sample(
