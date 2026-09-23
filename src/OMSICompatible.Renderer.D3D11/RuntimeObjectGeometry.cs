@@ -31,7 +31,8 @@ internal sealed record RuntimeObjectBatch(
     double BumpMapStrength = 0.0,
     IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
     int? TextTextureIndex = null,
-    IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null);
+    IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
+    bool HasTransMapDirective = false);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -87,7 +88,8 @@ internal static class RuntimeObjectGeometryBuilder
         double BumpMapStrength = 0.0,
         IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
         int? TextTextureIndex = null,
-    IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null);
+        IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
+        bool HasTransMapDirective = false);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -338,7 +340,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.BumpMapStrength,
                     key.FreeTextures,
                     key.TextTextureIndex,
-                    key.MaterialChangeSets));
+                    key.MaterialChangeSets,
+                    key.HasTransMapDirective));
         }
 
         return new RuntimeObjectGeometry(
@@ -437,7 +440,8 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.BumpMapStrength ?? 0.0,
                     material?.FreeTextures,
                     material?.TextTextureIndex,
-                    material?.MaterialChangeSets);
+                    material?.MaterialChangeSets,
+                    material?.HasTransMapDirective ?? false);
 
             var output =
                 GetBatch(
