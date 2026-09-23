@@ -530,6 +530,46 @@ internal sealed class RuntimeApplicationContext :
             lines.AddRange(
                 failedExamples);
 
+            lines.Add("");
+            lines.Add("meshMaterials:");
+
+            foreach (var mesh in
+                     vehicle.Meshes)
+            {
+                var visibility =
+                    mesh.VisibilityConditions.Count == 0
+                        ? "<none>"
+                        : string.Join(
+                            ",",
+                            mesh.VisibilityConditions.Select(
+                                static condition =>
+                                    $"{condition.VariableName}={condition.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}"));
+
+                lines.Add(
+                    $"mesh={mesh.DeclaredPath} | renderable={mesh.IsRenderable} | viewpoint={mesh.ViewpointFlag} | lod={(mesh.LodThreshold.HasValue ? mesh.LodThreshold.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) : "<none>")} | materials={mesh.Materials.Count} | visible={visibility} | animations={mesh.Animations.Count} | lights={mesh.LightEffects.Count}");
+
+                for (var materialIndex = 0;
+                     materialIndex < mesh.Materials.Count;
+                     materialIndex++)
+                {
+                    var material =
+                        mesh.Materials[materialIndex];
+
+                    var changeSets =
+                        material.MaterialChangeSets is
+                            { Count: > 0 }
+                            ? string.Join(
+                                ";",
+                                material.MaterialChangeSets.Select(
+                                    static set =>
+                                        $"{set.VariableName}[{string.Join(",", set.Items.Select(static item => item.ItemIndex))}]"))
+                            : "<none>";
+
+                    lines.Add(
+                        $"  mat#{materialIndex} tex={Path.GetFileName(material.TexturePath) ?? "<none>"} | alpha={material.AlphaMode} | transmapDirective={material.HasTransMapDirective} | transmap={Path.GetFileName(material.TransMapTexturePath) ?? "<none>"} | noZwrite={material.NoZWrite} | noZcheck={material.NoZCheck} | alphaScale={material.AlphaScaleVariable ?? "<none>"} | lightmap={Path.GetFileName(material.LightMapTexturePath) ?? "<none>"} | matlChange={material.MaterialChangeVariable ?? "<none>"} | changeSets={changeSets}");
+                }
+            }
+
             File.WriteAllLines(
                 logPath,
                 lines);
