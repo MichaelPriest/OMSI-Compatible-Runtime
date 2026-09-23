@@ -237,7 +237,9 @@ try
         Path.Combine(
             vehicleScriptDirectory,
             "strings.txt"),
-        "IBIS_line",
+        Lines(
+            "IBIS_line",
+            "Matrix_SchildFrnt"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -263,6 +265,15 @@ try
             vehicleModelDirectory,
             "model.cfg"),
         Lines(
+            "[texttexture]",
+            "IBIS_line",
+            "IBIS-2_5x7",
+            "256",
+            "64",
+            "0",
+            "50",
+            "50",
+            "50",
             "[LOD]",
             "0.1",
             "[mesh]",
@@ -279,6 +290,11 @@ try
             "2",
             "[alphascale]",
             "mesh_alpha",
+            "[useTextTexture]",
+            "0",
+            "[matl_freetex]",
+            "regen.tga",
+            "Matrix_SchildFrnt",
             "[matl_envmap]",
             "envmap.bmp",
             "0.5",
@@ -502,7 +518,19 @@ try
         Math.Abs(
             vehicleAsset.Meshes[0].Animations[0].MaxSpeed!.Value -
             360.0) < 0.0001 &&
+        vehicleAsset.TextTextures.Count == 1 &&
+        vehicleAsset.TextTextures[0].Index == 0 &&
+        vehicleAsset.TextTextures[0].StringVariable ==
+            "IBIS_line" &&
+        vehicleAsset.TextTextures[0].FontName ==
+            "IBIS-2_5x7" &&
+        vehicleAsset.TextTextures[0].Width == 256 &&
+        vehicleAsset.TextTextures[0].Height == 64 &&
         vehicleAsset.Meshes[0].Materials.Count == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].TextTextureIndex == 0 &&
+        vehicleAsset.Meshes[0].Materials[0].FreeTextures.Count == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].FreeTextures[0].VariableName ==
+            "Matrix_SchildFrnt" &&
         vehicleAsset.Meshes[0].Materials[0].AlphaScaleVariable ==
             "mesh_alpha" &&
         vehicleAsset.Meshes[0].Materials[0].LightMapVariable ==
