@@ -126,8 +126,9 @@ public static class OmsiVehicleAssetLoader
                                 static item =>
                                     !string.IsNullOrWhiteSpace(
                                         item.MaterialChangeVariable) &&
-                                    !string.IsNullOrWhiteSpace(
-                                        item.MaterialChangeMapSource));
+                                    (!string.IsNullOrWhiteSpace(
+                                         item.MaterialChangeMapSource) ||
+                                     item.AllColor is not null));
 
                     string? texturePath = null;
                     if (!string.IsNullOrWhiteSpace(material.TextureName))
@@ -290,6 +291,10 @@ public static class OmsiVehicleAssetLoader
                         materialChangePath,
                         materialChangeOverride?
                             .MaterialChangeVariable,
+                        materialOverride?
+                            .AllColor,
+                        materialChangeOverride?
+                            .AllColor,
                         envMapPath,
                         materialOverride?.EnvMapStrength ?? 0.0,
                         envMapMaskPath,
