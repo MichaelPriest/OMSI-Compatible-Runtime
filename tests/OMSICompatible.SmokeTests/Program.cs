@@ -790,6 +790,27 @@ try
         "Synthetic OMSI vehicle geometry counts are incorrect.");
 
     Require(
+        Math.Abs(
+            vehicleAsset.Meshes[0].Positions[0] -
+            -2.25f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Positions[1] -
+            -2.5f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Positions[2] -
+            -3.75f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Positions[3] -
+            -0.25f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Positions[4] -
+            -2.5f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Positions[5] -
+            -3.75f) < 0.0001,
+        "OMSI O3D 0x79 inverse source transform was not applied to mesh vertices.");
+
+    Require(
         bus.ScriptManifest.ScriptFiles.Count == 1 &&
         bus.ScriptManifest.VariableLists.Count == 2 &&
         bus.ScriptManifest.StringVariableLists.Count == 1 &&
