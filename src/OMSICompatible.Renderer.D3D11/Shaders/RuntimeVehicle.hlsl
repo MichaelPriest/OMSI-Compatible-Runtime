@@ -200,6 +200,15 @@ float3 ResolveSurfaceNormal(
 float ResolveEnvMapMask(
     VertexOutput input)
 {
+    if (EnvMapMaskEnabled >= 1.5f)
+    {
+        // Empty OMSI [matl_transmap]: diffuse alpha controls reflection.
+        return saturate(
+            DiffuseTexture.Sample(
+                DiffuseSampler,
+                input.Uv).a);
+    }
+
     if (EnvMapMaskEnabled <= 0.0f)
     {
         return 1.0f;
@@ -256,7 +265,6 @@ float4 ApplyEnvMap(
 
     float strength =
         saturate(
-            color.a *
             EnvMapStrength *
             mask);
 
@@ -349,22 +357,10 @@ float4 SampleDiffuse(
 float ResolveTransMapAlpha(
     VertexOutput input)
 {
-    float4 trans =
+    return saturate(
         TransMapTexture.Sample(
             DiffuseSampler,
-            input.Uv);
-
-    float luminance =
-        dot(
-            trans.rgb,
-            float3(
-                0.333333f,
-                0.333333f,
-                0.333333f));
-
-    return min(
-        trans.a,
-        luminance);
+            input.Uv).a);
 }
 
 float4 PSColor(
