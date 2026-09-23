@@ -4847,6 +4847,14 @@ public sealed class D3D11RenderWindow : Form
             "GetTime",
             absoluteSeconds);
 
+        // The current bootstrap renderer is daylight-only. OMSI vehicle
+        // materials use Envir_Brightness as an alpha scale for exterior
+        // glass/reflection layers; leaving it at the VM default of zero
+        // makes those layers disappear completely.
+        _scriptRuntime.SetLocal(
+            "Envir_Brightness",
+            1.0);
+
         _scriptRuntime.SetLocal(
             "Throttle",
             _vehicle.AcceleratorLevel);
