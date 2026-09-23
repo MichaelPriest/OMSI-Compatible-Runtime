@@ -2,6 +2,32 @@ using System.Numerics;
 
 namespace OmsiCompat.Vehicles;
 
+public sealed record OmsiVehicleMaterialChangeItem(
+    int ItemIndex,
+    int? AlphaMode,
+    string? TransMapTexturePath,
+    bool HasTransMapDirective,
+    bool NoZWrite,
+    bool NoZCheck,
+    string? AlphaScaleVariable,
+    string? LightMapTexturePath,
+    string? LightMapVariable,
+    string? MaterialChangeTexturePath,
+    OmsiVehicleMaterialColor? AllColor,
+    string? EnvMapTexturePath,
+    double EnvMapStrength,
+    string? EnvMapMaskTexturePath,
+    string? BumpMapTexturePath,
+    double BumpMapStrength,
+    IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
+    int? TextTextureIndex,
+    IReadOnlyList<OmsiVehicleMaterialChangeSet>? MaterialChangeSets = null);
+
+public sealed record OmsiVehicleMaterialChangeSet(
+    string VariableName,
+    int GroupIndex,
+    IReadOnlyList<OmsiVehicleMaterialChangeItem> Items);
+
 public sealed record OmsiVehicleMaterial(
     float DiffuseR,
     float DiffuseG,
