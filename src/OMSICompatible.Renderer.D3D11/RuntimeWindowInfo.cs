@@ -76,6 +76,22 @@ public sealed record RuntimeObjectMeshTransformInfo(
     double ScaleY,
     double ScaleZ);
 
+public sealed record RuntimeVehicleMaterialColorInfo(
+    double DiffuseR,
+    double DiffuseG,
+    double DiffuseB,
+    double DiffuseA,
+    double AmbientR,
+    double AmbientG,
+    double AmbientB,
+    double SpecularR,
+    double SpecularG,
+    double SpecularB,
+    double EmissiveR,
+    double EmissiveG,
+    double EmissiveB,
+    double Power);
+
 public sealed record RuntimeVehicleFreeTextureInfo(
     string SourceTextureName,
     string VariableName);
@@ -108,6 +124,8 @@ public sealed record RuntimeO3dMaterialInfo(
     string? LightMapVariable = null,
     string? MaterialChangeTexturePath = null,
     string? MaterialChangeVariable = null,
+    RuntimeVehicleMaterialColorInfo? BaseAllColor = null,
+    RuntimeVehicleMaterialColorInfo? MaterialChangeAllColor = null,
     string? EnvMapTexturePath = null,
     double EnvMapStrength = 0.0,
     string? EnvMapMaskTexturePath = null,
