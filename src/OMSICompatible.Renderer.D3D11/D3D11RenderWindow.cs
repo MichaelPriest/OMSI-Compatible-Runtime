@@ -3883,6 +3883,9 @@ public sealed class D3D11RenderWindow : Form
 
         UpdateVehicleAnimationStates(
             deltaSeconds);
+
+        UpdateVehicleLightStates(
+            deltaSeconds);
     }
 
     private void UpdateVehicleAnimationStates(
@@ -3897,18 +3900,23 @@ public sealed class D3D11RenderWindow : Form
             new HashSet<RuntimeVehicleAnimationInfo>(
                 ReferenceEqualityComparer.Instance);
 
-        foreach (var batch in
-                 _vehicleExteriorGeometry.Batches
-                     .Concat(
-                         _vehicleInteriorGeometry.Batches))
+        var meshes =
+            _windowInfo.Vehicle?.Meshes;
+
+        if (meshes is null)
         {
-            if (batch.Animations is null)
+            return;
+        }
+
+        foreach (var mesh in meshes)
+        {
+            if (mesh.Animations is null)
             {
                 continue;
             }
 
             foreach (var animation in
-                     batch.Animations)
+                     mesh.Animations)
             {
                 if (!seen.Add(
                         animation))
@@ -4024,6 +4032,125 @@ public sealed class D3D11RenderWindow : Form
                         : target;
             }
         }
+    }
+
+    private void UpdateVehicleLightStates(
+        double deltaSeconds)
+    {
+        if (deltaSeconds <= 0.0 ||
+            _windowInfo.Vehicle is null)
+        {
+            return;
+        }
+
+        foreach (var mesh in
+                 _windowInfo.Vehicle.Meshes)
+        {
+            if (mesh.LightEffects is null)
+            {
+                continue;
+            }
+
+            foreach (var light in
+                     mesh.LightEffects)
+            {
+                var target =
+                    ResolveVehicleLightTarget(
+                        light);
+
+                if (!_vehicleLightValues.TryGetValue(
+                        light,
+                        out var current))
+                {
+                    _vehicleLightValues[
+                        light] =
+                        target;
+                    continue;
+                }
+
+                if (light.TimeConstantSeconds <=
+                    0.000001)
+                {
+                    _vehicleLightValues[
+                        light] =
+                        target;
+                    continue;
+                }
+
+                var response =
+                    1.0 -
+                    Math.Exp(
+                        -deltaSeconds /
+                        light.TimeConstantSeconds);
+
+                var next =
+                    current +
+                    (target - current) *
+                    Math.Clamp(
+                        response,
+                        0.0,
+                        1.0);
+
+                _vehicleLightValues[
+                    light] =
+                    double.IsFinite(
+                        next)
+                        ? next
+                        : target;
+            }
+        }
+    }
+
+    private double ResolveVehicleLightTarget(
+        RuntimeVehicleLightEffectInfo light)
+    {
+        double source;
+
+        if (!double.TryParse(
+                light.BrightnessVariable,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out source))
+        {
+            source =
+                _scriptRuntime?.GetLocal(
+                    light.BrightnessVariable) ??
+                0.0;
+        }
+
+        if (!double.IsFinite(
+                source))
+        {
+            source = 0.0;
+        }
+
+        var value =
+            source *
+            light.BrightnessFactor;
+
+        return double.IsFinite(
+                   value)
+            ? Math.Clamp(
+                value,
+                0.0,
+                16.0)
+            : 0.0;
+    }
+
+    private double ResolveVehicleLightValue(
+        RuntimeVehicleLightEffectInfo light)
+    {
+        if (_vehicleLightValues.TryGetValue(
+                light,
+                out var value) &&
+            double.IsFinite(
+                value))
+        {
+            return value;
+        }
+
+        return ResolveVehicleLightTarget(
+            light);
     }
 
     private double ResolveVehicleAnimationValue(
