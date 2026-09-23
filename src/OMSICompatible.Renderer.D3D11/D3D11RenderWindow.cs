@@ -1986,6 +1986,7 @@ public sealed class D3D11RenderWindow : Form
             DrawSplines();
             DrawObjects();
             DrawVehicle();
+            DrawVehicleLights();
         }
         else
         {
@@ -2407,6 +2408,21 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(null);
     }
 
+    private bool UseExteriorVehicleView() =>
+        !_driveMode ||
+        _vehicleViewMode ==
+            RuntimeVehicleViewMode.Exterior ||
+        (_vehicleViewMode ==
+             RuntimeVehicleViewMode.Driver &&
+         _windowInfo.Vehicle?.DriverCameras.Count is
+             not > 0) ||
+        (_vehicleViewMode ==
+             RuntimeVehicleViewMode.Passenger &&
+         _windowInfo.Vehicle?.PassengerCameras.Count is
+             not > 0 &&
+         _windowInfo.Vehicle?.DriverCameras.Count is
+             not > 0);
+
     private void DrawVehicle()
     {
         // Geometry selection must follow the camera that is actually in use.
@@ -2414,19 +2430,7 @@ public sealed class D3D11RenderWindow : Form
         // falls back to the chase camera; drawing the interior geometry in
         // that case makes the vehicle appear to be missing.
         var useExteriorGeometry =
-            !_driveMode ||
-            _vehicleViewMode ==
-                RuntimeVehicleViewMode.Exterior ||
-            (_vehicleViewMode ==
-                 RuntimeVehicleViewMode.Driver &&
-             _windowInfo.Vehicle?.DriverCameras.Count is
-                 not > 0) ||
-            (_vehicleViewMode ==
-                 RuntimeVehicleViewMode.Passenger &&
-             _windowInfo.Vehicle?.PassengerCameras.Count is
-                 not > 0 &&
-             _windowInfo.Vehicle?.DriverCameras.Count is
-                 not > 0);
+            UseExteriorVehicleView();
 
         var geometry =
             useExteriorGeometry
