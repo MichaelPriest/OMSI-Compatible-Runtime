@@ -843,28 +843,21 @@ public static class OmsiVehicleModelReader
                 var values =
                     Values(section).ToArray();
 
-                if (!string.IsNullOrWhiteSpace(
-                        material.MaterialChangeVariable))
-                {
-                    material.MaterialChangeMapSource =
-                        values.FirstOrDefault()?
-                            .Trim()
-                            .Trim('"');
-                }
-                else
-                {
-                    material.LightMapSource =
-                        values.FirstOrDefault()?
-                            .Trim()
-                            .Trim('"');
+                // Native OMSI keeps lightmaps separate from nightmaps even
+                // inside a matl_change/matl_item state. A lightmap remains
+                // an indirect additive lighting layer, optionally controlled
+                // by its own variable.
+                material.LightMapSource =
+                    values.FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
 
-                    material.LightMapVariable =
-                        values.Length >= 2
-                            ? values[1]
-                                .Trim()
-                                .Trim('"')
-                            : null;
-                }
+                material.LightMapVariable =
+                    values.Length >= 2
+                        ? values[1]
+                            .Trim()
+                            .Trim('"')
+                        : null;
 
                 continue;
             }
