@@ -836,7 +836,8 @@ internal sealed class RuntimeApplicationContext :
                                                                                     .ToArray(),
                                                                                 item.TextTextureIndex))
                                                                     .ToArray()))
-                                                    .ToArray()))
+                                                    .ToArray(),
+                                                material.HasTransMapDirective))
                                     .ToArray(),
                                 mesh.ViewpointFlag,
                                 mesh.LodThreshold,
