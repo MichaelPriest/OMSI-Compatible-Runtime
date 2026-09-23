@@ -614,6 +614,11 @@ public static class WorldLoader
                                             texturePath = resolvedTexture;
                                         }
 
+                                        var textureOccurrence =
+                                            GetTextureOccurrenceIndex(
+                                                geometry.Materials,
+                                                materialIndex);
+
                                         var materialOverride =
                                             definition.MaterialOverrides
                                                 .Where(
@@ -621,15 +626,23 @@ public static class WorldLoader
                                                         item.MeshOrdinal ==
                                                             meshOrdinal &&
                                                         item.MaterialIndex ==
-                                                            materialIndex)
-                                                .OrderByDescending(
+                                                            textureOccurrence &&
+                                                        MaterialTextureMatches(
+                                                            item.TextureName,
+                                                            material.TextureName))
+                                                .FirstOrDefault();
+
+                                        materialOverride ??=
+                                            definition.MaterialOverrides
+                                                .Where(
                                                     item =>
-                                                        string.Equals(
-                                                            Path.GetFileName(
-                                                                item.TextureName),
-                                                            Path.GetFileName(
-                                                                material.TextureName),
-                                                            StringComparison.OrdinalIgnoreCase))
+                                                        item.MeshOrdinal ==
+                                                            meshOrdinal &&
+                                                        item.MaterialIndex ==
+                                                            materialIndex &&
+                                                        MaterialTextureMatches(
+                                                            item.TextureName,
+                                                            material.TextureName))
                                                 .FirstOrDefault();
 
                                         string? transMapTexturePath =
@@ -716,6 +729,52 @@ public static class WorldLoader
 
         return result;
     }
+
+    private static int GetTextureOccurrenceIndex(
+        IReadOnlyList<OmsiO3dMaterial> materials,
+        int materialIndex)
+    {
+        if (materialIndex <= 0 ||
+            materialIndex >= materials.Count)
+        {
+            return 0;
+        }
+
+        var textureName =
+            Path.GetFileName(
+                materials[materialIndex]
+                    .TextureName);
+
+        var occurrence =
+            0;
+
+        for (var index = 0;
+             index < materialIndex;
+             index++)
+        {
+            if (string.Equals(
+                    Path.GetFileName(
+                        materials[index]
+                            .TextureName),
+                    textureName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                occurrence++;
+            }
+        }
+
+        return occurrence;
+    }
+
+    private static bool MaterialTextureMatches(
+        string? declaredTexture,
+        string? o3dTexture) =>
+        string.Equals(
+            Path.GetFileName(
+                declaredTexture),
+            Path.GetFileName(
+                o3dTexture),
+            StringComparison.OrdinalIgnoreCase);
 
     private static WorldSceneryMeshAsset CreateMissingMesh(
         string declaredPath,
