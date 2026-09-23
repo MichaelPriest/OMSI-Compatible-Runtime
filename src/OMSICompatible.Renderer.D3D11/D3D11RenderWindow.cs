@@ -2513,7 +2513,8 @@ public sealed class D3D11RenderWindow : Form
                             materialState.EnvMapStrength),
                     EnvMapMaskEnabled =
                         ResolveVehicleEnvMapMaskEnabled(
-                            materialState.EnvMapMaskTexturePath),
+                            materialState.EnvMapMaskTexturePath,
+                            materialState.UseDiffuseAlphaAsEnvMapMask),
                     BumpMapStrength =
                         ResolveVehicleBumpMapStrength(
                             materialState.BumpMapTexturePath,
@@ -2652,11 +2653,11 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 _deviceContext.PSSetShader(
-                    batch.AlphaCutout
+                    materialState.AlphaCutout
                         ? hasTransMap
                             ? _vehicleAlphaCutoutTransMapPixelShader
                             : _vehicleAlphaCutoutPixelShader
-                        : batch.AlphaBlend
+                        : materialState.AlphaBlend
                             ? hasTransMap
                                 ? _vehicleAlphaBlendTransMapPixelShader
                                 : _vehicleAlphaBlendPixelShader
@@ -2775,12 +2776,31 @@ public sealed class D3D11RenderWindow : Form
                     ? 2
                     : 0);
 
+        var hasTransMapDirective =
+            selectedItem is null
+                ? batch.HasTransMapDirective
+                : selectedItem.HasTransMapDirective ||
+                  batch.HasTransMapDirective;
+
         var transMap =
             selectedItem is null
                 ? batch.TransMapTexturePath
                 : selectedItem.HasTransMapDirective
                     ? selectedItem.TransMapTexturePath
                     : batch.TransMapTexturePath;
+
+        var useDiffuseAlphaAsEnvMapMask =
+            hasTransMapDirective &&
+            string.IsNullOrWhiteSpace(
+                transMap);
+
+        if (useDiffuseAlphaAsEnvMapMask)
+        {
+            // Native OMSI uses a blank [matl_transmap] to repurpose the
+            // diffuse alpha channel as reflection/envmap strength. It is
+            // therefore not a transparency mode.
+            alphaMode = 0;
+        }
 
         var changeTexture =
             hasNativeItem
@@ -2833,7 +2853,8 @@ public sealed class D3D11RenderWindow : Form
             selectedItem?.TextTextureIndex ??
                 batch.TextTextureIndex,
             hasNativeItem ||
-                legacyActive);
+                legacyActive,
+            useDiffuseAlphaAsEnvMapMask);
     }
 
     private readonly record struct ResolvedVehicleMaterialState(
@@ -2854,7 +2875,8 @@ public sealed class D3D11RenderWindow : Form
         double BumpMapStrength,
         IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures,
         int? TextTextureIndex,
-        bool HasMaterialChange);
+        bool HasMaterialChange,
+        bool UseDiffuseAlphaAsEnvMapMask);
 
     private float ResolveVehicleBumpMapStrength(
         string? texturePath,
@@ -2897,8 +2919,16 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private float ResolveVehicleEnvMapMaskEnabled(
-        string? texturePath)
+        string? texturePath,
+        bool useDiffuseAlpha)
     {
+        if (useDiffuseAlpha)
+        {
+            // 2 = use the diffuse texture alpha channel as the reflection
+            // mask, matching an empty OMSI [matl_transmap].
+            return 2.0f;
+        }
+
         if (string.IsNullOrWhiteSpace(
                 texturePath))
         {
