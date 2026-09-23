@@ -76,6 +76,23 @@ public sealed record RuntimeObjectMeshTransformInfo(
     double ScaleY,
     double ScaleZ);
 
+public sealed record RuntimeVehicleFreeTextureInfo(
+    string SourceTextureName,
+    string VariableName);
+
+public sealed record RuntimeVehicleTextTextureInfo(
+    int Index,
+    string StringVariable,
+    string FontName,
+    int Width,
+    int Height,
+    bool FullColor,
+    byte Red,
+    byte Green,
+    byte Blue,
+    int? Alignment,
+    bool? GridAligned);
+
 public sealed record RuntimeO3dMaterialInfo(
     float DiffuseR,
     float DiffuseG,
@@ -95,7 +112,9 @@ public sealed record RuntimeO3dMaterialInfo(
     double EnvMapStrength = 0.0,
     string? EnvMapMaskTexturePath = null,
     string? BumpMapTexturePath = null,
-    double BumpMapStrength = 0.0);
+    double BumpMapStrength = 0.0,
+    IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
+    int? TextTextureIndex = null);
 
 public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
@@ -221,7 +240,8 @@ public sealed record RuntimeVehicleInfo(
     IReadOnlyList<RuntimeReflectionCameraInfo> ReflectionCameras,
     RuntimeVehiclePhysicsInfo Physics,
     RuntimeDriverPositionInfo? DriverPosition,
-    int ProtectedMeshCount);
+    int ProtectedMeshCount,
+    IReadOnlyList<RuntimeVehicleTextTextureInfo> TextTextures);
 
 public sealed record RuntimeWindowInfo(
     string WorldName,
