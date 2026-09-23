@@ -12,16 +12,42 @@ internal static class RuntimeVehicleGeometry
         RuntimeVehicleInfo? vehicle,
         int viewpointBit)
     {
-        if (vehicle is null ||
-            vehicle.Meshes.Count == 0)
+        if (vehicle is null)
         {
-            return viewpointBit == 1
-                ? BuildBusProxy()
-                : RuntimeObjectGeometry.Empty;
+            return RuntimeObjectGeometry.Empty;
         }
 
-        var detailedLod =
+        var renderableMeshes =
             vehicle.Meshes
+                .Where(
+                    static mesh =>
+                        string.IsNullOrWhiteSpace(
+                            mesh.ErrorCode) &&
+                        mesh.Positions.Length >= 3 &&
+                        mesh.Indices.Length >= 3)
+                .ToArray();
+
+        if (renderableMeshes.Length == 0)
+        {
+            return RuntimeObjectGeometry.Empty;
+        }
+
+        var viewpointMeshes =
+            renderableMeshes
+                .Where(
+                    mesh =>
+                        IsVisibleFromViewpoint(
+                            mesh.ViewpointFlag,
+                            viewpointBit))
+                .ToArray();
+
+        var selectionSource =
+            viewpointMeshes.Length > 0
+                ? viewpointMeshes
+                : renderableMeshes;
+
+        var detailedLod =
+            selectionSource
                 .Where(
                     static mesh =>
                         mesh.LodThreshold.HasValue)
@@ -33,12 +59,9 @@ internal static class RuntimeVehicleGeometry
                 .Max();
 
         var selectedMeshes =
-            vehicle.Meshes
+            selectionSource
                 .Where(
                     mesh =>
-                        IsVisibleFromViewpoint(
-                            mesh.ViewpointFlag,
-                            viewpointBit) &&
                         IsSelectedPlayerLod(
                             mesh.LodThreshold,
                             detailedLod))
@@ -46,9 +69,8 @@ internal static class RuntimeVehicleGeometry
 
         if (selectedMeshes.Length == 0)
         {
-            return viewpointBit == 1
-                ? BuildBusProxy()
-                : RuntimeObjectGeometry.Empty;
+            selectedMeshes =
+                selectionSource;
         }
 
         var asset =
@@ -90,9 +112,7 @@ internal static class RuntimeVehicleGeometry
             return geometry;
         }
 
-        return viewpointBit == 1
-            ? BuildBusProxy()
-            : RuntimeObjectGeometry.Empty;
+        return RuntimeObjectGeometry.Empty;
     }
 
     private static bool IsSelectedPlayerLod(
@@ -123,205 +143,4 @@ internal static class RuntimeVehicleGeometry
                (viewpointFlag & requestedBit) != 0;
     }
 
-    private static RuntimeObjectGeometry
-        BuildBusProxy()
-    {
-        const float halfWidth = 1.25f;
-        const float halfLength = 5.25f;
-        const float bottom = 0.0f;
-        const float top = 3.15f;
-
-        var p000 =
-            new Vector3(
-                -halfWidth,
-                bottom,
-                -halfLength);
-
-        var p100 =
-            new Vector3(
-                halfWidth,
-                bottom,
-                -halfLength);
-
-        var p010 =
-            new Vector3(
-                -halfWidth,
-                top,
-                -halfLength);
-
-        var p110 =
-            new Vector3(
-                halfWidth,
-                top,
-                -halfLength);
-
-        var p001 =
-            new Vector3(
-                -halfWidth,
-                bottom,
-                halfLength);
-
-        var p101 =
-            new Vector3(
-                halfWidth,
-                bottom,
-                halfLength);
-
-        var p011 =
-            new Vector3(
-                -halfWidth,
-                top,
-                halfLength);
-
-        var p111 =
-            new Vector3(
-                halfWidth,
-                top,
-                halfLength);
-
-        var body =
-            new Color4(
-                0.78f,
-                0.22f,
-                0.08f,
-                1.0f);
-
-        var roof =
-            new Color4(
-                0.82f,
-                0.82f,
-                0.84f,
-                1.0f);
-
-        var front =
-            new Color4(
-                0.93f,
-                0.46f,
-                0.10f,
-                1.0f);
-
-        var vertices =
-            new List<RuntimeObjectVertex>(36);
-
-        Quad(
-            p000,
-            p100,
-            p110,
-            p010,
-            body,
-            vertices);
-
-        Quad(
-            p101,
-            p001,
-            p011,
-            p111,
-            front,
-            vertices);
-
-        Quad(
-            p001,
-            p000,
-            p010,
-            p011,
-            body,
-            vertices);
-
-        Quad(
-            p100,
-            p101,
-            p111,
-            p110,
-            body,
-            vertices);
-
-        Quad(
-            p010,
-            p110,
-            p111,
-            p011,
-            roof,
-            vertices);
-
-        Quad(
-            p001,
-            p101,
-            p100,
-            p000,
-            body,
-            vertices);
-
-        return new RuntimeObjectGeometry(
-            vertices.ToArray(),
-            [
-                new RuntimeObjectBatch(
-                    0,
-                    (uint)vertices.Count,
-                    null,
-                    false)
-            ],
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            false);
-    }
-
-    private static void Quad(
-        Vector3 a,
-        Vector3 b,
-        Vector3 c,
-        Vector3 d,
-        Color4 color,
-        ICollection<RuntimeObjectVertex> output)
-    {
-        Add(
-            a,
-            color,
-            new Vector2(0, 1),
-            output);
-
-        Add(
-            b,
-            color,
-            new Vector2(1, 1),
-            output);
-
-        Add(
-            c,
-            color,
-            new Vector2(1, 0),
-            output);
-
-        Add(
-            a,
-            color,
-            new Vector2(0, 1),
-            output);
-
-        Add(
-            c,
-            color,
-            new Vector2(1, 0),
-            output);
-
-        Add(
-            d,
-            color,
-            new Vector2(0, 0),
-            output);
-    }
-
-    private static void Add(
-        Vector3 position,
-        Color4 color,
-        Vector2 uv,
-        ICollection<RuntimeObjectVertex> output) =>
-        output.Add(
-            new RuntimeObjectVertex(
-                position,
-                color,
-                uv));
 }
