@@ -30,7 +30,8 @@ internal sealed record RuntimeObjectBatch(
     string? BumpMapTexturePath = null,
     double BumpMapStrength = 0.0,
     IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
-    int? TextTextureIndex = null);
+    int? TextTextureIndex = null,
+    IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -85,7 +86,8 @@ internal static class RuntimeObjectGeometryBuilder
         string? BumpMapTexturePath = null,
         double BumpMapStrength = 0.0,
         IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
-        int? TextTextureIndex = null);
+        int? TextTextureIndex = null,
+    IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -335,7 +337,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.BumpMapTexturePath,
                     key.BumpMapStrength,
                     key.FreeTextures,
-                    key.TextTextureIndex));
+                    key.TextTextureIndex,
+                    key.MaterialChangeSets));
         }
 
         return new RuntimeObjectGeometry(
@@ -433,7 +436,8 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.BumpMapTexturePath,
                     material?.BumpMapStrength ?? 0.0,
                     material?.FreeTextures,
-                    material?.TextTextureIndex);
+                    material?.TextTextureIndex,
+                    material?.MaterialChangeSets);
 
             var output =
                 GetBatch(
