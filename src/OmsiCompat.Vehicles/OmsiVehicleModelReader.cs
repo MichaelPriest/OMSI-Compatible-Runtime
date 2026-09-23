@@ -22,6 +22,8 @@ public static class OmsiVehicleModelReader
             new List<OmsiVehicleVisibilityCondition>();
         var animations =
             new List<OmsiVehicleAnimation>();
+        var lightEffects =
+            new List<OmsiVehicleLightEffect>();
         var overrides = new List<OmsiVehicleMaterialOverride>();
         var materialChangeGroupIndex = -1;
         MaterialBuilder? material = null;
@@ -82,7 +84,8 @@ public static class OmsiVehicleModelReader
                     currentLodThreshold,
                     visibilityConditions.ToArray(),
                     animations.ToArray(),
-                    overrides.ToArray()));
+                    overrides.ToArray(),
+                    lightEffects.ToArray()));
             }
 
             currentMeshPath = null;
@@ -90,6 +93,8 @@ public static class OmsiVehicleModelReader
                 new List<OmsiVehicleVisibilityCondition>();
             animations =
                 new List<OmsiVehicleAnimation>();
+            lightEffects =
+                new List<OmsiVehicleLightEffect>();
             overrides = new List<OmsiVehicleMaterialOverride>();
             materialChangeGroupIndex = -1;
         }
@@ -158,6 +163,42 @@ public static class OmsiVehicleModelReader
 
             if (currentMeshPath is null)
             {
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "light_enh",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var light =
+                    TryParseLightEffect(
+                        Values(section).ToArray(),
+                        enhanced: false);
+
+                if (light is not null)
+                {
+                    lightEffects.Add(
+                        light);
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "light_enh_2",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var light =
+                    TryParseLightEffect(
+                        Values(section).ToArray(),
+                        enhanced: true);
+
+                if (light is not null)
+                {
+                    lightEffects.Add(
+                        light);
+                }
+
                 continue;
             }
 
@@ -881,6 +922,204 @@ public static class OmsiVehicleModelReader
             path,
             meshes.ToArray(),
             textTextures.ToArray());
+    }
+
+    private static OmsiVehicleLightEffect?
+        TryParseLightEffect(
+            IReadOnlyList<string> values,
+            bool enhanced)
+    {
+        if (enhanced)
+        {
+            if (values.Count < 23 ||
+                !TrySingle(values[0], out var positionX) ||
+                !TrySingle(values[1], out var positionY) ||
+                !TrySingle(values[2], out var positionZ) ||
+                !TrySingle(values[3], out var directionX) ||
+                !TrySingle(values[4], out var directionY) ||
+                !TrySingle(values[5], out var directionZ) ||
+                !TrySingle(values[6], out var upX) ||
+                !TrySingle(values[7], out var upY) ||
+                !TrySingle(values[8], out var upZ) ||
+                !TryInteger(values[9], out var omni) ||
+                !TryInteger(values[10], out var rotating) ||
+                !TryColor(values[11], out var red) ||
+                !TryColor(values[12], out var green) ||
+                !TryColor(values[13], out var blue) ||
+                !TrySingle(values[14], out var size) ||
+                !TrySingle(values[15], out var innerCone) ||
+                !TrySingle(values[16], out var outerCone) ||
+                !TrySingle(values[18], out var factor) ||
+                !TrySingle(values[19], out var cameraOffset) ||
+                !TryInteger(values[20], out var parameters) ||
+                !TryInteger(values[21], out var cone) ||
+                !TrySingle(values[22], out var timeConstant))
+            {
+                return null;
+            }
+
+            var variable =
+                values[17]
+                    .Trim()
+                    .Trim('"');
+
+            if (variable.Length == 0)
+            {
+                variable = "1";
+            }
+
+            var bitmap =
+                values.Count >= 24
+                    ? NormalizeOptionalValue(
+                        values[23])
+                    : null;
+
+            return new OmsiVehicleLightEffect(
+                positionX,
+                positionY,
+                positionZ,
+                directionX,
+                directionY,
+                directionZ,
+                upX,
+                upY,
+                upZ,
+                Math.Clamp(
+                    omni,
+                    0,
+                    1),
+                Math.Clamp(
+                    rotating,
+                    0,
+                    2),
+                red,
+                green,
+                blue,
+                Math.Max(
+                    size,
+                    0.0),
+                innerCone,
+                outerCone,
+                variable,
+                factor,
+                cameraOffset,
+                parameters,
+                cone != 0,
+                Math.Max(
+                    timeConstant,
+                    0.0),
+                bitmap,
+                true);
+        }
+
+        // The classic MAN SD200/SD202 light_enh form uses 12 values:
+        // position xyz, RGB, size, brightness variable, multiplier,
+        // camera offset, effect flags and time constant. Some add-ons append
+        // an optional bitmap as a 13th value.
+        if (values.Count < 12 ||
+            !TrySingle(values[0], out var oldPositionX) ||
+            !TrySingle(values[1], out var oldPositionY) ||
+            !TrySingle(values[2], out var oldPositionZ) ||
+            !TryColor(values[3], out var oldRed) ||
+            !TryColor(values[4], out var oldGreen) ||
+            !TryColor(values[5], out var oldBlue) ||
+            !TrySingle(values[6], out var oldSize) ||
+            !TrySingle(values[8], out var oldFactor) ||
+            !TrySingle(values[9], out var oldCameraOffset) ||
+            !TryInteger(values[10], out var oldParameters) ||
+            !TrySingle(values[11], out var oldTimeConstant))
+        {
+            return null;
+        }
+
+        var oldVariable =
+            values[7]
+                .Trim()
+                .Trim('"');
+
+        if (oldVariable.Length == 0)
+        {
+            oldVariable = "1";
+        }
+
+        var oldBitmap =
+            values.Count >= 13
+                ? NormalizeOptionalValue(
+                    values[12])
+                : null;
+
+        return new OmsiVehicleLightEffect(
+            oldPositionX,
+            oldPositionY,
+            oldPositionZ,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+            1,
+            2,
+            oldRed,
+            oldGreen,
+            oldBlue,
+            Math.Max(
+                oldSize,
+                0.0),
+            0.0,
+            180.0,
+            oldVariable,
+            oldFactor,
+            oldCameraOffset,
+            oldParameters,
+            false,
+            Math.Max(
+                oldTimeConstant,
+                0.0),
+            oldBitmap,
+            false);
+    }
+
+    private static bool TryInteger(
+        string? value,
+        out int result)
+    {
+        result = 0;
+
+        return !string.IsNullOrWhiteSpace(
+                   value) &&
+               int.TryParse(
+                   value,
+                   NumberStyles.Integer,
+                   CultureInfo.InvariantCulture,
+                   out result);
+    }
+
+    private static bool TryColor(
+        string? value,
+        out byte result)
+    {
+        result = 0;
+
+        return byte.TryParse(
+            value,
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out result);
+    }
+
+    private static string? NormalizeOptionalValue(
+        string? value)
+    {
+        var normalized =
+            value?
+                .Trim()
+                .Trim('"');
+
+        return string.IsNullOrWhiteSpace(
+                normalized)
+            ? null
+            : normalized;
     }
 
     private static OmsiVehicleTextTexture?
