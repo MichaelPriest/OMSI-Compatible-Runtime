@@ -2309,11 +2309,11 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 _deviceContext.PSSetShader(
-                    materialState.AlphaCutout
+                    batch.AlphaCutout
                         ? hasTransMap
                             ? _objectAlphaCutoutTransMapPixelShader
                             : _objectAlphaCutoutPixelShader
-                        : materialState.AlphaBlend
+                        : batch.AlphaBlend
                             ? hasTransMap
                                 ? _objectAlphaBlendTransMapPixelShader
                                 : _objectAlphaBlendPixelShader
