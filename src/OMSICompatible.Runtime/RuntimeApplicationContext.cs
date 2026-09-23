@@ -1007,7 +1007,37 @@ internal sealed class RuntimeApplicationContext :
                                                 animation.MaxSpeed,
                                                 animation.Delay))
                                     .ToArray(),
-                                mesh.SourceTransform))
+                                mesh.SourceTransform,
+                                mesh.LightEffects?
+                                    .Select(
+                                        static light =>
+                                            new RuntimeVehicleLightEffectInfo(
+                                                light.PositionX,
+                                                light.PositionY,
+                                                light.PositionZ,
+                                                light.DirectionX,
+                                                light.DirectionY,
+                                                light.DirectionZ,
+                                                light.UpX,
+                                                light.UpY,
+                                                light.UpZ,
+                                                light.Omni,
+                                                light.Rotating,
+                                                light.Red,
+                                                light.Green,
+                                                light.Blue,
+                                                light.SizeMeters,
+                                                light.InnerConeAngleDegrees,
+                                                light.OuterConeAngleDegrees,
+                                                light.BrightnessVariable,
+                                                light.BrightnessFactor,
+                                                light.CameraOffsetMeters,
+                                                light.Parameters,
+                                                light.ConeEffect,
+                                                light.TimeConstantSeconds,
+                                                light.BitmapSource,
+                                                light.Enhanced))
+                                    .ToArray()))
                     .ToArray(),
                 vehicle.Bus.DriverCameras
                     .Select(
