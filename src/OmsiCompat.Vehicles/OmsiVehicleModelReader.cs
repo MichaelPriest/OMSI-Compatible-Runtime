@@ -575,6 +575,60 @@ public static class OmsiVehicleModelReader
                     "matl_item",
                     StringComparison.OrdinalIgnoreCase))
             {
+                // OMSI uses matl_item as a marker. The following material
+                // modifier belongs to the current matl/matl_change item.
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "matl_allcolor",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length >= 14)
+                {
+                    var parsed =
+                        new double[14];
+
+                    var valid =
+                        true;
+
+                    for (var index = 0;
+                         index < parsed.Length;
+                         index++)
+                    {
+                        if (!TrySingle(
+                                values[index],
+                                out parsed[index]))
+                        {
+                            valid = false;
+                            break;
+                        }
+                    }
+
+                    if (valid)
+                    {
+                        material.AllColor =
+                            new OmsiVehicleMaterialColor(
+                                parsed[0],
+                                parsed[1],
+                                parsed[2],
+                                parsed[3],
+                                parsed[4],
+                                parsed[5],
+                                parsed[6],
+                                parsed[7],
+                                parsed[8],
+                                parsed[9],
+                                parsed[10],
+                                parsed[11],
+                                parsed[12],
+                                parsed[13]);
+                    }
+                }
+
                 continue;
             }
 
@@ -1242,6 +1296,7 @@ public static class OmsiVehicleModelReader
         public string? LightMapVariable { get; set; }
         public string? MaterialChangeVariable { get; set; }
         public string? MaterialChangeMapSource { get; set; }
+        public OmsiVehicleMaterialColor? AllColor { get; set; }
         public string? EnvMapSource { get; set; }
         public double EnvMapStrength { get; set; }
         public string? EnvMapMaskSource { get; set; }
@@ -1266,6 +1321,7 @@ public static class OmsiVehicleModelReader
                 LightMapVariable,
                 MaterialChangeVariable,
                 MaterialChangeMapSource,
+                AllColor,
                 EnvMapSource,
                 EnvMapStrength,
                 EnvMapMaskSource,
