@@ -95,21 +95,37 @@ public static class OmsiVehicleAssetLoader
             var materials = geometry.Materials
                 .Select((material, materialIndex) =>
                 {
+                    var textureOccurrence =
+                        GetTextureOccurrenceIndex(
+                            geometry.Materials,
+                            materialIndex);
+
                     var matchingOverrides =
                         mesh.MaterialOverrides
                             .Where(
                                 item =>
                                     item.MaterialIndex ==
-                                    materialIndex)
-                            .OrderByDescending(
-                                item =>
-                                    string.Equals(
-                                        Path.GetFileName(
-                                            item.TextureName),
-                                        Path.GetFileName(
-                                            material.TextureName),
-                                        StringComparison.OrdinalIgnoreCase))
+                                        textureOccurrence &&
+                                    MaterialTextureMatches(
+                                        item.TextureName,
+                                        material.TextureName))
                             .ToArray();
+
+                    if (matchingOverrides.Length == 0)
+                    {
+                        // Compatibility fallback for unusual add-ons that
+                        // appear to use the absolute O3D material slot.
+                        matchingOverrides =
+                            mesh.MaterialOverrides
+                                .Where(
+                                    item =>
+                                        item.MaterialIndex ==
+                                            materialIndex &&
+                                        MaterialTextureMatches(
+                                            item.TextureName,
+                                            material.TextureName))
+                                .ToArray();
+                    }
 
                     var materialOverride =
                         matchingOverrides
@@ -335,6 +351,52 @@ public static class OmsiVehicleAssetLoader
             OmsiDriverPositionReader.ReadFile(bus.PassengerCabinPath),
             model.TextTextures);
     }
+
+    private static int GetTextureOccurrenceIndex(
+        IReadOnlyList<OmsiO3dMaterial> materials,
+        int materialIndex)
+    {
+        if (materialIndex <= 0 ||
+            materialIndex >= materials.Count)
+        {
+            return 0;
+        }
+
+        var textureName =
+            Path.GetFileName(
+                materials[materialIndex]
+                    .TextureName);
+
+        var occurrence =
+            0;
+
+        for (var index = 0;
+             index < materialIndex;
+             index++)
+        {
+            if (string.Equals(
+                    Path.GetFileName(
+                        materials[index]
+                            .TextureName),
+                    textureName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                occurrence++;
+            }
+        }
+
+        return occurrence;
+    }
+
+    private static bool MaterialTextureMatches(
+        string? declaredTexture,
+        string? o3dTexture) =>
+        string.Equals(
+            Path.GetFileName(
+                declaredTexture),
+            Path.GetFileName(
+                o3dTexture),
+            StringComparison.OrdinalIgnoreCase);
 
     private static string? ResolveMeshPath(
         string omsiRoot,
