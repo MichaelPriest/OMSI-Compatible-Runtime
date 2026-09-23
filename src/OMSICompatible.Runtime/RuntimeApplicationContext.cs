@@ -26,6 +26,9 @@ internal sealed class RuntimeApplicationContext :
     private int _loadedCenterY;
     private bool _closing;
 
+    private const int CompleteMapTileThreshold = 64;
+    private const int StreamingTileRadius = 2;
+
     public RuntimeApplicationContext(
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
@@ -152,6 +155,15 @@ internal sealed class RuntimeApplicationContext :
                             item.Detail);
                     });
 
+            var discoveredTileCount =
+                MapTileDiscovery.Discover(
+                    _map).Count;
+
+            var loadEntireMap =
+                discoveredTileCount > 0 &&
+                discoveredTileCount <=
+                    CompleteMapTileThreshold;
+
             var worldTask =
                 Task.Run(
                     () =>
@@ -162,8 +174,10 @@ internal sealed class RuntimeApplicationContext :
                             new WorldLoadOptions(
                                 _entryPoint.Tile.X,
                                 _entryPoint.Tile.Y,
-                                ActiveTileRadius: 1,
-                                LoadEntireMap: false)));
+                                ActiveTileRadius:
+                                    StreamingTileRadius,
+                                LoadEntireMap:
+                                    loadEntireMap)));
 
             var vehicleTask =
                 Task.Run(
@@ -462,7 +476,8 @@ internal sealed class RuntimeApplicationContext :
                                 new WorldLoadOptions(
                                     requested.X,
                                     requested.Y,
-                                    ActiveTileRadius: 1,
+                                    ActiveTileRadius:
+                                        StreamingTileRadius,
                                     LoadEntireMap: false)));
 
                 if (_closing ||
