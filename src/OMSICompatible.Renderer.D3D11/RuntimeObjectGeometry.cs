@@ -863,7 +863,7 @@ internal static class RuntimeObjectGeometryBuilder
                0.5;
     }
 
-    private static Matrix4x4 CreateMeshTransform(
+    internal static Matrix4x4 CreateMeshTransform(
         RuntimeObjectMeshTransformInfo transform) =>
         // CFG/model.cfg coordinates map to renderer space as
         // (-X, Z, Y). This is a proper basis change:
