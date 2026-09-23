@@ -146,8 +146,7 @@ internal static class RuntimeObjectGeometryBuilder
         {
             if (!assets.TryGetValue(
                     instance.AssetPath,
-                    out var asset) ||
-                asset.OnlyEditor)
+                    out var asset))
             {
                 continue;
             }
@@ -207,44 +206,47 @@ internal static class RuntimeObjectGeometryBuilder
 
             var objectContributed = false;
 
-            foreach (var mesh in asset.Meshes)
+            if (!asset.OnlyEditor)
             {
-                if (!string.IsNullOrWhiteSpace(
-                        mesh.ErrorCode) ||
-                    mesh.Positions.Length < 3 ||
-                    mesh.Indices.Length < 3)
+                foreach (var mesh in asset.Meshes)
                 {
-                    continue;
-                }
+                    if (!string.IsNullOrWhiteSpace(
+                            mesh.ErrorCode) ||
+                        mesh.Positions.Length < 3 ||
+                        mesh.Indices.Length < 3)
+                    {
+                        continue;
+                    }
 
-                if (totalVertices +
-                    mesh.Indices.Length >
-                    MaximumVertices)
-                {
-                    hitBudget = true;
-                    break;
-                }
+                    if (totalVertices +
+                        mesh.Indices.Length >
+                        MaximumVertices)
+                    {
+                        hitBudget = true;
+                        break;
+                    }
 
-                var localTransform =
-                    CreateMeshTransform(
-                        mesh.Transform);
+                    var localTransform =
+                        CreateMeshTransform(
+                            mesh.Transform);
 
-                var worldTransform =
-                    localTransform *
-                    objectTransform;
+                    var worldTransform =
+                        localTransform *
+                        objectTransform;
 
-                var appended =
-                    AppendMesh(
-                        mesh,
-                        worldTransform,
-                        batches,
-                        batchOrder,
-                        ref totalVertices);
+                    var appended =
+                        AppendMesh(
+                            mesh,
+                            worldTransform,
+                            batches,
+                            batchOrder,
+                            ref totalVertices);
 
-                if (appended)
-                {
-                    renderedMeshes++;
-                    objectContributed = true;
+                    if (appended)
+                    {
+                        renderedMeshes++;
+                        objectContributed = true;
+                    }
                 }
             }
 
