@@ -4,6 +4,22 @@ public sealed record OmsiVehicleFreeTexture(
     string SourceTextureName,
     string VariableName);
 
+public sealed record OmsiVehicleMaterialColor(
+    double DiffuseR,
+    double DiffuseG,
+    double DiffuseB,
+    double DiffuseA,
+    double AmbientR,
+    double AmbientG,
+    double AmbientB,
+    double SpecularR,
+    double SpecularG,
+    double SpecularB,
+    double EmissiveR,
+    double EmissiveG,
+    double EmissiveB,
+    double Power);
+
 public sealed record OmsiVehicleTextTexture(
     int Index,
     string StringVariable,
@@ -30,6 +46,7 @@ public sealed record OmsiVehicleMaterialOverride(
     string? LightMapVariable,
     string? MaterialChangeVariable,
     string? MaterialChangeMapSource,
+    OmsiVehicleMaterialColor? AllColor,
     string? EnvMapSource,
     double EnvMapStrength,
     string? EnvMapMaskSource,
