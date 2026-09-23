@@ -81,7 +81,9 @@ public static class OmsiVehicleAssetLoader
                     [],
                     [],
                     [],
-                    Array.Empty<OmsiVehicleMaterial>()));
+                    Array.Empty<OmsiVehicleMaterial>(),
+                    mesh.LightEffects ??
+                        Array.Empty<OmsiVehicleLightEffect>()));
                 continue;
             }
 
@@ -431,7 +433,9 @@ public static class OmsiVehicleAssetLoader
                 geometry.Uvs,
                 geometry.Indices,
                 geometry.TriangleMaterialIndices,
-                materials));
+                materials,
+                mesh.LightEffects ??
+                    Array.Empty<OmsiVehicleLightEffect>()));
         }
 
         progress?.Report(
