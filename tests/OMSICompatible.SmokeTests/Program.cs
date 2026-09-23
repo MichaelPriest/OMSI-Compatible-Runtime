@@ -332,7 +332,7 @@ try
             "panel_mask.bmp",
             "[matl_noZwrite]",
             "[matl_allcolor]",
-            "1"
+            "1",
             "1",
             "1",
             "1",
