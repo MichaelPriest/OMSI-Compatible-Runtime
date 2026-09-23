@@ -303,6 +303,22 @@ try
             "[matl_bumpmap]",
             "bump.bmp",
             "0.05",
+            "[matl_item]",
+            "[matl_allcolor]",
+            "0.8",
+            "0.7",
+            "0.6",
+            "0.9",
+            "0.4",
+            "0.4",
+            "0.4",
+            "0.1",
+            "0.1",
+            "0.1",
+            "0.02",
+            "0.03",
+            "0.04",
+            "8",
             "[matl_lightmap]",
             "panel_lm.bmp",
             "lights_stand",
@@ -311,6 +327,21 @@ try
             "0",
             "cockpit_light_test",
             "[matl_item]",
+            "[matl_allcolor]",
+            "1",
+            "1",
+            "1",
+            "1",
+            "1",
+            "1",
+            "1",
+            "0",
+            "0",
+            "0",
+            "0.24",
+            "0.23",
+            "0.2",
+            "0",
             "[matl_nightmap]",
             "panel_n.bmp",
             "[newanim]",
@@ -542,6 +573,26 @@ try
             "panel_lm.bmp" &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeVariable ==
             "cockpit_light_test" &&
+        vehicleAsset.Meshes[0].Materials[0].BaseAllColor is not null &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Materials[0].BaseAllColor!.DiffuseR -
+            0.8) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Materials[0].BaseAllColor!.EmissiveB -
+            0.04) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Materials[0].BaseAllColor!.Power -
+            8.0) < 0.0001 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeAllColor is not null &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeAllColor!.EmissiveR -
+            0.24) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeAllColor!.EmissiveG -
+            0.23) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeAllColor!.EmissiveB -
+            0.2) < 0.0001 &&
         !string.IsNullOrWhiteSpace(
             vehicleAsset.Meshes[0].Materials[0].MaterialChangeTexturePath) &&
         Path.GetFileName(
