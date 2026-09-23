@@ -55,7 +55,9 @@ public sealed record OmsiVehicleMaterialOverride(
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
     int? TextTextureIndex,
     string? TextureCoordinateXVariable,
-    string? TextureCoordinateYVariable);
+    string? TextureCoordinateYVariable,
+    int MaterialChangeGroupIndex = -1,
+    int MaterialChangeItemIndex = 0);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
