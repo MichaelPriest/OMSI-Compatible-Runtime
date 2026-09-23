@@ -132,19 +132,26 @@ public static class OmsiVehicleAssetLoader
                             .FirstOrDefault(
                                 static item =>
                                     string.IsNullOrWhiteSpace(
-                                        item.MaterialChangeVariable)) ??
-                        matchingOverrides
-                            .FirstOrDefault();
+                                        item.MaterialChangeVariable));
 
-                    var materialChangeOverride =
+                    var materialChangeOverrides =
                         matchingOverrides
-                            .FirstOrDefault(
+                            .Where(
                                 static item =>
                                     !string.IsNullOrWhiteSpace(
                                         item.MaterialChangeVariable) &&
-                                    (!string.IsNullOrWhiteSpace(
-                                         item.MaterialChangeMapSource) ||
-                                     item.AllColor is not null));
+                                    item.MaterialChangeItemIndex > 0)
+                            .OrderBy(
+                                static item =>
+                                    item.MaterialChangeGroupIndex)
+                            .ThenBy(
+                                static item =>
+                                    item.MaterialChangeItemIndex)
+                            .ToArray();
+
+                    var materialChangeOverride =
+                        materialChangeOverrides
+                            .FirstOrDefault();
 
                     string? texturePath = null;
                     if (!string.IsNullOrWhiteSpace(material.TextureName))
@@ -291,6 +298,91 @@ public static class OmsiVehicleAssetLoader
                         alphaMode = 0;
                     }
 
+                    var materialChangeSets =
+                        materialChangeOverrides
+                            .GroupBy(
+                                static item =>
+                                    item.MaterialChangeGroupIndex)
+                            .OrderBy(
+                                static group =>
+                                    group.Key)
+                            .Select(
+                                group =>
+                                {
+                                    var orderedItems =
+                                        group
+                                            .OrderBy(
+                                                static item =>
+                                                    item.MaterialChangeItemIndex)
+                                            .ToArray();
+
+                                    var variableName =
+                                        orderedItems[0]
+                                            .MaterialChangeVariable!;
+
+                                    var items =
+                                        orderedItems
+                                            .Select(
+                                                item =>
+                                                    new OmsiVehicleMaterialChangeItem(
+                                                        item.MaterialChangeItemIndex,
+                                                        item.AlphaMode,
+                                                        ResolveOptionalVehicleTexture(
+                                                            contentRoot.RootPath,
+                                                            bus,
+                                                            model.SourcePath,
+                                                            meshPath,
+                                                            item.TransMapSource,
+                                                            rejectLeadingSlash: true),
+                                                        item.HasTransMapDirective,
+                                                        item.NoZWrite,
+                                                        item.NoZCheck,
+                                                        item.AlphaScaleVariable,
+                                                        ResolveOptionalVehicleTexture(
+                                                            contentRoot.RootPath,
+                                                            bus,
+                                                            model.SourcePath,
+                                                            meshPath,
+                                                            item.LightMapSource),
+                                                        item.LightMapVariable,
+                                                        ResolveOptionalVehicleTexture(
+                                                            contentRoot.RootPath,
+                                                            bus,
+                                                            model.SourcePath,
+                                                            meshPath,
+                                                            item.MaterialChangeMapSource),
+                                                        item.AllColor,
+                                                        ResolveOptionalVehicleTexture(
+                                                            contentRoot.RootPath,
+                                                            bus,
+                                                            model.SourcePath,
+                                                            meshPath,
+                                                            item.EnvMapSource),
+                                                        item.EnvMapStrength,
+                                                        ResolveOptionalVehicleTexture(
+                                                            contentRoot.RootPath,
+                                                            bus,
+                                                            model.SourcePath,
+                                                            meshPath,
+                                                            item.EnvMapMaskSource),
+                                                        ResolveOptionalVehicleTexture(
+                                                            contentRoot.RootPath,
+                                                            bus,
+                                                            model.SourcePath,
+                                                            meshPath,
+                                                            item.BumpMapSource),
+                                                        item.BumpMapStrength,
+                                                        item.FreeTextures.ToArray(),
+                                                        item.TextTextureIndex))
+                                            .ToArray();
+
+                                    return new OmsiVehicleMaterialChangeSet(
+                                        variableName,
+                                        group.Key,
+                                        items);
+                                })
+                            .ToArray();
+
                     return new OmsiVehicleMaterial(
                         material.DiffuseR,
                         material.DiffuseG,
@@ -318,7 +410,8 @@ public static class OmsiVehicleAssetLoader
                         materialOverride?.BumpMapStrength ?? 0.0,
                         materialOverride?.FreeTextures ??
                             Array.Empty<OmsiVehicleFreeTexture>(),
-                        materialOverride?.TextTextureIndex);
+                        materialOverride?.TextTextureIndex,
+                        materialChangeSets);
                 })
                 .ToArray();
 
@@ -397,6 +490,35 @@ public static class OmsiVehicleAssetLoader
             Path.GetFileName(
                 o3dTexture),
             StringComparison.OrdinalIgnoreCase);
+
+    private static string? ResolveOptionalVehicleTexture(
+        string omsiRoot,
+        OmsiBusInfo bus,
+        string modelConfigPath,
+        string meshPath,
+        string? source,
+        bool rejectLeadingSlash = false)
+    {
+        if (string.IsNullOrWhiteSpace(
+                source) ||
+            (rejectLeadingSlash &&
+             source.StartsWith(
+                 "\\",
+                 StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        return OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+            omsiRoot,
+            bus.DirectoryPath,
+            modelConfigPath,
+            meshPath,
+            source,
+            out var resolved)
+            ? resolved
+            : null;
+    }
 
     private static string? ResolveMeshPath(
         string omsiRoot,
