@@ -109,6 +109,31 @@ public sealed record RuntimeVehicleTextTextureInfo(
     int? Alignment,
     bool? GridAligned);
 
+public sealed record RuntimeVehicleMaterialChangeItemInfo(
+    int ItemIndex,
+    int? AlphaMode,
+    string? TransMapTexturePath,
+    bool HasTransMapDirective,
+    bool NoZWrite,
+    bool NoZCheck,
+    string? AlphaScaleVariable,
+    string? LightMapTexturePath,
+    string? LightMapVariable,
+    string? MaterialChangeTexturePath,
+    RuntimeVehicleMaterialColorInfo? AllColor,
+    string? EnvMapTexturePath,
+    double EnvMapStrength,
+    string? EnvMapMaskTexturePath,
+    string? BumpMapTexturePath,
+    double BumpMapStrength,
+    IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures,
+    int? TextTextureIndex);
+
+public sealed record RuntimeVehicleMaterialChangeSetInfo(
+    string VariableName,
+    int GroupIndex,
+    IReadOnlyList<RuntimeVehicleMaterialChangeItemInfo> Items);
+
 public sealed record RuntimeO3dMaterialInfo(
     float DiffuseR,
     float DiffuseG,
@@ -132,7 +157,8 @@ public sealed record RuntimeO3dMaterialInfo(
     string? BumpMapTexturePath = null,
     double BumpMapStrength = 0.0,
     IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
-    int? TextTextureIndex = null);
+    int? TextTextureIndex = null,
+    IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null);
 
 public sealed record RuntimeVehicleVisibilityConditionInfo(
     string VariableName,
