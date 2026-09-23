@@ -86,8 +86,8 @@ float3 ResolveSurfaceNormal(
     VertexOutput input)
 {
     float3 normal =
-        ResolveSurfaceNormal(
-            input);
+        normalize(
+            input.WorldNormal);
 
     if (BumpMapStrength <= 0.0f)
     {
@@ -224,8 +224,8 @@ float4 ApplyEnvMap(
     }
 
     float3 normal =
-        normalize(
-            input.WorldNormal);
+        ResolveSurfaceNormal(
+            input);
 
     float3 viewDir =
         normalize(
