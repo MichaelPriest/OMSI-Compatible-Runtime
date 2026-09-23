@@ -20,8 +20,7 @@ public sealed record OmsiVehicleMaterialChangeItem(
     string? BumpMapTexturePath,
     double BumpMapStrength,
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
-    int? TextTextureIndex,
-    IReadOnlyList<OmsiVehicleMaterialChangeSet>? MaterialChangeSets = null);
+    int? TextTextureIndex);
 
 public sealed record OmsiVehicleMaterialChangeSet(
     string VariableName,
@@ -51,7 +50,8 @@ public sealed record OmsiVehicleMaterial(
     string? BumpMapTexturePath,
     double BumpMapStrength,
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
-    int? TextTextureIndex);
+    int? TextTextureIndex,
+    IReadOnlyList<OmsiVehicleMaterialChangeSet>? MaterialChangeSets = null);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
