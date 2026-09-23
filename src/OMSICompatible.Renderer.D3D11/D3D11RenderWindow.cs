@@ -964,6 +964,12 @@ public sealed class D3D11RenderWindow : Form
                 "PSTextured",
                 "ps_4_0");
 
+        ReadOnlyMemory<byte> lightPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSLightEffect",
+                "ps_4_0");
+
         ReadOnlyMemory<byte> alphaCutoutPixelShaderByteCode =
             Compiler.CompileFromFile(
                 shaderFile,
