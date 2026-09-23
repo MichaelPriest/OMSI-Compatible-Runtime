@@ -22,6 +22,8 @@ internal sealed record RuntimeObjectBatch(
     string? LightMapVariable = null,
     string? MaterialChangeTexturePath = null,
     string? MaterialChangeVariable = null,
+    RuntimeVehicleMaterialColorInfo? BaseAllColor = null,
+    RuntimeVehicleMaterialColorInfo? MaterialChangeAllColor = null,
     string? EnvMapTexturePath = null,
     double EnvMapStrength = 0.0,
     string? EnvMapMaskTexturePath = null,
@@ -75,6 +77,8 @@ internal static class RuntimeObjectGeometryBuilder
         string? LightMapVariable = null,
         string? MaterialChangeTexturePath = null,
         string? MaterialChangeVariable = null,
+        RuntimeVehicleMaterialColorInfo? BaseAllColor = null,
+        RuntimeVehicleMaterialColorInfo? MaterialChangeAllColor = null,
         string? EnvMapTexturePath = null,
         double EnvMapStrength = 0.0,
         string? EnvMapMaskTexturePath = null,
@@ -323,6 +327,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.LightMapVariable,
                     key.MaterialChangeTexturePath,
                     key.MaterialChangeVariable,
+                    key.BaseAllColor,
+                    key.MaterialChangeAllColor,
                     key.EnvMapTexturePath,
                     key.EnvMapStrength,
                     key.EnvMapMaskTexturePath,
@@ -419,6 +425,8 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.LightMapVariable,
                     material?.MaterialChangeTexturePath,
                     material?.MaterialChangeVariable,
+                    material?.BaseAllColor,
+                    material?.MaterialChangeAllColor,
                     material?.EnvMapTexturePath,
                     material?.EnvMapStrength ?? 0.0,
                     material?.EnvMapMaskTexturePath,
@@ -495,21 +503,28 @@ internal static class RuntimeObjectGeometryBuilder
                 1.0f);
         }
 
+        var allColor =
+            material.BaseAllColor;
+
         return new Color4(
             Math.Clamp(
-                material.DiffuseR,
-                0.04f,
+                (float)(allColor?.DiffuseR ??
+                    material.DiffuseR),
+                0.0f,
                 1.0f),
             Math.Clamp(
-                material.DiffuseG,
-                0.04f,
+                (float)(allColor?.DiffuseG ??
+                    material.DiffuseG),
+                0.0f,
                 1.0f),
             Math.Clamp(
-                material.DiffuseB,
-                0.04f,
+                (float)(allColor?.DiffuseB ??
+                    material.DiffuseB),
+                0.0f,
                 1.0f),
             Math.Clamp(
-                material.DiffuseA,
+                (float)(allColor?.DiffuseA ??
+                    material.DiffuseA),
                 0.0f,
                 1.0f));
     }
