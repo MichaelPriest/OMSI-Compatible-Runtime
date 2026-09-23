@@ -17,6 +17,8 @@ public sealed record OmsiVehicleMaterial(
     string? LightMapVariable,
     string? MaterialChangeTexturePath,
     string? MaterialChangeVariable,
+    OmsiVehicleMaterialColor? BaseAllColor,
+    OmsiVehicleMaterialColor? MaterialChangeAllColor,
     string? EnvMapTexturePath,
     double EnvMapStrength,
     string? EnvMapMaskTexturePath,
