@@ -787,6 +787,12 @@ public sealed class D3D11RenderWindow : Form
                 "PSColor",
                 "ps_4_0");
 
+        ReadOnlyMemory<byte> lightPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSLightEffect",
+                "ps_4_0");
+
         ReadOnlyMemory<byte> texturedPixelShaderByteCode =
             Compiler.CompileFromFile(
                 shaderFile,
@@ -1182,11 +1188,19 @@ public sealed class D3D11RenderWindow : Form
 
         AppendVehicleGeometryDiagnostics();
 
+        var hasVehicleLights =
+            _windowInfo.Vehicle?.Meshes.Any(
+                static mesh =>
+                    mesh.LightEffects is
+                        { Count: > 0 }) ==
+            true;
+
         if (_vehicleExteriorGeometry.Vertices.Length == 0 &&
-            _vehicleInteriorGeometry.Vertices.Length == 0)
+            _vehicleInteriorGeometry.Vertices.Length == 0 &&
+            !hasVehicleLights)
         {
             Console.WriteLine(
-                "[vehicle-geometry] No real vehicle geometry could be built; exterior proxy fallback will be used.");
+                "[vehicle-geometry] No real vehicle geometry or light effects could be built.");
             return;
         }
 
@@ -1203,6 +1217,48 @@ public sealed class D3D11RenderWindow : Form
             _vehicleInteriorVertexBuffer =
                 _device.CreateBuffer(
                     _vehicleInteriorGeometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+        }
+
+        if (hasVehicleLights)
+        {
+            RuntimeObjectVertex[] lightVertices =
+            [
+                new(
+                    new Vector3(-0.5f, 0.5f, 0.0f),
+                    new Color4(1.0f, 1.0f, 1.0f, 1.0f),
+                    new Vector2(0.0f, 0.0f),
+                    Vector3.UnitZ),
+                new(
+                    new Vector3(0.5f, 0.5f, 0.0f),
+                    new Color4(1.0f, 1.0f, 1.0f, 1.0f),
+                    new Vector2(1.0f, 0.0f),
+                    Vector3.UnitZ),
+                new(
+                    new Vector3(0.5f, -0.5f, 0.0f),
+                    new Color4(1.0f, 1.0f, 1.0f, 1.0f),
+                    new Vector2(1.0f, 1.0f),
+                    Vector3.UnitZ),
+                new(
+                    new Vector3(-0.5f, 0.5f, 0.0f),
+                    new Color4(1.0f, 1.0f, 1.0f, 1.0f),
+                    new Vector2(0.0f, 0.0f),
+                    Vector3.UnitZ),
+                new(
+                    new Vector3(0.5f, -0.5f, 0.0f),
+                    new Color4(1.0f, 1.0f, 1.0f, 1.0f),
+                    new Vector2(1.0f, 1.0f),
+                    Vector3.UnitZ),
+                new(
+                    new Vector3(-0.5f, -0.5f, 0.0f),
+                    new Color4(1.0f, 1.0f, 1.0f, 1.0f),
+                    new Vector2(0.0f, 1.0f),
+                    Vector3.UnitZ)
+            ];
+
+            _vehicleLightVertexBuffer =
+                _device.CreateBuffer(
+                    lightVertices.AsSpan(),
                     BindFlags.VertexBuffer);
         }
 
@@ -1259,6 +1315,10 @@ public sealed class D3D11RenderWindow : Form
         _vehicleColorPixelShader =
             _device.CreatePixelShader(
                 colorPixelShaderByteCode.Span);
+
+        _vehicleLightPixelShader =
+            _device.CreatePixelShader(
+                lightPixelShaderByteCode.Span);
 
         _vehicleTexturedPixelShader =
             _device.CreatePixelShader(
@@ -4783,10 +4843,12 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAlphaBlendPixelShader?.Dispose();
             _vehicleAlphaCutoutPixelShader?.Dispose();
             _vehicleTexturedPixelShader?.Dispose();
+            _vehicleLightPixelShader?.Dispose();
             _vehicleColorPixelShader?.Dispose();
             _vehicleVertexShader?.Dispose();
             _vehicleMaterialBuffer?.Dispose();
             _vehicleModelBuffer?.Dispose();
+            _vehicleLightVertexBuffer?.Dispose();
             _vehicleInteriorVertexBuffer?.Dispose();
             _vehicleExteriorVertexBuffer?.Dispose();
 
