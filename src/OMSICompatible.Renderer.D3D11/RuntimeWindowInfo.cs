@@ -40,6 +40,13 @@ public sealed record RuntimeSplineSurfaceInfo(
     string? TexturePath,
     int AlphaMode);
 
+public sealed record RuntimeSplinePathInfo(
+    int Type,
+    double X,
+    double Z,
+    double Width,
+    int Direction);
+
 public sealed record RuntimeSplineInfo(
     int TileX,
     int TileY,
@@ -51,7 +58,8 @@ public sealed record RuntimeSplineInfo(
     double RadiusMeters,
     double GradientStartPercent,
     double GradientEndPercent,
-    IReadOnlyList<RuntimeSplineSurfaceInfo> Surfaces);
+    IReadOnlyList<RuntimeSplineSurfaceInfo> Surfaces,
+    IReadOnlyList<RuntimeSplinePathInfo> Paths);
 
 public sealed record RuntimeObjectInfo(
     int TileX,
