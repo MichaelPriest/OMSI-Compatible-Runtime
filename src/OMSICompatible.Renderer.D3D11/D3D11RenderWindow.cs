@@ -2789,6 +2789,7 @@ public sealed class D3D11RenderWindow : Form
                     ReflectionTextureSize,
                     ReflectionTextureSize);
 
+                DrawSky();
                 DrawTerrain();
                 DrawSplines();
                 DrawObjects();
