@@ -34,7 +34,8 @@ internal sealed record RuntimeObjectBatch(
     IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
     bool HasTransMapDirective = false,
     string? MeshIdentifier = null,
-    string? AnimationParent = null);
+    string? AnimationParent = null,
+    int SectionIndex = 0);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -93,7 +94,8 @@ internal static class RuntimeObjectGeometryBuilder
         IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
         bool HasTransMapDirective = false,
         string? MeshIdentifier = null,
-        string? AnimationParent = null);
+        string? AnimationParent = null,
+        int SectionIndex = 0);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -353,7 +355,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.MaterialChangeSets,
                     key.HasTransMapDirective,
                     key.MeshIdentifier,
-                    key.AnimationParent));
+                    key.AnimationParent,
+                    key.SectionIndex));
         }
 
         return new RuntimeObjectGeometry(
@@ -456,7 +459,8 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.MaterialChangeSets,
                     material?.HasTransMapDirective ?? false,
                     mesh.MeshIdentifier,
-                    mesh.AnimationParent);
+                    mesh.AnimationParent,
+                    mesh.SectionIndex);
 
             var output =
                 GetBatch(
