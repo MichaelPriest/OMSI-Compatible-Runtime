@@ -35,7 +35,9 @@ internal sealed record RuntimeObjectBatch(
     bool HasTransMapDirective = false,
     string? MeshIdentifier = null,
     string? AnimationParent = null,
-    int SectionIndex = 0);
+    int SectionIndex = 0,
+    int ModelOrdinal = -1,
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -95,7 +97,9 @@ internal static class RuntimeObjectGeometryBuilder
         bool HasTransMapDirective = false,
         string? MeshIdentifier = null,
         string? AnimationParent = null,
-        int SectionIndex = 0);
+        int SectionIndex = 0,
+        int ModelOrdinal = -1,
+        IReadOnlyList<int>? SkinBoneMeshOrdinals = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -356,7 +360,9 @@ internal static class RuntimeObjectGeometryBuilder
                     key.HasTransMapDirective,
                     key.MeshIdentifier,
                     key.AnimationParent,
-                    key.SectionIndex));
+                    key.SectionIndex,
+                    key.ModelOrdinal,
+                    key.SkinBoneMeshOrdinals));
         }
 
         return new RuntimeObjectGeometry(
@@ -460,7 +466,9 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.HasTransMapDirective ?? false,
                     mesh.MeshIdentifier,
                     mesh.AnimationParent,
-                    mesh.SectionIndex);
+                    mesh.SectionIndex,
+                    mesh.ModelOrdinal,
+                    mesh.SkinBoneMeshOrdinals);
 
             var output =
                 GetBatch(
@@ -663,12 +671,34 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.Uvs[uvOffset + 1]);
         }
 
+        var skinWeights =
+            Vector4.Zero;
+
+        var skinOffset =
+            vertexIndex *
+            4;
+
+        if (mesh.SkinWeights is
+                { Length: > 0 } &&
+            skinOffset >= 0 &&
+            skinOffset + 3 <
+                mesh.SkinWeights.Length)
+        {
+            skinWeights =
+                new Vector4(
+                    mesh.SkinWeights[skinOffset],
+                    mesh.SkinWeights[skinOffset + 1],
+                    mesh.SkinWeights[skinOffset + 2],
+                    mesh.SkinWeights[skinOffset + 3]);
+        }
+
         output.Add(
             new RuntimeObjectVertex(
                 world,
                 color,
                 uv,
-                worldNormal));
+                worldNormal,
+                skinWeights));
     }
 
     private static bool AppendTree(
@@ -944,18 +974,35 @@ internal static class RuntimeObjectGeometryBuilder
 
 internal readonly struct RuntimeObjectVertex
 {
-    public const uint SizeInBytes = 48;
+    public const uint SizeInBytes = 64;
+
+    public RuntimeObjectVertex(
+        Vector3 position,
+        Color4 color,
+        Vector2 uv,
+        Vector3 normal,
+        Vector4 skinWeights)
+    {
+        Position = position;
+        Color = color;
+        Uv = uv;
+        Normal = normal;
+        SkinWeights =
+            skinWeights;
+    }
 
     public RuntimeObjectVertex(
         Vector3 position,
         Color4 color,
         Vector2 uv,
         Vector3 normal)
+        : this(
+            position,
+            color,
+            uv,
+            normal,
+            Vector4.Zero)
     {
-        Position = position;
-        Color = color;
-        Uv = uv;
-        Normal = normal;
     }
 
     public RuntimeObjectVertex(
@@ -966,7 +1013,8 @@ internal readonly struct RuntimeObjectVertex
             position,
             color,
             uv,
-            Vector3.UnitY)
+            Vector3.UnitY,
+            Vector4.Zero)
     {
     }
 
@@ -974,4 +1022,5 @@ internal readonly struct RuntimeObjectVertex
     public readonly Color4 Color;
     public readonly Vector2 Uv;
     public readonly Vector3 Normal;
+    public readonly Vector4 SkinWeights;
 }
