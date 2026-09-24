@@ -474,12 +474,12 @@ try
             zeroKeyO3dPath);
 
     Require(
-        zeroKeyGeometry.IsLoaded &&
-        zeroKeyGeometry.ErrorCode is null &&
-        zeroKeyGeometry.Positions.Length == 9 &&
-        zeroKeyGeometry.Indices.Length == 3 &&
-        zeroKeyGeometry.Materials.Count == 1,
-        "Readable OMSI v5 O3D with zero protection key must load as plain geometry.");
+        !zeroKeyGeometry.IsLoaded &&
+        string.Equals(
+            zeroKeyGeometry.ErrorCode,
+            "encryptedO3dUnsupported",
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI v5 O3D with a zero encryption key must not be interpreted as plain vertex geometry.");
 
     File.WriteAllBytes(
         Path.Combine(
