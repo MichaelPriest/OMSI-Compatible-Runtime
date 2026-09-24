@@ -125,6 +125,7 @@ internal static class RuntimeOmsiKeyboardBindings
             keyTablePath,
             CountEntries(
                 keyboardPath),
+            parsed.Count,
             bindings);
 
         return bindings;
@@ -605,12 +606,16 @@ internal static class RuntimeOmsiKeyboardBindings
                 ["bildab"] = Keys.PageDown,
                 ["left"] = Keys.Left,
                 ["arrowleft"] = Keys.Left,
+                ["leftarrow"] = Keys.Left,
                 ["right"] = Keys.Right,
                 ["arrowright"] = Keys.Right,
+                ["rightarrow"] = Keys.Right,
                 ["up"] = Keys.Up,
                 ["arrowup"] = Keys.Up,
+                ["uparrow"] = Keys.Up,
                 ["down"] = Keys.Down,
                 ["arrowdown"] = Keys.Down,
+                ["downarrow"] = Keys.Down,
                 ["num+"] = Keys.Add,
                 ["numpad+"] = Keys.Add,
                 ["num-"] = Keys.Subtract,
@@ -622,6 +627,17 @@ internal static class RuntimeOmsiKeyboardBindings
                 ["num."] = Keys.Decimal,
                 ["numpad."] = Keys.Decimal,
                 ["decimal"] = Keys.Decimal,
+                ["numdecimal"] = Keys.Decimal,
+                ["."] = Keys.OemPeriod,
+                ["period"] = Keys.OemPeriod,
+                ["fullstop"] = Keys.OemPeriod,
+                ["dot"] = Keys.OemPeriod,
+                ["punkt"] = Keys.OemPeriod,
+                [","] = Keys.Oemcomma,
+                ["comma"] = Keys.Oemcomma,
+                ["komma"] = Keys.Oemcomma,
+                ["minus"] = Keys.OemMinus,
+                ["plus"] = Keys.Oemplus,
                 ["shift"] = Keys.ShiftKey,
                 ["ctrl"] = Keys.ControlKey,
                 ["control"] = Keys.ControlKey,
@@ -673,6 +689,7 @@ internal static class RuntimeOmsiKeyboardBindings
         string keyboardPath,
         string? keyTablePath,
         int entryCount,
+        int resolvedEntryCount,
         IReadOnlyList<RuntimeOmsiKeyboardBinding> bindings)
     {
         try
@@ -684,8 +701,9 @@ internal static class RuntimeOmsiKeyboardBindings
                     $"keyboard={keyboardPath}",
                     $"keyTable={keyTablePath ?? "<none>"}",
                     $"entries={entryCount}",
-                    $"resolvedBindings={bindings.Count}",
-                    $"unresolvedEntries={Math.Max(entryCount - bindings.Count, 0)}",
+                    $"resolvedEntries={resolvedEntryCount}",
+                    $"distinctBindings={bindings.Count}",
+                    $"unresolvedEntries={Math.Max(entryCount - resolvedEntryCount, 0)}",
                     $"hostMapped={bindings.Count(binding => binding.HostAction.HasValue)}",
                     "",
                     "bindings:"
