@@ -238,6 +238,33 @@ internal sealed class RuntimeDriveVehicle
             !StopBrakeEngaged;
     }
 
+    public void SetElectricalSystemEnabled(
+        bool enabled)
+    {
+        ElectricalSystemEnabled =
+            enabled;
+
+        if (!enabled)
+        {
+            EngineRunning =
+                false;
+        }
+    }
+
+    public void SetEngineRunning(
+        bool running)
+    {
+        EngineRunning =
+            running;
+    }
+
+    public void SetParkingBrake(
+        bool engaged)
+    {
+        ParkingBrakeEngaged =
+            engaged;
+    }
+
     public void UpdateOmsiControls(
         bool acceleratorHeld,
         bool brakeIncreaseHeld,
@@ -312,6 +339,59 @@ internal sealed class RuntimeDriveVehicle
         }
 
         ApplyDynamics(deltaSeconds);
+    }
+
+    public void UpdateOmsiControllerControls(
+        float accelerator,
+        float brake,
+        float steering,
+        float deltaSeconds)
+    {
+        deltaSeconds =
+            Math.Clamp(
+                deltaSeconds,
+                0.0f,
+                0.1f);
+
+        accelerator =
+            Math.Clamp(
+                accelerator,
+                0.0f,
+                1.0f);
+
+        brake =
+            Math.Clamp(
+                brake,
+                0.0f,
+                1.0f);
+
+        steering =
+            Math.Clamp(
+                steering,
+                -1.0f,
+                1.0f);
+
+        SteeringInput =
+            steering;
+
+        var canApplyPower =
+            ElectricalSystemEnabled &&
+            EngineRunning &&
+            Gear !=
+                RuntimeDriveGear.Neutral &&
+            !ParkingBrakeEngaged &&
+            !StopBrakeEngaged;
+
+        AcceleratorLevel =
+            canApplyPower
+                ? accelerator
+                : 0.0f;
+
+        BrakeLevel =
+            brake;
+
+        ApplyDynamics(
+            deltaSeconds);
     }
 
     public void UpdateOmsiMouseControls(
