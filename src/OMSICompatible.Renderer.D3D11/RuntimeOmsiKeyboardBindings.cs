@@ -249,7 +249,7 @@ internal static class RuntimeOmsiKeyboardBindings
                 Keys.E =>
                     RuntimeOmsiHostInputAction.ElectricalToggle,
                 Keys.M =>
-                    RuntimeOmsiHostInputAction.EngineToggle,
+                    RuntimeOmsiHostInputAction.EngineStart,
                 Keys.D or
                 Keys.D1 or
                 Keys.D2 =>
