@@ -74,6 +74,11 @@ public sealed class D3D11RenderWindow : Form
         new(
             StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Keys> _pressedKeys = [];
+    private readonly IReadOnlyList<RuntimeOmsiKeyboardBinding>
+        _omsiKeyboardBindings;
+    private readonly HashSet<RuntimeOmsiKeyboardBinding>
+        _activeOmsiContinuousBindings =
+            [];
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
     private readonly Dictionary<RuntimeVehicleAnimationInfo, double>
         _vehicleAnimationValues =
@@ -240,6 +245,13 @@ public sealed class D3D11RenderWindow : Form
         _vsync = vsync;
         _vehiclePreviewMode =
             vehiclePreviewMode;
+        _omsiKeyboardBindings =
+            _vehiclePreviewMode
+                ? Array.Empty<
+                    RuntimeOmsiKeyboardBinding>()
+                : RuntimeOmsiKeyboardBindings.Load(
+                    windowInfo.ContentRoot,
+                    inputLanguage);
         _previousSystemMacroHandler =
             _scriptRuntime?.SystemMacroHandler;
 
@@ -5049,6 +5061,13 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds,
             absoluteSeconds);
 
+        foreach (var binding in
+                 _activeOmsiContinuousBindings)
+        {
+            _scriptRuntime.ExecuteTrigger(
+                binding.Trigger);
+        }
+
         _scriptRuntime.ExecuteFrame();
     }
 
@@ -5107,6 +5126,12 @@ public sealed class D3D11RenderWindow : Form
         if (!firstPress)
         {
             return;
+        }
+
+        if (!_vehiclePreviewMode)
+        {
+            DispatchOmsiKeyboardKeyDown(
+                e);
         }
 
         if (e.KeyCode == Keys.F1 &&
@@ -5369,7 +5394,50 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         KeyEventArgs e)
     {
-        _pressedKeys.Remove(e.KeyCode);
+        _pressedKeys.Remove(
+            e.KeyCode);
+
+        if (_activeOmsiContinuousBindings.Count >
+            0)
+        {
+            _activeOmsiContinuousBindings.RemoveWhere(
+                binding =>
+                    binding.Key ==
+                    e.KeyCode);
+        }
+    }
+
+    private void DispatchOmsiKeyboardKeyDown(
+        KeyEventArgs e)
+    {
+        if (_scriptRuntime is null ||
+            _omsiKeyboardBindings.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var binding in
+                 _omsiKeyboardBindings)
+        {
+            if (binding.Key !=
+                    e.KeyCode ||
+                binding.Shift !=
+                    e.Shift ||
+                binding.Control !=
+                    e.Control)
+            {
+                continue;
+            }
+
+            _scriptRuntime.ExecuteTrigger(
+                binding.Trigger);
+
+            if (binding.Continuous)
+            {
+                _activeOmsiContinuousBindings.Add(
+                    binding);
+            }
+        }
     }
 
     private void OnRuntimeMouseDown(
