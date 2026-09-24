@@ -228,6 +228,7 @@ public static class RuntimeVehicleInfoFactory
                 vehicle.Bus.Physics.CenterOfGravityHeightMeters,
                 vehicle.Bus.Physics.RollingResistanceNewtons,
                 vehicle.Bus.Physics.TrackWidthMeters,
+                vehicle.Bus.Physics.AverageWheelDiameterMeters,
                 AverageAxleValue(
                     vehicle.Bus.Physics.Axles,
                     static axle =>
