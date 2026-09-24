@@ -206,6 +206,16 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11DepthStencilView? _activeDepthStencilView;
     private Matrix4x4? _viewProjectionOverride;
     private bool _reflectionRenderingEnabled;
+    private readonly bool _vehiclePreviewMode;
+    private float _previewYaw = 0.62f;
+    private float _previewPitch = 0.16f;
+    private float _previewDistance = 14.0f;
+    private Vector3 _previewCenter =
+        new(
+            0.0f,
+            1.6f,
+            0.0f);
+    private float _previewRadius = 5.0f;
 
     private FeatureLevel _featureLevel;
     private readonly bool _vsync;
@@ -214,11 +224,14 @@ public sealed class D3D11RenderWindow : Form
         RuntimeWindowInfo windowInfo,
         OmsiScriptRuntime? scriptRuntime = null,
         int targetFps = 60,
-        bool vsync = true)
+        bool vsync = true,
+        bool vehiclePreviewMode = false)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
         _vsync = vsync;
+        _vehiclePreviewMode =
+            vehiclePreviewMode;
         _previousSystemMacroHandler =
             _scriptRuntime?.SystemMacroHandler;
 
@@ -236,17 +249,38 @@ public sealed class D3D11RenderWindow : Form
             windowInfo.Tiles,
             windowInfo.Vehicle?.Physics);
         _driveMode =
-            windowInfo.Vehicle is not null;
+            windowInfo.Vehicle is not null &&
+            !_vehiclePreviewMode;
         _driverCameraIndex =
             Math.Max(
                 windowInfo.Vehicle?.StandardDriverCameraIndex ?? 0,
                 0);
 
-        Text = $"OMSI Compatible Runtime — {windowInfo.WorldName}";
-        ClientSize = new System.Drawing.Size(1280, 720);
-        MinimumSize = new System.Drawing.Size(960, 540);
-        StartPosition = FormStartPosition.CenterScreen;
-        KeyPreview = true;
+        Text =
+            _vehiclePreviewMode
+                ? $"Prévia 3D — {windowInfo.Vehicle?.DisplayName ?? "Veículo"}"
+                : $"OMSI Compatible Runtime — {windowInfo.WorldName}";
+
+        ClientSize =
+            _vehiclePreviewMode
+                ? new System.Drawing.Size(
+                    520,
+                    260)
+                : new System.Drawing.Size(
+                    1280,
+                    720);
+
+        MinimumSize =
+            _vehiclePreviewMode
+                ? System.Drawing.Size.Empty
+                : new System.Drawing.Size(
+                    960,
+                    540);
+
+        StartPosition =
+            FormStartPosition.CenterScreen;
+        KeyPreview =
+            !_vehiclePreviewMode;
 
         KeyDown += OnRuntimeKeyDown;
         KeyUp += OnRuntimeKeyUp;
@@ -1278,6 +1312,14 @@ public sealed class D3D11RenderWindow : Form
                 "D3D11 device is not initialized.");
         }
 
+        _terrainCameraBuffer ??=
+            _device.CreateConstantBuffer<
+                RuntimeCameraConstants>();
+
+        _terrainRasterizerState ??=
+            _device.CreateRasterizerState(
+                RasterizerDescription.CullNone);
+
         _vehicleExteriorGeometry =
             RuntimeVehicleGeometry.Build(
                 _windowInfo.Vehicle,
@@ -1287,6 +1329,11 @@ public sealed class D3D11RenderWindow : Form
             RuntimeVehicleGeometry.Build(
                 _windowInfo.Vehicle,
                 viewpointBit: 2);
+
+        if (_vehiclePreviewMode)
+        {
+            ConfigureVehiclePreviewBounds();
+        }
 
         Console.WriteLine(
             $"[vehicle-geometry] exteriorVertices={_vehicleExteriorGeometry.Vertices.Length}; " +
@@ -1549,10 +1596,13 @@ public sealed class D3D11RenderWindow : Form
         AppendVehicleTextureDiagnostics(
             vehicleTexturePaths);
 
-        _vehicle.Reset(
-            _windowInfo.Splines,
-            _terrainGeometry,
-            _windowInfo.Spawn);
+        if (!_vehiclePreviewMode)
+        {
+            _vehicle.Reset(
+                _windowInfo.Splines,
+                _terrainGeometry,
+                _windowInfo.Spawn);
+        }
     }
 
     private void AppendVehicleTextureDiagnostics(
@@ -2095,6 +2145,21 @@ public sealed class D3D11RenderWindow : Form
             0,
             (uint)Math.Max(ClientSize.Width, 1),
             (uint)Math.Max(ClientSize.Height, 1));
+
+        if (_vehiclePreviewMode)
+        {
+            UpdateVehiclePreviewCameraConstants();
+            DrawVehicle();
+
+            _swapChain.Present(
+                _vsync
+                    ? 1u
+                    : 0u,
+                PresentFlags.None)
+                .CheckError();
+
+            return;
+        }
 
         DrawSky();
 
@@ -4192,6 +4257,11 @@ public sealed class D3D11RenderWindow : Form
 
     private Vector3 ResolveActiveCameraPosition()
     {
+        if (_vehiclePreviewMode)
+        {
+            return ResolveVehiclePreviewCameraPosition();
+        }
+
         if (!_driveMode)
         {
             return _camera.Position;
@@ -4244,6 +4314,12 @@ public sealed class D3D11RenderWindow : Form
             (float)Math.Max(
                 ClientSize.Height,
                 1);
+
+        if (_vehiclePreviewMode)
+        {
+            return CreateVehiclePreviewViewProjection(
+                aspect);
+        }
 
         if (!_driveMode)
         {
@@ -4311,6 +4387,11 @@ public sealed class D3D11RenderWindow : Form
 
     private void UpdateSimulation()
     {
+        if (_vehiclePreviewMode)
+        {
+            return;
+        }
+
         var now =
             _frameClock.Elapsed.TotalSeconds;
 
@@ -5275,6 +5356,21 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         MouseEventArgs e)
     {
+        if (_vehiclePreviewMode)
+        {
+            if (e.Button is
+                MouseButtons.Left or
+                MouseButtons.Right)
+            {
+                _mouseLooking = true;
+                _lastMousePosition =
+                    e.Location;
+                Capture = true;
+            }
+
+            return;
+        }
+
         if (e.Button != MouseButtons.Right)
         {
             return;
@@ -5302,6 +5398,19 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         MouseEventArgs e)
     {
+        if (_vehiclePreviewMode)
+        {
+            if (e.Button is
+                MouseButtons.Left or
+                MouseButtons.Right)
+            {
+                _mouseLooking = false;
+                Capture = false;
+            }
+
+            return;
+        }
+
         if (e.Button != MouseButtons.Right ||
             _mouseDriveMode)
         {
@@ -5320,6 +5429,33 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         MouseEventArgs e)
     {
+        if (_vehiclePreviewMode)
+        {
+            if (!_mouseLooking)
+            {
+                return;
+            }
+
+            var deltaX =
+                e.X - _lastMousePosition.X;
+            var deltaY =
+                e.Y - _lastMousePosition.Y;
+
+            _lastMousePosition =
+                e.Location;
+
+            _previewYaw +=
+                deltaX * 0.008f;
+            _previewPitch =
+                Math.Clamp(
+                    _previewPitch -
+                    deltaY * 0.006f,
+                    -0.35f,
+                    0.75f);
+
+            return;
+        }
+
         if (_driveMode &&
             _mouseDriveMode)
         {
@@ -5349,6 +5485,27 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         MouseEventArgs e)
     {
+        if (_vehiclePreviewMode)
+        {
+            var steps =
+                e.Delta / 120.0f;
+
+            _previewDistance =
+                Math.Clamp(
+                    _previewDistance *
+                    MathF.Pow(
+                        0.90f,
+                        steps),
+                    Math.Max(
+                        _previewRadius * 1.15f,
+                        1.5f),
+                    Math.Max(
+                        _previewRadius * 8.0f,
+                        30.0f));
+
+            return;
+        }
+
         if (_driveMode)
         {
             return;
@@ -5454,6 +5611,147 @@ public sealed class D3D11RenderWindow : Form
                 0.0f);
     }
 
+    private void ConfigureVehiclePreviewBounds()
+    {
+        var vertices =
+            _vehicleExteriorGeometry.Vertices.Length > 0
+                ? _vehicleExteriorGeometry.Vertices
+                : _vehicleInteriorGeometry.Vertices;
+
+        if (vertices.Length == 0)
+        {
+            _previewCenter =
+                new Vector3(
+                    0.0f,
+                    1.6f,
+                    0.0f);
+            _previewRadius =
+                5.0f;
+            _previewDistance =
+                14.0f;
+            return;
+        }
+
+        var minimum =
+            vertices[0].Position;
+        var maximum =
+            vertices[0].Position;
+
+        foreach (var vertex in
+                 vertices)
+        {
+            minimum =
+                Vector3.Min(
+                    minimum,
+                    vertex.Position);
+
+            maximum =
+                Vector3.Max(
+                    maximum,
+                    vertex.Position);
+        }
+
+        _previewCenter =
+            (minimum + maximum) *
+            0.5f;
+
+        var size =
+            maximum - minimum;
+
+        _previewRadius =
+            Math.Max(
+                size.Length() *
+                0.5f,
+                1.0f);
+
+        _previewDistance =
+            Math.Clamp(
+                _previewRadius * 2.35f,
+                4.0f,
+                40.0f);
+    }
+
+    private Vector3 ResolveVehiclePreviewCameraPosition()
+    {
+        var horizontal =
+            MathF.Cos(
+                _previewPitch);
+
+        var direction =
+            new Vector3(
+                MathF.Sin(
+                    _previewYaw) *
+                horizontal,
+                MathF.Sin(
+                    _previewPitch),
+                MathF.Cos(
+                    _previewYaw) *
+                horizontal);
+
+        return
+            _previewCenter +
+            direction *
+            _previewDistance;
+    }
+
+    private Matrix4x4 CreateVehiclePreviewViewProjection(
+        float aspect)
+    {
+        var eye =
+            ResolveVehiclePreviewCameraPosition();
+
+        var view =
+            Matrix4x4.CreateLookAt(
+                eye,
+                _previewCenter,
+                Vector3.UnitY);
+
+        var projection =
+            Matrix4x4.CreatePerspectiveFieldOfView(
+                MathF.PI / 4.0f,
+                MathF.Max(
+                    aspect,
+                    0.1f),
+                0.03f,
+                Math.Max(
+                    250.0f,
+                    _previewDistance +
+                    _previewRadius *
+                    12.0f));
+
+        return
+            view *
+            projection;
+    }
+
+    private void UpdateVehiclePreviewCameraConstants()
+    {
+        if (_deviceContext is null ||
+            _terrainCameraBuffer is null)
+        {
+            return;
+        }
+
+        Span<RuntimeCameraConstants> constants =
+            stackalloc RuntimeCameraConstants[1];
+
+        constants[0] =
+            new RuntimeCameraConstants
+            {
+                ViewProjection =
+                    CreateViewProjection(),
+                CameraPosition =
+                    ResolveActiveCameraPosition(),
+                CameraPadding =
+                    0.0f
+            };
+
+        _terrainCameraBuffer.SetData(
+            _deviceContext,
+            constants,
+            MapMode.WriteDiscard);
+    }
+
     private void DrawTileOverview()
     {
         if (_deviceContext is null ||
@@ -5491,6 +5789,13 @@ public sealed class D3D11RenderWindow : Form
 
     private void UpdateCaption()
     {
+        if (_vehiclePreviewMode)
+        {
+            Text =
+                $"Prévia 3D — {_windowInfo.Vehicle?.DisplayName ?? "Veículo"}";
+            return;
+        }
+
         var runtimeObjectCount =
             _windowInfo.Objects.Count(
                 item =>
