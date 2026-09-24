@@ -4590,24 +4590,71 @@ public sealed class D3D11RenderWindow : Form
                     localTransform;
             }
 
-            if (Matrix4x4.Decompose(
-                    converted,
-                    out _,
-                    out var rotation,
-                    out pivot))
-            {
-                orientation =
-                    Matrix4x4.CreateFromQuaternion(
-                        rotation);
-            }
-            else
-            {
-                pivot =
-                    new Vector3(
-                        converted.M41,
-                        converted.M42,
-                        converted.M43);
-            }
+            pivot =
+                new Vector3(
+                    converted.M41,
+                    converted.M42,
+                    converted.M43);
+
+            // Do not use Matrix4x4.Decompose here. OMSI O3D origins can
+            // legitimately contain a reflected/negative object scale
+            // (the MEP steering wheel is one real example). Decompose can
+            // move that reflection into an arbitrary scale axis and flip
+            // the animation axis. Preserve the authored local basis and
+            // normalize its rows instead.
+            var axisX =
+                new Vector3(
+                    converted.M11,
+                    converted.M12,
+                    converted.M13);
+            var axisY =
+                new Vector3(
+                    converted.M21,
+                    converted.M22,
+                    converted.M23);
+            var axisZ =
+                new Vector3(
+                    converted.M31,
+                    converted.M32,
+                    converted.M33);
+
+            axisX =
+                axisX.LengthSquared() >
+                    0.000001f
+                    ? Vector3.Normalize(
+                        axisX)
+                    : Vector3.UnitX;
+            axisY =
+                axisY.LengthSquared() >
+                    0.000001f
+                    ? Vector3.Normalize(
+                        axisY)
+                    : Vector3.UnitY;
+            axisZ =
+                axisZ.LengthSquared() >
+                    0.000001f
+                    ? Vector3.Normalize(
+                        axisZ)
+                    : Vector3.UnitZ;
+
+            orientation =
+                new Matrix4x4(
+                    axisX.X,
+                    axisX.Y,
+                    axisX.Z,
+                    0.0f,
+                    axisY.X,
+                    axisY.Y,
+                    axisY.Z,
+                    0.0f,
+                    axisZ.X,
+                    axisZ.Y,
+                    axisZ.Z,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    1.0f);
         }
         else
         {
