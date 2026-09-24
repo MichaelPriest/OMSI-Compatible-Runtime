@@ -212,7 +212,7 @@ internal sealed class RuntimeApplicationContext :
                     "Preparando renderização",
                     $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · " +
                     $"{vehicle.RenderableMeshCount:N0} mesh(es) renderizáveis do ônibus · " +
-                    $"{vehicle.ProtectedMeshCount:N0} protegida(s) · " +
+                    $"{vehicle.ProtectedMeshCount:N0} criptografada(s) · " +
                     $"{vehicle.FailedMeshCount:N0} com falha..."));
 
             var runtimeInfo =
@@ -403,7 +403,7 @@ internal sealed class RuntimeApplicationContext :
                     $"sceneryAssetTypes={scenery.Length}",
                     $"sceneryRenderable={renderable}",
                     $"sceneryMissing={missingAssets}",
-                    $"sceneryProtected={protectedAssets}",
+                    $"sceneryEncrypted={protectedAssets}",
                     $"sceneryOnlyEditor={editorOnlyAssets}",
                     $"placementParseIssues={world.PlacementParseIssueCount}",
                     $"terrainParseIssues={world.TerrainParseIssueCount}",
@@ -437,7 +437,7 @@ internal sealed class RuntimeApplicationContext :
                         .ToArray();
 
                 lines.Add(
-                    $"{pair.Key} | placements={placements} | exists={asset.Exists} | renderable={asset.IsRenderable} | editorOnly={asset.OnlyEditor} | meshes={asset.Meshes.Count} | renderableMeshes={asset.RenderableMeshCount} | protectedMeshes={asset.ProtectedMeshCount} | tree={asset.Tree is not null} | resolved={asset.ResolvedPath ?? "<null>"} | errors={(errors.Length == 0 ? "<none>" : string.Join(",", errors))}");
+                    $"{pair.Key} | placements={placements} | exists={asset.Exists} | renderable={asset.IsRenderable} | editorOnly={asset.OnlyEditor} | meshes={asset.Meshes.Count} | renderableMeshes={asset.RenderableMeshCount} | encryptedMeshes={asset.ProtectedMeshCount} | tree={asset.Tree is not null} | resolved={asset.ResolvedPath ?? "<null>"} | errors={(errors.Length == 0 ? "<none>" : string.Join(",", errors))}");
             }
 
             File.WriteAllLines(
@@ -445,7 +445,7 @@ internal sealed class RuntimeApplicationContext :
                 lines);
 
             Console.WriteLine(
-                $"[world-load] tiles={world.Tiles.Count}/{world.TotalTileCount}; objects={world.Objects.Count}; scenery={renderable}/{scenery.Length} renderable; missing={missingAssets}; protected={protectedAssets}; editorOnly={editorOnlyAssets}; meshErrors={(failedMeshGroups.Length == 0 ? "<none>" : string.Join("; ", failedMeshGroups))}");
+                $"[world-load] tiles={world.Tiles.Count}/{world.TotalTileCount}; objects={world.Objects.Count}; scenery={renderable}/{scenery.Length} renderable; missing={missingAssets}; encrypted={protectedAssets}; editorOnly={editorOnlyAssets}; meshErrors={(failedMeshGroups.Length == 0 ? "<none>" : string.Join("; ", failedMeshGroups))}");
         }
         catch (Exception ex)
         {
@@ -517,7 +517,7 @@ internal sealed class RuntimeApplicationContext :
                     $"modelCfgExists={vehicle.Bus.ModelConfigPath is not null && File.Exists(vehicle.Bus.ModelConfigPath)}",
                     $"meshTotal={vehicle.Meshes.Count}",
                     $"meshRenderable={vehicle.RenderableMeshCount}",
-                    $"meshProtected={vehicle.ProtectedMeshCount}",
+                    $"meshEncrypted={vehicle.ProtectedMeshCount}",
                     $"meshFailed={vehicle.FailedMeshCount}",
                     $"driverCameras={vehicle.Bus.DriverCameras.Count}",
                     $"passengerCameras={vehicle.Bus.PassengerCameras.Count}",
