@@ -30,6 +30,11 @@ internal static class Program
                 args,
                 "--spawn");
 
+        var noBus =
+            HasFlag(
+                args,
+                "--no-bus");
+
         var externalLoading =
             HasFlag(
                 args,
@@ -98,24 +103,29 @@ internal static class Program
             return 0;
         }
 
-        var buses =
-            BusDiscovery.Discover(
-                contentRoot);
+        OmsiBusInfo? selectedBus = null;
 
-        var selectedBus =
-            buses.FirstOrDefault(
-                bus =>
-                    string.Equals(
-                        bus.RelativePath,
-                        busRelativePath,
-                        StringComparison.OrdinalIgnoreCase))
-            ?? buses.FirstOrDefault();
-
-        if (selectedBus is null)
+        if (!noBus)
         {
-            Console.Error.WriteLine(
-                "No OMSI .bus vehicle was found.");
-            return 4;
+            var buses =
+                BusDiscovery.Discover(
+                    contentRoot);
+
+            selectedBus =
+                buses.FirstOrDefault(
+                    bus =>
+                        string.Equals(
+                            bus.RelativePath,
+                            busRelativePath,
+                            StringComparison.OrdinalIgnoreCase))
+                ?? buses.FirstOrDefault();
+
+            if (selectedBus is null)
+            {
+                Console.Error.WriteLine(
+                    "No OMSI .bus vehicle was found.");
+                return 4;
+            }
         }
 
         var entryPointGroups =
