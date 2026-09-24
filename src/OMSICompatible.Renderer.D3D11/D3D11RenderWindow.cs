@@ -5276,195 +5276,209 @@ public sealed class D3D11RenderWindow : Form
         KeyEventArgs e)
     {
         var firstPress =
-            _pressedKeys.Add(e.KeyCode);
+            _pressedKeys.Add(
+                e.KeyCode);
 
         if (!firstPress)
         {
             return;
         }
 
-        if (!_vehiclePreviewMode)
-        {
+        var matchedOmsiBinding =
+            !_vehiclePreviewMode &&
             DispatchOmsiKeyboardKeyDown(
                 e);
+
+        if (!matchedOmsiBinding &&
+            e.Control &&
+            e.Shift &&
+            e.KeyCode == Keys.F9)
+        {
+            _reflectionRenderingEnabled =
+                !_reflectionRenderingEnabled;
+
+            UpdateCaption();
+            e.SuppressKeyPress =
+                true;
+            return;
         }
 
+        if (!matchedOmsiBinding &&
+            e.Control &&
+            e.Shift &&
+            e.KeyCode == Keys.F5 &&
+            _terrainGeometry.Vertices.Length >
+                0)
+        {
+            _vehicle.Reset(
+                _windowInfo.Splines,
+                _terrainGeometry,
+                _windowInfo.Spawn);
+
+            UpdateCaption();
+            e.SuppressKeyPress =
+                true;
+            return;
+        }
+
+        if (!matchedOmsiBinding &&
+            e.Control &&
+            e.Shift &&
+            e.KeyCode == Keys.R &&
+            !_driveMode &&
+            _terrainGeometry.Vertices.Length >
+                0)
+        {
+            _camera.Reset(
+                _terrainGeometry);
+
+            e.SuppressKeyPress =
+                true;
+            return;
+        }
+
+        if (_omsiKeyboardBindings.Count >
+            0)
+        {
+            if (matchedOmsiBinding)
+            {
+                UpdateCaption();
+                e.SuppressKeyPress =
+                    true;
+            }
+
+            return;
+        }
+
+        ApplyLegacyKeyboardFallback(
+            e);
+    }
+
+    private void ApplyLegacyKeyboardFallback(
+        KeyEventArgs e)
+    {
         if (e.KeyCode == Keys.F1 &&
             _windowInfo.Vehicle is not null)
         {
-            _driveMode = true;
-            _vehicleViewMode =
-                RuntimeVehicleViewMode.Driver;
-
-            if (_windowInfo.Vehicle is not null)
-            {
-                _driverCameraIndex =
-                    Math.Max(
-                        _windowInfo.Vehicle.StandardDriverCameraIndex,
-                        0);
-            }
-
-            UpdateCaption();
-            e.SuppressKeyPress = true;
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.DriverView);
+            e.SuppressKeyPress =
+                true;
             return;
         }
 
         if (e.KeyCode == Keys.F2 &&
             _windowInfo.Vehicle is not null)
         {
-            _driveMode = true;
-            _vehicleViewMode =
-                _windowInfo.Vehicle?.PassengerCameras.Count > 0
-                    ? RuntimeVehicleViewMode.Passenger
-                    : RuntimeVehicleViewMode.Driver;
-            UpdateCaption();
-            e.SuppressKeyPress = true;
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.PassengerView);
+            e.SuppressKeyPress =
+                true;
             return;
         }
 
         if (e.KeyCode == Keys.F3 &&
             _windowInfo.Vehicle is not null)
         {
-            _driveMode = true;
-            _vehicleViewMode =
-                RuntimeVehicleViewMode.Exterior;
-            UpdateCaption();
-            e.SuppressKeyPress = true;
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.ExteriorView);
+            e.SuppressKeyPress =
+                true;
             return;
         }
 
         if (e.KeyCode == Keys.F4)
         {
-            if (_mouseDriveMode)
-            {
-                DisableMouseDriveMode();
-            }
-
-            _driveMode = false;
-            UpdateCaption();
-            e.SuppressKeyPress = true;
-            return;
-        }
-
-        if (e.KeyCode == Keys.F9)
-        {
-            _reflectionRenderingEnabled =
-                !_reflectionRenderingEnabled;
-
-            UpdateCaption();
-            e.SuppressKeyPress = true;
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.FreeCameraView);
+            e.SuppressKeyPress =
+                true;
             return;
         }
 
         if (e.KeyCode == Keys.Insert)
         {
-            ActivateSpecialDriverCamera(
-                _windowInfo.Vehicle?.ScheduleDriverCameraIndex);
-            UpdateCaption();
-            e.SuppressKeyPress = true;
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.ScheduleView);
+            e.SuppressKeyPress =
+                true;
             return;
         }
 
         if (e.KeyCode == Keys.Home)
         {
-            ActivateSpecialDriverCamera(
-                _windowInfo.Vehicle?.TicketSellingDriverCameraIndex);
-            UpdateCaption();
-            e.SuppressKeyPress = true;
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.TicketSellingView);
+            e.SuppressKeyPress =
+                true;
             return;
         }
 
-        if (e.KeyCode == Keys.Tab &&
-            _windowInfo.Vehicle is not null)
+        if (!_driveMode)
         {
-            if (_mouseDriveMode)
-            {
-                DisableMouseDriveMode();
-            }
-
-            _driveMode = !_driveMode;
-            e.SuppressKeyPress = true;
-            UpdateCaption();
             return;
         }
 
-        if (_driveMode)
+        switch (e.KeyCode)
         {
-            if (e.KeyCode is Keys.Left or Keys.Right)
-            {
-                CycleInteriorCamera(
-                    e.KeyCode == Keys.Left
-                        ? 1
-                        : -1);
-                UpdateCaption();
-                e.SuppressKeyPress = true;
-                return;
-            }
+            case Keys.Left:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.InteriorViewNext);
+                break;
 
-            if (e.KeyCode == Keys.O)
-            {
-                ToggleMouseDriveMode();
-                UpdateCaption();
-                return;
-            }
+            case Keys.Right:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.InteriorViewPrevious);
+                break;
 
-            switch (e.KeyCode)
-            {
-                case Keys.E:
-                    _vehicle.ToggleElectricalSystem();
-                    break;
+            case Keys.O:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.MouseDriveToggle);
+                break;
 
-                case Keys.M:
-                    _vehicle.ToggleEngine();
-                    break;
+            case Keys.E:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ElectricalToggle);
+                break;
 
-                case Keys.D:
-                    _vehicle.SelectGear(
-                        RuntimeDriveGear.Drive);
-                    break;
+            case Keys.M:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.EngineToggle);
+                break;
 
-                case Keys.N:
-                    _vehicle.SelectGear(
-                        RuntimeDriveGear.Neutral);
-                    break;
+            case Keys.D:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.GearDrive);
+                break;
 
-                case Keys.R:
-                    _vehicle.SelectGear(
-                        RuntimeDriveGear.Reverse);
-                    break;
+            case Keys.N:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.GearNeutral);
+                break;
 
-                case Keys.Decimal:
-                case Keys.OemPeriod:
-                    _vehicle.ToggleParkingBrake();
-                    break;
+            case Keys.R:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.GearReverse);
+                break;
 
-                case Keys.Subtract:
-                    _vehicle.ToggleStopBrake();
-                    break;
+            case Keys.Decimal:
+            case Keys.OemPeriod:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ParkingBrakeToggle);
+                break;
 
-                case Keys.F5:
-                    if (_terrainGeometry.Vertices.Length > 0)
-                    {
-                        _vehicle.Reset(
-                            _windowInfo.Splines,
-                            _terrainGeometry,
-                            _windowInfo.Spawn);
-                    }
+            case Keys.Subtract:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.StopBrakeToggle);
+                break;
 
-                    break;
-            }
-
-            UpdateCaption();
-            return;
+            case Keys.K:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ControllerToggle);
+                break;
         }
 
-        if ((e.KeyCode == Keys.R ||
-             e.KeyCode == Keys.F5) &&
-            _terrainGeometry.Vertices.Length > 0)
-        {
-            _camera.Reset(
-                _terrainGeometry);
-        }
+        UpdateCaption();
     }
 
     private void ActivateSpecialDriverCamera(
