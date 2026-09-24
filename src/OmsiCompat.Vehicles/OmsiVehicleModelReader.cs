@@ -13,6 +13,8 @@ public static class OmsiVehicleModelReader
             new List<OmsiVehicleTextTexture>();
 
         string? currentMeshPath = null;
+        string? currentMeshIdentifier = null;
+        string? currentAnimationParent = null;
         var currentOrdinal = -1;
         var currentTransform =
             OmsiVehicleMeshTransform.Identity;
@@ -85,10 +87,14 @@ public static class OmsiVehicleModelReader
                     visibilityConditions.ToArray(),
                     animations.ToArray(),
                     overrides.ToArray(),
-                    lightEffects.ToArray()));
+                    lightEffects.ToArray(),
+                    currentMeshIdentifier,
+                    currentAnimationParent));
             }
 
             currentMeshPath = null;
+            currentMeshIdentifier = null;
+            currentAnimationParent = null;
             visibilityConditions =
                 new List<OmsiVehicleVisibilityCondition>();
             animations =
@@ -163,6 +169,46 @@ public static class OmsiVehicleModelReader
 
             if (currentMeshPath is null)
             {
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "mesh_ident",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                currentMeshIdentifier =
+                    Values(section)
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+
+                if (string.IsNullOrWhiteSpace(
+                        currentMeshIdentifier))
+                {
+                    currentMeshIdentifier =
+                        null;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "animparent",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                currentAnimationParent =
+                    Values(section)
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+
+                if (string.IsNullOrWhiteSpace(
+                        currentAnimationParent))
+                {
+                    currentAnimationParent =
+                        null;
+                }
+
                 continue;
             }
 
