@@ -92,6 +92,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly bool _gameControllerEnabled;
     private RuntimeOmsiGameControllerHost? _omsiGameController;
     private RuntimeOmsiAudioHost? _omsiAudio;
+    private readonly Dictionary<int, RuntimeOmsiAudioHost>
+        _articulatedOmsiAudio =
+            [];
     private bool _controllerInputEnabled = true;
     private float _controllerClutchInput;
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
@@ -719,7 +722,36 @@ public sealed class D3D11RenderWindow : Form
         if (_omsiAudio is not null)
         {
             Console.WriteLine(
-                $"[audio] {_omsiAudio.ExistingFileCount}/{_omsiAudio.SoundCount} OMSI sound files resolved.");
+                $"[audio] lead: {_omsiAudio.ExistingFileCount}/{_omsiAudio.SoundCount} OMSI sound files resolved.");
+        }
+
+        _articulatedOmsiAudio.Clear();
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections ??
+                 Array.Empty<RuntimeVehicleSectionInfo>())
+        {
+            if (string.IsNullOrWhiteSpace(
+                    section.SoundConfigPath))
+            {
+                continue;
+            }
+
+            var audio =
+                RuntimeOmsiAudioHost.TryCreate(
+                    section.SoundConfigPath);
+
+            if (audio is null)
+            {
+                continue;
+            }
+
+            _articulatedOmsiAudio[
+                section.Index] =
+                audio;
+
+            Console.WriteLine(
+                $"[audio] section={section.Index}: {audio.ExistingFileCount}/{audio.SoundCount} OMSI sound files resolved from {Path.GetFileName(section.SoundConfigPath)}.");
         }
     }
 
@@ -4970,13 +5002,46 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds,
             now);
 
+        var listenerPosition =
+            ResolveActiveCameraPosition();
+
         _omsiAudio?.Update(
             _scriptRuntime,
             IsInteriorSoundView(),
             _vehicle.EngineRunning,
-            ResolveActiveCameraPosition(),
+            listenerPosition,
             _vehicle.Position,
             _vehicle.HeadingRadians);
+
+        foreach (var pair in
+                 _articulatedOmsiAudio)
+        {
+            var section =
+                _windowInfo.Vehicle?.Sections?
+                    .FirstOrDefault(
+                        item =>
+                            item.Index ==
+                            pair.Key);
+
+            if (section is null)
+            {
+                continue;
+            }
+
+            ResolveArticulatedSectionAudioPose(
+                section,
+                out var sectionPosition,
+                out var sectionHeading);
+
+            pair.Value.Update(
+                _scriptRuntime,
+                IsInteriorSoundView() &&
+                    section.OpenForSound,
+                _vehicle.EngineRunning,
+                listenerPosition,
+                sectionPosition,
+                sectionHeading);
+        }
 
         UpdateVehicleAnimationStates(
             deltaSeconds);
@@ -6032,14 +6097,15 @@ public sealed class D3D11RenderWindow : Form
             "Velocity_Ground",
             _vehicle.SpeedKph);
 
-        // Feed the steering angle with the same left/right sign used
-        // by the driving input. model.cfg animation deltas already define
-        // each mesh's own rotation direction, so host-side inversion makes
-        // steering wheels and axle meshes turn the wrong way on many buses.
+        // OMSI's built-in Axle_Steering_* animation variables use
+        // the vehicle-model coordinate sign, which is opposite the runtime
+        // world yaw sign. Keep physics positive-right but mirror only the
+        // visual variables so the physical wheel and steering wheel follow
+        // the real model.cfg definition.
         var omsiSteeringLeft =
-            _vehicle.FrontLeftSteeringRadians;
+            -_vehicle.FrontLeftSteeringRadians;
         var omsiSteeringRight =
-            _vehicle.FrontRightSteeringRadians;
+            -_vehicle.FrontRightSteeringRadians;
 
         _scriptRuntime.SetLocal(
             "Axle_Steering_0_L",
@@ -6082,6 +6148,58 @@ public sealed class D3D11RenderWindow : Form
             _vehicle.RearLeftSuspensionMeters);
         _scriptRuntime.SetLocal(
             "Axle_Suspension_1_R",
+            _vehicle.RearRightSuspensionMeters);
+
+        // Coupled OMSI .bus models expose the articulation angle as a host
+        // variable. The MEP Quadbus II bellows and its articulation.osc
+        // consume articulation_0_alpha/beta directly.
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections ??
+                 Array.Empty<RuntimeVehicleSectionInfo>())
+        {
+            var couplingIndex =
+                Math.Max(
+                    section.Index - 1,
+                    0);
+
+            var relativeYaw =
+                _articulatedSectionYawRadians
+                    .TryGetValue(
+                        section.Index,
+                        out var yaw)
+                        ? yaw
+                        : 0.0f;
+
+            var alphaDegrees =
+                -relativeYaw *
+                180.0 /
+                Math.PI;
+
+            _scriptRuntime.SetLocal(
+                $"articulation_{couplingIndex}_alpha",
+                alphaDegrees);
+
+            // Vertical joint dynamics are not solved yet. Keep beta neutral
+            // rather than leaving stale VM data in the add-on script.
+            _scriptRuntime.SetLocal(
+                $"articulation_{couplingIndex}_beta",
+                0.0);
+        }
+
+        // OMSI numbers trailer axles continuously across the coupled set.
+        // Until each body gets independent suspension contact, propagate the
+        // rear-body contact response instead of leaving axle 2/3 at zero.
+        _scriptRuntime.SetLocal(
+            "Axle_Suspension_2_L",
+            _vehicle.RearLeftSuspensionMeters);
+        _scriptRuntime.SetLocal(
+            "Axle_Suspension_2_R",
+            _vehicle.RearRightSuspensionMeters);
+        _scriptRuntime.SetLocal(
+            "Axle_Suspension_3_L",
+            _vehicle.RearLeftSuspensionMeters);
+        _scriptRuntime.SetLocal(
+            "Axle_Suspension_3_R",
             _vehicle.RearRightSuspensionMeters);
     }
 
@@ -6673,13 +6791,92 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime?.ExecuteTrigger(
             trigger);
 
+        var listenerPosition =
+            ResolveActiveCameraPosition();
+
         _omsiAudio?.Trigger(
             trigger,
             _scriptRuntime,
             IsInteriorSoundView(),
-            ResolveActiveCameraPosition(),
+            listenerPosition,
             _vehicle.Position,
             _vehicle.HeadingRadians);
+
+        foreach (var pair in
+                 _articulatedOmsiAudio)
+        {
+            var section =
+                _windowInfo.Vehicle?.Sections?
+                    .FirstOrDefault(
+                        item =>
+                            item.Index ==
+                            pair.Key);
+
+            if (section is null)
+            {
+                continue;
+            }
+
+            ResolveArticulatedSectionAudioPose(
+                section,
+                out var sectionPosition,
+                out var sectionHeading);
+
+            pair.Value.Trigger(
+                trigger,
+                _scriptRuntime,
+                IsInteriorSoundView() &&
+                    section.OpenForSound,
+                listenerPosition,
+                sectionPosition,
+                sectionHeading);
+        }
+    }
+
+    private void ResolveArticulatedSectionAudioPose(
+        RuntimeVehicleSectionInfo section,
+        out Vector3 position,
+        out float headingRadians)
+    {
+        var localOrigin =
+            new Vector3(
+                (float)section.OriginX,
+                (float)section.OriginY,
+                (float)section.OriginZ);
+
+        localOrigin =
+            Vector3.Transform(
+                localOrigin,
+                CreateArticulatedSectionMatrix(
+                    section.Index));
+
+        var sine =
+            MathF.Sin(
+                _vehicle.HeadingRadians);
+        var cosine =
+            MathF.Cos(
+                _vehicle.HeadingRadians);
+
+        position =
+            _vehicle.Position +
+            new Vector3(
+                localOrigin.X *
+                    cosine +
+                localOrigin.Z *
+                    sine,
+                localOrigin.Y,
+                -localOrigin.X *
+                    sine +
+                localOrigin.Z *
+                    cosine);
+
+        headingRadians =
+            _articulatedSectionAbsoluteHeadingRadians
+                .TryGetValue(
+                    section.Index,
+                    out var storedHeading)
+                    ? storedHeading
+                    : _vehicle.HeadingRadians;
     }
 
     private bool IsInteriorSoundView() =>
@@ -7393,12 +7590,12 @@ public sealed class D3D11RenderWindow : Form
         var centerY =
             ClientSize.Height * 0.5f;
 
-        // Runtime vehicle yaw uses the opposite screen-X sign
-        // from the OMSI mouse cross. User-facing behaviour must remain:
-        // mouse right -> vehicle right, mouse left -> vehicle left.
+        // Positive steering in RuntimeDriveVehicle is a right turn.
+        // Keep the mouse cross in the same user-facing direction:
+        // mouse right -> positive/right, mouse left -> negative/left.
         var horizontal =
             Math.Clamp(
-                (centerX - location.X) /
+                (location.X - centerX) /
                 halfWidth,
                 -1.0f,
                 1.0f);
@@ -7771,6 +7968,14 @@ public sealed class D3D11RenderWindow : Form
             _omsiAudio?.Dispose();
             _omsiAudio =
                 null;
+
+            foreach (var audio in
+                     _articulatedOmsiAudio.Values)
+            {
+                audio.Dispose();
+            }
+
+            _articulatedOmsiAudio.Clear();
 
             _renderTimer.Stop();
             _renderTimer.Tick -=
