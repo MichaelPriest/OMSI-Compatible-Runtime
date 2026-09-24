@@ -198,6 +198,11 @@ public static class WorldLoader
                 contentRoot,
                 map);
 
+        var aiCatalog =
+            OmsiMapAiCatalogReader.Read(
+                contentRoot,
+                map);
+
         progress?.Report(
             new WorldLoadProgress(
                 90,
@@ -218,6 +223,7 @@ public static class WorldLoader
             splineAssets,
             sceneryAssets,
             groundTextures,
+            aiCatalog,
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
