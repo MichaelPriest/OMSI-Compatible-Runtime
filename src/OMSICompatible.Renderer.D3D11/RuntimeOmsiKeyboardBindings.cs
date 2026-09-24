@@ -250,7 +250,9 @@ internal static class RuntimeOmsiKeyboardBindings
                     RuntimeOmsiHostInputAction.ElectricalToggle,
                 Keys.M =>
                     RuntimeOmsiHostInputAction.EngineToggle,
-                Keys.D =>
+                Keys.D or
+                Keys.D1 or
+                Keys.D2 =>
                     RuntimeOmsiHostInputAction.GearDrive,
                 Keys.N =>
                     RuntimeOmsiHostInputAction.GearNeutral,
@@ -259,7 +261,8 @@ internal static class RuntimeOmsiKeyboardBindings
                 Keys.Decimal or
                 Keys.OemPeriod =>
                     RuntimeOmsiHostInputAction.ParkingBrakeToggle,
-                Keys.Subtract =>
+                Keys.Subtract or
+                Keys.Scroll =>
                     RuntimeOmsiHostInputAction.StopBrakeToggle,
                 Keys.O =>
                     RuntimeOmsiHostInputAction.MouseDriveToggle,
@@ -304,11 +307,14 @@ internal static class RuntimeOmsiKeyboardBindings
             Keys.E or
             Keys.M or
             Keys.D or
+            Keys.D1 or
+            Keys.D2 or
             Keys.N or
             Keys.R or
             Keys.Decimal or
             Keys.OemPeriod or
             Keys.Subtract or
+            Keys.Scroll or
             Keys.O or
             Keys.F1 or
             Keys.F2 or
