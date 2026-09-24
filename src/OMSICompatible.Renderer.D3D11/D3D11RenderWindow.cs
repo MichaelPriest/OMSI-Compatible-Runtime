@@ -3748,7 +3748,7 @@ public sealed class D3D11RenderWindow : Form
                         value,
                         MidpointRounding.ToEven);
 
-                if (rounded < 1.0 ||
+                if (rounded < 0.0 ||
                     rounded > int.MaxValue)
                 {
                     continue;
