@@ -65,8 +65,10 @@ public sealed partial class MainWindow :
         Activated -=
             OnFirstActivated;
 
+        _refreshing = true;
         NoBusCheckBox.IsChecked =
             _settings.StartWithoutBus;
+        _refreshing = false;
 
         var initial =
             _settings.ContentPath;
