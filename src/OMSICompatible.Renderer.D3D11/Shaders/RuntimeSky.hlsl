@@ -1,7 +1,7 @@
 cbuffer RuntimeSky : register(b0)
 {
-    float2 SkyUvOffset;
-    float2 SkyPadding;
+    // x = yaw, y = pitch, z = tan(verticalFov / 2), w = aspect.
+    float4 SkyViewParameters;
 };
 
 Texture2D SkyTexture : register(t0);
@@ -39,14 +39,86 @@ SkyVertexOutput VSMain(uint vertexId : SV_VertexID)
 
 float4 PSMain(SkyVertexOutput input) : SV_TARGET
 {
+    const float Pi =
+        3.14159265358979323846f;
+    const float TwoPi =
+        Pi * 2.0f;
+
+    float yaw =
+        SkyViewParameters.x;
+    float pitch =
+        SkyViewParameters.y;
+    float tanHalfFovY =
+        max(
+            SkyViewParameters.z,
+            0.001f);
+    float aspect =
+        max(
+            SkyViewParameters.w,
+            0.1f);
+
+    // Full-screen UV is reconstructed into the same camera ray used by the
+    // 3D scene. The OMSI horizon therefore remains on the world horizon
+    // instead of sliding up/down as a 2D backdrop when the camera pitches.
+    float2 screen =
+        float2(
+            input.Uv.x * 2.0f - 1.0f,
+            input.Uv.y * 2.0f - 1.0f);
+
+    float sinYaw =
+        sin(yaw);
+    float cosYaw =
+        cos(yaw);
+    float sinPitch =
+        sin(pitch);
+    float cosPitch =
+        cos(pitch);
+
+    float3 forward =
+        float3(
+            sinYaw * cosPitch,
+            sinPitch,
+            cosYaw * cosPitch);
+
+    float3 right =
+        float3(
+            cosYaw,
+            0.0f,
+            -sinYaw);
+
+    float3 up =
+        normalize(
+            cross(
+                forward,
+                right));
+
+    float3 direction =
+        normalize(
+            forward +
+            right *
+                screen.x *
+                aspect *
+                tanHalfFovY +
+            up *
+                screen.y *
+                tanHalfFovY);
+
     float2 skyUv =
         float2(
             frac(
-                input.Uv.x +
-                SkyUvOffset.x),
+                0.5f -
+                atan2(
+                    direction.x,
+                    direction.z) /
+                TwoPi),
             saturate(
-                input.Uv.y +
-                SkyUvOffset.y));
+                0.5f -
+                asin(
+                    clamp(
+                        direction.y,
+                        -1.0f,
+                        1.0f)) /
+                Pi));
 
     float4 sampled =
         SkyTexture.Sample(
