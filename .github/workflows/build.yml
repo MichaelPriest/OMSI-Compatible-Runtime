@@ -155,7 +155,14 @@ jobs:
           Mouse esquerda/direita  Direção
           Mouse para cima         Acelerador
           Mouse para baixo        Freio
+          Cursor                  Cruz (+) enquanto o modo mouse estiver ativo
           Botão direito           Sair do modo mouse
+          O                       Alternar mouse steering on/off
+
+          Ao sair do modo mouse, o Runtime volta ao steering normal do OMSI
+          (teclado e/ou controlador configurado), sem trocar para câmera livre.
+          O carregamento por streaming permanece ativo. Em F4/câmera livre,
+          o centro do streaming passa a seguir a câmera, como no mapa do OMSI.
 
           DESENVOLVIMENTO / CÂMERA LIVRE
           ==============================
@@ -209,9 +216,17 @@ jobs:
           - gamectrler.cfg via DirectInput com eixos e botões
           - sincronização inicial de marcha, elétrica, motor e freio de mão
             entre eventos/scripts OMSI e o estado físico do Runtime
+          - dinâmica veicular usa massa, centro de gravidade, resistência ao
+            rolamento, entre-eixos, bitola, inércia, molas e amortecedores do .bus
+          - inclinação da carroceria em curvas/aceleração/frenagem e terreno
+          - animações model.cfg [newanim] com anim_rot/anim_trans, origin,
+            origin_rot_x/y/z, offset, delay e maxspeed
+          - variáveis nativas de roda/esterçamento/suspensão alimentadas pelo
+            Runtime (Wheel_Rotation_*, Axle_Steering_*, Axle_Suspension_*)
+          - esterçamento visual com geometria Ackermann esquerda/direita
 
           Ainda em desenvolvimento:
-          - compatibilidade total de scripts/animações
+          - cobertura total de todas as variáveis/eventos de animação de addons
           - sons/IBIS/tráfego/passageiros
           - veículos articulados/acoplados completos
           - Force Feedback físico no volante: [FFScale] já é lido/editável,
