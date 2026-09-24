@@ -44,6 +44,8 @@ internal static class VehiclePreviewFactory
             GroundTextures:
                 Array.Empty<
                     RuntimeGroundTextureInfo>(),
+            AiCatalog:
+                RuntimeAiCatalogInfo.Empty,
             Vehicle:
                 RuntimeVehicleInfoFactory
                     .FromAsset(
