@@ -76,7 +76,8 @@ public sealed record OmsiVehicleMeshAsset(
     int SectionIndex = 0,
     int ModelOrdinal = -1,
     float[]? SkinWeights = null,
-    IReadOnlyList<int>? SkinBoneMeshOrdinals = null)
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
+    string? MouseEventTrigger = null)
 {
     public bool IsRenderable =>
         ErrorCode is null &&
