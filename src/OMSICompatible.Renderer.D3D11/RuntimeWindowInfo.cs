@@ -303,6 +303,7 @@ public sealed record RuntimeDriverPositionInfo(
 public sealed record RuntimeVehicleInfo(
     string DisplayName,
     string RelativePath,
+    string? SoundConfigPath,
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
     IReadOnlyList<RuntimeDriverCameraInfo> DriverCameras,
     IReadOnlyList<RuntimePassengerCameraInfo> PassengerCameras,
