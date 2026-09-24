@@ -16,6 +16,7 @@ internal sealed class RuntimeApplicationContext :
     private readonly OmsiMapEntryPoint _entryPoint;
     private readonly bool _externalLoading;
     private readonly string? _repaintName;
+    private readonly string? _repaintCtiRelativePath;
     private readonly OmsiRuntimeOptions _options;
     private readonly LoadingForm _loading;
     private readonly SemaphoreSlim _streamingGate =
@@ -37,7 +38,8 @@ internal sealed class RuntimeApplicationContext :
         OmsiBusInfo? bus,
         OmsiMapEntryPoint entryPoint,
         bool externalLoading,
-        string? repaintName = null)
+        string? repaintName = null,
+        string? repaintCtiRelativePath = null)
     {
         _contentRoot = contentRoot;
         _map = map;
@@ -50,6 +52,11 @@ internal sealed class RuntimeApplicationContext :
                 repaintName)
                 ? null
                 : repaintName.Trim();
+        _repaintCtiRelativePath =
+            string.IsNullOrWhiteSpace(
+                repaintCtiRelativePath)
+                ? null
+                : repaintCtiRelativePath.Trim();
         _options =
             OmsiRuntimeOptions.Load();
         _loadedCenterX =
@@ -218,7 +225,13 @@ internal sealed class RuntimeApplicationContext :
                                 string.Equals(
                                     repaint.Name,
                                     _repaintName,
-                                    StringComparison.OrdinalIgnoreCase));
+                                    StringComparison.OrdinalIgnoreCase) &&
+                                (string.IsNullOrWhiteSpace(
+                                     _repaintCtiRelativePath) ||
+                                 string.Equals(
+                                     repaint.RelativeCtiPath,
+                                     _repaintCtiRelativePath,
+                                     StringComparison.OrdinalIgnoreCase)));
 
             Task<OmsiVehicleAsset?> vehicleTask =
                 selectedBus is null
