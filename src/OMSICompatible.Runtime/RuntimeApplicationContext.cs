@@ -1301,14 +1301,20 @@ internal sealed class RuntimeApplicationContext :
                                 -section.JointX,
                                 section.JointZ,
                                 section.JointY,
+                                -section.OriginX,
+                                section.OriginZ,
+                                section.OriginY,
                                 section.FollowerLengthMeters,
                                 section.MaximumYawDegrees,
                                 section.Reverse,
+                                section.SoundConfigPath,
+                                section.OpenForSound,
                                 section.MassTonnes,
                                 section.YawInertiaTonneSquareMeters,
                                 section.RotationPointLongitudinalMeters,
                                 section.WheelBaseMeters,
-                                section.RollingResistanceNewtons))
+                                section.RollingResistanceNewtons,
+                                section.AverageWheelDiameterMeters))
                     .ToArray());
 
         var runtimeSpawn =
