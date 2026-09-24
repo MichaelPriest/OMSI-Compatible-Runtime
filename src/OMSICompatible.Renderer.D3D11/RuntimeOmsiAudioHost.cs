@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using OmsiCompat.Scripting;
@@ -99,6 +100,7 @@ internal sealed class RuntimeOmsiAudioHost :
             MixingSampleProvider mixer,
             AudioFileReader reader,
             SmbPitchShiftingSampleProvider pitch,
+            StereoPanSampleProvider spatial,
             VolumeSampleProvider volume)
         {
             _mixer =
@@ -107,11 +109,15 @@ internal sealed class RuntimeOmsiAudioHost :
                 reader;
             Pitch =
                 pitch;
+            Spatial =
+                spatial;
             Volume =
                 volume;
         }
 
         public SmbPitchShiftingSampleProvider Pitch { get; }
+
+        public StereoPanSampleProvider Spatial { get; }
 
         public VolumeSampleProvider Volume { get; }
 
@@ -178,6 +184,80 @@ internal sealed class RuntimeOmsiAudioHost :
             }
 
             return written;
+        }
+    }
+
+    private sealed class StereoPanSampleProvider :
+        ISampleProvider
+    {
+        private readonly ISampleProvider _source;
+        private float _balance;
+
+        public StereoPanSampleProvider(
+            ISampleProvider source)
+        {
+            _source =
+                source;
+        }
+
+        public WaveFormat WaveFormat =>
+            _source.WaveFormat;
+
+        public float Balance
+        {
+            get =>
+                _balance;
+            set =>
+                _balance =
+                    Math.Clamp(
+                        value,
+                        -1.0f,
+                        1.0f);
+        }
+
+        public int Read(
+            float[] buffer,
+            int offset,
+            int count)
+        {
+            var read =
+                _source.Read(
+                    buffer,
+                    offset,
+                    count);
+
+            if (WaveFormat.Channels != 2 ||
+                Math.Abs(
+                    _balance) <
+                0.0001f)
+            {
+                return read;
+            }
+
+            var leftGain =
+                _balance > 0.0f
+                    ? 1.0f -
+                      _balance
+                    : 1.0f;
+
+            var rightGain =
+                _balance < 0.0f
+                    ? 1.0f +
+                      _balance
+                    : 1.0f;
+
+            for (var index = offset;
+                 index + 1 <
+                     offset + read;
+                 index += 2)
+            {
+                buffer[index] *=
+                    leftGain;
+                buffer[index + 1] *=
+                    rightGain;
+            }
+
+            return read;
         }
     }
 
@@ -328,7 +408,10 @@ internal sealed class RuntimeOmsiAudioHost :
     public void Trigger(
         string trigger,
         OmsiScriptRuntime? scriptRuntime,
-        bool interiorView)
+        bool interiorView,
+        Vector3 listenerPosition,
+        Vector3 vehiclePosition,
+        float vehicleHeadingRadians)
     {
         if (string.IsNullOrWhiteSpace(
                 trigger))
@@ -351,17 +434,26 @@ internal sealed class RuntimeOmsiAudioHost :
                 continue;
             }
 
+            var spatial =
+                EvaluateSpatial(
+                    sound,
+                    listenerPosition,
+                    vehiclePosition,
+                    vehicleHeadingRadians);
+
             var volume =
                 EvaluateVolume(
                     sound,
-                    scriptRuntime);
+                    scriptRuntime) *
+                spatial.Gain;
 
             if (volume >
                 0.0001f)
             {
                 PlayOneShot(
                     sound,
-                    volume);
+                    volume,
+                    spatial.Balance);
             }
         }
     }
@@ -369,7 +461,10 @@ internal sealed class RuntimeOmsiAudioHost :
     public void Update(
         OmsiScriptRuntime? scriptRuntime,
         bool interiorView,
-        bool engineRunning)
+        bool engineRunning,
+        Vector3 listenerPosition,
+        Vector3 vehiclePosition,
+        float vehicleHeadingRadians)
     {
         foreach (var sound in
                  _sounds)
@@ -379,11 +474,19 @@ internal sealed class RuntimeOmsiAudioHost :
                     sound.Viewpoint,
                     interiorView);
 
+            var spatial =
+                EvaluateSpatial(
+                    sound,
+                    listenerPosition,
+                    vehiclePosition,
+                    vehicleHeadingRadians);
+
             var volume =
                 viewVisible
                     ? EvaluateVolume(
-                        sound,
-                        scriptRuntime)
+                          sound,
+                          scriptRuntime) *
+                      spatial.Gain
                     : 0.0f;
 
             if (sound.Loop &&
@@ -402,7 +505,8 @@ internal sealed class RuntimeOmsiAudioHost :
                     volume,
                     EvaluatePitch(
                         sound,
-                        scriptRuntime));
+                        scriptRuntime),
+                    spatial.Balance);
                 continue;
             }
 
@@ -428,7 +532,8 @@ internal sealed class RuntimeOmsiAudioHost :
             {
                 PlayOneShot(
                     sound,
-                    volume);
+                    volume,
+                    spatial.Balance);
             }
 
             _oneShotConditionState[
@@ -510,7 +615,8 @@ internal sealed class RuntimeOmsiAudioHost :
     private void UpdateLoop(
         RuntimeOmsiSoundDefinition sound,
         float volume,
-        float pitchFactor)
+        float pitchFactor,
+        float balance)
     {
         if (volume <=
             0.0001f)
@@ -549,6 +655,9 @@ internal sealed class RuntimeOmsiAudioHost :
                 pitchFactor,
                 0.25f,
                 4.0f);
+
+        voice.Spatial.Balance =
+            balance;
 
         voice.Volume.Volume =
             volume;
@@ -597,9 +706,13 @@ internal sealed class RuntimeOmsiAudioHost :
                         1.0f
                 };
 
+            var spatial =
+                new StereoPanSampleProvider(
+                    pitch);
+
             var volume =
                 new VolumeSampleProvider(
-                    pitch)
+                    spatial)
                 {
                     Volume =
                         0.0f
@@ -612,6 +725,7 @@ internal sealed class RuntimeOmsiAudioHost :
                 _mixer,
                 reader,
                 pitch,
+                spatial,
                 volume);
         }
         catch (Exception ex)
@@ -625,7 +739,8 @@ internal sealed class RuntimeOmsiAudioHost :
 
     private void PlayOneShot(
         RuntimeOmsiSoundDefinition sound,
-        float volume)
+        float volume,
+        float balance)
     {
         if (!File.Exists(
                 sound.FilePath))
@@ -655,9 +770,17 @@ internal sealed class RuntimeOmsiAudioHost :
                 return;
             }
 
+            var spatial =
+                new StereoPanSampleProvider(
+                    normalized)
+                {
+                    Balance =
+                        balance
+                };
+
             var volumeProvider =
                 new VolumeSampleProvider(
-                    normalized)
+                    spatial)
                 {
                     Volume =
                         volume
@@ -705,6 +828,115 @@ internal sealed class RuntimeOmsiAudioHost :
         }
 
         return provider;
+    }
+
+    private readonly record struct SpatialMix(
+        float Gain,
+        float Balance);
+
+    private static SpatialMix EvaluateSpatial(
+        RuntimeOmsiSoundDefinition sound,
+        Vector3 listenerPosition,
+        Vector3 vehiclePosition,
+        float vehicleHeadingRadians)
+    {
+        if (!sound.SourceX.HasValue ||
+            !sound.SourceY.HasValue ||
+            !sound.SourceZ.HasValue)
+        {
+            return new SpatialMix(
+                1.0f,
+                0.0f);
+        }
+
+        // OMSI vehicle coordinates: X lateral, Y longitudinal, Z vertical.
+        // Runtime vehicle space mirrors X and maps longitudinal Y to world Z.
+        var localX =
+            (float)-sound.SourceX.Value;
+        var localZ =
+            (float)sound.SourceY.Value;
+        var localY =
+            (float)sound.SourceZ.Value;
+
+        var sine =
+            MathF.Sin(
+                vehicleHeadingRadians);
+        var cosine =
+            MathF.Cos(
+                vehicleHeadingRadians);
+
+        var emitter =
+            vehiclePosition +
+            new Vector3(
+                localX *
+                    cosine +
+                localZ *
+                    sine,
+                localY,
+                -localX *
+                    sine +
+                localZ *
+                    cosine);
+
+        var offset =
+            emitter -
+            listenerPosition;
+
+        var distance =
+            offset.Length();
+
+        var fullVolumeDistance =
+            (float)Math.Max(
+                sound.MaximumDistanceMeters ??
+                0.0,
+                0.0);
+
+        var gain =
+            fullVolumeDistance <=
+                0.001f ||
+            distance <=
+                fullVolumeDistance
+                ? 1.0f
+                : Math.Clamp(
+                    fullVolumeDistance /
+                    Math.Max(
+                        distance,
+                        0.001f),
+                    0.0f,
+                    1.0f);
+
+        var horizontal =
+            new Vector2(
+                offset.X,
+                offset.Z);
+
+        var balance =
+            0.0f;
+
+        if (horizontal.LengthSquared() >
+            0.000001f)
+        {
+            horizontal =
+                Vector2.Normalize(
+                    horizontal);
+
+            var vehicleRight =
+                new Vector2(
+                    cosine,
+                    -sine);
+
+            balance =
+                Math.Clamp(
+                    Vector2.Dot(
+                        horizontal,
+                        vehicleRight),
+                    -1.0f,
+                    1.0f);
+        }
+
+        return new SpatialMix(
+            gain,
+            balance);
     }
 
     private static float EvaluatePitch(
