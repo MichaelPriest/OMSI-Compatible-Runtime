@@ -15,6 +15,7 @@ internal sealed class RuntimeApplicationContext :
     private readonly OmsiBusInfo? _bus;
     private readonly OmsiMapEntryPoint _entryPoint;
     private readonly bool _externalLoading;
+    private readonly OmsiRuntimeOptions _options;
     private readonly LoadingForm _loading;
     private readonly SemaphoreSlim _streamingGate =
         new(1, 1);
@@ -27,7 +28,6 @@ internal sealed class RuntimeApplicationContext :
     private bool _closing;
 
     private const int CompleteMapTileThreshold = 64;
-    private const int StreamingTileRadius = 2;
 
     public RuntimeApplicationContext(
         OmsiContentRoot contentRoot,
@@ -42,6 +42,8 @@ internal sealed class RuntimeApplicationContext :
         _entryPoint = entryPoint;
         _externalLoading =
             externalLoading;
+        _options =
+            OmsiRuntimeOptions.Load();
         _loadedCenterX =
             entryPoint.Tile.X;
         _loadedCenterY =
@@ -163,9 +165,16 @@ internal sealed class RuntimeApplicationContext :
                     _map).Count;
 
             var loadEntireMap =
-                discoveredTileCount > 0 &&
-                discoveredTileCount <=
-                    CompleteMapTileThreshold;
+                _options.LoadWholeMapAtStart ||
+                (discoveredTileCount > 0 &&
+                 discoveredTileCount <=
+                     CompleteMapTileThreshold);
+
+            var streamingRadius =
+                Math.Clamp(
+                    _options.RuntimeStreamingRadius,
+                    0,
+                    8);
 
             var worldTask =
                 Task.Run(
@@ -178,7 +187,7 @@ internal sealed class RuntimeApplicationContext :
                                 _entryPoint.Tile.X,
                                 _entryPoint.Tile.Y,
                                 ActiveTileRadius:
-                                    StreamingTileRadius,
+                                    streamingRadius,
                                 LoadEntireMap:
                                     loadEntireMap)));
 
@@ -264,7 +273,17 @@ internal sealed class RuntimeApplicationContext :
             _runtimeWindow =
                 new D3D11RenderWindow(
                     runtimeInfo,
-                    scriptRuntime);
+                    scriptRuntime,
+                    _options.TargetFps,
+                    _options.RuntimeVSync);
+
+            if (_options.RuntimeBorderlessFullscreen)
+            {
+                _runtimeWindow.FormBorderStyle =
+                    FormBorderStyle.None;
+                _runtimeWindow.WindowState =
+                    FormWindowState.Maximized;
+            }
 
             _runtimeWindow.StreamingCenterChanged +=
                 OnStreamingCenterChanged;
@@ -691,8 +710,12 @@ internal sealed class RuntimeApplicationContext :
                                     requested.X,
                                     requested.Y,
                                     ActiveTileRadius:
-                                        StreamingTileRadius,
-                                    LoadEntireMap: false)));
+                                        Math.Clamp(
+                                            _options.RuntimeStreamingRadius,
+                                            0,
+                                            8),
+                                    LoadEntireMap:
+                                        _options.LoadWholeMapAtStart)));
 
                 if (_closing ||
                     _runtimeWindow is null ||
