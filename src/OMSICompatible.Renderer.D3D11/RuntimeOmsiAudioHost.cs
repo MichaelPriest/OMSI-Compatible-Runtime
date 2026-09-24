@@ -26,7 +26,7 @@ internal sealed record RuntimeOmsiSoundDefinition(
     float BaseVolume,
     int Viewpoint,
     string? Trigger,
-    RuntimeOmsiSoundCondition? Condition,
+    IReadOnlyList<RuntimeOmsiSoundCondition> Conditions,
     IReadOnlyList<RuntimeOmsiSoundCurve> VolumeCurves,
     string? PitchVariable = null,
     double PitchReferenceValue = 1.0,
@@ -54,7 +54,8 @@ internal sealed class RuntimeOmsiAudioHost :
 
         public string? Trigger { get; set; }
 
-        public RuntimeOmsiSoundCondition? Condition { get; set; }
+        public List<RuntimeOmsiSoundCondition> Conditions { get; } =
+            [];
 
         public string? PitchVariable { get; set; }
 
@@ -80,7 +81,7 @@ internal sealed class RuntimeOmsiAudioHost :
                 BaseVolume,
                 Viewpoint,
                 Trigger,
-                Condition,
+                Conditions.ToArray(),
                 VolumeCurves.ToArray(),
                 PitchVariable,
                 PitchReferenceValue,
@@ -309,6 +310,7 @@ internal sealed class RuntimeOmsiAudioHost :
 
     private readonly IReadOnlyList<RuntimeOmsiSoundDefinition>
         _sounds;
+    private readonly string _soundDirectory;
     private readonly MixingSampleProvider _mixer;
     private readonly WaveOutEvent _output;
     private readonly Dictionary<int, LoopVoice>
@@ -324,11 +326,14 @@ internal sealed class RuntimeOmsiAudioHost :
 
     private RuntimeOmsiAudioHost(
         IReadOnlyList<RuntimeOmsiSoundDefinition> sounds,
+        string soundDirectory,
         MixingSampleProvider mixer,
         WaveOutEvent output)
     {
         _sounds =
             sounds;
+        _soundDirectory =
+            soundDirectory;
         _mixer =
             mixer;
         _output =
@@ -393,6 +398,10 @@ internal sealed class RuntimeOmsiAudioHost :
 
             return new RuntimeOmsiAudioHost(
                 sounds,
+                Path.GetDirectoryName(
+                    Path.GetFullPath(
+                        soundConfigPath)) ??
+                    AppContext.BaseDirectory,
                 mixer,
                 output);
         }
@@ -458,6 +467,93 @@ internal sealed class RuntimeOmsiAudioHost :
         }
     }
 
+    public void TriggerFile(
+        string trigger,
+        string declaredFile,
+        bool interiorView)
+    {
+        if (string.IsNullOrWhiteSpace(
+                declaredFile))
+        {
+            return;
+        }
+
+        try
+        {
+            var normalized =
+                declaredFile
+                    .Trim()
+                    .Trim('"')
+                    .Replace(
+                        '\\',
+                        Path.DirectorySeparatorChar)
+                    .Replace(
+                        '/',
+                        Path.DirectorySeparatorChar);
+
+            var candidate =
+                Path.IsPathRooted(
+                    normalized)
+                    ? Path.GetFullPath(
+                        normalized)
+                    : Path.GetFullPath(
+                        Path.Combine(
+                            _soundDirectory,
+                            normalized));
+
+            if (!File.Exists(
+                    candidate) &&
+                string.IsNullOrWhiteSpace(
+                    Path.GetExtension(
+                        candidate)))
+            {
+                candidate =
+                    candidate +
+                    ".wav";
+            }
+
+            if (!File.Exists(
+                    candidate))
+            {
+                if (_reportedFailures.Add(
+                        $"T.F:{trigger}:{candidate}"))
+                {
+                    Console.WriteLine(
+                        $"[audio] dynamic OMSI sound missing: {candidate}");
+                }
+
+                return;
+            }
+
+            var dynamicSound =
+                new RuntimeOmsiSoundDefinition(
+                    -1,
+                    candidate,
+                    false,
+                    1.0f,
+                    interiorView
+                        ? 1
+                        : 0,
+                    trigger,
+                    Array.Empty<RuntimeOmsiSoundCondition>(),
+                    Array.Empty<RuntimeOmsiSoundCurve>());
+
+            PlayOneShot(
+                dynamicSound,
+                1.0f,
+                0.0f);
+        }
+        catch (Exception exception)
+        {
+            if (_reportedFailures.Add(
+                    $"T.F:{trigger}:{declaredFile}"))
+            {
+                Console.WriteLine(
+                    $"[audio] dynamic OMSI sound failed ({declaredFile}): {exception.Message}");
+            }
+        }
+    }
+
     public void Update(
         OmsiScriptRuntime? scriptRuntime,
         bool interiorView,
@@ -488,15 +584,6 @@ internal sealed class RuntimeOmsiAudioHost :
                           scriptRuntime) *
                       spatial.Gain
                     : 0.0f;
-
-            if (sound.Loop &&
-                !engineRunning &&
-                IsEngineDependentLoop(
-                    sound))
-            {
-                volume =
-                    0.0f;
-            }
 
             if (sound.Loop)
             {
@@ -979,9 +1066,11 @@ internal sealed class RuntimeOmsiAudioHost :
         RuntimeOmsiSoundDefinition sound,
         OmsiScriptRuntime? scriptRuntime)
     {
-        if (!ConditionMatches(
-                sound.Condition,
-                scriptRuntime))
+        if (sound.Conditions.Any(
+                condition =>
+                    !ConditionMatches(
+                        condition,
+                        scriptRuntime)))
         {
             return 0.0f;
         }
@@ -1429,13 +1518,13 @@ internal sealed class RuntimeOmsiAudioHost :
                         CultureInfo.InvariantCulture,
                         out var conditionOperator))
                 {
-                    current.Condition =
+                    current.Conditions.Add(
                         new RuntimeOmsiSoundCondition(
                             values[0]
                                 .Trim()
                                 .Trim('"'),
                             conditionValue,
-                            conditionOperator);
+                            conditionOperator));
                 }
 
                 activeCurvePoints =
