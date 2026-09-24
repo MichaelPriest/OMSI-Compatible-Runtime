@@ -2,6 +2,14 @@ using System.Numerics;
 
 namespace OmsiCompat.Models;
 
+public sealed record OmsiO3dBoneWeight(
+    int VertexIndex,
+    float Weight);
+
+public sealed record OmsiO3dBone(
+    string Name,
+    IReadOnlyList<OmsiO3dBoneWeight> Weights);
+
 public sealed record OmsiO3dGeometry(
     bool IsLoaded,
     string? ErrorCode,
@@ -11,7 +19,8 @@ public sealed record OmsiO3dGeometry(
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
     IReadOnlyList<OmsiO3dMaterial> Materials,
-    Matrix4x4 SourceTransform)
+    Matrix4x4 SourceTransform,
+    IReadOnlyList<OmsiO3dBone>? Bones = null)
 {
     public static OmsiO3dGeometry Error(string errorCode) =>
         new(
@@ -23,5 +32,6 @@ public sealed record OmsiO3dGeometry(
             Array.Empty<uint>(),
             Array.Empty<ushort>(),
             Array.Empty<OmsiO3dMaterial>(),
-            Matrix4x4.Identity);
+            Matrix4x4.Identity,
+            Array.Empty<OmsiO3dBone>());
 }
