@@ -182,8 +182,11 @@ internal sealed class RuntimeApplicationContext :
                                 LoadEntireMap:
                                     loadEntireMap)));
 
+            var selectedBus =
+                _bus;
+
             Task<OmsiVehicleAsset?> vehicleTask =
-                _bus is null
+                selectedBus is null
                     ? Task.FromResult<OmsiVehicleAsset?>(
                         null)
                     : Task.Run(
@@ -191,7 +194,7 @@ internal sealed class RuntimeApplicationContext :
                             (OmsiVehicleAsset?)
                             OmsiVehicleAssetLoader.Load(
                                 _contentRoot,
-                                _bus,
+                                selectedBus,
                                 vehicleProgress));
 
             await Task.WhenAll(
