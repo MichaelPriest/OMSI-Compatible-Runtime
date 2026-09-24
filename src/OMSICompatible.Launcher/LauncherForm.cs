@@ -1679,7 +1679,8 @@ internal sealed class LauncherForm : Form
                 : selection.Detail +
                   " · carregando prévia 3D...";
 
-        if (bus is null)
+        if (selection is null ||
+            bus is null)
         {
             return;
         }
