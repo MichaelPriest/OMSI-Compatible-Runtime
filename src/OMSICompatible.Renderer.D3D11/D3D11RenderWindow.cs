@@ -30,6 +30,15 @@ public sealed class D3D11RenderWindow : Form
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimeVehicleSkinConstants
+    {
+        public Matrix4x4 Bone0;
+        public Matrix4x4 Bone1;
+        public Matrix4x4 Bone2;
+        public Matrix4x4 Bone3;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct RuntimeVehicleMaterialConstants
     {
         public float AlphaScale;
@@ -110,6 +119,9 @@ public sealed class D3D11RenderWindow : Form
         _vehicleAnimationParentBatches =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<(int SectionIndex, int ModelOrdinal), RuntimeObjectBatch>
+        _vehicleMeshOrdinalBatches =
+            [];
     private readonly Dictionary<int, float>
         _articulatedSectionAbsoluteHeadingRadians =
             [];
@@ -233,6 +245,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11Buffer? _vehicleLightVertexBuffer;
     private ID3D11Buffer? _vehicleModelBuffer;
     private ID3D11Buffer? _vehicleMaterialBuffer;
+    private ID3D11Buffer? _vehicleSkinBuffer;
     private ID3D11VertexShader? _vehicleVertexShader;
     private ID3D11PixelShader? _vehicleColorPixelShader;
     private ID3D11PixelShader? _vehicleLightPixelShader;
@@ -1507,23 +1520,29 @@ public sealed class D3D11RenderWindow : Form
                 viewpointBit: 2);
 
         _vehicleAnimationParentBatches.Clear();
+        _vehicleMeshOrdinalBatches.Clear();
 
         foreach (var batch in
                  _vehicleExteriorGeometry.Batches
                      .Concat(
                          _vehicleInteriorGeometry.Batches))
         {
-            if (string.IsNullOrWhiteSpace(
-                    batch.MeshIdentifier) ||
-                _vehicleAnimationParentBatches.ContainsKey(
-                    batch.MeshIdentifier))
+            if (batch.ModelOrdinal >= 0)
             {
-                continue;
+                _vehicleMeshOrdinalBatches.TryAdd(
+                    (
+                        batch.SectionIndex,
+                        batch.ModelOrdinal),
+                    batch);
             }
 
-            _vehicleAnimationParentBatches[
-                batch.MeshIdentifier] =
-                batch;
+            if (!string.IsNullOrWhiteSpace(
+                    batch.MeshIdentifier))
+            {
+                _vehicleAnimationParentBatches.TryAdd(
+                    batch.MeshIdentifier,
+                    batch);
+            }
         }
 
         if (_vehiclePreviewMode)
@@ -1727,6 +1746,10 @@ public sealed class D3D11RenderWindow : Form
         _vehicleMaterialBuffer =
             _device.CreateConstantBuffer<
                 RuntimeVehicleMaterialConstants>();
+
+        _vehicleSkinBuffer =
+            _device.CreateConstantBuffer<
+                RuntimeVehicleSkinConstants>();
 
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
@@ -2081,6 +2104,12 @@ public sealed class D3D11RenderWindow : Form
             0,
             Format.R32G32B32_Float,
             36,
+            0),
+        new InputElementDescription(
+            "BLENDWEIGHT",
+            0,
+            Format.R32G32B32A32_Float,
+            48,
             0)
     ];
 
@@ -3045,6 +3074,7 @@ public sealed class D3D11RenderWindow : Form
             vertexBuffer is null ||
             _vehicleModelBuffer is null ||
             _vehicleMaterialBuffer is null ||
+            _vehicleSkinBuffer is null ||
             _vehicleVertexShader is null ||
             _vehicleColorPixelShader is null ||
             _vehicleTexturedPixelShader is null ||
@@ -3065,6 +3095,8 @@ public sealed class D3D11RenderWindow : Form
 
         Span<RuntimeVehicleMaterialConstants> materialConstants =
             stackalloc RuntimeVehicleMaterialConstants[1];
+        Span<RuntimeVehicleSkinConstants> skinConstants =
+            stackalloc RuntimeVehicleSkinConstants[1];
 
         var vehicleWorld =
             _vehicle.CreateWorldMatrix();
@@ -3094,6 +3126,10 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.VSSetConstantBuffer(
             1,
             _vehicleModelBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            3,
+            _vehicleSkinBuffer);
 
         _deviceContext.PSSetSampler(
             0,
@@ -3134,6 +3170,15 @@ public sealed class D3D11RenderWindow : Form
             _vehicleModelBuffer.SetData(
                 _deviceContext,
                 model,
+                MapMode.WriteDiscard);
+
+            skinConstants[0] =
+                ResolveVehicleSkinConstants(
+                    batch);
+
+            _vehicleSkinBuffer.SetData(
+                _deviceContext,
+                skinConstants,
                 MapMode.WriteDiscard);
 
             materialConstants[0] =
@@ -3352,6 +3397,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleLightVertexBuffer is null ||
             _vehicleModelBuffer is null ||
             _vehicleMaterialBuffer is null ||
+            _vehicleSkinBuffer is null ||
             _vehicleVertexShader is null ||
             _vehicleLightPixelShader is null ||
             _vehicleInputLayout is null ||
@@ -3443,6 +3489,27 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.VSSetConstantBuffer(
             1,
             _vehicleModelBuffer);
+
+        Span<RuntimeVehicleSkinConstants> lightSkin =
+            stackalloc RuntimeVehicleSkinConstants[1];
+
+        lightSkin[0] =
+            new RuntimeVehicleSkinConstants
+            {
+                Bone0 = Matrix4x4.Identity,
+                Bone1 = Matrix4x4.Identity,
+                Bone2 = Matrix4x4.Identity,
+                Bone3 = Matrix4x4.Identity
+            };
+
+        _vehicleSkinBuffer.SetData(
+            _deviceContext,
+            lightSkin,
+            MapMode.WriteDiscard);
+
+        _deviceContext.VSSetConstantBuffer(
+            3,
+            _vehicleSkinBuffer);
 
         _deviceContext.PSSetShader(
             _vehicleLightPixelShader);
@@ -4121,6 +4188,73 @@ public sealed class D3D11RenderWindow : Form
             value,
             0.0,
             1.0);
+    }
+
+    private RuntimeVehicleSkinConstants ResolveVehicleSkinConstants(
+        RuntimeObjectBatch batch)
+    {
+        var identity =
+            Matrix4x4.Identity;
+
+        var result =
+            new RuntimeVehicleSkinConstants
+            {
+                Bone0 = identity,
+                Bone1 = identity,
+                Bone2 = identity,
+                Bone3 = identity
+            };
+
+        var targets =
+            batch.SkinBoneMeshOrdinals;
+
+        if (targets is null ||
+            targets.Count == 0)
+        {
+            return result;
+        }
+
+        for (var slot = 0;
+             slot < Math.Min(
+                 targets.Count,
+                 4);
+             slot++)
+        {
+            if (!_vehicleMeshOrdinalBatches.TryGetValue(
+                    (
+                        batch.SectionIndex,
+                        targets[slot]),
+                    out var boneBatch))
+            {
+                continue;
+            }
+
+            var transform =
+                CreateVehicleAnimationMatrix(
+                    boneBatch);
+
+            switch (slot)
+            {
+                case 0:
+                    result.Bone0 =
+                        transform;
+                    break;
+                case 1:
+                    result.Bone1 =
+                        transform;
+                    break;
+                case 2:
+                    result.Bone2 =
+                        transform;
+                    break;
+                case 3:
+                    result.Bone3 =
+                        transform;
+                    break;
+            }
+        }
+
+        return result;
     }
 
     private bool IsVehicleBatchVisible(
@@ -8157,6 +8291,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleLightPixelShader?.Dispose();
             _vehicleColorPixelShader?.Dispose();
             _vehicleVertexShader?.Dispose();
+            _vehicleSkinBuffer?.Dispose();
             _vehicleMaterialBuffer?.Dispose();
             _vehicleModelBuffer?.Dispose();
             _vehicleLightVertexBuffer?.Dispose();
