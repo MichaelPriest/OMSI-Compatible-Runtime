@@ -6,7 +6,8 @@ internal sealed record LauncherSettings(
     string? ContentPath,
     string? MapName,
     string? BusRelativePath,
-    string? EntryPointName)
+    string? EntryPointName,
+    bool StartWithoutBus = false)
 {
     private static string SettingsPath =>
         Path.Combine(
