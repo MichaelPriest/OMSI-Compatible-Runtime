@@ -37,7 +37,8 @@ internal sealed record RuntimeObjectBatch(
     string? AnimationParent = null,
     int SectionIndex = 0,
     int ModelOrdinal = -1,
-    IReadOnlyList<int>? SkinBoneMeshOrdinals = null);
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
+    string? MouseEventTrigger = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -99,7 +100,8 @@ internal static class RuntimeObjectGeometryBuilder
         string? AnimationParent = null,
         int SectionIndex = 0,
         int ModelOrdinal = -1,
-        IReadOnlyList<int>? SkinBoneMeshOrdinals = null);
+        IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
+        string? MouseEventTrigger = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -362,7 +364,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.AnimationParent,
                     key.SectionIndex,
                     key.ModelOrdinal,
-                    key.SkinBoneMeshOrdinals));
+                    key.SkinBoneMeshOrdinals,
+                    key.MouseEventTrigger));
         }
 
         return new RuntimeObjectGeometry(
@@ -468,7 +471,8 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.AnimationParent,
                     mesh.SectionIndex,
                     mesh.ModelOrdinal,
-                    mesh.SkinBoneMeshOrdinals);
+                    mesh.SkinBoneMeshOrdinals,
+                    mesh.MouseEventTrigger);
 
             var output =
                 GetBatch(
