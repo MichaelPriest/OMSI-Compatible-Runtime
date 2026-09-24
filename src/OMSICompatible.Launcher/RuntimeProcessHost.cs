@@ -36,7 +36,8 @@ internal sealed class RuntimeProcessHost : IDisposable
         string mapName,
         string? busRelativePath,
         string entryPointName,
-        string? repaintName = null)
+        string? repaintName = null,
+        string? repaintCtiRelativePath = null)
     {
         if (IsRunning)
         {
@@ -102,6 +103,15 @@ internal sealed class RuntimeProcessHost : IDisposable
                 "--repaint");
             startInfo.ArgumentList.Add(
                 repaintName);
+
+            if (!string.IsNullOrWhiteSpace(
+                    repaintCtiRelativePath))
+            {
+                startInfo.ArgumentList.Add(
+                    "--repaint-cti");
+                startInfo.ArgumentList.Add(
+                    repaintCtiRelativePath);
+            }
         }
 
         startInfo.ArgumentList.Add("--spawn");
