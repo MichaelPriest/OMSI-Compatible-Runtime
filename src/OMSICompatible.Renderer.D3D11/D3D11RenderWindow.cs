@@ -155,6 +155,7 @@ public sealed class D3D11RenderWindow : Form
     private int _passengerCameraIndex;
     private float _interiorCameraYawOffsetRadians;
     private float _interiorCameraPitchOffsetRadians;
+    private float _interiorCameraFieldOfViewScale = 1.0f;
     private float _exteriorCameraYawOffsetRadians;
     private float _exteriorCameraPitchOffsetRadians;
     private float _exteriorCameraDistanceScale = 1.0f;
@@ -4678,9 +4679,13 @@ public sealed class D3D11RenderWindow : Form
                 animation.OriginRotationY,
                 animation.OriginRotationZ);
 
-        orientation =
-            originRotation *
-            orientation;
+        // origin_rot_* rotates the animation origin after the mesh-authored
+        // origin has been adopted. With row-vector matrices that means
+        // appending the CFG origin rotation to the mesh basis. Prepending it
+        // collapses compound pivots such as the MEP Quadbus II steering wheel
+        // to an almost vertical axis.
+        orientation *=
+            originRotation;
     }
 
     private static Vector3 ConvertCfgPosition(
@@ -5124,7 +5129,8 @@ public sealed class D3D11RenderWindow : Form
                 aspect,
                 _terrainGeometry,
                 _interiorCameraYawOffsetRadians,
-                _interiorCameraPitchOffsetRadians);
+                _interiorCameraPitchOffsetRadians,
+                _interiorCameraFieldOfViewScale);
         }
 
         if (_vehicleViewMode ==
@@ -5143,7 +5149,8 @@ public sealed class D3D11RenderWindow : Form
                 aspect,
                 _terrainGeometry,
                 _interiorCameraYawOffsetRadians,
-                _interiorCameraPitchOffsetRadians);
+                _interiorCameraPitchOffsetRadians,
+                _interiorCameraFieldOfViewScale);
         }
 
         if (_vehicleViewMode !=
@@ -5162,7 +5169,8 @@ public sealed class D3D11RenderWindow : Form
                 aspect,
                 _terrainGeometry,
                 _interiorCameraYawOffsetRadians,
-                _interiorCameraPitchOffsetRadians);
+                _interiorCameraPitchOffsetRadians,
+                _interiorCameraFieldOfViewScale);
         }
 
         return _vehicle.CreateChaseViewProjection(
@@ -6605,15 +6613,15 @@ public sealed class D3D11RenderWindow : Form
             "Velocity_Ground",
             _vehicle.SpeedKph);
 
-        // OMSI's built-in Axle_Steering_* animation variables use
-        // the vehicle-model coordinate sign, which is opposite the runtime
-        // world yaw sign. Keep physics positive-right but mirror only the
-        // visual variables so the physical wheel and steering wheel follow
-        // the real model.cfg definition.
+        // Keep input/physics steering independent from model animation.
+        // The OMSI Axle_Steering_* variables use the same signed steering
+        // direction as the model.cfg wheel animations. The previous extra
+        // negation made the visible front wheels steer opposite the actual
+        // vehicle path.
         var omsiSteeringLeft =
-            -_vehicle.FrontLeftSteeringRadians;
+            _vehicle.FrontLeftSteeringRadians;
         var omsiSteeringRight =
-            -_vehicle.FrontRightSteeringRadians;
+            _vehicle.FrontRightSteeringRadians;
 
         _scriptRuntime.SetLocal(
             "Axle_Steering_0_L",
@@ -6919,6 +6927,21 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case Keys.M:
+                if (_scriptRuntime is not null)
+                {
+                    var engineWasRunning =
+                        _scriptRuntime.HasLocalVariable(
+                            "engine_on") &&
+                        _scriptRuntime.GetLocal(
+                            "engine_on") >
+                        0.5;
+
+                    DispatchOmsiScriptTrigger(
+                        engineWasRunning
+                            ? "kw_m_engineshutdown"
+                            : "kw_m_enginestart");
+                }
+
                 ApplyOmsiHostActionPress(
                     RuntimeOmsiHostInputAction.EngineToggle);
                 break;
@@ -7090,6 +7113,8 @@ public sealed class D3D11RenderWindow : Form
                     0.0f;
                 _interiorCameraPitchOffsetRadians =
                     0.0f;
+                _interiorCameraFieldOfViewScale =
+                    1.0f;
                 break;
 
             case RuntimeVehicleViewMode.Passenger:
@@ -7099,6 +7124,8 @@ public sealed class D3D11RenderWindow : Form
                     0.0f;
                 _interiorCameraPitchOffsetRadians =
                     0.0f;
+                _interiorCameraFieldOfViewScale =
+                    1.0f;
                 break;
 
             case RuntimeVehicleViewMode.Exterior:
@@ -7134,6 +7161,8 @@ public sealed class D3D11RenderWindow : Form
             0.0f;
         _interiorCameraPitchOffsetRadians =
             0.0f;
+        _interiorCameraFieldOfViewScale =
+            1.0f;
         _exteriorCameraYawOffsetRadians =
             0.0f;
         _exteriorCameraPitchOffsetRadians =
@@ -7585,17 +7614,36 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.EngineToggle:
-                _vehicle.ToggleEngine();
+                if (_scriptRuntime?.HasLocalVariable(
+                        "engine_on") == true)
+                {
+                    _vehicle.SetEngineRunning(
+                        _scriptRuntime.GetLocal(
+                            "engine_on") >
+                        0.5);
+                }
+                else
+                {
+                    _vehicle.ToggleEngine();
+                }
                 break;
 
             case RuntimeOmsiHostInputAction.EngineStart:
-                _vehicle.SetEngineRunning(
-                    true);
-                break;
-
             case RuntimeOmsiHostInputAction.EngineOff:
-                _vehicle.SetEngineRunning(
-                    false);
+                if (_scriptRuntime?.HasLocalVariable(
+                        "engine_on") == true)
+                {
+                    _vehicle.SetEngineRunning(
+                        _scriptRuntime.GetLocal(
+                            "engine_on") >
+                        0.5);
+                }
+                else
+                {
+                    _vehicle.SetEngineRunning(
+                        action ==
+                        RuntimeOmsiHostInputAction.EngineStart);
+                }
                 break;
 
             case RuntimeOmsiHostInputAction.GearDrive:
@@ -8124,13 +8172,13 @@ public sealed class D3D11RenderWindow : Form
 
         if (_driveMode)
         {
+            var steps =
+                e.Delta /
+                120.0f;
+
             if (_vehicleViewMode ==
                 RuntimeVehicleViewMode.Exterior)
             {
-                var steps =
-                    e.Delta /
-                    120.0f;
-
                 _exteriorCameraDistanceScale =
                     Math.Clamp(
                         _exteriorCameraDistanceScale *
@@ -8139,6 +8187,19 @@ public sealed class D3D11RenderWindow : Form
                             steps),
                         0.35f,
                         4.0f);
+            }
+            else
+            {
+                // OMSI cockpit/passenger zoom changes field of view while
+                // keeping the eye at the authored camera position.
+                _interiorCameraFieldOfViewScale =
+                    Math.Clamp(
+                        _interiorCameraFieldOfViewScale *
+                        MathF.Pow(
+                            0.90f,
+                            steps),
+                        0.35f,
+                        1.75f);
             }
 
             return;
