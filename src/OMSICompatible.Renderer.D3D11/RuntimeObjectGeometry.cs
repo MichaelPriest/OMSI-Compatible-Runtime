@@ -94,7 +94,8 @@ internal static class RuntimeObjectGeometryBuilder
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
         IReadOnlyList<RuntimeObjectInfo> objects,
-        IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> assets)
+        IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> assets,
+        bool useNativeOmsiModelSpace = false)
     {
         if (objects.Count == 0 ||
             assets.Count == 0)
@@ -181,22 +182,23 @@ internal static class RuntimeObjectGeometryBuilder
                     ? 0.015f
                     : 0.0f;
 
-            // OMSI map/object rotations are expressed in the OMSI
-            // coordinate system: X=lateral, Y=forward, Z=up.
-            // Renderer coordinates are X=lateral, Y=up, Z=forward.
-            // Swapping Y/Z reverses handedness, so all three
-            // corresponding Euler angles change sign:
-            // OMSI Z(rot) -> renderer Y(yaw)
-            // OMSI X(pitch) -> renderer X(pitch)
-            // OMSI Y(bank) -> renderer Z(roll).
+            // Map Studio and OMSI's in-memory object model keep
+            // model-space O3D geometry Y-up and apply placement Rotation,
+            // Pitch and Bank directly. Preserve the legacy conversion only
+            // for vehicle geometry until its animation pivots are migrated
+            // to the same native space.
             var objectTransform =
                 Matrix4x4.CreateFromYawPitchRoll(
                     DegreesToRadians(
                         instance.HeadingDegrees),
                     DegreesToRadians(
-                        -instance.PitchDegrees),
+                        useNativeOmsiModelSpace
+                            ? instance.PitchDegrees
+                            : -instance.PitchDegrees),
                     DegreesToRadians(
-                        -instance.BankDegrees)) *
+                        useNativeOmsiModelSpace
+                            ? instance.BankDegrees
+                            : -instance.BankDegrees)) *
                 Matrix4x4.CreateTranslation(
                     (float)worldX,
                     (float)instance.Y +
@@ -228,7 +230,8 @@ internal static class RuntimeObjectGeometryBuilder
 
                     var localTransform =
                         CreateMeshTransform(
-                            mesh.Transform);
+                            mesh.Transform,
+                            useNativeOmsiModelSpace);
 
                     var worldTransform =
                         localTransform *
@@ -238,6 +241,7 @@ internal static class RuntimeObjectGeometryBuilder
                         AppendMesh(
                             mesh,
                             worldTransform,
+                            useNativeOmsiModelSpace,
                             batches,
                             batchOrder,
                             ref totalVertices);
@@ -364,6 +368,7 @@ internal static class RuntimeObjectGeometryBuilder
     private static bool AppendMesh(
         RuntimeObjectMeshInfo mesh,
         Matrix4x4 worldTransform,
+        bool useNativeOmsiModelSpace,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
         ref int totalVertices)
@@ -455,6 +460,7 @@ internal static class RuntimeObjectGeometryBuilder
                 mesh,
                 index0,
                 worldTransform,
+                useNativeOmsiModelSpace,
                 color,
                 output);
 
@@ -462,6 +468,7 @@ internal static class RuntimeObjectGeometryBuilder
                 mesh,
                 index1,
                 worldTransform,
+                useNativeOmsiModelSpace,
                 color,
                 output);
 
@@ -469,6 +476,7 @@ internal static class RuntimeObjectGeometryBuilder
                 mesh,
                 index2,
                 worldTransform,
+                useNativeOmsiModelSpace,
                 color,
                 output);
 
@@ -543,6 +551,7 @@ internal static class RuntimeObjectGeometryBuilder
         RuntimeObjectMeshInfo mesh,
         int vertexIndex,
         Matrix4x4 worldTransform,
+        bool useNativeOmsiModelSpace,
         Color4 color,
         ICollection<RuntimeObjectVertex> output)
     {
@@ -566,7 +575,8 @@ internal static class RuntimeObjectGeometryBuilder
                 StringComparison.OrdinalIgnoreCase);
 
         var source =
-            isO3d
+            isO3d &&
+            !useNativeOmsiModelSpace
                 ? new Vector3(
                     -mesh.Positions[positionOffset],
                     mesh.Positions[positionOffset + 1],
@@ -588,7 +598,8 @@ internal static class RuntimeObjectGeometryBuilder
             mesh.Normals.Length)
         {
             sourceNormal =
-                isO3d
+                isO3d &&
+                !useNativeOmsiModelSpace
                     ? new Vector3(
                         -mesh.Normals[positionOffset],
                         mesh.Normals[positionOffset + 1],
@@ -866,27 +877,50 @@ internal static class RuntimeObjectGeometryBuilder
     }
 
     internal static Matrix4x4 CreateMeshTransform(
-        RuntimeObjectMeshTransformInfo transform) =>
-        // CFG/model.cfg coordinates map to renderer space as
-        // (-X, Z, Y). This is a proper basis change:
-        // source X axis -> renderer -X
-        // source Y axis -> renderer +Z
-        // source Z axis -> renderer +Y
-        Matrix4x4.CreateScale(
-            (float)transform.ScaleX,
-            (float)transform.ScaleZ,
-            (float)transform.ScaleY) *
-        Matrix4x4.CreateFromYawPitchRoll(
-            DegreesToRadians(
-                transform.RotationZ),
-            DegreesToRadians(
-                -transform.RotationX),
-            DegreesToRadians(
-                transform.RotationY)) *
-        Matrix4x4.CreateTranslation(
-            (float)-transform.PositionX,
-            (float)transform.PositionZ,
-            (float)transform.PositionY);
+        RuntimeObjectMeshTransformInfo transform,
+        bool useNativeOmsiModelSpace = false)
+    {
+        if (useNativeOmsiModelSpace)
+        {
+            // Match Map Studio: SCO/model mesh transforms are already
+            // expressed in the same Y-up model space as O3D geometry.
+            return
+                Matrix4x4.CreateScale(
+                    (float)transform.ScaleX,
+                    (float)transform.ScaleY,
+                    (float)transform.ScaleZ) *
+                Matrix4x4.CreateFromYawPitchRoll(
+                    DegreesToRadians(
+                        transform.RotationY),
+                    DegreesToRadians(
+                        transform.RotationX),
+                    DegreesToRadians(
+                        transform.RotationZ)) *
+                Matrix4x4.CreateTranslation(
+                    (float)transform.PositionX,
+                    (float)transform.PositionY,
+                    (float)transform.PositionZ);
+        }
+
+        // Legacy vehicle path retained until CFG animation origins/pivots
+        // are migrated to native OMSI model space in the same change.
+        return
+            Matrix4x4.CreateScale(
+                (float)transform.ScaleX,
+                (float)transform.ScaleZ,
+                (float)transform.ScaleY) *
+            Matrix4x4.CreateFromYawPitchRoll(
+                DegreesToRadians(
+                    transform.RotationZ),
+                DegreesToRadians(
+                    -transform.RotationX),
+                DegreesToRadians(
+                    transform.RotationY)) *
+            Matrix4x4.CreateTranslation(
+                (float)-transform.PositionX,
+                (float)transform.PositionZ,
+                (float)transform.PositionY);
+    }
 
     private static float DegreesToRadians(
         double value) =>
