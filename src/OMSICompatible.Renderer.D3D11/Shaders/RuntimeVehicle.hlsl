@@ -27,6 +27,14 @@ cbuffer RuntimeMaterial : register(b2)
     float4 MaterialChangeEmissive;
 };
 
+cbuffer RuntimeSkin : register(b3)
+{
+    row_major float4x4 SkinBone0;
+    row_major float4x4 SkinBone1;
+    row_major float4x4 SkinBone2;
+    row_major float4x4 SkinBone3;
+};
+
 Texture2D DiffuseTexture : register(t0);
 Texture2D TransMapTexture : register(t1);
 Texture2D LightMapTexture : register(t2);
@@ -42,6 +50,7 @@ struct VertexInput
     float4 Color : COLOR;
     float2 Uv : TEXCOORD;
     float3 Normal : NORMAL;
+    float4 SkinWeights : BLENDWEIGHT;
 };
 
 struct VertexOutput
@@ -57,11 +66,70 @@ VertexOutput VSMain(VertexInput input)
 {
     VertexOutput output;
 
+    float4 sourcePosition =
+        float4(
+            input.Position,
+            1.0f);
+
+    float4 weights =
+        max(
+            input.SkinWeights,
+            0.0f);
+
+    float skinSum =
+        saturate(
+            weights.x +
+            weights.y +
+            weights.z +
+            weights.w);
+
+    float baseWeight =
+        1.0f -
+        skinSum;
+
+    float4 skinnedPosition =
+        sourcePosition *
+            baseWeight +
+        mul(
+            sourcePosition,
+            SkinBone0) *
+            weights.x +
+        mul(
+            sourcePosition,
+            SkinBone1) *
+            weights.y +
+        mul(
+            sourcePosition,
+            SkinBone2) *
+            weights.z +
+        mul(
+            sourcePosition,
+            SkinBone3) *
+            weights.w;
+
+    float3 skinnedNormal =
+        input.Normal *
+            baseWeight +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone0) *
+            weights.x +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone1) *
+            weights.y +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone2) *
+            weights.z +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone3) *
+            weights.w;
+
     float4 worldPosition =
         mul(
-            float4(
-                input.Position,
-                1.0f),
+            skinnedPosition,
             World);
 
     output.Position =
@@ -78,7 +146,7 @@ VertexOutput VSMain(VertexInput input)
     output.WorldNormal =
         normalize(
             mul(
-                input.Normal,
+                skinnedNormal,
                 (float3x3)World));
 
     output.WorldPosition =
