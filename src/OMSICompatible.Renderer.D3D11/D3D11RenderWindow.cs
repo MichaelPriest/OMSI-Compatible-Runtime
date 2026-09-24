@@ -231,6 +231,8 @@ public sealed class D3D11RenderWindow : Form
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
             windowInfo.Vehicle?.Physics);
+        _driveMode =
+            windowInfo.Vehicle is not null;
         _driverCameraIndex =
             Math.Max(
                 windowInfo.Vehicle?.StandardDriverCameraIndex ?? 0,
@@ -4992,7 +4994,8 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.KeyCode == Keys.F1)
+        if (e.KeyCode == Keys.F1 &&
+            _windowInfo.Vehicle is not null)
         {
             _driveMode = true;
             _vehicleViewMode =
@@ -5011,7 +5014,8 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.KeyCode == Keys.F2)
+        if (e.KeyCode == Keys.F2 &&
+            _windowInfo.Vehicle is not null)
         {
             _driveMode = true;
             _vehicleViewMode =
@@ -5023,7 +5027,8 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.KeyCode == Keys.F3)
+        if (e.KeyCode == Keys.F3 &&
+            _windowInfo.Vehicle is not null)
         {
             _driveMode = true;
             _vehicleViewMode =
@@ -5074,7 +5079,8 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.KeyCode == Keys.Tab)
+        if (e.KeyCode == Keys.Tab &&
+            _windowInfo.Vehicle is not null)
         {
             if (_mouseDriveMode)
             {
