@@ -1246,7 +1246,22 @@ internal sealed class RuntimeApplicationContext :
                     .ToArray(),
                 new RuntimeVehiclePhysicsInfo(
                     vehicle.Bus.Physics.WheelBaseMeters,
-                    vehicle.Bus.Physics.MaximumSteeringAngleDegrees),
+                    vehicle.Bus.Physics.MaximumSteeringAngleDegrees,
+                    vehicle.Bus.Physics.MassTonnes,
+                    vehicle.Bus.Physics.CenterOfGravityHeightMeters,
+                    vehicle.Bus.Physics.RollingResistanceNewtons,
+                    vehicle.Bus.Physics.TrackWidthMeters,
+                    AverageAxleValue(
+                        vehicle.Bus.Physics.Axles,
+                        static axle =>
+                            axle.SpringRateKilonewtonsPerMeter),
+                    AverageAxleValue(
+                        vehicle.Bus.Physics.Axles,
+                        static axle =>
+                            axle.DamperRateKilonewtonSecondsPerMeter),
+                    vehicle.Bus.Physics.MomentOfInertiaZ,
+                    vehicle.Bus.Physics.RotationPointLongitudinalMeters,
+                    vehicle.Bus.Physics.InverseMinimumTurnRadius),
                 vehicle.DriverPosition is null
                     ? null
                     : new RuntimeDriverPositionInfo(
@@ -1330,6 +1345,29 @@ internal sealed class RuntimeApplicationContext :
             runtimeAiCatalog,
             runtimeVehicle,
             runtimeSpawn);
+    }
+
+    private static double? AverageAxleValue(
+        IReadOnlyList<OmsiVehicleAxle> axles,
+        Func<OmsiVehicleAxle, double?> selector)
+    {
+        var values =
+            axles
+                .Select(
+                    selector)
+                .Where(
+                    static value =>
+                        value.HasValue &&
+                        double.IsFinite(
+                            value.Value))
+                .Select(
+                    static value =>
+                        value!.Value)
+                .ToArray();
+
+        return values.Length == 0
+            ? null
+            : values.Average();
     }
 
     private static string? ResolveMapImage(
