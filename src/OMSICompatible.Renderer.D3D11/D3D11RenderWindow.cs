@@ -107,6 +107,12 @@ public sealed class D3D11RenderWindow : Form
         _vehicleAnimationParentBatches =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<int, float>
+        _articulatedSectionAbsoluteHeadingRadians =
+            [];
+    private readonly Dictionary<int, float>
+        _articulatedSectionYawRadians =
+            [];
 
     private double _lastFrameTimeSeconds;
     private bool _graphicsPrepared;
@@ -1740,6 +1746,7 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Splines,
                 _terrainGeometry,
                 _windowInfo.Spawn);
+            ResetArticulatedSections();
         }
     }
 
@@ -2309,6 +2316,7 @@ public sealed class D3D11RenderWindow : Form
                         _windowInfo.Splines,
                         _terrainGeometry,
                         _windowInfo.Spawn);
+                    ResetArticulatedSections();
                 }
 
                 break;
@@ -3066,6 +3074,8 @@ public sealed class D3D11RenderWindow : Form
                     World =
                         CreateVehicleAnimationMatrix(
                             batch) *
+                        CreateArticulatedSectionMatrix(
+                            batch.SectionIndex) *
                         vehicleWorld
                 };
 
@@ -4933,6 +4943,12 @@ public sealed class D3D11RenderWindow : Form
                 _pressedKeys.Contains(Keys.ControlKey));
         }
 
+        if (_driveMode)
+        {
+            UpdateArticulatedSections(
+                deltaSeconds);
+        }
+
         UpdateVehicleScripts(
             deltaSeconds,
             now);
@@ -4946,6 +4962,216 @@ public sealed class D3D11RenderWindow : Form
 
         UpdateVehicleLightStates(
             deltaSeconds);
+    }
+
+    private void ResetArticulatedSections()
+    {
+        _articulatedSectionAbsoluteHeadingRadians.Clear();
+        _articulatedSectionYawRadians.Clear();
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections ??
+                 Array.Empty<RuntimeVehicleSectionInfo>())
+        {
+            _articulatedSectionAbsoluteHeadingRadians[
+                section.Index] =
+                _vehicle.HeadingRadians;
+
+            _articulatedSectionYawRadians[
+                section.Index] =
+                0.0f;
+        }
+    }
+
+    private void UpdateArticulatedSections(
+        float deltaSeconds)
+    {
+        var sections =
+            _windowInfo.Vehicle?.Sections;
+
+        if (sections is null ||
+            sections.Count == 0 ||
+            deltaSeconds <= 0.0f)
+        {
+            return;
+        }
+
+        foreach (var section in
+                 sections.OrderBy(
+                     static item =>
+                         item.Index))
+        {
+            var parentHeading =
+                section.ParentIndex <= 0
+                    ? _vehicle.HeadingRadians
+                    : _articulatedSectionAbsoluteHeadingRadians
+                        .TryGetValue(
+                            section.ParentIndex,
+                            out var storedParent)
+                        ? storedParent
+                        : _vehicle.HeadingRadians;
+
+            if (!_articulatedSectionAbsoluteHeadingRadians
+                    .TryGetValue(
+                        section.Index,
+                        out var sectionHeading))
+            {
+                sectionHeading =
+                    parentHeading;
+            }
+
+            var followerLength =
+                Math.Clamp(
+                    (float)section.FollowerLengthMeters,
+                    1.0f,
+                    15.0f);
+
+            var headingDifference =
+                NormalizeRadians(
+                    parentHeading -
+                    sectionHeading);
+
+            var angularVelocity =
+                _vehicle.SpeedMetersPerSecond /
+                followerLength *
+                MathF.Sin(
+                    headingDifference);
+
+            sectionHeading =
+                NormalizeRadians(
+                    sectionHeading +
+                    angularVelocity *
+                    deltaSeconds);
+
+            var relativeYaw =
+                NormalizeRadians(
+                    sectionHeading -
+                    parentHeading);
+
+            var maximumYaw =
+                DegreesToRadians(
+                    Math.Clamp(
+                        section.MaximumYawDegrees,
+                        5.0,
+                        89.0));
+
+            relativeYaw =
+                Math.Clamp(
+                    relativeYaw,
+                    -maximumYaw,
+                    maximumYaw);
+
+            sectionHeading =
+                NormalizeRadians(
+                    parentHeading +
+                    relativeYaw);
+
+            _articulatedSectionAbsoluteHeadingRadians[
+                section.Index] =
+                sectionHeading;
+
+            _articulatedSectionYawRadians[
+                section.Index] =
+                relativeYaw;
+        }
+    }
+
+    private Matrix4x4 CreateArticulatedSectionMatrix(
+        int sectionIndex)
+    {
+        if (sectionIndex <= 0)
+        {
+            return Matrix4x4.Identity;
+        }
+
+        var sections =
+            _windowInfo.Vehicle?.Sections;
+
+        if (sections is null ||
+            sections.Count == 0)
+        {
+            return Matrix4x4.Identity;
+        }
+
+        var byIndex =
+            sections.ToDictionary(
+                static section =>
+                    section.Index);
+
+        return CreateArticulatedSectionMatrix(
+            sectionIndex,
+            byIndex,
+            new HashSet<int>());
+    }
+
+    private Matrix4x4 CreateArticulatedSectionMatrix(
+        int sectionIndex,
+        IReadOnlyDictionary<int, RuntimeVehicleSectionInfo> sections,
+        ISet<int> visited)
+    {
+        if (sectionIndex <= 0 ||
+            !visited.Add(
+                sectionIndex) ||
+            !sections.TryGetValue(
+                sectionIndex,
+                out var section))
+        {
+            return Matrix4x4.Identity;
+        }
+
+        var yaw =
+            _articulatedSectionYawRadians.TryGetValue(
+                sectionIndex,
+                out var storedYaw)
+                ? storedYaw
+                : 0.0f;
+
+        var pivot =
+            new Vector3(
+                (float)section.JointX,
+                (float)section.JointY,
+                (float)section.JointZ);
+
+        var local =
+            Matrix4x4.CreateTranslation(
+                -pivot) *
+            Matrix4x4.CreateRotationY(
+                yaw) *
+            Matrix4x4.CreateTranslation(
+                pivot);
+
+        if (section.ParentIndex <= 0)
+        {
+            return local;
+        }
+
+        return local *
+               CreateArticulatedSectionMatrix(
+                   section.ParentIndex,
+                   sections,
+                   visited);
+    }
+
+    private static float NormalizeRadians(
+        float value)
+    {
+        while (value >
+               MathF.PI)
+        {
+            value -=
+                MathF.PI *
+                2.0f;
+        }
+
+        while (value <
+               -MathF.PI)
+        {
+            value +=
+                MathF.PI *
+                2.0f;
+        }
+
+        return value;
     }
 
     private void UpdateVehicleAnimationStates(
@@ -5662,6 +5888,7 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Splines,
                 _terrainGeometry,
                 _windowInfo.Spawn);
+            ResetArticulatedSections();
 
             UpdateCaption();
             e.SuppressKeyPress =
