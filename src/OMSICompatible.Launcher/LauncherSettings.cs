@@ -7,7 +7,9 @@ internal sealed record LauncherSettings(
     string? MapName,
     string? BusRelativePath,
     string? EntryPointName,
-    bool StartWithoutBus = false)
+    bool StartWithoutBus = false,
+    string? RepaintName = null,
+    string? RepaintCtiRelativePath = null)
 {
     private static string SettingsDirectory =>
         Path.Combine(
