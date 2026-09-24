@@ -76,14 +76,22 @@ public sealed class D3D11RenderWindow : Form
     private readonly HashSet<Keys> _pressedKeys = [];
     private readonly IReadOnlyList<RuntimeOmsiKeyboardBinding>
         _omsiKeyboardBindings;
+    private readonly IReadOnlyDictionary<
+        string,
+        RuntimeOmsiHostInputAction>
+        _omsiHostActionsByTrigger;
     private readonly HashSet<RuntimeOmsiKeyboardBinding>
         _activeOmsiContinuousBindings =
             [];
     private readonly HashSet<RuntimeOmsiKeyboardBinding>
         _activeOmsiPressedBindings =
             [];
+    private readonly HashSet<RuntimeOmsiHostInputAction>
+        _activeControllerHostActions =
+            [];
     private readonly bool _gameControllerEnabled;
     private RuntimeOmsiGameControllerHost? _omsiGameController;
+    private bool _controllerInputEnabled = true;
     private float _controllerClutchInput;
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
     private readonly Dictionary<RuntimeVehicleAnimationInfo, double>
@@ -260,6 +268,15 @@ public sealed class D3D11RenderWindow : Form
                 ? Array.Empty<
                     RuntimeOmsiKeyboardBinding>()
                 : RuntimeOmsiKeyboardBindings.Load(
+                    windowInfo.ContentRoot,
+                    inputLanguage);
+        _omsiHostActionsByTrigger =
+            _vehiclePreviewMode
+                ? new Dictionary<
+                    string,
+                    RuntimeOmsiHostInputAction>(
+                    StringComparer.OrdinalIgnoreCase)
+                : RuntimeOmsiKeyboardBindings.LoadHostActions(
                     windowInfo.ContentRoot,
                     inputLanguage);
         _previousSystemMacroHandler =
@@ -4467,26 +4484,63 @@ public sealed class D3D11RenderWindow : Form
                 0.1);
 
         var controllerFrame =
-            _omsiGameController?.Poll() ??
-            RuntimeOmsiControllerFrame.Empty;
+            _controllerInputEnabled
+                ? _omsiGameController?.Poll() ??
+                  RuntimeOmsiControllerFrame.Empty
+                : RuntimeOmsiControllerFrame.Empty;
 
         foreach (var trigger in
                  controllerFrame.Triggered)
         {
-            DispatchOmsiTrigger(
+            DispatchOmsiScriptTrigger(
+                trigger);
+        }
+
+        foreach (var trigger in
+                 controllerFrame.Pressed)
+        {
+            PressControllerHostAction(
                 trigger);
         }
 
         foreach (var trigger in
                  controllerFrame.Released)
         {
-            DispatchOmsiTrigger(
+            DispatchOmsiScriptTrigger(
+                ReleaseTriggerName(
+                    trigger));
+
+            ReleaseControllerHostAction(
                 trigger);
         }
 
         _controllerClutchInput =
             controllerFrame.Clutch ??
             0.0f;
+
+        var acceleratorHeld =
+            IsHostActionHeld(
+                RuntimeOmsiHostInputAction.Accelerate);
+
+        var brakeIncreaseHeld =
+            IsHostActionHeld(
+                RuntimeOmsiHostInputAction.BrakeIncrease);
+
+        var brakeReleaseHeld =
+            IsHostActionHeld(
+                RuntimeOmsiHostInputAction.BrakeRelease);
+
+        var steerRightHeld =
+            IsHostActionHeld(
+                RuntimeOmsiHostInputAction.SteerRight);
+
+        var steerLeftHeld =
+            IsHostActionHeld(
+                RuntimeOmsiHostInputAction.SteerLeft);
+
+        var centerSteeringHeld =
+            IsHostActionHeld(
+                RuntimeOmsiHostInputAction.SteerCenter);
 
         if (_driveMode)
         {
@@ -4503,36 +4557,56 @@ public sealed class D3D11RenderWindow : Form
                 _vehicle.UpdateOmsiControllerControls(
                     accelerator:
                         controllerFrame.Accelerator ??
-                        (_pressedKeys.Contains(
-                            Keys.NumPad8)
+                        (acceleratorHeld
                             ? 1.0f
                             : 0.0f),
                     brake:
                         controllerFrame.Brake ??
-                        _vehicle.BrakeLevel,
+                        (brakeIncreaseHeld
+                            ? 1.0f
+                            : brakeReleaseHeld
+                                ? 0.0f
+                                : _vehicle.BrakeLevel),
                     steering:
                         controllerFrame.Steering ??
-                        _vehicle.SteeringInput,
+                        (steerRightHeld ||
+                         steerLeftHeld
+                            ? Math.Clamp(
+                                (steerRightHeld
+                                    ? 1.0f
+                                    : 0.0f) -
+                                (steerLeftHeld
+                                    ? 1.0f
+                                    : 0.0f),
+                                -1.0f,
+                                1.0f)
+                            : centerSteeringHeld
+                                ? 0.0f
+                                : _vehicle.SteeringInput),
                     deltaSeconds:
                         deltaSeconds);
             }
             else
             {
                 var steeringDirection =
-                    (_pressedKeys.Contains(Keys.NumPad6) ? 1.0f : 0.0f) -
-                    (_pressedKeys.Contains(Keys.NumPad4) ? 1.0f : 0.0f);
+                    (steerRightHeld
+                        ? 1.0f
+                        : 0.0f) -
+                    (steerLeftHeld
+                        ? 1.0f
+                        : 0.0f);
 
                 _vehicle.UpdateOmsiControls(
                     acceleratorHeld:
-                        _pressedKeys.Contains(Keys.NumPad8),
+                        acceleratorHeld,
                     brakeIncreaseHeld:
-                        _pressedKeys.Contains(Keys.NumPad2),
+                        brakeIncreaseHeld,
                     brakeReleaseHeld:
-                        _pressedKeys.Contains(Keys.Add),
+                        brakeReleaseHeld,
                     steeringDirection:
                         steeringDirection,
                     centerSteeringHeld:
-                        _pressedKeys.Contains(Keys.NumPad5),
+                        centerSteeringHeld,
                     deltaSeconds:
                         deltaSeconds);
             }
@@ -4540,16 +4614,16 @@ public sealed class D3D11RenderWindow : Form
         else
         {
             var forward =
-                (_pressedKeys.Contains(Keys.W) ? 1.0f : 0.0f) -
-                (_pressedKeys.Contains(Keys.S) ? 1.0f : 0.0f);
+                (IsFreeCameraKeyHeld(Keys.W) ? 1.0f : 0.0f) -
+                (IsFreeCameraKeyHeld(Keys.S) ? 1.0f : 0.0f);
 
             var right =
-                (_pressedKeys.Contains(Keys.D) ? 1.0f : 0.0f) -
-                (_pressedKeys.Contains(Keys.A) ? 1.0f : 0.0f);
+                (IsFreeCameraKeyHeld(Keys.D) ? 1.0f : 0.0f) -
+                (IsFreeCameraKeyHeld(Keys.A) ? 1.0f : 0.0f);
 
             var up =
-                (_pressedKeys.Contains(Keys.E) ? 1.0f : 0.0f) -
-                (_pressedKeys.Contains(Keys.Q) ? 1.0f : 0.0f);
+                (IsFreeCameraKeyHeld(Keys.E) ? 1.0f : 0.0f) -
+                (IsFreeCameraKeyHeld(Keys.Q) ? 1.0f : 0.0f);
 
             _camera.Move(
                 forward,
@@ -5136,7 +5210,7 @@ public sealed class D3D11RenderWindow : Form
         foreach (var binding in
                  _activeOmsiContinuousBindings)
         {
-            DispatchOmsiTrigger(
+            DispatchOmsiScriptTrigger(
                 binding.Trigger);
         }
 
@@ -5176,7 +5250,12 @@ public sealed class D3D11RenderWindow : Form
             _vehicle.BrakeLevel);
         _scriptRuntime.SetLocal(
             "Clutch",
-            _controllerClutchInput);
+            Math.Max(
+                _controllerClutchInput,
+                IsHostActionHeld(
+                    RuntimeOmsiHostInputAction.Clutch)
+                    ? 1.0f
+                    : 0.0f));
         _scriptRuntime.SetLocal(
             "Velocity",
             _vehicle.SpeedKph);
