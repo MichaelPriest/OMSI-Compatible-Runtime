@@ -322,7 +322,9 @@ internal sealed class RuntimeApplicationContext :
                     initialVehicleVariables:
                         selectedRepaint?.SetVariables,
                     inputLanguage:
-                        _options.Language);
+                        _options.Language,
+                    gameControllerEnabled:
+                        _options.GameControllerEnabled);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
