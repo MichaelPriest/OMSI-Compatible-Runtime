@@ -137,17 +137,21 @@ public sealed class OmsiRuntimeOptions
 
     public static OmsiRuntimeOptions ImportFromOmsi(
         string contentRoot,
+        OmsiRuntimeOptions? baseline = null) =>
+        ImportFromFile(
+            Path.Combine(
+                contentRoot,
+                "options.cfg"),
+            baseline);
+
+    public static OmsiRuntimeOptions ImportFromFile(
+        string path,
         OmsiRuntimeOptions? baseline = null)
     {
         var options =
             baseline is null
                 ? new OmsiRuntimeOptions()
                 : Clone(baseline);
-
-        var path =
-            Path.Combine(
-                contentRoot,
-                "options.cfg");
 
         if (!File.Exists(path))
         {
