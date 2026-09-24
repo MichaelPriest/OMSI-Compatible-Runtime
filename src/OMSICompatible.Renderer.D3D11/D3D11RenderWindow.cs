@@ -5093,28 +5093,31 @@ public sealed class D3D11RenderWindow : Form
             return Matrix4x4.Identity;
         }
 
-        var byIndex =
-            sections.ToDictionary(
-                static section =>
-                    section.Index);
-
         return CreateArticulatedSectionMatrix(
             sectionIndex,
-            byIndex,
+            sections,
             new HashSet<int>());
     }
 
     private Matrix4x4 CreateArticulatedSectionMatrix(
         int sectionIndex,
-        IReadOnlyDictionary<int, RuntimeVehicleSectionInfo> sections,
+        IReadOnlyList<RuntimeVehicleSectionInfo> sections,
         ISet<int> visited)
     {
         if (sectionIndex <= 0 ||
             !visited.Add(
-                sectionIndex) ||
-            !sections.TryGetValue(
-                sectionIndex,
-                out var section))
+                sectionIndex))
+        {
+            return Matrix4x4.Identity;
+        }
+
+        var section =
+            sections.FirstOrDefault(
+                item =>
+                    item.Index ==
+                    sectionIndex);
+
+        if (section is null)
         {
             return Matrix4x4.Identity;
         }
