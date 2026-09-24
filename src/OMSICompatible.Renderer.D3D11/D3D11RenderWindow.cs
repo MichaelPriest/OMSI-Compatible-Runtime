@@ -103,6 +103,10 @@ public sealed class D3D11RenderWindow : Form
         _vehicleLightValues =
             new(
                 ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, RuntimeObjectBatch>
+        _vehicleAnimationParentBatches =
+            new(
+                StringComparer.OrdinalIgnoreCase);
 
     private double _lastFrameTimeSeconds;
     private bool _graphicsPrepared;
@@ -1420,6 +1424,26 @@ public sealed class D3D11RenderWindow : Form
             RuntimeVehicleGeometry.Build(
                 _windowInfo.Vehicle,
                 viewpointBit: 2);
+
+        _vehicleAnimationParentBatches.Clear();
+
+        foreach (var batch in
+                 _vehicleExteriorGeometry.Batches
+                     .Concat(
+                         _vehicleInteriorGeometry.Batches))
+        {
+            if (string.IsNullOrWhiteSpace(
+                    batch.MeshIdentifier) ||
+                _vehicleAnimationParentBatches.ContainsKey(
+                    batch.MeshIdentifier))
+            {
+                continue;
+            }
+
+            _vehicleAnimationParentBatches[
+                batch.MeshIdentifier] =
+                batch;
+        }
 
         if (_vehiclePreviewMode)
         {
@@ -3837,11 +3861,53 @@ public sealed class D3D11RenderWindow : Form
             batch.VisibilityConditions);
 
     private Matrix4x4 CreateVehicleAnimationMatrix(
-        RuntimeObjectBatch batch) =>
-        CreateVehicleAnimationMatrix(
-            batch.Animations,
-            batch.SourceTransform,
-            batch.StaticTransform);
+        RuntimeObjectBatch batch)
+    {
+        var visited =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(
+                batch.MeshIdentifier))
+        {
+            visited.Add(
+                batch.MeshIdentifier);
+        }
+
+        return CreateVehicleAnimationMatrixWithParents(
+            batch,
+            visited);
+    }
+
+    private Matrix4x4 CreateVehicleAnimationMatrixWithParents(
+        RuntimeObjectBatch batch,
+        ISet<string> visited)
+    {
+        var result =
+            CreateVehicleAnimationMatrix(
+                batch.Animations,
+                batch.SourceTransform,
+                batch.StaticTransform);
+
+        if (string.IsNullOrWhiteSpace(
+                batch.AnimationParent) ||
+            !visited.Add(
+                batch.AnimationParent) ||
+            !_vehicleAnimationParentBatches.TryGetValue(
+                batch.AnimationParent,
+                out var parent))
+        {
+            return result;
+        }
+
+        // OMSI [animparent] attaches the child to the animation of the
+        // previously identified [mesh_ident]. With row-vector matrices the
+        // child's own animation is applied first, then the parent chain.
+        return result *
+               CreateVehicleAnimationMatrixWithParents(
+                   parent,
+                   visited);
+    }
 
     private Matrix4x4 CreateVehicleAnimationMatrix(
         IReadOnlyList<RuntimeVehicleAnimationInfo>? animations,
@@ -6734,6 +6800,7 @@ public sealed class D3D11RenderWindow : Form
 
             _vehicleTextTextureRenderer?.Dispose();
             _vehicleTextTextureRenderer = null;
+            _vehicleAnimationParentBatches.Clear();
 
             _objectSampler?.Dispose();
             _objectAlphaBlendState?.Dispose();
