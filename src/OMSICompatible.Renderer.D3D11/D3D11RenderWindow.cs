@@ -5300,15 +5300,17 @@ public sealed class D3D11RenderWindow : Form
         // while OMSI's built-in axle animation variables use the opposite
         // sign convention. Inverting here keeps the bus path and the
         // visible steering wheel/front wheels synchronized.
-        var omsiSteering =
-            -_vehicle.SteeringAngleRadians;
+        var omsiSteeringLeft =
+            -_vehicle.FrontLeftSteeringRadians;
+        var omsiSteeringRight =
+            -_vehicle.FrontRightSteeringRadians;
 
         _scriptRuntime.SetLocal(
             "Axle_Steering_0_L",
-            omsiSteering);
+            omsiSteeringLeft);
         _scriptRuntime.SetLocal(
             "Axle_Steering_0_R",
-            omsiSteering);
+            omsiSteeringRight);
 
         var wheelRotation =
             _vehicle.WheelRotationRadians;
