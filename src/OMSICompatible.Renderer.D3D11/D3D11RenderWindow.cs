@@ -232,7 +232,8 @@ public sealed class D3D11RenderWindow : Form
         int targetFps = 60,
         bool vsync = true,
         bool vehiclePreviewMode = false,
-        IReadOnlyDictionary<string, double>? initialVehicleVariables = null)
+        IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
+        string? inputLanguage = null)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
