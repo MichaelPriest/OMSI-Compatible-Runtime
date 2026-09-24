@@ -5577,7 +5577,7 @@ public sealed class D3D11RenderWindow : Form
         foreach (var binding in
                  released)
         {
-            DispatchOmsiTrigger(
+            DispatchOmsiScriptTrigger(
                 ReleaseTriggerName(
                     binding.Trigger));
 
@@ -5589,14 +5589,16 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
-    private void DispatchOmsiKeyboardKeyDown(
+    private bool DispatchOmsiKeyboardKeyDown(
         KeyEventArgs e)
     {
-        if (_scriptRuntime is null ||
-            _omsiKeyboardBindings.Count == 0)
+        if (_omsiKeyboardBindings.Count == 0)
         {
-            return;
+            return false;
         }
+
+        var matched =
+            false;
 
         foreach (var binding in
                  _omsiKeyboardBindings)
@@ -5611,11 +5613,21 @@ public sealed class D3D11RenderWindow : Form
                 continue;
             }
 
-            DispatchOmsiTrigger(
+            matched =
+                true;
+
+            DispatchOmsiScriptTrigger(
                 binding.Trigger);
 
             _activeOmsiPressedBindings.Add(
                 binding);
+
+            if (binding.HostAction is
+                { } hostAction)
+            {
+                ApplyOmsiHostActionPress(
+                    hostAction);
+            }
 
             if (binding.Continuous)
             {
@@ -5623,9 +5635,11 @@ public sealed class D3D11RenderWindow : Form
                     binding);
             }
         }
+
+        return matched;
     }
 
-    private void DispatchOmsiTrigger(
+    private void DispatchOmsiScriptTrigger(
         string trigger)
     {
         if (string.IsNullOrWhiteSpace(
@@ -5636,69 +5650,332 @@ public sealed class D3D11RenderWindow : Form
 
         _scriptRuntime?.ExecuteTrigger(
             trigger);
+    }
 
-        switch (trigger)
+    private void PressControllerHostAction(
+        string trigger)
+    {
+        if (!TryResolveHostAction(
+                trigger,
+                out var action) ||
+            !_activeControllerHostActions.Add(
+                action))
         {
-            case "automatic_D":
-                _vehicle.SelectGear(
-                    RuntimeDriveGear.Drive);
+            return;
+        }
+
+        ApplyOmsiHostActionPress(
+            action);
+    }
+
+    private void ReleaseControllerHostAction(
+        string trigger)
+    {
+        if (!TryResolveHostAction(
+                trigger,
+                out var action))
+        {
+            return;
+        }
+
+        _activeControllerHostActions.Remove(
+            action);
+    }
+
+    private bool TryResolveHostAction(
+        string trigger,
+        out RuntimeOmsiHostInputAction action)
+    {
+        if (_omsiHostActionsByTrigger.TryGetValue(
+                trigger,
+                out action))
+        {
+            return true;
+        }
+
+        action =
+            trigger
+                .Trim()
+                .ToLowerInvariant() switch
+            {
+                "automatic_d" =>
+                    RuntimeOmsiHostInputAction.GearDrive,
+                "automatic_n" =>
+                    RuntimeOmsiHostInputAction.GearNeutral,
+                "automatic_r" =>
+                    RuntimeOmsiHostInputAction.GearReverse,
+                "parking_brake_toggle" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeToggle,
+                "parking_brake_set" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeSet,
+                "parking_brake_release" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeRelease,
+                "kw_m_enginestart" =>
+                    RuntimeOmsiHostInputAction.EngineStart,
+                "kw_m_engineshutdown" =>
+                    RuntimeOmsiHostInputAction.EngineOff,
+                "cp_batterietrennschalter_toggle" =>
+                    RuntimeOmsiHostInputAction.ElectricalToggle,
+                "view_interiorcam_plus" =>
+                    RuntimeOmsiHostInputAction.InteriorViewNext,
+                "view_interiorcam_minus" =>
+                    RuntimeOmsiHostInputAction.InteriorViewPrevious,
+                "view_reset_direction" or
+                "view_reset_all_directions" =>
+                    RuntimeOmsiHostInputAction.ResetDriverView,
+                "view_schedule" =>
+                    RuntimeOmsiHostInputAction.ScheduleView,
+                "view_ticketselling" =>
+                    RuntimeOmsiHostInputAction.TicketSellingView,
+                _ =>
+                    default
+            };
+
+        return trigger
+            .Trim()
+            .ToLowerInvariant() is
+                "automatic_d" or
+                "automatic_n" or
+                "automatic_r" or
+                "parking_brake_toggle" or
+                "parking_brake_set" or
+                "parking_brake_release" or
+                "kw_m_enginestart" or
+                "kw_m_engineshutdown" or
+                "cp_batterietrennschalter_toggle" or
+                "view_interiorcam_plus" or
+                "view_interiorcam_minus" or
+                "view_reset_direction" or
+                "view_reset_all_directions" or
+                "view_schedule" or
+                "view_ticketselling";
+    }
+
+    private void ApplyOmsiHostActionPress(
+        RuntimeOmsiHostInputAction action)
+    {
+        switch (action)
+        {
+            case RuntimeOmsiHostInputAction.Accelerate:
+            case RuntimeOmsiHostInputAction.BrakeIncrease:
+            case RuntimeOmsiHostInputAction.BrakeRelease:
+            case RuntimeOmsiHostInputAction.SteerLeft:
+            case RuntimeOmsiHostInputAction.SteerRight:
+            case RuntimeOmsiHostInputAction.SteerCenter:
+            case RuntimeOmsiHostInputAction.Clutch:
+                return;
+
+            case RuntimeOmsiHostInputAction.ElectricalToggle:
+                _vehicle.ToggleElectricalSystem();
                 break;
 
-            case "automatic_N":
-                _vehicle.SelectGear(
-                    RuntimeDriveGear.Neutral);
-                break;
-
-            case "automatic_R":
-                _vehicle.SelectGear(
-                    RuntimeDriveGear.Reverse);
-                break;
-
-            case "parking_brake_toggle":
-                _vehicle.ToggleParkingBrake();
-                break;
-
-            case "parking_brake_set":
-                _vehicle.SetParkingBrake(
-                    true);
-                break;
-
-            case "parking_brake_release":
-                _vehicle.SetParkingBrake(
-                    false);
-                break;
-
-            case "kw_m_enginestart":
+            case RuntimeOmsiHostInputAction.EngineToggle:
                 _vehicle.ToggleEngine();
                 break;
 
-            case "kw_m_engineshutdown":
+            case RuntimeOmsiHostInputAction.EngineStart:
+                _vehicle.SetEngineRunning(
+                    true);
+                break;
+
+            case RuntimeOmsiHostInputAction.EngineOff:
                 _vehicle.SetEngineRunning(
                     false);
                 break;
 
-            case "cp_batterietrennschalter_toggle":
-                _vehicle.ToggleElectricalSystem();
+            case RuntimeOmsiHostInputAction.GearDrive:
+                _vehicle.SelectGear(
+                    RuntimeDriveGear.Drive);
                 break;
 
-            case "view_interiorcam_plus":
+            case RuntimeOmsiHostInputAction.GearNeutral:
+                _vehicle.SelectGear(
+                    RuntimeDriveGear.Neutral);
+                break;
+
+            case RuntimeOmsiHostInputAction.GearReverse:
+                _vehicle.SelectGear(
+                    RuntimeDriveGear.Reverse);
+                break;
+
+            case RuntimeOmsiHostInputAction.ParkingBrakeToggle:
+                _vehicle.ToggleParkingBrake();
+                break;
+
+            case RuntimeOmsiHostInputAction.ParkingBrakeSet:
+                _vehicle.SetParkingBrake(
+                    true);
+                break;
+
+            case RuntimeOmsiHostInputAction.ParkingBrakeRelease:
+                _vehicle.SetParkingBrake(
+                    false);
+                break;
+
+            case RuntimeOmsiHostInputAction.StopBrakeToggle:
+                _vehicle.ToggleStopBrake();
+                break;
+
+            case RuntimeOmsiHostInputAction.MouseDriveToggle:
+                if (_driveMode)
+                {
+                    ToggleMouseDriveMode();
+                }
+
+                break;
+
+            case RuntimeOmsiHostInputAction.DriverView:
+                if (_windowInfo.Vehicle is null)
+                {
+                    break;
+                }
+
+                _driveMode =
+                    true;
+                _vehicleViewMode =
+                    RuntimeVehicleViewMode.Driver;
+                _driverCameraIndex =
+                    Math.Max(
+                        _windowInfo.Vehicle
+                            .StandardDriverCameraIndex,
+                        0);
+                break;
+
+            case RuntimeOmsiHostInputAction.PassengerView:
+                if (_windowInfo.Vehicle is null)
+                {
+                    break;
+                }
+
+                _driveMode =
+                    true;
+                _vehicleViewMode =
+                    _windowInfo.Vehicle
+                        .PassengerCameras.Count >
+                    0
+                        ? RuntimeVehicleViewMode.Passenger
+                        : RuntimeVehicleViewMode.Driver;
+                break;
+
+            case RuntimeOmsiHostInputAction.ExteriorView:
+                if (_windowInfo.Vehicle is null)
+                {
+                    break;
+                }
+
+                _driveMode =
+                    true;
+                _vehicleViewMode =
+                    RuntimeVehicleViewMode.Exterior;
+                break;
+
+            case RuntimeOmsiHostInputAction.FreeCameraView:
+                if (_mouseDriveMode)
+                {
+                    DisableMouseDriveMode();
+                }
+
+                _driveMode =
+                    false;
+                break;
+
+            case RuntimeOmsiHostInputAction.ScheduleView:
+                ActivateSpecialDriverCamera(
+                    _windowInfo.Vehicle?
+                        .ScheduleDriverCameraIndex);
+                break;
+
+            case RuntimeOmsiHostInputAction.TicketSellingView:
+                ActivateSpecialDriverCamera(
+                    _windowInfo.Vehicle?
+                        .TicketSellingDriverCameraIndex);
+                break;
+
+            case RuntimeOmsiHostInputAction.InteriorViewNext:
                 CycleInteriorCamera(
                     1);
                 break;
 
-            case "view_interiorcam_minus":
+            case RuntimeOmsiHostInputAction.InteriorViewPrevious:
                 CycleInteriorCamera(
                     -1);
                 break;
 
-            case "view_reset_direction":
-            case "view_reset_all_directions":
+            case RuntimeOmsiHostInputAction.ResetDriverView:
                 ActivateSpecialDriverCamera(
                     _windowInfo.Vehicle?
                         .StandardDriverCameraIndex);
                 break;
+
+            case RuntimeOmsiHostInputAction.ControllerToggle:
+                _controllerInputEnabled =
+                    !_controllerInputEnabled;
+
+                if (!_controllerInputEnabled)
+                {
+                    _activeControllerHostActions.Clear();
+                    _controllerClutchInput =
+                        0.0f;
+                }
+
+                break;
         }
     }
+
+    private bool IsHostActionHeld(
+        RuntimeOmsiHostInputAction action)
+    {
+        if (_activeOmsiPressedBindings.Any(
+                binding =>
+                    binding.HostAction ==
+                    action) ||
+            _activeControllerHostActions.Contains(
+                action))
+        {
+            return true;
+        }
+
+        if (_omsiKeyboardBindings.Count > 0)
+        {
+            return false;
+        }
+
+        return action switch
+        {
+            RuntimeOmsiHostInputAction.Accelerate =>
+                _pressedKeys.Contains(
+                    Keys.NumPad8),
+            RuntimeOmsiHostInputAction.BrakeIncrease =>
+                _pressedKeys.Contains(
+                    Keys.NumPad2),
+            RuntimeOmsiHostInputAction.BrakeRelease =>
+                _pressedKeys.Contains(
+                    Keys.Add),
+            RuntimeOmsiHostInputAction.SteerLeft =>
+                _pressedKeys.Contains(
+                    Keys.NumPad4),
+            RuntimeOmsiHostInputAction.SteerRight =>
+                _pressedKeys.Contains(
+                    Keys.NumPad6),
+            RuntimeOmsiHostInputAction.SteerCenter =>
+                _pressedKeys.Contains(
+                    Keys.NumPad5),
+            RuntimeOmsiHostInputAction.Clutch =>
+                _pressedKeys.Contains(
+                    Keys.Tab),
+            _ =>
+                false
+        };
+    }
+
+    private bool IsFreeCameraKeyHeld(
+        Keys key) =>
+        _pressedKeys.Contains(
+            key) &&
+        !_activeOmsiPressedBindings.Any(
+            binding =>
+                binding.Key ==
+                key);
 
     private void SynchronizeHostVehicleStateFromScripts()
     {
