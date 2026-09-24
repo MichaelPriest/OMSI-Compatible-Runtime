@@ -208,13 +208,17 @@ public sealed class D3D11RenderWindow : Form
     private bool _reflectionRenderingEnabled;
 
     private FeatureLevel _featureLevel;
+    private readonly bool _vsync;
 
     public D3D11RenderWindow(
         RuntimeWindowInfo windowInfo,
-        OmsiScriptRuntime? scriptRuntime = null)
+        OmsiScriptRuntime? scriptRuntime = null,
+        int targetFps = 60,
+        bool vsync = true)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
+        _vsync = vsync;
         _previousSystemMacroHandler =
             _scriptRuntime?.SystemMacroHandler;
 
@@ -253,7 +257,15 @@ public sealed class D3D11RenderWindow : Form
 
         _renderTimer = new System.Windows.Forms.Timer
         {
-            Interval = 16
+            Interval =
+                Math.Max(
+                    1,
+                    (int)Math.Round(
+                        1000.0 /
+                        Math.Clamp(
+                            targetFps,
+                            10,
+                            240)))
         };
         _renderTimer.Tick += RenderTimerOnTick;
 
@@ -2100,7 +2112,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _swapChain.Present(
-            1,
+            _vsync
+                ? 1u
+                : 0u,
             PresentFlags.None)
             .CheckError();
     }
