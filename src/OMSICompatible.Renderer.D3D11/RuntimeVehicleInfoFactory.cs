@@ -170,7 +170,9 @@ public static class RuntimeVehicleInfoFactory
                                             light.TimeConstantSeconds,
                                             light.BitmapSource,
                                             light.Enhanced))
-                                .ToArray()))
+                                .ToArray(),
+                            mesh.MeshIdentifier,
+                            mesh.AnimationParent))
                 .ToArray(),
             vehicle.Bus.DriverCameras
                 .Select(
