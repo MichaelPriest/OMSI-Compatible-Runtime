@@ -30,6 +30,11 @@ internal static class Program
                 args,
                 "--spawn");
 
+        var repaintName =
+            GetOption(
+                args,
+                "--repaint");
+
         var noBus =
             HasFlag(
                 args,
@@ -161,7 +166,8 @@ internal static class Program
                 selectedMap,
                 selectedBus,
                 selectedEntryPoint,
-                externalLoading);
+                externalLoading,
+                repaintName);
 
         Application.Run(context);
         return 0;
