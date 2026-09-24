@@ -4646,6 +4646,24 @@ public sealed class D3D11RenderWindow : Form
                         axisZ)
                     : Vector3.UnitZ;
 
+            // A negative determinant is a reflected O3D object origin.
+            // OMSI still evaluates anim_rot in a right-handed animation
+            // frame. Keeping the reflected X axis reverses steering-wheel
+            // rotation on add-ons such as the MEP Quadbus II, while stock
+            // MAN steering origins are positive-handed. Correct only the
+            // animation X axis; explicit origin_trans wheel pivots are not
+            // affected by this path.
+            if (Vector3.Dot(
+                    Vector3.Cross(
+                        axisX,
+                        axisY),
+                    axisZ) <
+                0.0f)
+            {
+                axisX =
+                    -axisX;
+            }
+
             orientation =
                 new Matrix4x4(
                     axisX.X,
@@ -6551,6 +6569,27 @@ public sealed class D3D11RenderWindow : Form
             _vehicle.ParkingBrakeEngaged
                 ? 1.0
                 : 0.0);
+
+        // OMSI automatic gearbox selector convention:
+        // 0 = reverse, 1 = neutral, 2 = drive.
+        // MEP engine.osc explicitly requires gangwahl == 1 before starting.
+        var omsiGearSelector =
+            _vehicle.Gear switch
+            {
+                RuntimeDriveGear.Reverse =>
+                    0.0,
+                RuntimeDriveGear.Drive =>
+                    2.0,
+                _ =>
+                    1.0
+            };
+
+        _scriptRuntime.SetLocal(
+            "antrieb_getr_gangwahl",
+            omsiGearSelector);
+        _scriptRuntime.SetLocal(
+            "antrieb_getr_gangvorwahl",
+            omsiGearSelector);
     }
 
     private void UpdateScriptHostVariables(
@@ -6930,21 +6969,22 @@ public sealed class D3D11RenderWindow : Form
             case Keys.M:
                 if (_scriptRuntime is not null)
                 {
-                    var engineWasRunning =
-                        _scriptRuntime.HasLocalVariable(
-                            "engine_on") &&
-                        _scriptRuntime.GetLocal(
-                            "engine_on") >
-                        0.5;
-
                     DispatchOmsiScriptTrigger(
-                        engineWasRunning
-                            ? "kw_m_engineshutdown"
-                            : "kw_m_enginestart");
-                }
+                        "kw_m_enginestart");
 
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.EngineToggle);
+                    if (_scriptRuntime.HasLocalVariable(
+                            "engine_on"))
+                    {
+                        _vehicle.SetEngineRunning(
+                            _scriptRuntime.GetLocal(
+                                "engine_on") >
+                            0.5);
+                    }
+                }
+                else
+                {
+                    _vehicle.ToggleEngine();
+                }
                 break;
 
             case Keys.D:
@@ -7540,7 +7580,10 @@ public sealed class D3D11RenderWindow : Form
                     RuntimeOmsiHostInputAction.ParkingBrakeSet,
                 "parking_brake_release" =>
                     RuntimeOmsiHostInputAction.ParkingBrakeRelease,
-                "kw_m_enginestart" =>
+                "parking_brake_mouse" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeToggle,
+                "kw_m_enginestart" or
+                "kw_m_engine_startbutton" =>
                     RuntimeOmsiHostInputAction.EngineStart,
                 "kw_m_engineshutdown" =>
                     RuntimeOmsiHostInputAction.EngineOff,
@@ -7579,7 +7622,9 @@ public sealed class D3D11RenderWindow : Form
                 "parking_brake_toggle" or
                 "parking_brake_set" or
                 "parking_brake_release" or
+                "parking_brake_mouse" or
                 "kw_m_enginestart" or
+                "kw_m_engine_startbutton" or
                 "kw_m_engineshutdown" or
                 "cp_batterietrennschalter_toggle" or
                 "view_interiorcam_plus" or
@@ -7948,7 +7993,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var geometry =
-            _vehicleInteriorGeometry;
+            _vehicleInteriorGeometry.Vertices.Length > 0
+                ? _vehicleInteriorGeometry
+                : _vehicleExteriorGeometry;
 
         if (geometry.Vertices.Length == 0 ||
             geometry.Batches.Count == 0)
@@ -7958,82 +8005,14 @@ public sealed class D3D11RenderWindow : Form
 
         var viewProjection =
             CreateViewProjection();
-
-        if (!Matrix4x4.Invert(
-                viewProjection,
-                out var inverseViewProjection))
-        {
-            return false;
-        }
-
-        var ndcX =
-            location.X /
-                (float)ClientSize.Width *
-                2.0f -
-            1.0f;
-        var ndcY =
-            1.0f -
-            location.Y /
-                (float)ClientSize.Height *
-                2.0f;
-
-        var nearClip =
-            Vector4.Transform(
-                new Vector4(
-                    ndcX,
-                    ndcY,
-                    0.0f,
-                    1.0f),
-                inverseViewProjection);
-        var farClip =
-            Vector4.Transform(
-                new Vector4(
-                    ndcX,
-                    ndcY,
-                    1.0f,
-                    1.0f),
-                inverseViewProjection);
-
-        if (Math.Abs(
-                nearClip.W) <
-                0.000001f ||
-            Math.Abs(
-                farClip.W) <
-                0.000001f)
-        {
-            return false;
-        }
-
-        var rayOrigin =
-            new Vector3(
-                nearClip.X,
-                nearClip.Y,
-                nearClip.Z) /
-            nearClip.W;
-        var rayFar =
-            new Vector3(
-                farClip.X,
-                farClip.Y,
-                farClip.Z) /
-            farClip.W;
-        var rayDirection =
-            rayFar -
-            rayOrigin;
-
-        if (rayDirection.LengthSquared() <
-            0.000001f)
-        {
-            return false;
-        }
-
-        rayDirection =
-            Vector3.Normalize(
-                rayDirection);
-
         var vehicleWorld =
             _vehicle.CreateWorldMatrix();
+        var mouse =
+            new Vector2(
+                location.X,
+                location.Y);
 
-        var bestDistance =
+        var bestDepth =
             float.MaxValue;
         string? bestTrigger =
             null;
@@ -8058,10 +8037,10 @@ public sealed class D3D11RenderWindow : Form
                     batch.SectionIndex) *
                 vehicleWorld;
 
-            var start =
+            var startVertex =
                 checked(
                     (int)batch.StartVertex);
-            var end =
+            var endVertex =
                 Math.Min(
                     checked(
                         (int)(
@@ -8069,38 +8048,58 @@ public sealed class D3D11RenderWindow : Form
                             batch.VertexCount)),
                     geometry.Vertices.Length);
 
-            for (var vertex = start;
-                 vertex + 2 < end;
+            for (var vertex = startVertex;
+                 vertex + 2 < endVertex;
                  vertex += 3)
             {
-                var a =
-                    Vector3.Transform(
-                        geometry.Vertices[
-                            vertex].Position,
-                        world);
-                var b =
-                    Vector3.Transform(
-                        geometry.Vertices[
-                            vertex + 1].Position,
-                        world);
-                var c =
-                    Vector3.Transform(
-                        geometry.Vertices[
-                            vertex + 2].Position,
-                        world);
+                if (!TryProjectVehiclePoint(
+                        Vector3.Transform(
+                            geometry.Vertices[
+                                vertex].Position,
+                            world),
+                        viewProjection,
+                        out var a,
+                        out var depthA) ||
+                    !TryProjectVehiclePoint(
+                        Vector3.Transform(
+                            geometry.Vertices[
+                                vertex + 1].Position,
+                            world),
+                        viewProjection,
+                        out var b,
+                        out var depthB) ||
+                    !TryProjectVehiclePoint(
+                        Vector3.Transform(
+                            geometry.Vertices[
+                                vertex + 2].Position,
+                            world),
+                        viewProjection,
+                        out var c,
+                        out var depthC))
+                {
+                    continue;
+                }
 
-                if (TryIntersectRayTriangle(
-                        rayOrigin,
-                        rayDirection,
+                if (!IsPointInScreenTriangle(
+                        mouse,
                         a,
                         b,
-                        c,
-                        out var distance) &&
-                    distance <
-                        bestDistance)
+                        c))
                 {
-                    bestDistance =
-                        distance;
+                    continue;
+                }
+
+                var depth =
+                    (depthA +
+                     depthB +
+                     depthC) /
+                    3.0f;
+
+                if (depth <
+                    bestDepth)
+                {
+                    bestDepth =
+                        depth;
                     bestTrigger =
                         batch.MouseEventTrigger;
                 }
@@ -8119,82 +8118,161 @@ public sealed class D3D11RenderWindow : Form
         DispatchOmsiScriptTrigger(
             bestTrigger);
 
+        // Some physical cockpit events also affect host-owned state.
+        // Apply that state immediately so the next pre-frame host sync does
+        // not overwrite what the OMSI trigger just changed (notably engine_on).
+        if (TryResolveHostAction(
+                bestTrigger,
+                out var hostAction))
+        {
+            ApplyOmsiHostActionPress(
+                hostAction);
+        }
+
+        Console.WriteLine(
+            $"[cockpit-click] trigger={bestTrigger}; x={location.X}; y={location.Y}");
+
         return true;
     }
 
-    private static bool TryIntersectRayTriangle(
-        Vector3 origin,
-        Vector3 direction,
-        Vector3 a,
-        Vector3 b,
-        Vector3 c,
-        out float distance)
+    private bool TryProjectVehiclePoint(
+        Vector3 worldPosition,
+        Matrix4x4 viewProjection,
+        out Vector2 screen,
+        out float depth)
     {
-        distance =
+        screen =
+            default;
+        depth =
             0.0f;
 
-        var edge1 =
-            b - a;
-        var edge2 =
-            c - a;
-        var p =
-            Vector3.Cross(
-                direction,
-                edge2);
-        var determinant =
-            Vector3.Dot(
-                edge1,
-                p);
+        var clip =
+            Vector4.Transform(
+                new Vector4(
+                    worldPosition,
+                    1.0f),
+                viewProjection);
 
-        if (Math.Abs(
-                determinant) <
+        if (clip.W <=
             0.000001f)
         {
             return false;
         }
 
-        var inverseDeterminant =
+        var inverseW =
             1.0f /
-            determinant;
-        var t =
-            origin - a;
-        var u =
-            Vector3.Dot(
-                t,
-                p) *
-            inverseDeterminant;
+            clip.W;
+        var ndcX =
+            clip.X *
+            inverseW;
+        var ndcY =
+            clip.Y *
+            inverseW;
+        var ndcZ =
+            clip.Z *
+            inverseW;
 
-        if (u < 0.0f ||
-            u > 1.0f)
-        {
-            return false;
-        }
-
-        var q =
-            Vector3.Cross(
-                t,
-                edge1);
-        var v =
-            Vector3.Dot(
-                direction,
-                q) *
-            inverseDeterminant;
-
-        if (v < 0.0f ||
-            u + v >
+        if (!float.IsFinite(
+                ndcX) ||
+            !float.IsFinite(
+                ndcY) ||
+            !float.IsFinite(
+                ndcZ) ||
+            ndcZ <
+                0.0f ||
+            ndcZ >
                 1.0f)
         {
             return false;
         }
 
-        distance =
-            Vector3.Dot(
-                edge2,
-                q) *
-            inverseDeterminant;
+        screen =
+            new Vector2(
+                (ndcX + 1.0f) *
+                    0.5f *
+                    ClientSize.Width,
+                (1.0f - ndcY) *
+                    0.5f *
+                    ClientSize.Height);
+        depth =
+            ndcZ;
 
-        return distance >
-               0.001f;
+        return true;
+    }
+
+    private static bool IsPointInScreenTriangle(
+        Vector2 point,
+        Vector2 a,
+        Vector2 b,
+        Vector2 c)
+    {
+        var v0 =
+            c - a;
+        var v1 =
+            b - a;
+        var v2 =
+            point - a;
+
+        var dot00 =
+            Vector2.Dot(
+                v0,
+                v0);
+        var dot01 =
+            Vector2.Dot(
+                v0,
+                v1);
+        var dot02 =
+            Vector2.Dot(
+                v0,
+                v2);
+        var dot11 =
+            Vector2.Dot(
+                v1,
+                v1);
+        var dot12 =
+            Vector2.Dot(
+                v1,
+                v2);
+
+        var denominator =
+            dot00 *
+                dot11 -
+            dot01 *
+                dot01;
+
+        if (Math.Abs(
+                denominator) <
+            0.000001f)
+        {
+            return false;
+        }
+
+        var inverseDenominator =
+            1.0f /
+            denominator;
+        var u =
+            (dot11 *
+                 dot02 -
+             dot01 *
+                 dot12) *
+            inverseDenominator;
+        var v =
+            (dot00 *
+                 dot12 -
+             dot01 *
+                 dot02) *
+            inverseDenominator;
+
+        const float edgeTolerance =
+            0.015f;
+
+        return u >=
+                   -edgeTolerance &&
+               v >=
+                   -edgeTolerance &&
+               u + v <=
+                   1.0f +
+                   edgeTolerance;
     }
 
     private void OnRuntimeMouseDown(
@@ -8277,9 +8355,20 @@ public sealed class D3D11RenderWindow : Form
             !string.IsNullOrWhiteSpace(
                 _activeVehicleMouseTrigger))
         {
+            var releasedTrigger =
+                _activeVehicleMouseTrigger;
+
             DispatchOmsiScriptTrigger(
                 ReleaseTriggerName(
-                    _activeVehicleMouseTrigger));
+                    releasedTrigger));
+
+            if (TryResolveHostAction(
+                    releasedTrigger,
+                    out var releasedHostAction))
+            {
+                ApplyOmsiHostActionRelease(
+                    releasedHostAction);
+            }
 
             _activeVehicleMouseTrigger =
                 null;
