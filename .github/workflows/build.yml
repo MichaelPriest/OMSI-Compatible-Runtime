@@ -109,14 +109,29 @@ jobs:
           encontrados em option_presets sem sobrescrever o arquivo original.
           Teclado possui edição visual, captura de tecla, Ctrl, Shift
           e modo contínuo, mantendo compatibilidade com keyboard.cfg/.kyb.
+          O Runtime também lê keyboard.cfg/.kyb diretamente: ao pressionar
+          uma tecla ele dispara o trigger OMSI configurado; ao soltar,
+          tenta o trigger correspondente com sufixo _off. Entradas marcadas
+          como contínuas são executadas enquanto a tecla permanecer pressionada.
+
           Game Controller possui edição visual de eixos, função, inversão,
           faixa reduzida, curvas Linear/Progressiva/Degressiva/Bi-*, botões
           e os dois valores [FFScale], mantendo gamectrler.cfg compatível.
+          No Runtime, controladores ativos do gamectrler.cfg são abertos por
+          DirectInput. São lidos X/Y/Z/Rx/Ry/Rz, Slider 1/2 e até 128 botões.
+          Eixos podem controlar direção, freio, acelerador, embreagem ou o
+          eixo combinado acelerador+freio; botões disparam triggers dos scripts
+          do ônibus, inclusive comandos específicos de addons.
+
           O modo avançado continua disponível para editar o arquivo bruto.
           Ao salvar Inputs, o launcher pede confirmação e cria backup.
 
           CONTROLES OMSI - MODO DIRIGIR
           =============================
+          A prioridade agora é a configuração real em Inputs/keyboard.cfg
+          e Inputs/gamectrler.cfg. Os atalhos nativos abaixo continuam como
+          fallback e para funções globais do Runtime:
+
           Num 8       Acelerador
           Num 2       Aumentar freio de serviço
           Num +       Liberar freio
@@ -177,12 +192,19 @@ jobs:
           - Física baseada em eixos/raio de giro do .bus
           - Manifesto de scripts OMSI
           - VM RPN inicial em desenvolvimento
+          - keyboard.cfg/.kyb executando triggers de veículo
+          - gamectrler.cfg via DirectInput com eixos e botões
+          - sincronização inicial de marcha, elétrica, motor e freio de mão
+            entre eventos/scripts OMSI e o estado físico do Runtime
 
           Ainda em desenvolvimento:
           - compatibilidade total de scripts/animações
-          - portas/luzes/instrumentos dinâmicos
           - sons/IBIS/tráfego/passageiros
           - veículos articulados/acoplados completos
+          - Force Feedback físico no volante: [FFScale] já é lido/editável,
+            mas esta alpha ainda não cria efeitos DirectInput no hardware
+          - alguns eventos globais do OMSI fora dos scripts de veículo ainda
+            precisam de equivalentes próprios no Runtime x64
           '@ | Set-Content -Encoding UTF8 artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/README-TEST.txt
 
       - name: Upload x64 UI alpha
