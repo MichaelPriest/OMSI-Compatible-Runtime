@@ -211,6 +211,21 @@ public sealed record OmsiVehiclePhysics(
     }
 }
 
+public sealed record OmsiVehicleCouplingPoint(
+    double X,
+    double Y,
+    double Z);
+
+public sealed record OmsiVehicleCouplingCharacter(
+    double MaximumYawDegrees,
+    double MinimumPitchDegrees,
+    double MaximumPitchDegrees,
+    int Type);
+
+public sealed record OmsiVehicleCoupledBack(
+    string DeclaredBusPath,
+    bool Reverse);
+
 public sealed record OmsiBusInfo(
     string DisplayName,
     string FilePath,
@@ -229,7 +244,12 @@ public sealed record OmsiBusInfo(
     int? TicketSellingDriverCameraIndex,
     OmsiOutsideCameraCenter? OutsideCameraCenter,
     IReadOnlyList<OmsiReflectionCamera> ReflectionCameras,
-    OmsiVehiclePhysics Physics)
+    OmsiVehiclePhysics Physics,
+    OmsiVehicleCouplingPoint? FrontCoupling = null,
+    OmsiVehicleCouplingPoint? BackCoupling = null,
+    OmsiVehicleCoupledBack? CoupledBack = null,
+    OmsiVehicleCouplingCharacter? FrontCouplingCharacter = null,
+    bool FrontCouplingOpenForSound = false)
 {
     public string Carroceria =>
         FriendlyNameLines.Count > 0 &&
