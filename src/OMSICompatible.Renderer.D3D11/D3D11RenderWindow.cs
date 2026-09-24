@@ -4926,7 +4926,7 @@ public sealed class D3D11RenderWindow : Form
         {
             var forward =
                 (IsFreeCameraKeyHeld(Keys.W) ? 1.0f : 0.0f) -
-                (IsFreeCameraKeyHeld(Keys.S) ? 1.0f : 0.0f);
+                (IsFreeCameraKeyHeld(Keys.Down) ? 1.0f : 0.0f);
 
             var right =
                 (IsFreeCameraKeyHeld(Keys.D) ? 1.0f : 0.0f) -
@@ -5905,7 +5905,6 @@ public sealed class D3D11RenderWindow : Form
             e.KeyCode is
                 Keys.W or
                 Keys.A or
-                Keys.S or
                 Keys.D or
                 Keys.Q or
                 Keys.E or
@@ -6051,6 +6050,11 @@ public sealed class D3D11RenderWindow : Form
 
         switch (e.KeyCode)
         {
+            case Keys.S:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ScrollViews);
+                break;
+
             case Keys.P:
                 ApplyOmsiHostActionPress(
                     RuntimeOmsiHostInputAction.PauseToggle);
@@ -6120,6 +6124,46 @@ public sealed class D3D11RenderWindow : Form
         }
 
         UpdateCaption();
+    }
+
+    private void CycleOmsiMainView()
+    {
+        if (_windowInfo.Vehicle is null)
+        {
+            if (_driveMode)
+            {
+                _driveMode =
+                    false;
+            }
+
+            return;
+        }
+
+        if (!_driveMode)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.DriverView);
+            return;
+        }
+
+        switch (_vehicleViewMode)
+        {
+            case RuntimeVehicleViewMode.Driver:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.PassengerView);
+                break;
+
+            case RuntimeVehicleViewMode.Passenger:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ExteriorView);
+                break;
+
+            case RuntimeVehicleViewMode.Exterior:
+            default:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.FreeCameraView);
+                break;
+        }
     }
 
     private void ActivateSpecialDriverCamera(
@@ -6591,6 +6635,10 @@ public sealed class D3D11RenderWindow : Form
                 ActivateSpecialDriverCamera(
                     _windowInfo.Vehicle?
                         .StandardDriverCameraIndex);
+                break;
+
+            case RuntimeOmsiHostInputAction.ScrollViews:
+                CycleOmsiMainView();
                 break;
 
             case RuntimeOmsiHostInputAction.PauseToggle:
