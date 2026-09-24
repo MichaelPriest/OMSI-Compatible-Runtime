@@ -53,7 +53,22 @@ public static class OmsiBusReader
                 "view_ticketselling"),
             ReadOutsideCameraCenter(document),
             ReadReflectionCameras(document),
-            ReadVehiclePhysics(document));
+            ReadVehiclePhysics(document),
+            ReadCouplingPoint(
+                document,
+                "coupling_front"),
+            ReadCouplingPoint(
+                document,
+                "coupling_back"),
+            ReadCoupledBack(document),
+            ReadCouplingCharacter(
+                document,
+                "coupling_front_character"),
+            document.Sections.Any(
+                static section =>
+                    section.Name.Equals(
+                        "couple_front_open_for_sound",
+                        StringComparison.OrdinalIgnoreCase)));
     }
 
     private static OmsiVehicleScriptManifest
@@ -414,6 +429,106 @@ public static class OmsiBusReader
         }
 
         return result;
+    }
+
+    private static OmsiVehicleCouplingPoint?
+        ReadCouplingPoint(
+            OmsiSectionDocument document,
+            string sectionName)
+    {
+        var values =
+            Values(
+                document,
+                sectionName)
+                .Take(3)
+                .ToArray();
+
+        if (values.Length < 3 ||
+            !TryDouble(
+                values[0],
+                out var x) ||
+            !TryDouble(
+                values[1],
+                out var y) ||
+            !TryDouble(
+                values[2],
+                out var z))
+        {
+            return null;
+        }
+
+        return new OmsiVehicleCouplingPoint(
+            x,
+            y,
+            z);
+    }
+
+    private static OmsiVehicleCoupledBack?
+        ReadCoupledBack(
+            OmsiSectionDocument document)
+    {
+        var values =
+            Values(
+                document,
+                "couple_back")
+                .Take(2)
+                .ToArray();
+
+        if (values.Length == 0 ||
+            string.IsNullOrWhiteSpace(
+                values[0]))
+        {
+            return null;
+        }
+
+        var reverse =
+            values.Length > 1 &&
+            bool.TryParse(
+                values[1],
+                out var parsedReverse) &&
+            parsedReverse;
+
+        return new OmsiVehicleCoupledBack(
+            values[0].Trim(),
+            reverse);
+    }
+
+    private static OmsiVehicleCouplingCharacter?
+        ReadCouplingCharacter(
+            OmsiSectionDocument document,
+            string sectionName)
+    {
+        var values =
+            Values(
+                document,
+                sectionName)
+                .Take(4)
+                .ToArray();
+
+        if (values.Length < 4 ||
+            !TryDouble(
+                values[0],
+                out var maximumYaw) ||
+            !TryDouble(
+                values[1],
+                out var minimumPitch) ||
+            !TryDouble(
+                values[2],
+                out var maximumPitch) ||
+            !int.TryParse(
+                values[3],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var type))
+        {
+            return null;
+        }
+
+        return new OmsiVehicleCouplingCharacter(
+            maximumYaw,
+            minimumPitch,
+            maximumPitch,
+            type);
     }
 
     private static OmsiVehiclePhysics
