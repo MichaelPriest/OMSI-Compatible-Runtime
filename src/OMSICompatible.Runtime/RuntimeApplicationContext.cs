@@ -320,7 +320,9 @@ internal sealed class RuntimeApplicationContext :
                     vehiclePreviewMode:
                         false,
                     initialVehicleVariables:
-                        selectedRepaint?.SetVariables);
+                        selectedRepaint?.SetVariables,
+                    inputLanguage:
+                        _options.Language);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
