@@ -354,14 +354,20 @@ public sealed record RuntimeVehicleSectionInfo(
     double JointX,
     double JointY,
     double JointZ,
+    double OriginX,
+    double OriginY,
+    double OriginZ,
     double FollowerLengthMeters,
     double MaximumYawDegrees,
     bool Reverse,
+    string? SoundConfigPath = null,
+    bool OpenForSound = false,
     double? MassTonnes = null,
     double? YawInertiaTonneSquareMeters = null,
     double? RotationPointLongitudinalMeters = null,
     double? WheelBaseMeters = null,
-    double? RollingResistanceNewtons = null);
+    double? RollingResistanceNewtons = null,
+    double? AverageWheelDiameterMeters = null);
 
 public sealed record RuntimeVehicleInfo(
     string DisplayName,
