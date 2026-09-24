@@ -772,6 +772,18 @@ try
             "200",
             "-12",
             "0.15",
+            "[mass]",
+            "10.9",
+            "[momentofintertia]",
+            "300",
+            "80",
+            "300",
+            "[schwerpunkt]",
+            "1.3",
+            "[rollwiderstand]",
+            "1000",
+            "[ai_deltaheight]",
+            "-0.12",
             "[rot_pnt_long]",
             "-2.7",
             "[inv_min_turnradius]",
@@ -779,15 +791,35 @@ try
             "[newachse]",
             "achse_long",
             "3.1",
+            "achse_maxwidth",
+            "2.4",
+            "achse_minwidth",
+            "1.76",
             "achse_raddurchmesser",
             "0.94",
+            "achse_feder",
+            "240",
+            "achse_maxforce",
+            "90",
+            "achse_daempfer",
+            "20",
             "achse_antrieb",
             "0",
             "[newachse]",
             "achse_long",
             "-2.7",
+            "achse_maxwidth",
+            "2.4",
+            "achse_minwidth",
+            "1.4",
             "achse_raddurchmesser",
             "0.94",
+            "achse_feder",
+            "280",
+            "achse_maxforce",
+            "116",
+            "achse_daempfer",
+            "20",
             "achse_antrieb",
             "1"),
         Encoding.Unicode);
@@ -852,6 +884,41 @@ try
             "Preview.png",
             StringComparison.OrdinalIgnoreCase),
         "OMSI [friendlyname] lines must map to body/model/skin selection metadata and resolve the vehicle preview.");
+
+    Require(
+        Math.Abs(
+            bus.Physics.MassTonnes!.Value -
+            10.9) <
+        0.0001 &&
+        Math.Abs(
+            bus.Physics.CenterOfGravityHeightMeters!.Value -
+            1.3) <
+        0.0001 &&
+        Math.Abs(
+            bus.Physics.RollingResistanceNewtons!.Value -
+            1000.0) <
+        0.0001 &&
+        Math.Abs(
+            bus.Physics.MomentOfInertiaZ!.Value -
+            300.0) <
+        0.0001 &&
+        Math.Abs(
+            bus.Physics.TrackWidthMeters!.Value -
+            2.4) <
+        0.0001 &&
+        bus.Physics.Axles.Count ==
+            2 &&
+        Math.Abs(
+            bus.Physics.Axles[0]
+                .SpringRateKilonewtonsPerMeter!.Value -
+            240.0) <
+        0.0001 &&
+        Math.Abs(
+            bus.Physics.Axles[1]
+                .DamperRateKilonewtonSecondsPerMeter!.Value -
+            20.0) <
+        0.0001,
+        "OMSI vehicle dynamics must parse mass, inertia, center of gravity, rolling resistance, track width and suspension from the .bus file.");
 
     var repaints =
         OmsiVehicleRepaintCatalog.Discover(
