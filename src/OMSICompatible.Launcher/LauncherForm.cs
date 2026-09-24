@@ -16,7 +16,25 @@ internal sealed class LauncherForm : Form
     private readonly ComboBox _mapBox =
         new();
 
-    private readonly ComboBox _busBox =
+    private readonly ComboBox _carroceriaBox =
+        new();
+
+    private readonly ComboBox _modeloBox =
+        new();
+
+    private readonly ComboBox _skinBox =
+        new();
+
+    private readonly CheckBox _noBusCheckBox =
+        new();
+
+    private readonly PictureBox _busPreview =
+        new();
+
+    private readonly Label _busPreviewTitle =
+        new();
+
+    private readonly Label _busPreviewDetail =
         new();
 
     private readonly ComboBox _spawnBox =
@@ -88,6 +106,11 @@ internal sealed class LauncherForm : Form
                 10.0f);
 
         BuildInterface();
+
+        _noBusCheckBox.Checked =
+            _settings.StartWithoutBus;
+
+        ApplyNoBusMode();
 
         _runtime.OutputReceived +=
             line =>
@@ -370,15 +393,17 @@ internal sealed class LauncherForm : Form
             new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                ColumnCount = 2,
+                ColumnCount = 3,
                 AutoSize = true,
                 Padding = new Padding(0, 10, 0, 0)
             };
 
         vehicleSpawnRow.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 55));
+            new ColumnStyle(SizeType.Percent, 48));
         vehicleSpawnRow.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 45));
+            new ColumnStyle(SizeType.Percent, 30));
+        vehicleSpawnRow.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Percent, 22));
 
         var vehiclePanel =
             new TableLayoutPanel
@@ -389,23 +414,208 @@ internal sealed class LauncherForm : Form
                 Margin = new Padding(0, 0, 10, 0)
             };
 
-        vehiclePanel.Controls.Add(
-            CreateFieldLabel("ÔNIBUS"),
+        var vehicleHeader =
+            new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 2,
+                AutoSize = true
+            };
+
+        vehicleHeader.ColumnStyles.Add(
+            new ColumnStyle(
+                SizeType.Percent,
+                100));
+        vehicleHeader.ColumnStyles.Add(
+            new ColumnStyle(
+                SizeType.AutoSize));
+
+        vehicleHeader.Controls.Add(
+            CreateFieldLabel(
+                "SELEÇÃO DO ÔNIBUS"),
             0,
             0);
 
-        StyleComboBox(_busBox);
-        _busBox.SelectedIndexChanged +=
+        _noBusCheckBox.Text =
+            "Iniciar sem ônibus";
+        _noBusCheckBox.AutoSize =
+            true;
+        _noBusCheckBox.ForeColor =
+            Color.FromArgb(
+                205,
+                216,
+                229);
+        _noBusCheckBox.Padding =
+            new Padding(
+                8,
+                5,
+                0,
+                0);
+        _noBusCheckBox.CheckedChanged +=
             (_, _) =>
             {
+                ApplyNoBusMode();
+                UpdatePlayAvailability();
+                SaveSettings();
+            };
+
+        vehicleHeader.Controls.Add(
+            _noBusCheckBox,
+            1,
+            0);
+
+        vehiclePanel.Controls.Add(
+            vehicleHeader,
+            0,
+            0);
+
+        StyleComboBox(
+            _carroceriaBox);
+        StyleComboBox(
+            _modeloBox);
+        StyleComboBox(
+            _skinBox);
+
+        _carroceriaBox.SelectedIndexChanged +=
+            (_, _) =>
+            {
+                PopulateModels(
+                    _carroceriaBox.SelectedItem
+                        as string,
+                    preferredBus: null);
+                UpdatePlayAvailability();
+                SaveSettings();
+            };
+
+        _modeloBox.SelectedIndexChanged +=
+            (_, _) =>
+            {
+                PopulateSkins(
+                    _carroceriaBox.SelectedItem
+                        as string,
+                    _modeloBox.SelectedItem
+                        as string,
+                    preferredBus: null);
+                UpdatePlayAvailability();
+                SaveSettings();
+            };
+
+        _skinBox.SelectedIndexChanged +=
+            (_, _) =>
+            {
+                UpdateBusPreview();
                 UpdatePlayAvailability();
                 SaveSettings();
             };
 
         vehiclePanel.Controls.Add(
-            _busBox,
+            CreateFieldLabel(
+                "CARROCERIA"),
             0,
             1);
+        vehiclePanel.Controls.Add(
+            _carroceriaBox,
+            0,
+            2);
+        vehiclePanel.Controls.Add(
+            CreateFieldLabel(
+                "MODELO"),
+            0,
+            3);
+        vehiclePanel.Controls.Add(
+            _modeloBox,
+            0,
+            4);
+        vehiclePanel.Controls.Add(
+            CreateFieldLabel(
+                "SKIN"),
+            0,
+            5);
+        vehiclePanel.Controls.Add(
+            _skinBox,
+            0,
+            6);
+
+        var previewPanel =
+            new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                BackColor =
+                    Color.FromArgb(
+                        17,
+                        23,
+                        32),
+                Margin =
+                    new Padding(
+                        0,
+                        20,
+                        10,
+                        0),
+                Padding =
+                    new Padding(
+                        10)
+            };
+
+        previewPanel.RowStyles.Add(
+            new RowStyle(
+                SizeType.Absolute,
+                150));
+        previewPanel.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+        previewPanel.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+
+        _busPreview.Dock =
+            DockStyle.Fill;
+        _busPreview.SizeMode =
+            PictureBoxSizeMode.Zoom;
+        _busPreview.BackColor =
+            Color.FromArgb(
+                10,
+                14,
+                20);
+
+        _busPreviewTitle.AutoSize =
+            true;
+        _busPreviewTitle.ForeColor =
+            Color.White;
+        _busPreviewTitle.Font =
+            new Font(
+                "Segoe UI Semibold",
+                11.0f);
+        _busPreviewTitle.Text =
+            "Nenhum ônibus selecionado";
+
+        _busPreviewDetail.AutoSize =
+            true;
+        _busPreviewDetail.ForeColor =
+            Color.FromArgb(
+                126,
+                148,
+                173);
+        _busPreviewDetail.Font =
+            new Font(
+                "Segoe UI",
+                9.0f);
+        _busPreviewDetail.Text =
+            "Escolha carroceria, modelo e skin";
+
+        previewPanel.Controls.Add(
+            _busPreview,
+            0,
+            0);
+        previewPanel.Controls.Add(
+            _busPreviewTitle,
+            0,
+            1);
+        previewPanel.Controls.Add(
+            _busPreviewDetail,
+            0,
+            2);
 
         var spawnPanel =
             new TableLayoutPanel
@@ -439,8 +649,13 @@ internal sealed class LauncherForm : Form
             0);
 
         vehicleSpawnRow.Controls.Add(
-            spawnPanel,
+            previewPanel,
             1,
+            0);
+
+        vehicleSpawnRow.Controls.Add(
+            spawnPanel,
+            2,
             0);
 
         panel.Controls.Add(
