@@ -34,7 +34,7 @@ internal sealed class RuntimeProcessHost : IDisposable
     public bool Start(
         string contentPath,
         string mapName,
-        string busRelativePath,
+        string? busRelativePath,
         string entryPointName)
     {
         if (IsRunning)
@@ -80,8 +80,18 @@ internal sealed class RuntimeProcessHost : IDisposable
         startInfo.ArgumentList.Add(contentPath);
         startInfo.ArgumentList.Add("--map");
         startInfo.ArgumentList.Add(mapName);
-        startInfo.ArgumentList.Add("--bus");
-        startInfo.ArgumentList.Add(busRelativePath);
+        if (string.IsNullOrWhiteSpace(
+                busRelativePath))
+        {
+            startInfo.ArgumentList.Add(
+                "--no-bus");
+        }
+        else
+        {
+            startInfo.ArgumentList.Add("--bus");
+            startInfo.ArgumentList.Add(busRelativePath);
+        }
+
         startInfo.ArgumentList.Add("--spawn");
         startInfo.ArgumentList.Add(entryPointName);
 
