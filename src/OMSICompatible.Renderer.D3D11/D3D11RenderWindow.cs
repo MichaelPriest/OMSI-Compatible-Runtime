@@ -91,6 +91,7 @@ public sealed class D3D11RenderWindow : Form
             [];
     private readonly bool _gameControllerEnabled;
     private RuntimeOmsiGameControllerHost? _omsiGameController;
+    private RuntimeOmsiAudioHost? _omsiAudio;
     private bool _controllerInputEnabled = true;
     private float _controllerClutchInput;
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
@@ -647,10 +648,31 @@ public sealed class D3D11RenderWindow : Form
         InitializeGraphics();
         InitializeVehicleScripts();
         InitializeOmsiGameControllers();
+        InitializeOmsiAudio();
         UpdateCaption();
 
         _graphicsPrepared =
             true;
+    }
+
+    private void InitializeOmsiAudio()
+    {
+        if (_vehiclePreviewMode ||
+            _omsiAudio is not null)
+        {
+            return;
+        }
+
+        _omsiAudio =
+            RuntimeOmsiAudioHost.TryCreate(
+                _windowInfo.Vehicle?
+                    .SoundConfigPath);
+
+        if (_omsiAudio is not null)
+        {
+            Console.WriteLine(
+                $"[audio] {_omsiAudio.ExistingFileCount}/{_omsiAudio.SoundCount} OMSI sound files resolved.");
+        }
     }
 
     private void InitializeOmsiGameControllers()
@@ -4638,6 +4660,10 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds,
             now);
 
+        _omsiAudio?.Update(
+            _scriptRuntime,
+            IsInteriorSoundView());
+
         UpdateVehicleAnimationStates(
             deltaSeconds);
 
@@ -5650,7 +5676,17 @@ public sealed class D3D11RenderWindow : Form
 
         _scriptRuntime?.ExecuteTrigger(
             trigger);
+
+        _omsiAudio?.Trigger(
+            trigger,
+            _scriptRuntime,
+            IsInteriorSoundView());
     }
+
+    private bool IsInteriorSoundView() =>
+        _driveMode &&
+        _vehicleViewMode !=
+            RuntimeVehicleViewMode.Exterior;
 
     private void PressControllerHostAction(
         string trigger)
@@ -6597,6 +6633,10 @@ public sealed class D3D11RenderWindow : Form
 
             _omsiGameController?.Dispose();
             _omsiGameController =
+                null;
+
+            _omsiAudio?.Dispose();
+            _omsiAudio =
                 null;
 
             _renderTimer.Stop();
