@@ -5314,6 +5314,8 @@ public sealed class D3D11RenderWindow : Form
 
         var wheelRotation =
             _vehicle.WheelRotationRadians;
+        var wheelRotationSpeedRpm =
+            _vehicle.WheelRotationSpeedRpm;
 
         for (var axle = 0;
              axle < 4;
@@ -5325,6 +5327,12 @@ public sealed class D3D11RenderWindow : Form
             _scriptRuntime.SetLocal(
                 $"Wheel_Rotation_{axle}_R",
                 wheelRotation);
+            _scriptRuntime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_L",
+                wheelRotationSpeedRpm);
+            _scriptRuntime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_R",
+                wheelRotationSpeedRpm);
         }
 
         _scriptRuntime.SetLocal(
