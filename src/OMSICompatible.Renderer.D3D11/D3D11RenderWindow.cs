@@ -5489,7 +5489,7 @@ public sealed class D3D11RenderWindow : Form
                 : $"mirrors OFF {_reflectionTargets.Count:N0}";
 
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · runtime objects {_objectGeometry.RenderedObjectCount:N0}/{runtimeObjectCount:N0} · map entries {_windowInfo.ObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0}/{_objectGeometry.TexturedBatchCount:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · runtime objects {_objectGeometry.RenderedObjectCount:N0}/{runtimeObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0} loaded · texture failures {_failedObjectTexturePaths.Count:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicle.Gear switch
@@ -5527,7 +5527,7 @@ public sealed class D3D11RenderWindow : Form
         Text =
             $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
             $"{_windowInfo.TileCount:N0}/{_windowInfo.TotalTileCount:N0} tiles — " +
-            $"{_windowInfo.ObjectCount:N0} objects — " +
+            $"{runtimeObjectCount:N0} runtime objects · {_windowInfo.ObjectCount:N0} map entries — " +
             $"{_windowInfo.SplineCount:N0} splines — " +
             $"{mode} — {control}";
     }
