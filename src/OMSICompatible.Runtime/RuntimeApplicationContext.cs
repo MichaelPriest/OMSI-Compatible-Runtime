@@ -12,7 +12,7 @@ internal sealed class RuntimeApplicationContext :
 {
     private readonly OmsiContentRoot _contentRoot;
     private readonly OmsiMapInfo _map;
-    private readonly OmsiBusInfo _bus;
+    private readonly OmsiBusInfo? _bus;
     private readonly OmsiMapEntryPoint _entryPoint;
     private readonly bool _externalLoading;
     private readonly LoadingForm _loading;
@@ -32,7 +32,7 @@ internal sealed class RuntimeApplicationContext :
     public RuntimeApplicationContext(
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
-        OmsiBusInfo bus,
+        OmsiBusInfo? bus,
         OmsiMapEntryPoint entryPoint,
         bool externalLoading)
     {
@@ -100,7 +100,10 @@ internal sealed class RuntimeApplicationContext :
                     "Preparando runtime x64..."));
 
             var worldLoadPercent = 0;
-            var vehicleLoadPercent = 0;
+            var vehicleLoadPercent =
+                _bus is null
+                    ? 100
+                    : 0;
 
             void ReportCombinedLoadProgress(
                 string stage,
@@ -179,13 +182,17 @@ internal sealed class RuntimeApplicationContext :
                                 LoadEntireMap:
                                     loadEntireMap)));
 
-            var vehicleTask =
-                Task.Run(
-                    () =>
-                        OmsiVehicleAssetLoader.Load(
-                            _contentRoot,
-                            _bus,
-                            vehicleProgress));
+            Task<OmsiVehicleAsset?> vehicleTask =
+                _bus is null
+                    ? Task.FromResult<OmsiVehicleAsset?>(
+                        null)
+                    : Task.Run(
+                        () =>
+                            (OmsiVehicleAsset?)
+                            OmsiVehicleAssetLoader.Load(
+                                _contentRoot,
+                                _bus,
+                                vehicleProgress));
 
             await Task.WhenAll(
                 worldTask,
@@ -200,20 +207,28 @@ internal sealed class RuntimeApplicationContext :
             _vehicleAsset =
                 vehicle;
 
-            WriteVehicleLoadDiagnostics(
-                vehicle);
+            if (vehicle is not null)
+            {
+                WriteVehicleLoadDiagnostics(
+                    vehicle);
+            }
 
             WriteWorldLoadDiagnostics(
                 world);
+
+            var renderDetail =
+                vehicle is null
+                    ? $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · modo sem ônibus"
+                    : $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · " +
+                      $"{vehicle.RenderableMeshCount:N0} mesh(es) renderizáveis do ônibus · " +
+                      $"{vehicle.ProtectedMeshCount:N0} criptografada(s) · " +
+                      $"{vehicle.FailedMeshCount:N0} com falha...";
 
             ReportProgress(
                 new WorldLoadProgress(
                     90,
                     "Preparando renderização",
-                    $"{world.Tiles.Count:N0}/{world.TotalTileCount:N0} tiles ativos · " +
-                    $"{vehicle.RenderableMeshCount:N0} mesh(es) renderizáveis do ônibus · " +
-                    $"{vehicle.ProtectedMeshCount:N0} criptografada(s) · " +
-                    $"{vehicle.FailedMeshCount:N0} com falha..."));
+                    renderDetail));
 
             var runtimeInfo =
                 BuildRuntimeInfo(
@@ -222,14 +237,20 @@ internal sealed class RuntimeApplicationContext :
                     _entryPoint,
                     _contentRoot.RootPath);
 
-            var scriptCatalog =
-                OmsiScriptCatalogLoader.Load(
-                    _contentRoot,
-                    _bus.ScriptManifest);
+            OmsiScriptRuntime? scriptRuntime =
+                null;
 
-            var scriptRuntime =
-                new OmsiScriptRuntime(
-                    scriptCatalog);
+            if (_bus is not null)
+            {
+                var scriptCatalog =
+                    OmsiScriptCatalogLoader.Load(
+                        _contentRoot,
+                        _bus.ScriptManifest);
+
+                scriptRuntime =
+                    new OmsiScriptRuntime(
+                        scriptCatalog);
+            }
 
             ReportProgress(
                 new WorldLoadProgress(
@@ -672,8 +693,7 @@ internal sealed class RuntimeApplicationContext :
 
                 if (_closing ||
                     _runtimeWindow is null ||
-                    _runtimeWindow.IsDisposed ||
-                    _vehicleAsset is null)
+                    _runtimeWindow.IsDisposed)
                 {
                     return;
                 }
@@ -711,7 +731,7 @@ internal sealed class RuntimeApplicationContext :
 
     private static RuntimeWindowInfo BuildRuntimeInfo(
         WorldDefinition world,
-        OmsiVehicleAsset vehicle,
+        OmsiVehicleAsset? vehicle,
         OmsiMapEntryPoint entryPoint,
         string contentRoot)
     {
@@ -873,7 +893,9 @@ internal sealed class RuntimeApplicationContext :
                 .ToArray();
 
         var runtimeVehicle =
-            new RuntimeVehicleInfo(
+            vehicle is null
+                ? null
+                : new RuntimeVehicleInfo(
                 vehicle.Bus.DisplayName,
                 vehicle.Bus.RelativePath,
                 vehicle.Meshes
