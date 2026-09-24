@@ -355,6 +355,10 @@ public sealed class D3D11RenderWindow : Form
         _driveMode =
             windowInfo.Vehicle is not null &&
             !_vehiclePreviewMode;
+        _reflectionRenderingEnabled =
+            !_vehiclePreviewMode &&
+            windowInfo.Vehicle?.ReflectionCameras.Count is
+                > 0;
         _driverCameraIndex =
             Math.Max(
                 windowInfo.Vehicle?.StandardDriverCameraIndex ?? 0,
@@ -2404,12 +2408,6 @@ public sealed class D3D11RenderWindow : Form
         if (_omsiMenuBar is null)
         {
             return;
-        }
-
-        if (!_omsiMenuBar.Visible &&
-            _mouseDriveMode)
-        {
-            DisableMouseDriveMode();
         }
 
         _omsiMenuBar.ToggleMenu();
@@ -7446,7 +7444,7 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.MouseDriveToggle:
-                if (_driveMode)
+                if (_windowInfo.Vehicle is not null)
                 {
                     ToggleMouseDriveMode();
                 }
@@ -7499,11 +7497,6 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.FreeCameraView:
-                if (_mouseDriveMode)
-                {
-                    DisableMouseDriveMode();
-                }
-
                 if (_windowInfo.Vehicle is not null)
                 {
                     var freeCameraPosition =
@@ -7729,15 +7722,6 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (_driveMode &&
-            _mouseDriveMode &&
-            e.Button == MouseButtons.Right)
-        {
-            DisableMouseDriveMode();
-            UpdateCaption();
-            return;
-        }
-
         if (e.Button is not
                 (MouseButtons.Right or
                  MouseButtons.Middle))
@@ -7751,6 +7735,15 @@ public sealed class D3D11RenderWindow : Form
         _lastMousePosition =
             e.Location;
         Capture = true;
+
+        if (_mouseDriveMode)
+        {
+            // O remains latched. RMB/MMB only borrows the pointer while
+            // held so the driver can look around without leaving mouse
+            // steering mode.
+            Cursor =
+                Cursors.Default;
+        }
     }
 
     private void OnRuntimeMouseUp(
@@ -7770,8 +7763,7 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (_mouseDriveMode ||
-            e.Button !=
+        if (e.Button !=
                 _freeCameraDragButton)
         {
             return;
@@ -7781,7 +7773,29 @@ public sealed class D3D11RenderWindow : Form
         _freeCameraDragButton =
             MouseButtons.None;
 
-        Capture = false;
+        if (_mouseDriveMode)
+        {
+            Capture =
+                true;
+            Cursor =
+                Cursors.Cross;
+
+            var center =
+                new System.Drawing.Point(
+                    ClientSize.Width / 2,
+                    ClientSize.Height / 2);
+
+            _lastMousePosition =
+                center;
+            Cursor.Position =
+                PointToScreen(
+                    center);
+        }
+        else
+        {
+            Capture =
+                false;
+        }
     }
 
     private void OnRuntimeMouseMove(
@@ -7816,7 +7830,8 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (_driveMode &&
-            _mouseDriveMode)
+            _mouseDriveMode &&
+            !_mouseLooking)
         {
             UpdateOmsiMouseAxes(e.Location);
             return;
@@ -8316,7 +8331,7 @@ public sealed class D3D11RenderWindow : Form
 
         var driveInputMode =
             _mouseDriveMode
-                ? "MOUSE: ←/→ steer · ↑ throttle · ↓ brake · RMB exit"
+                ? "MOUSE LOCKED: ←/→ steer · ↑ throttle · ↓ brake · O desativa · RMB segura câmera"
                 : _controllerInputEnabled &&
                   _omsiGameController is
                     { ConnectedDeviceCount: > 0 }
@@ -8346,7 +8361,7 @@ public sealed class D3D11RenderWindow : Form
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
               $"{driveInputMode} · RMB drag look/orbit · F3 wheel zoom · S views · F1/F2/F3/F4 cameras · ←/→ perspectives · C/Space reset · P pause · D/N/R · E/M · Tab clutch"
-            : $"{pauseState}FREE CAM · RMB look · MMB pan · wheel zoom · Ctrl+wheel speed · unbound WASD/QE optional · S views · F1/F2/F3/F4 cameras · C reset";
+            : $"{pauseState}FREE CAM · RMB look · MMB pan · wheel zoom · Ctrl+wheel speed · S views · F1/F2/F3/F4 cameras · C reset · O:{(_mouseDriveMode ? "LOCKED" : "OFF")}";
 
         control +=
             " · Alt menu";
