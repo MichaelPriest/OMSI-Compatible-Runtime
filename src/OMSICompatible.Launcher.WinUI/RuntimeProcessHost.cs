@@ -45,7 +45,7 @@ internal sealed class RuntimeProcessHost :
     public bool Start(
         string contentPath,
         string mapName,
-        string busRelativePath,
+        string? busRelativePath,
         string entryPointName)
     {
         if (IsRunning)
@@ -100,10 +100,19 @@ internal sealed class RuntimeProcessHost :
             "--map",
             mapName);
 
-        Add(
-            startInfo,
-            "--bus",
-            busRelativePath);
+        if (string.IsNullOrWhiteSpace(
+                busRelativePath))
+        {
+            startInfo.ArgumentList.Add(
+                "--no-bus");
+        }
+        else
+        {
+            Add(
+                startInfo,
+                "--bus",
+                busRelativePath);
+        }
 
         Add(
             startInfo,
