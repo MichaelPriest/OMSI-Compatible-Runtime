@@ -127,6 +127,13 @@ public sealed class D3D11RenderWindow : Form
     private float _mouseDriveBrake;
     private float _mouseDriveSteering;
     private bool _simulationPaused;
+    private int _statusInfoLevel = 1;
+    private bool _specialViewActive;
+    private bool _specialPreviousDriveMode;
+    private RuntimeVehicleViewMode _specialPreviousViewMode =
+        RuntimeVehicleViewMode.Driver;
+    private int _specialPreviousDriverCameraIndex;
+    private int _specialPreviousPassengerCameraIndex;
     private readonly RuntimeOmsiMenuBar? _omsiMenuBar;
     private int _captionFrame;
     private int? _streamingTileX;
@@ -6043,6 +6050,42 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (e.KeyCode == Keys.S)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.ScrollViews);
+            return;
+        }
+
+        if (e.KeyCode == Keys.P)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.PauseToggle);
+            return;
+        }
+
+        if (e.KeyCode == Keys.C)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.ResetCurrentView);
+            return;
+        }
+
+        if (e.KeyCode == Keys.Space)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.ResetAllViews);
+            return;
+        }
+
+        if (e.Shift &&
+            e.KeyCode == Keys.Z)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.StatusInfoCycle);
+            return;
+        }
+
         if (!_driveMode)
         {
             return;
@@ -6050,22 +6093,6 @@ public sealed class D3D11RenderWindow : Form
 
         switch (e.KeyCode)
         {
-            case Keys.S:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.ScrollViews);
-                break;
-
-            case Keys.P:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.PauseToggle);
-                break;
-
-            case Keys.C:
-            case Keys.Space:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.ResetAllViews);
-                break;
-
             case Keys.Left:
                 ApplyOmsiHostActionPress(
                     RuntimeOmsiHostInputAction.InteriorViewNext);
@@ -6178,6 +6205,20 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (!_specialViewActive)
+        {
+            _specialViewActive =
+                true;
+            _specialPreviousDriveMode =
+                _driveMode;
+            _specialPreviousViewMode =
+                _vehicleViewMode;
+            _specialPreviousDriverCameraIndex =
+                _driverCameraIndex;
+            _specialPreviousPassengerCameraIndex =
+                _passengerCameraIndex;
+        }
+
         _driveMode = true;
         _vehicleViewMode =
             RuntimeVehicleViewMode.Driver;
@@ -6187,6 +6228,99 @@ public sealed class D3D11RenderWindow : Form
                     vehicle.StandardDriverCameraIndex,
                 0,
                 vehicle.DriverCameras.Count - 1);
+    }
+
+    private void ReleaseSpecialDriverCamera()
+    {
+        if (!_specialViewActive)
+        {
+            return;
+        }
+
+        _specialViewActive =
+            false;
+        _driveMode =
+            _specialPreviousDriveMode;
+        _vehicleViewMode =
+            _specialPreviousViewMode;
+        _driverCameraIndex =
+            _specialPreviousDriverCameraIndex;
+        _passengerCameraIndex =
+            _specialPreviousPassengerCameraIndex;
+    }
+
+    private void ResetCurrentOmsiView()
+    {
+        var vehicle =
+            _windowInfo.Vehicle;
+
+        if (!_driveMode)
+        {
+            if (_terrainGeometry.Vertices.Length >
+                0)
+            {
+                _camera.Reset(
+                    _terrainGeometry);
+            }
+
+            return;
+        }
+
+        if (vehicle is null)
+        {
+            return;
+        }
+
+        switch (_vehicleViewMode)
+        {
+            case RuntimeVehicleViewMode.Driver:
+                _driverCameraIndex =
+                    Math.Clamp(
+                        vehicle.StandardDriverCameraIndex,
+                        0,
+                        Math.Max(
+                            vehicle.DriverCameras.Count - 1,
+                            0));
+                break;
+
+            case RuntimeVehicleViewMode.Passenger:
+                _passengerCameraIndex =
+                    0;
+                break;
+
+            case RuntimeVehicleViewMode.Exterior:
+                // Exterior view is already a canonical chase camera.
+                break;
+        }
+    }
+
+    private void ResetAllOmsiViews()
+    {
+        var vehicle =
+            _windowInfo.Vehicle;
+
+        if (vehicle is not null)
+        {
+            _driverCameraIndex =
+                Math.Clamp(
+                    vehicle.StandardDriverCameraIndex,
+                    0,
+                    Math.Max(
+                        vehicle.DriverCameras.Count - 1,
+                        0));
+            _passengerCameraIndex =
+                0;
+        }
+
+        if (_terrainGeometry.Vertices.Length >
+            0)
+        {
+            _camera.Reset(
+                _terrainGeometry);
+        }
+
+        _specialViewActive =
+            false;
     }
 
     private void CycleInteriorCamera(
@@ -6266,11 +6400,35 @@ public sealed class D3D11RenderWindow : Form
                 ReleaseTriggerName(
                     binding.Trigger));
 
+            if (binding.HostAction is
+                { } hostAction)
+            {
+                ApplyOmsiHostActionRelease(
+                    hostAction);
+            }
+
             _activeOmsiPressedBindings.Remove(
                 binding);
 
             _activeOmsiContinuousBindings.Remove(
                 binding);
+        }
+
+        if (_omsiKeyboardBindings.Count == 0 &&
+            e.KeyCode is Keys.Insert or Keys.Home)
+        {
+            ReleaseSpecialDriverCamera();
+        }
+    }
+
+    private void ApplyOmsiHostActionRelease(
+        RuntimeOmsiHostInputAction action)
+    {
+        if (action is
+            RuntimeOmsiHostInputAction.ScheduleView or
+            RuntimeOmsiHostInputAction.TicketSellingView)
+        {
+            ReleaseSpecialDriverCamera();
         }
     }
 
@@ -6375,6 +6533,9 @@ public sealed class D3D11RenderWindow : Form
 
         _activeControllerHostActions.Remove(
             action);
+
+        ApplyOmsiHostActionRelease(
+            action);
     }
 
     private bool TryResolveHostAction(
@@ -6416,7 +6577,7 @@ public sealed class D3D11RenderWindow : Form
                 "view_interiorcam_minus" =>
                     RuntimeOmsiHostInputAction.InteriorViewPrevious,
                 "view_reset_direction" =>
-                    RuntimeOmsiHostInputAction.ResetDriverView,
+                    RuntimeOmsiHostInputAction.ResetCurrentView,
                 "view_schedule" or
                 "view_set_schedule" =>
                     RuntimeOmsiHostInputAction.ScheduleView,
@@ -6427,6 +6588,10 @@ public sealed class D3D11RenderWindow : Form
                     RuntimeOmsiHostInputAction.ResetAllViews,
                 "pause" =>
                     RuntimeOmsiHostInputAction.PauseToggle,
+                "view_status" or
+                "view_information" or
+                "view_info" =>
+                    RuntimeOmsiHostInputAction.StatusInfoCycle,
                 _ =>
                     default
             };
@@ -6451,7 +6616,10 @@ public sealed class D3D11RenderWindow : Form
                 "view_set_schedule" or
                 "view_ticketselling" or
                 "view_set_ticketselling" or
-                "pause";
+                "pause" or
+                "view_status" or
+                "view_information" or
+                "view_info";
     }
 
     private void ApplyOmsiHostActionPress(
@@ -6632,9 +6800,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.ResetDriverView:
-                ActivateSpecialDriverCamera(
-                    _windowInfo.Vehicle?
-                        .StandardDriverCameraIndex);
+            case RuntimeOmsiHostInputAction.ResetCurrentView:
+                ResetCurrentOmsiView();
                 break;
 
             case RuntimeOmsiHostInputAction.ScrollViews:
@@ -6647,25 +6814,13 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.ResetAllViews:
-                if (_windowInfo.Vehicle is not null)
-                {
-                    _driveMode =
-                        true;
-                    _vehicleViewMode =
-                        RuntimeVehicleViewMode.Driver;
-                    _driverCameraIndex =
-                        Math.Max(
-                            _windowInfo.Vehicle
-                                .StandardDriverCameraIndex,
-                            0);
-                }
-                else if (_terrainGeometry.Vertices.Length >
-                         0)
-                {
-                    _camera.Reset(
-                        _terrainGeometry);
-                }
+                ResetAllOmsiViews();
+                break;
 
+            case RuntimeOmsiHostInputAction.StatusInfoCycle:
+                _statusInfoLevel =
+                    (_statusInfoLevel + 1) %
+                    4;
                 break;
 
             case RuntimeOmsiHostInputAction.ControllerToggle:
@@ -7342,18 +7497,30 @@ public sealed class D3D11RenderWindow : Form
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · Insert schedule · Home tickets · F4 free cam · F9 mirrors · D/N/R · E/M · Num. park · Tab free cam"
-            : $"{pauseState}FREE CAM · WASD move · RMB look · Q/E vertical · R reset · F1/F2/F3 OMSI view · Tab OMSI drive";
+              $"{driveInputMode} · S views · F1/F2/F3/F4 cameras · ←/→ perspectives · Insert/Home hold · P pause · C/Space reset · Shift+Z status · D/N/R · E/M · Tab clutch"
+            : $"{pauseState}FREE CAM · W/↓ move · A/D strafe · RMB look · Q/E vertical · S views · F1/F2/F3/F4 cameras · C reset";
 
         control +=
             " · Alt menu";
 
         Text =
-            $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
-            $"{_windowInfo.TileCount:N0}/{_windowInfo.TotalTileCount:N0} tiles — " +
-            $"{runtimeObjectCount:N0} runtime objects · {_windowInfo.ObjectCount:N0} map entries — " +
-            $"{_windowInfo.SplineCount:N0} splines — " +
-            $"{mode} — {control}";
+            _statusInfoLevel switch
+            {
+                0 =>
+                    $"OMSI Compatible Runtime — {_windowInfo.WorldName}",
+                1 =>
+                    $"OMSI Compatible Runtime — {_windowInfo.WorldName} — {control}",
+                2 =>
+                    $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
+                    $"{_windowInfo.TileCount:N0}/{_windowInfo.TotalTileCount:N0} tiles — " +
+                    $"{_windowInfo.SplineCount:N0} splines — {control}",
+                _ =>
+                    $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
+                    $"{_windowInfo.TileCount:N0}/{_windowInfo.TotalTileCount:N0} tiles — " +
+                    $"{runtimeObjectCount:N0} runtime objects · {_windowInfo.ObjectCount:N0} map entries — " +
+                    $"{_windowInfo.SplineCount:N0} splines — " +
+                    $"{mode} — {control}"
+            };
     }
 
     protected override void Dispose(bool disposing)
