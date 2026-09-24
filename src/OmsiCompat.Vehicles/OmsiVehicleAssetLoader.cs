@@ -90,7 +90,10 @@ public static class OmsiVehicleAssetLoader
                     mesh.MeshIdentifier,
                     mesh.AnimationParent,
                     0,
-                    mesh.Ordinal));
+                    mesh.Ordinal,
+                    null,
+                    null,
+                    mesh.MouseEventTrigger));
                 continue;
             }
 
@@ -468,7 +471,8 @@ public static class OmsiVehicleAssetLoader
                 0,
                 mesh.Ordinal,
                 skin.Weights,
-                skin.TargetMeshOrdinals));
+                skin.TargetMeshOrdinals,
+                mesh.MouseEventTrigger));
         }
 
         progress?.Report(
