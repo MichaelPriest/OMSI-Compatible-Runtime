@@ -1303,7 +1303,12 @@ internal sealed class RuntimeApplicationContext :
                                 section.JointY,
                                 section.FollowerLengthMeters,
                                 section.MaximumYawDegrees,
-                                section.Reverse))
+                                section.Reverse,
+                                section.MassTonnes,
+                                section.YawInertiaTonneSquareMeters,
+                                section.RotationPointLongitudinalMeters,
+                                section.WheelBaseMeters,
+                                section.RollingResistanceNewtons))
                     .ToArray());
 
         var runtimeSpawn =
