@@ -19,16 +19,27 @@ public static class BusDiscovery
 
         foreach (var path in Directory.EnumerateFiles(
                      root,
-                     "*.bus",
+                     "*",
                      SearchOption.AllDirectories))
         {
+            if (!string.Equals(
+                    Path.GetExtension(path),
+                    ".bus",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             try
             {
-                buses.Add(OmsiBusReader.ReadFile(contentRoot.RootPath, path));
+                buses.Add(
+                    OmsiBusReader.ReadFile(
+                        contentRoot.RootPath,
+                        path));
             }
             catch
             {
-                // One malformed add-on must not hide the remaining fleet.
+                // One malformed .bus must not hide the remaining fleet.
             }
         }
 
