@@ -138,7 +138,9 @@ public sealed record OmsiVehicleMeshReference(
     IReadOnlyList<OmsiVehicleVisibilityCondition> VisibilityConditions,
     IReadOnlyList<OmsiVehicleAnimation> Animations,
     IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides,
-    IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null);
+    IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
+    string? MeshIdentifier = null,
+    string? AnimationParent = null);
 
 public sealed record OmsiVehicleModel(
     string SourcePath,
