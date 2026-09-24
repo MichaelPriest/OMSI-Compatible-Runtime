@@ -147,7 +147,7 @@ public static class OmsiVehicleAssetLoader
                                 static item =>
                                     !string.IsNullOrWhiteSpace(
                                         item.MaterialChangeVariable) &&
-                                    item.MaterialChangeItemIndex > 0)
+                                    item.MaterialChangeItemIndex >= 0)
                             .OrderBy(
                                 static item =>
                                     item.MaterialChangeGroupIndex)
