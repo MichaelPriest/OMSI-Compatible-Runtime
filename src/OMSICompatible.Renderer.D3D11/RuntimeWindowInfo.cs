@@ -356,7 +356,12 @@ public sealed record RuntimeVehicleSectionInfo(
     double JointZ,
     double FollowerLengthMeters,
     double MaximumYawDegrees,
-    bool Reverse);
+    bool Reverse,
+    double? MassTonnes = null,
+    double? YawInertiaTonneSquareMeters = null,
+    double? RotationPointLongitudinalMeters = null,
+    double? WheelBaseMeters = null,
+    double? RollingResistanceNewtons = null);
 
 public sealed record RuntimeVehicleInfo(
     string DisplayName,
