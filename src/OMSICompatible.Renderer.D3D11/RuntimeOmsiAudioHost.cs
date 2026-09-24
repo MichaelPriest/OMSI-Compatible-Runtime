@@ -26,7 +26,13 @@ internal sealed record RuntimeOmsiSoundDefinition(
     int Viewpoint,
     string? Trigger,
     RuntimeOmsiSoundCondition? Condition,
-    IReadOnlyList<RuntimeOmsiSoundCurve> VolumeCurves);
+    IReadOnlyList<RuntimeOmsiSoundCurve> VolumeCurves,
+    string? PitchVariable = null,
+    double PitchReferenceValue = 1.0,
+    double? SourceX = null,
+    double? SourceY = null,
+    double? SourceZ = null,
+    double? MaximumDistanceMeters = null);
 
 internal sealed class RuntimeOmsiAudioHost :
     IDisposable
@@ -49,6 +55,19 @@ internal sealed class RuntimeOmsiAudioHost :
 
         public RuntimeOmsiSoundCondition? Condition { get; set; }
 
+        public string? PitchVariable { get; set; }
+
+        public double PitchReferenceValue { get; set; } =
+            1.0;
+
+        public double? SourceX { get; set; }
+
+        public double? SourceY { get; set; }
+
+        public double? SourceZ { get; set; }
+
+        public double? MaximumDistanceMeters { get; set; }
+
         public List<RuntimeOmsiSoundCurve> VolumeCurves { get; } =
             [];
 
@@ -61,7 +80,13 @@ internal sealed class RuntimeOmsiAudioHost :
                 Viewpoint,
                 Trigger,
                 Condition,
-                VolumeCurves.ToArray());
+                VolumeCurves.ToArray(),
+                PitchVariable,
+                PitchReferenceValue,
+                SourceX,
+                SourceY,
+                SourceZ,
+                MaximumDistanceMeters);
     }
 
     private sealed class LoopVoice :
@@ -73,15 +98,20 @@ internal sealed class RuntimeOmsiAudioHost :
         public LoopVoice(
             MixingSampleProvider mixer,
             AudioFileReader reader,
+            SmbPitchShiftingSampleProvider pitch,
             VolumeSampleProvider volume)
         {
             _mixer =
                 mixer;
             _reader =
                 reader;
+            Pitch =
+                pitch;
             Volume =
                 volume;
         }
+
+        public SmbPitchShiftingSampleProvider Pitch { get; }
 
         public VolumeSampleProvider Volume { get; }
 
@@ -369,7 +399,10 @@ internal sealed class RuntimeOmsiAudioHost :
             {
                 UpdateLoop(
                     sound,
-                    volume);
+                    volume,
+                    EvaluatePitch(
+                        sound,
+                        scriptRuntime));
                 continue;
             }
 
@@ -476,7 +509,8 @@ internal sealed class RuntimeOmsiAudioHost :
 
     private void UpdateLoop(
         RuntimeOmsiSoundDefinition sound,
-        float volume)
+        float volume,
+        float pitchFactor)
     {
         if (volume <=
             0.0001f)
@@ -509,6 +543,12 @@ internal sealed class RuntimeOmsiAudioHost :
                 sound.Id] =
                 voice;
         }
+
+        voice.Pitch.PitchFactor =
+            Math.Clamp(
+                pitchFactor,
+                0.25f,
+                4.0f);
 
         voice.Volume.Volume =
             volume;
@@ -549,9 +589,17 @@ internal sealed class RuntimeOmsiAudioHost :
                 return null;
             }
 
+            var pitch =
+                new SmbPitchShiftingSampleProvider(
+                    normalized)
+                {
+                    PitchFactor =
+                        1.0f
+                };
+
             var volume =
                 new VolumeSampleProvider(
-                    normalized)
+                    pitch)
                 {
                     Volume =
                         0.0f
@@ -563,6 +611,7 @@ internal sealed class RuntimeOmsiAudioHost :
             return new LoopVoice(
                 _mixer,
                 reader,
+                pitch,
                 volume);
         }
         catch (Exception ex)
@@ -656,6 +705,42 @@ internal sealed class RuntimeOmsiAudioHost :
         }
 
         return provider;
+    }
+
+    private static float EvaluatePitch(
+        RuntimeOmsiSoundDefinition sound,
+        OmsiScriptRuntime? scriptRuntime)
+    {
+        if (!sound.Loop ||
+            string.IsNullOrWhiteSpace(
+                sound.PitchVariable) ||
+            sound.PitchVariable == "-1" ||
+            !double.IsFinite(
+                sound.PitchReferenceValue) ||
+            Math.Abs(
+                sound.PitchReferenceValue) <
+            0.000001)
+        {
+            return 1.0f;
+        }
+
+        var value =
+            ResolveVariable(
+                scriptRuntime,
+                sound.PitchVariable);
+
+        if (!double.IsFinite(
+                value))
+        {
+            return 1.0f;
+        }
+
+        return (float)Math.Clamp(
+            Math.Abs(
+                value /
+                sound.PitchReferenceValue),
+            0.25,
+            4.0);
     }
 
     private float EvaluateVolume(
@@ -953,19 +1038,56 @@ internal sealed class RuntimeOmsiAudioHost :
                     continue;
                 }
 
+                var loop =
+                    section.Equals(
+                        "loopsound",
+                        StringComparison.OrdinalIgnoreCase);
+
                 var baseVolume =
                     1.0f;
+                string? pitchVariable =
+                    null;
+                var pitchReference =
+                    1.0;
 
-                foreach (var value in
-                         values.Skip(1))
+                if (loop)
                 {
-                    if (TryDouble(
-                            value,
-                            out var parsed))
+                    // OMSI SDK [loopsound]:
+                    // file, nominal sample rate, pitch variable,
+                    // variable value for original pitch, base volume.
+                    if (values.Count >= 3)
+                    {
+                        pitchVariable =
+                            values[2]
+                                .Trim()
+                                .Trim('"');
+                    }
+
+                    if (values.Count >= 4 &&
+                        TryDouble(
+                            values[3],
+                            out var parsedReference))
+                    {
+                        pitchReference =
+                            parsedReference;
+                    }
+
+                    if (values.Count >= 5 &&
+                        TryDouble(
+                            values[4],
+                            out var parsedVolume))
                     {
                         baseVolume =
-                            (float)parsed;
+                            (float)parsedVolume;
                     }
+                }
+                else if (values.Count >= 2 &&
+                         TryDouble(
+                             values[1],
+                             out var parsedVolume))
+                {
+                    baseVolume =
+                        (float)parsedVolume;
                 }
 
                 var resolved =
@@ -988,11 +1110,13 @@ internal sealed class RuntimeOmsiAudioHost :
                         FilePath =
                             resolved,
                         Loop =
-                            section.Equals(
-                                "loopsound",
-                                StringComparison.OrdinalIgnoreCase),
+                            loop,
                         BaseVolume =
-                            baseVolume
+                            baseVolume,
+                        PitchVariable =
+                            pitchVariable,
+                        PitchReferenceValue =
+                            pitchReference
                     };
 
                 builders.Add(
@@ -1144,13 +1268,48 @@ internal sealed class RuntimeOmsiAudioHost :
                 continue;
             }
 
-            if (!section.Equals(
+            if (section.Equals(
                     "3d",
                     StringComparison.OrdinalIgnoreCase))
             {
+                var values =
+                    ReadData(
+                        lines,
+                        index + 1);
+
+                if (values.Count >= 4 &&
+                    TryDouble(
+                        values[0],
+                        out var sourceX) &&
+                    TryDouble(
+                        values[1],
+                        out var sourceY) &&
+                    TryDouble(
+                        values[2],
+                        out var sourceZ) &&
+                    TryDouble(
+                        values[3],
+                        out var maximumDistance))
+                {
+                    current.SourceX =
+                        sourceX;
+                    current.SourceY =
+                        sourceY;
+                    current.SourceZ =
+                        sourceZ;
+                    current.MaximumDistanceMeters =
+                        Math.Max(
+                            maximumDistance,
+                            0.0);
+                }
+
                 activeCurvePoints =
                     null;
+                continue;
             }
+
+            activeCurvePoints =
+                null;
         }
 
         return builders
