@@ -1112,7 +1112,10 @@ internal sealed class RuntimeDriveVehicle
                 camera.PitchDegrees));
 
     public Vector3 GetChaseCameraPosition(
-        RuntimeOutsideCameraCenterInfo? outsideCenter)
+        RuntimeOutsideCameraCenterInfo? outsideCenter,
+        float orbitYawRadians = 0.0f,
+        float orbitPitchRadians = 0.0f,
+        float distanceScale = 1.0f)
     {
         var forward =
             new Vector3(
@@ -1141,15 +1144,59 @@ internal sealed class RuntimeDriveVehicle
                 vehicleRotation) +
             Position;
 
+        var orbitHeading =
+            HeadingRadians +
+            orbitYawRadians;
+
+        var orbitForward =
+            new Vector3(
+                MathF.Sin(
+                    orbitHeading),
+                0.0f,
+                MathF.Cos(
+                    orbitHeading));
+
+        var baseDistance =
+            MathF.Sqrt(
+                14.0f * 14.0f +
+                4.4f * 4.4f);
+
+        var basePitch =
+            MathF.Atan2(
+                4.4f,
+                14.0f);
+
+        var orbitPitch =
+            Math.Clamp(
+                basePitch +
+                orbitPitchRadians,
+                -1.15f,
+                1.25f);
+
+        var distance =
+            baseDistance *
+            Math.Clamp(
+                distanceScale,
+                0.35f,
+                4.0f);
+
         return center -
-               forward * 14.0f +
-               Vector3.UnitY * 4.4f;
+               orbitForward *
+                   (MathF.Cos(
+                        orbitPitch) *
+                    distance) +
+               Vector3.UnitY *
+                   (MathF.Sin(
+                        orbitPitch) *
+                    distance);
     }
 
     public Matrix4x4 CreateDriverViewProjection(
         RuntimeDriverCameraInfo camera,
         float aspect,
-        RuntimeTerrainGeometry terrainGeometry)
+        RuntimeTerrainGeometry terrainGeometry,
+        float headingOffsetRadians = 0.0f,
+        float pitchOffsetRadians = 0.0f)
     {
         var localEye =
             new Vector3(
@@ -1169,11 +1216,16 @@ internal sealed class RuntimeDriveVehicle
 
         var localHeading =
             DegreesToRadians(
-                camera.HeadingDegrees);
+                camera.HeadingDegrees) +
+            headingOffsetRadians;
 
         var localPitch =
-            DegreesToRadians(
-                camera.PitchDegrees);
+            Math.Clamp(
+                DegreesToRadians(
+                    camera.PitchDegrees) +
+                pitchOffsetRadians,
+                -1.45f,
+                1.45f);
 
         var localForward =
             new Vector3(
@@ -1249,7 +1301,9 @@ internal sealed class RuntimeDriveVehicle
     public Matrix4x4 CreatePassengerViewProjection(
         RuntimePassengerCameraInfo camera,
         float aspect,
-        RuntimeTerrainGeometry terrainGeometry)
+        RuntimeTerrainGeometry terrainGeometry,
+        float headingOffsetRadians = 0.0f,
+        float pitchOffsetRadians = 0.0f)
     {
         return CreateDriverViewProjection(
             new RuntimeDriverCameraInfo(
@@ -1261,13 +1315,18 @@ internal sealed class RuntimeDriveVehicle
                 camera.HeadingDegrees,
                 camera.PitchDegrees),
             aspect,
-            terrainGeometry);
+            terrainGeometry,
+            headingOffsetRadians,
+            pitchOffsetRadians);
     }
 
     public Matrix4x4 CreateChaseViewProjection(
         float aspect,
         RuntimeTerrainGeometry terrainGeometry,
-        RuntimeOutsideCameraCenterInfo? outsideCenter)
+        RuntimeOutsideCameraCenterInfo? outsideCenter,
+        float orbitYawRadians = 0.0f,
+        float orbitPitchRadians = 0.0f,
+        float distanceScale = 1.0f)
     {
         var forward =
             new Vector3(
@@ -1296,14 +1355,62 @@ internal sealed class RuntimeDriveVehicle
                 vehicleRotation) +
             Position;
 
+        var orbitHeading =
+            HeadingRadians +
+            orbitYawRadians;
+
+        var orbitForward =
+            new Vector3(
+                MathF.Sin(
+                    orbitHeading),
+                0.0f,
+                MathF.Cos(
+                    orbitHeading));
+
+        var baseDistance =
+            MathF.Sqrt(
+                14.0f * 14.0f +
+                4.4f * 4.4f);
+
+        var basePitch =
+            MathF.Atan2(
+                4.4f,
+                14.0f);
+
+        var orbitPitch =
+            Math.Clamp(
+                basePitch +
+                orbitPitchRadians,
+                -1.15f,
+                1.25f);
+
+        var distance =
+            baseDistance *
+            Math.Clamp(
+                distanceScale,
+                0.35f,
+                4.0f);
+
+        var horizontalDistance =
+            MathF.Cos(
+                orbitPitch) *
+            distance;
+
+        var verticalDistance =
+            MathF.Sin(
+                orbitPitch) *
+            distance;
+
         var eye =
             center -
-            forward * 14.0f +
-            Vector3.UnitY * 4.4f;
+            orbitForward *
+                horizontalDistance +
+            Vector3.UnitY *
+                verticalDistance;
 
         var target =
             center +
-            forward * 8.0f;
+            forward * 1.5f;
 
         var view =
             Matrix4x4.CreateLookAt(
