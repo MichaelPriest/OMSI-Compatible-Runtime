@@ -332,7 +332,7 @@ try
             "(L.L.engine_speed)",
             "(F.L.engine_curve)",
             "(S.L.engine_output)",
-            "(M.L.helper)",
+            "(M.L.HeLpEr)",
             "\"Linha 342P\"",
             "(S.$.IBIS_line)",
             "(L.$.IBIS_line)",
@@ -370,7 +370,7 @@ try
             "{endif}",
             "{end}",
             "{macro:helper}",
-            "(C.L.engine_idle)",
+            "(C.L.ENGINE_IDLE)",
             "(S.L.idle_copy)",
             "{end}"),
         Encoding.Unicode);
@@ -1506,7 +1506,13 @@ try
         scriptCatalog.Program.InitBlocks.Count == 1 &&
         scriptCatalog.Program.FrameBlocks.Count == 1 &&
         scriptCatalog.Program.Macros.ContainsKey(
-            "helper"),
+            "HELPER") &&
+        scriptCatalog.NumericVariables.Contains(
+            "ENGINE_SPEED") &&
+        scriptCatalog.Constants.ContainsKey(
+            "ENGINE_IDLE") &&
+        scriptCatalog.Curves.ContainsKey(
+            "ENGINE_CURVE"),
         "Synthetic OMSI script entry points were not parsed.");
 
     var scriptRuntime =
@@ -1629,8 +1635,13 @@ try
             660.0) < 0.0001,
         "OMSI variable names must be case-insensitive.");
 
+    Require(
+        scriptRuntime.HasTrigger(
+            "CoLlIsIoN"),
+        "OMSI trigger lookup must be case-insensitive.");
+
     scriptRuntime.ExecuteTrigger(
-        "collision");
+        "CoLlIsIoN");
 
     Require(
         requestedSoundTriggers.SequenceEqual(
