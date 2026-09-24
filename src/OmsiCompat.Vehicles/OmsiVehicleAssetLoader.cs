@@ -158,7 +158,10 @@ public static class OmsiVehicleAssetLoader
 
                     var materialChangeOverride =
                         materialChangeOverrides
-                            .FirstOrDefault();
+                            .FirstOrDefault(
+                                static item =>
+                                    item.MaterialChangeItemIndex >
+                                    0);
 
                     string? texturePath = null;
                     if (!string.IsNullOrWhiteSpace(material.TextureName))
