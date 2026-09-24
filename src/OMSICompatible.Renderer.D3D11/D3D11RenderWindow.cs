@@ -134,6 +134,11 @@ public sealed class D3D11RenderWindow : Form
         RuntimeVehicleViewMode.Driver;
     private int _driverCameraIndex;
     private int _passengerCameraIndex;
+    private float _interiorCameraYawOffsetRadians;
+    private float _interiorCameraPitchOffsetRadians;
+    private float _exteriorCameraYawOffsetRadians;
+    private float _exteriorCameraPitchOffsetRadians;
+    private float _exteriorCameraDistanceScale = 1.0f;
     private float _mouseDriveAccelerator;
     private float _mouseDriveBrake;
     private float _mouseDriveSteering;
@@ -4726,7 +4731,10 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return _vehicle.GetChaseCameraPosition(
-            vehicle?.OutsideCameraCenter);
+            vehicle?.OutsideCameraCenter,
+            _exteriorCameraYawOffsetRadians,
+            _exteriorCameraPitchOffsetRadians,
+            _exteriorCameraDistanceScale);
     }
 
     private Matrix4x4 CreateViewProjection()
@@ -4769,7 +4777,9 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Vehicle.DriverCameras[
                     _driverCameraIndex],
                 aspect,
-                _terrainGeometry);
+                _terrainGeometry,
+                _interiorCameraYawOffsetRadians,
+                _interiorCameraPitchOffsetRadians);
         }
 
         if (_vehicleViewMode ==
@@ -4786,7 +4796,9 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Vehicle.PassengerCameras[
                     _passengerCameraIndex],
                 aspect,
-                _terrainGeometry);
+                _terrainGeometry,
+                _interiorCameraYawOffsetRadians,
+                _interiorCameraPitchOffsetRadians);
         }
 
         if (_vehicleViewMode !=
@@ -4803,13 +4815,18 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Vehicle.DriverCameras[
                     _driverCameraIndex],
                 aspect,
-                _terrainGeometry);
+                _terrainGeometry,
+                _interiorCameraYawOffsetRadians,
+                _interiorCameraPitchOffsetRadians);
         }
 
         return _vehicle.CreateChaseViewProjection(
             aspect,
             _terrainGeometry,
-            _windowInfo.Vehicle?.OutsideCameraCenter);
+            _windowInfo.Vehicle?.OutsideCameraCenter,
+            _exteriorCameraYawOffsetRadians,
+            _exteriorCameraPitchOffsetRadians,
+            _exteriorCameraDistanceScale);
     }
 
     private void UpdateSimulation()
@@ -6578,15 +6595,28 @@ public sealed class D3D11RenderWindow : Form
                         Math.Max(
                             vehicle.DriverCameras.Count - 1,
                             0));
+                _interiorCameraYawOffsetRadians =
+                    0.0f;
+                _interiorCameraPitchOffsetRadians =
+                    0.0f;
                 break;
 
             case RuntimeVehicleViewMode.Passenger:
                 _passengerCameraIndex =
                     0;
+                _interiorCameraYawOffsetRadians =
+                    0.0f;
+                _interiorCameraPitchOffsetRadians =
+                    0.0f;
                 break;
 
             case RuntimeVehicleViewMode.Exterior:
-                // Exterior view is already a canonical chase camera.
+                _exteriorCameraYawOffsetRadians =
+                    0.0f;
+                _exteriorCameraPitchOffsetRadians =
+                    0.0f;
+                _exteriorCameraDistanceScale =
+                    1.0f;
                 break;
         }
     }
@@ -6608,6 +6638,17 @@ public sealed class D3D11RenderWindow : Form
             _passengerCameraIndex =
                 0;
         }
+
+        _interiorCameraYawOffsetRadians =
+            0.0f;
+        _interiorCameraPitchOffsetRadians =
+            0.0f;
+        _exteriorCameraYawOffsetRadians =
+            0.0f;
+        _exteriorCameraPitchOffsetRadians =
+            0.0f;
+        _exteriorCameraDistanceScale =
+            1.0f;
 
         if (_terrainGeometry.Vertices.Length >
             0)
@@ -7359,8 +7400,7 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (_driveMode ||
-            e.Button is not
+        if (e.Button is not
                 (MouseButtons.Right or
                  MouseButtons.Middle))
         {
@@ -7403,10 +7443,7 @@ public sealed class D3D11RenderWindow : Form
         _freeCameraDragButton =
             MouseButtons.None;
 
-        if (!_driveMode)
-        {
-            Capture = false;
-        }
+        Capture = false;
     }
 
     private void OnRuntimeMouseMove(
@@ -7447,8 +7484,7 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (!_mouseLooking ||
-            _driveMode)
+        if (!_mouseLooking)
         {
             return;
         }
@@ -7459,6 +7495,50 @@ public sealed class D3D11RenderWindow : Form
             e.Y - _lastMousePosition.Y;
 
         _lastMousePosition = e.Location;
+
+        if (_driveMode)
+        {
+            const float vehicleCameraSensitivity =
+                0.0045f;
+
+            if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Exterior)
+            {
+                _exteriorCameraYawOffsetRadians =
+                    NormalizeRadians(
+                        _exteriorCameraYawOffsetRadians +
+                        deltaX *
+                        vehicleCameraSensitivity);
+
+                _exteriorCameraPitchOffsetRadians =
+                    Math.Clamp(
+                        _exteriorCameraPitchOffsetRadians -
+                        deltaY *
+                        vehicleCameraSensitivity,
+                        -1.1f,
+                        1.0f);
+            }
+            else
+            {
+                _interiorCameraYawOffsetRadians =
+                    Math.Clamp(
+                        _interiorCameraYawOffsetRadians +
+                        deltaX *
+                        vehicleCameraSensitivity,
+                        -3.0f,
+                        3.0f);
+
+                _interiorCameraPitchOffsetRadians =
+                    Math.Clamp(
+                        _interiorCameraPitchOffsetRadians -
+                        deltaY *
+                        vehicleCameraSensitivity,
+                        -1.35f,
+                        1.35f);
+            }
+
+            return;
+        }
 
         if (_freeCameraDragButton ==
             MouseButtons.Middle)
@@ -7503,6 +7583,23 @@ public sealed class D3D11RenderWindow : Form
 
         if (_driveMode)
         {
+            if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Exterior)
+            {
+                var steps =
+                    e.Delta /
+                    120.0f;
+
+                _exteriorCameraDistanceScale =
+                    Math.Clamp(
+                        _exteriorCameraDistanceScale *
+                        MathF.Pow(
+                            0.90f,
+                            steps),
+                        0.35f,
+                        4.0f);
+            }
+
             return;
         }
 
@@ -7910,7 +8007,7 @@ public sealed class D3D11RenderWindow : Form
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              $"{driveInputMode} · S views · F1/F2/F3/F4 cameras · ←/→ perspectives · Insert/Home hold · P pause · C/Space reset · Shift+Z status · D/N/R · E/M · Tab clutch"
+              $"{driveInputMode} · RMB drag look/orbit · F3 wheel zoom · S views · F1/F2/F3/F4 cameras · ←/→ perspectives · C/Space reset · P pause · D/N/R · E/M · Tab clutch"
             : $"{pauseState}FREE CAM · RMB look · MMB pan · wheel zoom · Ctrl+wheel speed · unbound WASD/QE optional · S views · F1/F2/F3/F4 cameras · C reset";
 
         control +=
