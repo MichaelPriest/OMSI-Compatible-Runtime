@@ -198,6 +198,13 @@ public sealed class OmsiScriptRuntime
         }
     }
 
+    public bool HasTrigger(
+        string name) =>
+        !string.IsNullOrWhiteSpace(
+            name) &&
+        _catalog.Program.Triggers.ContainsKey(
+            name);
+
     public void ExecuteTrigger(
         string name)
     {
