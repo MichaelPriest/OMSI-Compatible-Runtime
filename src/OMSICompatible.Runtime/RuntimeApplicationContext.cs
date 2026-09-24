@@ -866,6 +866,20 @@ internal sealed class RuntimeApplicationContext :
                             ?? Array.Empty<
                                 RuntimeSplineSurfaceInfo>();
 
+                        var paths =
+                            asset?.Paths
+                                .Select(
+                                    static path =>
+                                        new RuntimeSplinePathInfo(
+                                            path.Type,
+                                            path.X,
+                                            path.Z,
+                                            path.Width,
+                                            path.Direction))
+                                .ToArray()
+                            ?? Array.Empty<
+                                RuntimeSplinePathInfo>();
+
                         return new RuntimeSplineInfo(
                             spline.Tile.X,
                             spline.Tile.Y,
@@ -877,7 +891,8 @@ internal sealed class RuntimeApplicationContext :
                             spline.RadiusMeters,
                             spline.GradientStartPercent,
                             spline.GradientEndPercent,
-                            surfaces);
+                            surfaces,
+                            paths);
                     })
                 .ToArray();
 
