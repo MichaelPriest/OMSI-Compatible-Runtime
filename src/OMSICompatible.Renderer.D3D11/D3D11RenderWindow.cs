@@ -4957,7 +4957,8 @@ public sealed class D3D11RenderWindow : Form
 
         _omsiAudio?.Update(
             _scriptRuntime,
-            IsInteriorSoundView());
+            IsInteriorSoundView(),
+            _vehicle.EngineRunning);
 
         UpdateVehicleAnimationStates(
             deltaSeconds);
@@ -5590,6 +5591,12 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
+        // A freshly spawned OMSI bus starts electrically off, engine off,
+        // neutral and with the parking brake applied. Some add-on init
+        // scripts leave engine/electrical variables non-zero; normalize the
+        // host-owned state before audio and the first frame are evaluated.
+        WriteVehicleControlStateToScripts();
+
         WriteVehicleRuntimeStateDiagnostics();
     }
 
@@ -5749,7 +5756,37 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _scriptRuntime.ExecuteFrame();
-        SynchronizeHostVehicleStateFromScripts();
+        WriteVehicleControlStateToScripts();
+    }
+
+    private void WriteVehicleControlStateToScripts()
+    {
+        if (_scriptRuntime is null)
+        {
+            return;
+        }
+
+        var electrical =
+            _vehicle.ElectricalSystemEnabled
+                ? 1.0
+                : 0.0;
+
+        _scriptRuntime.SetLocal(
+            "elec_busbar_main",
+            electrical);
+        _scriptRuntime.SetLocal(
+            "elec_busbar_main_sw",
+            electrical);
+        _scriptRuntime.SetLocal(
+            "engine_on",
+            _vehicle.EngineRunning
+                ? 1.0
+                : 0.0);
+        _scriptRuntime.SetLocal(
+            "bremse_feststell",
+            _vehicle.ParkingBrakeEngaged
+                ? 1.0
+                : 0.0);
     }
 
     private void UpdateScriptHostVariables(
@@ -5797,14 +5834,14 @@ public sealed class D3D11RenderWindow : Form
             "Velocity_Ground",
             _vehicle.SpeedKph);
 
-        // Runtime world yaw uses positive values for a right turn,
-        // while OMSI's built-in axle animation variables use the opposite
-        // sign convention. Inverting here keeps the bus path and the
-        // visible steering wheel/front wheels synchronized.
+        // Feed the steering angle with the same left/right sign used
+        // by the driving input. model.cfg animation deltas already define
+        // each mesh's own rotation direction, so host-side inversion makes
+        // steering wheels and axle meshes turn the wrong way on many buses.
         var omsiSteeringLeft =
-            -_vehicle.FrontLeftSteeringRadians;
+            _vehicle.FrontLeftSteeringRadians;
         var omsiSteeringRight =
-            -_vehicle.FrontRightSteeringRadians;
+            _vehicle.FrontRightSteeringRadians;
 
         _scriptRuntime.SetLocal(
             "Axle_Steering_0_L",
@@ -5863,8 +5900,21 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        var freeCameraMovementKey =
+            !_driveMode &&
+            e.KeyCode is
+                Keys.W or
+                Keys.A or
+                Keys.S or
+                Keys.D or
+                Keys.Q or
+                Keys.E or
+                Keys.ShiftKey or
+                Keys.ControlKey;
+
         var matchedOmsiBinding =
             !_vehiclePreviewMode &&
+            !freeCameraMovementKey &&
             DispatchOmsiKeyboardKeyDown(
                 e);
 
@@ -6465,6 +6515,33 @@ public sealed class D3D11RenderWindow : Form
                     DisableMouseDriveMode();
                 }
 
+                if (_windowInfo.Vehicle is not null)
+                {
+                    var freeCameraPosition =
+                        _vehicle.GetChaseCameraPosition(
+                            _windowInfo.Vehicle
+                                .OutsideCameraCenter);
+
+                    var freeCameraTarget =
+                        _vehicle.Position +
+                        new Vector3(
+                            0.0f,
+                            1.6f,
+                            0.0f);
+
+                    _camera.SetLookAt(
+                        freeCameraPosition,
+                        freeCameraTarget,
+                        moveSpeed:
+                            Math.Clamp(
+                                12.0f +
+                                Math.Abs(
+                                    _vehicle.SpeedMetersPerSecond) *
+                                2.0f,
+                                8.0f,
+                                80.0f));
+                }
+
                 _driveMode =
                     false;
                 break;
@@ -6852,12 +6929,11 @@ public sealed class D3D11RenderWindow : Form
         var centerY =
             ClientSize.Height * 0.5f;
 
-        // OMSI mouse drive is mirrored relative to screen X in the
-        // vehicle coordinate system: moving the cross to the left
-        // must turn the bus left, and vice-versa.
+        // Screen X follows steering direction: moving the cross
+        // left steers left; moving it right steers right.
         var horizontal =
             Math.Clamp(
-                (centerX - location.X) /
+                (location.X - centerX) /
                 halfWidth,
                 -1.0f,
                 1.0f);
