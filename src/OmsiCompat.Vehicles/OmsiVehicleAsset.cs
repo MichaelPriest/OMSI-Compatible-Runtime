@@ -84,7 +84,8 @@ public sealed record OmsiVehicleAsset(
     OmsiBusInfo Bus,
     IReadOnlyList<OmsiVehicleMeshAsset> Meshes,
     OmsiDriverPosition? DriverPosition,
-    IReadOnlyList<OmsiVehicleTextTexture> TextTextures)
+    IReadOnlyList<OmsiVehicleTextTexture> TextTextures,
+    int SectionCount = 1)
 {
     public int RenderableMeshCount =>
         Meshes.Count(static mesh => mesh.IsRenderable);
