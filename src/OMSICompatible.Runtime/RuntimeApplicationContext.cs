@@ -1281,6 +1281,39 @@ internal sealed class RuntimeApplicationContext :
                 entryPoint.WorldZ,
                 -entryPoint.HeadingDegrees);
 
+        var runtimeAiCatalog =
+            new RuntimeAiCatalogInfo(
+                world.AiCatalog.MovingVehicles
+                    .Select(
+                        static item =>
+                            new RuntimeAiVehicleDefinitionInfo(
+                                item.GroupName,
+                                item.DeclaredPath,
+                                item.ResolvedPath,
+                                item.Weight))
+                    .ToArray(),
+                world.AiCatalog.Humans
+                    .Select(
+                        static item =>
+                            new RuntimeAiFileReferenceInfo(
+                                item.DeclaredPath,
+                                item.ResolvedPath))
+                    .ToArray(),
+                world.AiCatalog.Drivers
+                    .Select(
+                        static item =>
+                            new RuntimeAiFileReferenceInfo(
+                                item.DeclaredPath,
+                                item.ResolvedPath))
+                    .ToArray(),
+                world.AiCatalog.ParkedVehicles
+                    .Select(
+                        static item =>
+                            new RuntimeAiFileReferenceInfo(
+                                item.DeclaredPath,
+                                item.ResolvedPath))
+                    .ToArray());
+
         return new RuntimeWindowInfo(
             world.Name,
             world.Tiles.Count,
@@ -1294,6 +1327,7 @@ internal sealed class RuntimeApplicationContext :
             runtimeObjects,
             runtimeSceneryAssets,
             runtimeGroundTextures,
+            runtimeAiCatalog,
             runtimeVehicle,
             runtimeSpawn);
     }
