@@ -26,6 +26,11 @@ internal sealed class RuntimeDriveVehicle
 
     private RuntimeTerrainSampler _terrain;
     private readonly float _wheelBaseMeters;
+    private readonly float _frontAxleLongitudinalMeters;
+    private readonly float _rearAxleLongitudinalMeters;
+    private readonly float _rotationPointLongitudinalMeters;
+    private readonly float _maximumCurvaturePerMeter;
+    private readonly float _steeringAxleDistanceMeters;
     private readonly float _maximumSteeringRadians;
     private readonly float _massKilograms;
     private readonly float _centerOfGravityHeightMeters;
@@ -55,6 +60,42 @@ internal sealed class RuntimeDriveVehicle
                     DefaultWheelBaseMeters),
                 1.5f,
                 12.0f);
+
+        _frontAxleLongitudinalMeters =
+            Math.Clamp(
+                (float)(physics?.FrontAxleLongitudinalMeters ??
+                    (_wheelBaseMeters * 0.5f)),
+                -12.0f,
+                12.0f);
+
+        _rearAxleLongitudinalMeters =
+            Math.Clamp(
+                (float)(physics?.RearAxleLongitudinalMeters ??
+                    (-_wheelBaseMeters * 0.5f)),
+                -12.0f,
+                12.0f);
+
+        _rotationPointLongitudinalMeters =
+            Math.Clamp(
+                (float)(physics?.RotationPointLongitudinalMeters ??
+                    _rearAxleLongitudinalMeters),
+                -12.0f,
+                12.0f);
+
+        _maximumCurvaturePerMeter =
+            Math.Clamp(
+                (float)Math.Abs(
+                    physics?.InverseMinimumTurnRadius ??
+                    0.0),
+                0.0f,
+                1.0f);
+
+        _steeringAxleDistanceMeters =
+            Math.Max(
+                Math.Abs(
+                    _frontAxleLongitudinalMeters -
+                    _rotationPointLongitudinalMeters),
+                0.75f);
 
         var steeringDegrees =
             Math.Clamp(
@@ -772,14 +813,21 @@ internal sealed class RuntimeDriveVehicle
             SteeringInput *
             _maximumSteeringRadians;
 
+        var requestedCurvature =
+            _maximumCurvaturePerMeter >
+                0.000001f
+                ? SteeringInput *
+                  _maximumCurvaturePerMeter
+                : MathF.Tan(
+                      steeringAngle) /
+                  _steeringAxleDistanceMeters;
+
         var targetYawRate =
             Math.Abs(
                 SpeedMetersPerSecond) >
             0.02f
-                ? MathF.Tan(
-                      steeringAngle) *
-                  SpeedMetersPerSecond /
-                  _wheelBaseMeters
+                ? requestedCurvature *
+                  SpeedMetersPerSecond
                 : 0.0f;
 
         var lateralGripLimit =
@@ -819,25 +867,68 @@ internal sealed class RuntimeDriveVehicle
                     deltaSeconds);
         }
 
-        HeadingRadians +=
+        var previousHeading =
+            HeadingRadians;
+
+        var nextHeading =
+            previousHeading +
             _yawRateRadiansPerSecond *
             deltaSeconds;
 
-        var forward =
+        var previousForward =
             new Vector3(
                 MathF.Sin(
-                    HeadingRadians),
+                    previousHeading),
                 0.0f,
                 MathF.Cos(
-                    HeadingRadians));
+                    previousHeading));
+
+        var nextForward =
+            new Vector3(
+                MathF.Sin(
+                    nextHeading),
+                0.0f,
+                MathF.Cos(
+                    nextHeading));
+
+        var middleHeading =
+            previousHeading +
+            _yawRateRadiansPerSecond *
+            deltaSeconds *
+            0.5f;
+
+        var middleForward =
+            new Vector3(
+                MathF.Sin(
+                    middleHeading),
+                0.0f,
+                MathF.Cos(
+                    middleHeading));
 
         var travelledMeters =
             SpeedMetersPerSecond *
             deltaSeconds;
 
-        Position +=
-            forward *
+        // OMSI's [rot_pnt_long] is the longitudinal body rotation point.
+        // Integrate that point along the road and reconstruct the model
+        // origin after yawing; rotating the model around its origin makes
+        // long/articulated buses visibly cut corners.
+        var rotationPoint =
+            Position +
+            previousForward *
+            _rotationPointLongitudinalMeters;
+
+        rotationPoint +=
+            middleForward *
             travelledMeters;
+
+        HeadingRadians =
+            nextHeading;
+
+        Position =
+            rotationPoint -
+            nextForward *
+            _rotationPointLongitudinalMeters;
 
         _wheelRotationRadians +=
             travelledMeters /
@@ -889,10 +980,6 @@ internal sealed class RuntimeDriveVehicle
                 0.0f,
                 -forward.X);
 
-        var halfWheelBase =
-            _wheelBaseMeters *
-            0.5f;
-
         var halfTrack =
             _trackWidthMeters *
             0.5f;
@@ -900,12 +987,12 @@ internal sealed class RuntimeDriveVehicle
         var front =
             Position +
             forward *
-            halfWheelBase;
+            _frontAxleLongitudinalMeters;
 
         var rear =
-            Position -
+            Position +
             forward *
-            halfWheelBase;
+            _rearAxleLongitudinalMeters;
 
         if (_terrain.TrySample(
                 front.X,
@@ -920,7 +1007,11 @@ internal sealed class RuntimeDriveVehicle
                 MathF.Atan2(
                     frontHeight -
                     rearHeight,
-                    _wheelBaseMeters);
+                    Math.Max(
+                        Math.Abs(
+                            _frontAxleLongitudinalMeters -
+                            _rearAxleLongitudinalMeters),
+                        0.5f));
         }
 
         var rightPoint =
@@ -1023,12 +1114,20 @@ internal sealed class RuntimeDriveVehicle
                 centerAngle);
 
         var centerRadius =
-            _wheelBaseMeters /
-            Math.Max(
-                Math.Abs(
-                    MathF.Tan(
-                        centerAngle)),
-                0.0001f);
+            _maximumCurvaturePerMeter >
+                0.000001f
+                ? 1.0f /
+                  Math.Max(
+                      Math.Abs(
+                          SteeringInput) *
+                      _maximumCurvaturePerMeter,
+                      0.0001f)
+                : _steeringAxleDistanceMeters /
+                  Math.Max(
+                      Math.Abs(
+                          MathF.Tan(
+                              centerAngle)),
+                      0.0001f);
 
         var halfTrack =
             _trackWidthMeters *
@@ -1049,7 +1148,7 @@ internal sealed class RuntimeDriveVehicle
 
         return sign *
                MathF.Atan(
-                   _wheelBaseMeters /
+                   _steeringAxleDistanceMeters /
                    wheelRadius);
     }
 
@@ -1057,13 +1156,14 @@ internal sealed class RuntimeDriveVehicle
         bool front,
         bool left)
     {
+        var axleLongitudinal =
+            front
+                ? _frontAxleLongitudinalMeters
+                : _rearAxleLongitudinalMeters;
+
         var pitch =
-            _bodyPitchRadians *
-            _wheelBaseMeters *
-            0.5f *
-            (front
-                ? -1.0f
-                : 1.0f);
+            -_bodyPitchRadians *
+            axleLongitudinal;
 
         var roll =
             _bodyRollRadians *
