@@ -331,6 +331,7 @@ public sealed record RuntimeVehiclePhysicsInfo(
     double? CenterOfGravityHeightMeters = null,
     double? RollingResistanceNewtons = null,
     double? TrackWidthMeters = null,
+    double? AverageWheelDiameterMeters = null,
     double? SuspensionSpringKilonewtonsPerMeter = null,
     double? SuspensionDamperKilonewtonSecondsPerMeter = null,
     double? MomentOfInertiaYawTonneSquareMeters = null,
