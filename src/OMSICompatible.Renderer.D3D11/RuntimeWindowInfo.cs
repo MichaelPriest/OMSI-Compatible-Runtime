@@ -257,6 +257,30 @@ public sealed record RuntimeSceneryAssetInfo(
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
     RuntimeTreeInfo? Tree);
 
+public sealed record RuntimeAiFileReferenceInfo(
+    string DeclaredPath,
+    string? ResolvedPath);
+
+public sealed record RuntimeAiVehicleDefinitionInfo(
+    string GroupName,
+    string DeclaredPath,
+    string? ResolvedPath,
+    double Weight);
+
+public sealed record RuntimeAiCatalogInfo(
+    IReadOnlyList<RuntimeAiVehicleDefinitionInfo> MovingVehicles,
+    IReadOnlyList<RuntimeAiFileReferenceInfo> Humans,
+    IReadOnlyList<RuntimeAiFileReferenceInfo> Drivers,
+    IReadOnlyList<RuntimeAiFileReferenceInfo> ParkedVehicles)
+{
+    public static RuntimeAiCatalogInfo Empty { get; } =
+        new(
+            Array.Empty<RuntimeAiVehicleDefinitionInfo>(),
+            Array.Empty<RuntimeAiFileReferenceInfo>(),
+            Array.Empty<RuntimeAiFileReferenceInfo>(),
+            Array.Empty<RuntimeAiFileReferenceInfo>());
+}
+
 public sealed record RuntimeSpawnInfo(
     string Name,
     double X,
@@ -341,5 +365,6 @@ public sealed record RuntimeWindowInfo(
     IReadOnlyList<RuntimeObjectInfo> Objects,
     IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> SceneryAssets,
     IReadOnlyList<RuntimeGroundTextureInfo> GroundTextures,
+    RuntimeAiCatalogInfo AiCatalog,
     RuntimeVehicleInfo? Vehicle,
     RuntimeSpawnInfo? Spawn);
