@@ -32,7 +32,9 @@ internal enum RuntimeOmsiHostInputAction
     InteriorViewNext,
     InteriorViewPrevious,
     ResetDriverView,
-    ControllerToggle
+    ControllerToggle,
+    PauseToggle,
+    ResetAllViews
 }
 
 internal sealed record RuntimeOmsiKeyboardBinding(
@@ -251,6 +253,11 @@ internal static class RuntimeOmsiKeyboardBindings
                     RuntimeOmsiHostInputAction.InteriorViewPrevious,
                 Keys.K =>
                     RuntimeOmsiHostInputAction.ControllerToggle,
+                Keys.P =>
+                    RuntimeOmsiHostInputAction.PauseToggle,
+                Keys.C or
+                Keys.Space =>
+                    RuntimeOmsiHostInputAction.ResetAllViews,
                 _ =>
                     default
             };
@@ -280,7 +287,10 @@ internal static class RuntimeOmsiKeyboardBindings
             Keys.Home or
             Keys.Right or
             Keys.Left or
-            Keys.K;
+            Keys.K or
+            Keys.P or
+            Keys.C or
+            Keys.Space;
     }
 
     private static IReadOnlyList<ParsedBinding>
