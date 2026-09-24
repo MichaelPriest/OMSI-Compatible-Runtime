@@ -29,6 +29,7 @@ public static class OmsiVehicleModelReader
         var overrides = new List<OmsiVehicleMaterialOverride>();
         var materialChangeGroupIndex = -1;
         MaterialBuilder? material = null;
+        MaterialBuilder? materialChangeBase = null;
         AnimationBuilder? animation = null;
 
         void CommitMaterial()
@@ -38,18 +39,11 @@ public static class OmsiVehicleModelReader
                 return;
             }
 
-            // OMSI stores matl_change as a change set. Only matl_item
-            // entries are selectable variants; the declaration itself is
-            // not an item.
-            if (string.IsNullOrWhiteSpace(
-                    material.MaterialChangeVariable) ||
-                material.MaterialChangeItemIndex > 0)
-            {
-                overrides.Add(
-                    material.Build());
-            }
+            overrides.Add(
+                material.Build());
 
             material = null;
+            materialChangeBase = null;
         }
 
         void CommitAnimation()
@@ -103,6 +97,7 @@ public static class OmsiVehicleModelReader
                 new List<OmsiVehicleLightEffect>();
             overrides = new List<OmsiVehicleMaterialOverride>();
             materialChangeGroupIndex = -1;
+            materialChangeBase = null;
         }
 
         foreach (var section in document.Sections)
@@ -264,6 +259,8 @@ public static class OmsiVehicleModelReader
                     material = new MaterialBuilder(
                         values[0].Trim().Trim('"'),
                         materialIndex);
+                    materialChangeBase =
+                        null;
                 }
 
                 continue;
@@ -303,6 +300,9 @@ public static class OmsiVehicleModelReader
                             MaterialChangeItemIndex =
                                 0
                         };
+
+                    materialChangeBase =
+                        null;
                 }
 
                 continue;
@@ -685,18 +685,40 @@ public static class OmsiVehicleModelReader
                 if (!string.IsNullOrWhiteSpace(
                         material.MaterialChangeVariable))
                 {
-                    // Native OMSI clones the current material when a
-                    // matl_item is encountered. The script variable then
-                    // selects item 1, 2, ... while value 0 keeps the base
-                    // material. Preserve that inheritance here.
-                    if (material.MaterialChangeItemIndex > 0)
+                    if (material.MaterialChangeItemIndex == 0)
                     {
+                        // Everything before the first [matl_item] is the
+                        // common OMSI material state and applies to every
+                        // discrete state, including variable value 0.
+                        materialChangeBase =
+                            material.CloneForMaterialChangeItem(
+                                0);
+
+                        overrides.Add(
+                            materialChangeBase.Build());
+
+                        material =
+                            materialChangeBase.CloneForMaterialChangeItem(
+                                1);
+                    }
+                    else
+                    {
+                        // Each subsequent [matl_item] starts again from the
+                        // common base. Item-specific alpha/nightmap/etc. must
+                        // never leak into the following item.
+                        var nextItem =
+                            material.MaterialChangeItemIndex +
+                            1;
+
                         overrides.Add(
                             material.Build());
-                    }
 
-                    material =
-                        material.CloneForNextMaterialChangeItem();
+                        material =
+                            (materialChangeBase ??
+                             material)
+                                .CloneForMaterialChangeItem(
+                                    nextItem);
+                    }
                 }
 
                 continue;
@@ -1622,7 +1644,8 @@ public static class OmsiVehicleModelReader
         public int MaterialChangeGroupIndex { get; set; } = -1;
         public int MaterialChangeItemIndex { get; set; }
 
-        public MaterialBuilder CloneForNextMaterialChangeItem()
+        public MaterialBuilder CloneForMaterialChangeItem(
+            int itemIndex)
         {
             var clone =
                 new MaterialBuilder(
@@ -1650,7 +1673,9 @@ public static class OmsiVehicleModelReader
                     TextureCoordinateYVariable = TextureCoordinateYVariable,
                     MaterialChangeGroupIndex = MaterialChangeGroupIndex,
                     MaterialChangeItemIndex =
-                        MaterialChangeItemIndex + 1
+                        Math.Max(
+                            itemIndex,
+                            0)
                 };
 
             clone.FreeTextures.AddRange(
