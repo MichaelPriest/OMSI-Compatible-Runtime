@@ -6206,8 +6206,8 @@ public sealed class D3D11RenderWindow : Form
         _mouseDriveBrake = 0.0f;
         _mouseDriveSteering = 0.0f;
         Capture = true;
-
-        Cursor.Hide();
+        Cursor =
+            Cursors.Cross;
 
         var center =
             new System.Drawing.Point(
@@ -6230,8 +6230,8 @@ public sealed class D3D11RenderWindow : Form
         _mouseDriveBrake = 0.0f;
         _mouseDriveSteering = 0.0f;
         Capture = false;
-
-        Cursor.Show();
+        Cursor =
+            Cursors.Default;
     }
 
     private void UpdateOmsiMouseAxes(
@@ -6251,9 +6251,12 @@ public sealed class D3D11RenderWindow : Form
         var centerY =
             ClientSize.Height * 0.5f;
 
-        _mouseDriveSteering =
+        // OMSI mouse drive is mirrored relative to screen X in the
+        // vehicle coordinate system: moving the cross to the left
+        // must turn the bus left, and vice-versa.
+        var horizontal =
             Math.Clamp(
-                (location.X - centerX) /
+                (centerX - location.X) /
                 halfWidth,
                 -1.0f,
                 1.0f);
@@ -6265,17 +6268,28 @@ public sealed class D3D11RenderWindow : Form
                 -1.0f,
                 1.0f);
 
-        const float deadZone = 0.05f;
+        const float deadZone =
+            0.07f;
 
-        if (Math.Abs(_mouseDriveSteering) < deadZone)
-        {
-            _mouseDriveSteering = 0.0f;
-        }
+        horizontal =
+            ApplyMouseDeadZone(
+                horizontal,
+                deadZone);
 
-        if (Math.Abs(vertical) < deadZone)
-        {
-            vertical = 0.0f;
-        }
+        vertical =
+            ApplyMouseDeadZone(
+                vertical,
+                deadZone);
+
+        // Slight response curve gives finer control around the centre
+        // without taking away full lock / full pedal near the edges.
+        _mouseDriveSteering =
+            MathF.CopySign(
+                MathF.Pow(
+                    Math.Abs(
+                        horizontal),
+                    1.28f),
+                horizontal);
 
         _mouseDriveAccelerator =
             Math.Max(
@@ -6286,6 +6300,29 @@ public sealed class D3D11RenderWindow : Form
             Math.Max(
                 -vertical,
                 0.0f);
+    }
+
+    private static float ApplyMouseDeadZone(
+        float value,
+        float deadZone)
+    {
+        var magnitude =
+            Math.Abs(
+                value);
+
+        if (magnitude <=
+            deadZone)
+        {
+            return 0.0f;
+        }
+
+        return MathF.CopySign(
+            Math.Clamp(
+                (magnitude - deadZone) /
+                (1.0f - deadZone),
+                0.0f,
+                1.0f),
+            value);
     }
 
     private void ConfigureVehiclePreviewBounds()
