@@ -650,55 +650,6 @@ internal sealed class RuntimeOmsiAudioHost :
         _output.Dispose();
     }
 
-    private static bool IsEngineDependentLoop(
-        RuntimeOmsiSoundDefinition sound)
-    {
-        static bool LooksLikeEngineToken(
-            string? value)
-        {
-            if (string.IsNullOrWhiteSpace(
-                    value))
-            {
-                return false;
-            }
-
-            return
-                value.Contains(
-                    "engine",
-                    StringComparison.OrdinalIgnoreCase) ||
-                value.Contains(
-                    "motor",
-                    StringComparison.OrdinalIgnoreCase) ||
-                value.Contains(
-                    "leerlauf",
-                    StringComparison.OrdinalIgnoreCase) ||
-                value.Contains(
-                    "standgas",
-                    StringComparison.OrdinalIgnoreCase);
-        }
-
-        if (LooksLikeEngineToken(
-                sound.Condition?.Variable) ||
-            sound.VolumeCurves.Any(
-                curve =>
-                    LooksLikeEngineToken(
-                        curve.Variable)))
-        {
-            return true;
-        }
-
-        var fileName =
-            Path.GetFileNameWithoutExtension(
-                sound.FilePath);
-
-        return
-            LooksLikeEngineToken(
-                fileName) ||
-            fileName.Contains(
-                "idle",
-                StringComparison.OrdinalIgnoreCase);
-    }
-
     private void UpdateLoop(
         RuntimeOmsiSoundDefinition sound,
         float volume,
