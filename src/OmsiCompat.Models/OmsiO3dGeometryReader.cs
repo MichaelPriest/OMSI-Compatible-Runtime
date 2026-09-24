@@ -111,14 +111,20 @@ public static class OmsiO3dGeometryReader
                         uvs =
                             new float[checked((int)vertexCount * 2)];
 
-                        var vertexDecoder =
-                            encryptedVertices
-                                ? new EncryptedVertexDecoder(
-                                    protectionKey,
-                                    version,
-                                    extendedOptions,
-                                    vertexCount)
-                                : null;
+                        OmsiO3dProtectedVertexDecoder?
+                            vertexDecoder = null;
+
+                        if (encryptedVertices &&
+                            !OmsiO3dProtectedVertexDecoder.TryCreate(
+                                version,
+                                protectionKey,
+                                (extendedOptions & 0x02) != 0,
+                                vertexCount,
+                                out vertexDecoder))
+                        {
+                            return OmsiO3dGeometry.Error(
+                                "protectedVertexCountUnsupported");
+                        }
 
                         for (var index = 0U;
                              index < vertexCount;
@@ -339,209 +345,6 @@ public static class OmsiO3dGeometryReader
         {
             return OmsiO3dGeometry.Error(
                 "accessDenied");
-        }
-    }
-
-    private sealed class EncryptedVertexDecoder
-    {
-        private readonly uint _productId;
-        private readonly bool _hasProductId;
-        private readonly bool _alternateSeed;
-        private readonly ushort _vertexCountSalt;
-
-        private ushort _productSalt;
-        private byte _salt;
-
-        public EncryptedVertexDecoder(
-            uint productId,
-            byte version,
-            byte options,
-            uint vertexCount)
-        {
-            _hasProductId =
-                productId != 0x0000FFFFu;
-
-            _productId =
-                _hasProductId
-                    ? productId
-                    : 0u;
-
-            _alternateSeed =
-                (options & 0x02) != 0;
-
-            _vertexCountSalt =
-                unchecked(
-                    (ushort)(
-                        vertexCount %
-                        65000u));
-
-            if (!_hasProductId)
-            {
-                _productSalt = 0;
-                return;
-            }
-
-            var initial =
-                unchecked(
-                    (ushort)(
-                        productId +
-                        version -
-                        4u));
-
-            _productSalt =
-                unchecked(
-                    (ushort)(
-                        (initial +
-                         (_alternateSeed
-                             ? 381u
-                             : 0u)) %
-                        65000u));
-        }
-
-        public void Decode(
-            ref float x,
-            ref float y,
-            ref float z,
-            ref float normalX,
-            ref float normalY,
-            ref float normalZ,
-            ref float u,
-            ref float v)
-        {
-            if (!_hasProductId)
-            {
-                return;
-            }
-
-            if (_productId == 0)
-            {
-                _productSalt =
-                    (ushort)(
-                        _alternateSeed
-                            ? 304
-                            : 0);
-            }
-
-            MixSalt();
-
-            var fractionalX =
-                x - MathF.Truncate(x);
-            var fractionalY =
-                y - MathF.Truncate(y);
-            var fractionalZ =
-                z - MathF.Truncate(z);
-
-            var nextSalt =
-                (int)(
-                    MathF.Abs(
-                        fractionalX *
-                        fractionalY *
-                        fractionalZ) *
-                    600.0f);
-
-            _salt =
-                unchecked(
-                    (byte)(
-                        nextSalt &
-                        0xFF));
-
-            if (_productSalt >= 1000)
-            {
-                if (_productSalt >= 3000)
-                {
-                    if (_productSalt > 7000)
-                    {
-                        (y, z) =
-                            (z, y);
-                    }
-                }
-                else
-                {
-                    (x, z) =
-                        (z, x);
-                }
-            }
-            else
-            {
-                (x, y) =
-                    (y, x);
-            }
-
-            if ((_productSalt & 3) == 0)
-            {
-                normalX =
-                    -normalX;
-            }
-
-            if (_productSalt % 6 == 0)
-            {
-                normalY =
-                    -normalY;
-            }
-
-            if (_productSalt % 7 == 0)
-            {
-                normalZ =
-                    -normalZ;
-            }
-
-            if (_productSalt >= 600)
-            {
-                if (_productSalt > 4500)
-                {
-                    (normalX, normalY) =
-                        (normalY, normalX);
-                }
-            }
-            else
-            {
-                (normalY, normalZ) =
-                    (normalZ, normalY);
-            }
-
-            if (_productSalt % 5 == 0)
-            {
-                var uvSalt =
-                    _productSalt %
-                    100u;
-
-                u -=
-                    uvSalt *
-                    uvSalt /
-                    10000.0f;
-            }
-
-            if (_productSalt % 3 == 0)
-            {
-                var uvSalt =
-                    _productSalt %
-                    50u;
-
-                v -=
-                    uvSalt *
-                    uvSalt /
-                    2500.0f;
-            }
-        }
-
-        private void MixSalt()
-        {
-            var mixed =
-                ((int)_salt *
-                 _vertexCountSalt +
-                 _vertexCountSalt *
-                 _productSalt) %
-                8000;
-
-            _productSalt =
-                unchecked(
-                    (ushort)mixed);
-
-            _salt =
-                unchecked(
-                    (byte)(
-                        mixed /
-                        8000));
         }
     }
 
