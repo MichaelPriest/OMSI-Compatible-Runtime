@@ -219,6 +219,11 @@ public sealed class OmsiScriptRuntime
                 _locals,
                 name);
 
+    public bool HasLocalVariable(
+        string name) =>
+        _catalog.NumericVariables.Contains(
+            name);
+
     public void SetLocal(
         string name,
         double value)
