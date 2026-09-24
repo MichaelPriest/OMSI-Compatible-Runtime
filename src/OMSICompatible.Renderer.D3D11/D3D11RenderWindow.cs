@@ -379,7 +379,8 @@ public sealed class D3D11RenderWindow : Form
             RuntimeObjectGeometryBuilder.Build(
                 _windowInfo.Tiles,
                 _windowInfo.Objects,
-                _windowInfo.SceneryAssets);
+                _windowInfo.SceneryAssets,
+                useNativeOmsiModelSpace: true);
 
         if (_objectGeometry.Vertices.Length > 0)
         {
@@ -1019,7 +1020,8 @@ public sealed class D3D11RenderWindow : Form
             RuntimeObjectGeometryBuilder.Build(
                 _windowInfo.Tiles,
                 _windowInfo.Objects,
-                _windowInfo.SceneryAssets);
+                _windowInfo.SceneryAssets,
+                useNativeOmsiModelSpace: true);
 
         if (_objectGeometry.Vertices.Length == 0 &&
             _splineGeometry.Vertices.Length == 0 &&
