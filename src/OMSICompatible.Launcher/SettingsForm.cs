@@ -1534,7 +1534,7 @@ internal sealed class SettingsForm : Form
             "Freio",
             "Acelerador",
             "Embreagem",
-            "Função 4");
+            "Acelerador + freio");
 
         _controllerAxisGrid.Columns.Add(
             function);
@@ -1917,7 +1917,7 @@ internal sealed class SettingsForm : Form
             3 =>
                 "Embreagem",
             4 =>
-                "Função 4",
+                "Acelerador + freio",
             _ =>
                 "<nenhuma>"
         };
@@ -1934,7 +1934,7 @@ internal sealed class SettingsForm : Form
                 2,
             "Embreagem" =>
                 3,
-            "Função 4" =>
+            "Acelerador + freio" =>
                 4,
             _ =>
                 -1
