@@ -7595,11 +7595,89 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        var traceStartup =
+            IsVehicleStartupTraceTrigger(
+                trigger);
+
+        var before =
+            traceStartup
+                ? DescribeVehicleStartupScriptState()
+                : null;
+
         _scriptRuntime?.ExecuteTrigger(
             trigger);
 
+        if (traceStartup)
+        {
+            AppendVehicleStartupTrace(
+                trigger,
+                before ??
+                    "<no-script-runtime>",
+                DescribeVehicleStartupScriptState());
+        }
+
         TriggerOmsiAudio(
             trigger);
+    }
+
+    private static bool IsVehicleStartupTraceTrigger(
+        string trigger) =>
+        trigger.StartsWith(
+            "kw_m_engine",
+            StringComparison.OrdinalIgnoreCase) ||
+        trigger.Contains(
+            "batterietrennschalter",
+            StringComparison.OrdinalIgnoreCase) ||
+        trigger.StartsWith(
+            "automatic_",
+            StringComparison.OrdinalIgnoreCase);
+
+    private string DescribeVehicleStartupScriptState()
+    {
+        if (_scriptRuntime is null)
+        {
+            return "<no-script-runtime>";
+        }
+
+        static string Value(
+            OmsiScriptRuntime runtime,
+            string name) =>
+            runtime.HasLocalVariable(
+                name)
+                ? runtime.GetLocal(
+                        name)
+                    .ToString(
+                        "0.###",
+                        System.Globalization.CultureInfo.InvariantCulture)
+                : "<missing>";
+
+        return
+            $"main={Value(_scriptRuntime, "elec_busbar_main")};" +
+            $"main_sw={Value(_scriptRuntime, "elec_busbar_main_sw")};" +
+            $"gear={Value(_scriptRuntime, "antrieb_getr_gangwahl")};" +
+            $"pregear={Value(_scriptRuntime, "antrieb_getr_gangvorwahl")};" +
+            $"engine_on={Value(_scriptRuntime, "engine_on")};" +
+            $"injection={Value(_scriptRuntime, "engine_injection_on")};" +
+            $"engine_n={Value(_scriptRuntime, "engine_n")}";
+    }
+
+    private static void AppendVehicleStartupTrace(
+        string trigger,
+        string before,
+        string after)
+    {
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-startup-trace.log"),
+                $"{DateTimeOffset.Now:O} | trigger={trigger} | before={before} | after={after}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Diagnostics must never affect vehicle input.
+        }
     }
 
     private void OnScriptSoundTriggerRequested(
