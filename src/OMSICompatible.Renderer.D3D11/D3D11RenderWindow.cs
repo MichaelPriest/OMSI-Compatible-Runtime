@@ -6371,8 +6371,7 @@ public sealed class D3D11RenderWindow : Form
                     RuntimeOmsiHostInputAction.InteriorViewNext,
                 "view_interiorcam_minus" =>
                     RuntimeOmsiHostInputAction.InteriorViewPrevious,
-                "view_reset_direction" or
-                "view_reset_all_directions" =>
+                "view_reset_direction" =>
                     RuntimeOmsiHostInputAction.ResetDriverView,
                 "view_schedule" or
                 "view_set_schedule" =>
@@ -6408,7 +6407,6 @@ public sealed class D3D11RenderWindow : Form
                 "view_set_schedule" or
                 "view_ticketselling" or
                 "view_set_ticketselling" or
-                "view_reset_all_directions" or
                 "pause";
     }
 
