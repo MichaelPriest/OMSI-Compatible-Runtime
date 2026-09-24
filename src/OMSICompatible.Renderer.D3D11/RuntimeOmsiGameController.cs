@@ -66,7 +66,7 @@ internal sealed class RuntimeOmsiGameControllerHost :
 
         public IDirectInputDevice8 Device { get; }
 
-        public JoystickState State { get; } =
+        public JoystickState State { get; set; } =
             new();
 
         public bool[] PreviousButtons { get; }
@@ -422,8 +422,8 @@ internal sealed class RuntimeOmsiGameControllerHost :
                 }
             }
 
-            binding.Device.GetCurrentJoystickState(
-                ref binding.State);
+            binding.State =
+                binding.Device.GetCurrentJoystickState();
 
             return true;
         }
