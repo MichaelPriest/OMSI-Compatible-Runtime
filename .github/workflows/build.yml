@@ -129,20 +129,26 @@ jobs:
           CONTROLES OMSI - MODO DIRIGIR
           =============================
           A prioridade agora é a configuração real em Inputs/keyboard.cfg
-          e Inputs/gamectrler.cfg. Os atalhos nativos abaixo continuam como
-          fallback e para funções globais do Runtime:
+          e Inputs/gamectrler.cfg. O Runtime usa keyboard_reset.cfg para
+          reconhecer a função nativa de cada trigger padrão e aplica a
+          tecla atualmente escolhida pelo usuário em keyboard.cfg. Assim,
+          remapear um comando não executa mais o antigo atalho em paralelo.
 
+          Se os arquivos Inputs não existirem, permanece este fallback:
           Num 8       Acelerador
           Num 2       Aumentar freio de serviço
           Num +       Liberar freio
           Num 4 / 6   Direção esquerda/direita
           Num 5       Centralizar direção
+          Tab         Embreagem
           D / N / R   Marcha
           E           Sistema elétrico
           M           Motor
           Num .       Freio de estacionamento
           Num -       Freio de parada
           O           Direção pelo mouse
+          F1/F2/F3    Motorista/passageiro/exterior
+          F4          Câmera livre/mapa
 
           MODO MOUSE (O)
           ==============
@@ -153,14 +159,19 @@ jobs:
 
           DESENVOLVIMENTO / CÂMERA LIVRE
           ==============================
-          Tab         Alternar dirigir/câmera livre
-          WASD        Movimento da câmera
-          Q / E       Descer/subir
-          RMB + mouse Olhar
-          Shift       Mais rápido
-          Ctrl        Mais lento
-          R           Reenquadrar câmera livre
-          F5          Resetar veículo no modo dirigir
+          F4 / ação OMSI de mapa   Entrar na câmera livre
+          WASD                     Movimento da câmera
+          Q / E                    Descer/subir
+          RMB + mouse              Olhar
+          Shift                    Mais rápido
+          Ctrl                     Mais lento
+          Ctrl+Shift+R             Reenquadrar câmera livre
+          Ctrl+Shift+F5            Resetar veículo
+          Ctrl+Shift+F9            Alternar reflexões de diagnóstico
+
+          F5/F6/F7 e demais teclas configuradas no OMSI ficam livres para
+          seus triggers normais; não são mais capturadas pelos atalhos de
+          desenvolvimento do Runtime.
 
           ATALHOS DO LAUNCHER
           ===================
@@ -193,6 +204,8 @@ jobs:
           - Manifesto de scripts OMSI
           - VM RPN inicial em desenvolvimento
           - keyboard.cfg/.kyb executando triggers de veículo
+          - keyboard_reset.cfg usado para preservar a semântica dos comandos
+            padrão mesmo depois de remapeados pelo usuário
           - gamectrler.cfg via DirectInput com eixos e botões
           - sincronização inicial de marcha, elétrica, motor e freio de mão
             entre eventos/scripts OMSI e o estado físico do Runtime
