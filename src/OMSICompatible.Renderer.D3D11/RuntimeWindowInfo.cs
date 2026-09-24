@@ -326,7 +326,16 @@ public sealed record RuntimeReflectionCameraInfo(
 
 public sealed record RuntimeVehiclePhysicsInfo(
     double? WheelBaseMeters,
-    double? MaximumSteeringAngleDegrees);
+    double? MaximumSteeringAngleDegrees,
+    double? MassTonnes = null,
+    double? CenterOfGravityHeightMeters = null,
+    double? RollingResistanceNewtons = null,
+    double? TrackWidthMeters = null,
+    double? SuspensionSpringKilonewtonsPerMeter = null,
+    double? SuspensionDamperKilonewtonSecondsPerMeter = null,
+    double? MomentOfInertiaYawTonneSquareMeters = null,
+    double? RotationPointLongitudinalMeters = null,
+    double? InverseMinimumTurnRadius = null);
 
 public sealed record RuntimeDriverPositionInfo(
     double X,
