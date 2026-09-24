@@ -534,6 +534,48 @@ internal static class OmsiInputConfiguration
         return result;
     }
 
+    public static string AppendKeyboardEntry(
+        string text,
+        string trigger)
+    {
+        var normalized =
+            trigger.Trim();
+
+        if (normalized.Length == 0)
+        {
+            return text;
+        }
+
+        if (ParseKeyboard(
+                text)
+            .Any(
+                entry =>
+                    string.Equals(
+                        entry.Trigger,
+                        normalized,
+                        StringComparison.OrdinalIgnoreCase)))
+        {
+            return text;
+        }
+
+        var normalizedText =
+            text.TrimEnd(
+                '\r',
+                '\n');
+
+        return normalizedText +
+               Environment.NewLine +
+               Environment.NewLine +
+               "[entry]" +
+               Environment.NewLine +
+               normalized +
+               Environment.NewLine +
+               "0" +
+               Environment.NewLine +
+               "0" +
+               Environment.NewLine;
+    }
+
     public static string ApplyLineChanges(
         string text,
         IReadOnlyDictionary<int, string> changes)
