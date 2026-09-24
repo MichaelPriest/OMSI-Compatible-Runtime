@@ -89,7 +89,12 @@ public sealed record OmsiVehicleSectionAssetInfo(
     double JointZ,
     double FollowerLengthMeters,
     double MaximumYawDegrees,
-    bool Reverse);
+    bool Reverse,
+    double? MassTonnes = null,
+    double? YawInertiaTonneSquareMeters = null,
+    double? RotationPointLongitudinalMeters = null,
+    double? WheelBaseMeters = null,
+    double? RollingResistanceNewtons = null);
 
 public sealed record OmsiVehicleAsset(
     OmsiBusInfo Bus,
