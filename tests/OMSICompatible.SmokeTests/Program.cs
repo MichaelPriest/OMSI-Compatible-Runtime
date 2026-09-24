@@ -562,14 +562,21 @@ try
             "bump.bmp"),
         [0x42, 0x4D, 0x00, 0x00]);
 
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleDirectory,
+            "Preview.png"),
+        [0x89, 0x50, 0x4E, 0x47]);
+
     File.WriteAllText(
         Path.Combine(vehicleDirectory, "Synthetic.bus"),
         Lines(
             "[model]",
             @"model\model.cfg",
             "[friendlyname]",
-            "Synthetic",
+            "Synthetic Coachworks",
             "Camera Bus",
+            "Test Skin",
             "[varnamelist]",
             "2",
             @"script\engine_varlist.txt",
@@ -697,6 +704,21 @@ try
         $"Bus discovery must return only real .bus files; found {buses.Count}.");
 
     var bus = buses[0];
+
+    Require(
+        bus.Carroceria == "Synthetic Coachworks" &&
+        bus.Modelo == "Camera Bus" &&
+        bus.Skin == "Test Skin" &&
+        bus.SelectionLabel ==
+            "Synthetic Coachworks — Camera Bus — Test Skin" &&
+        !string.IsNullOrWhiteSpace(
+            bus.PreviewImagePath) &&
+        string.Equals(
+            Path.GetFileName(
+                bus.PreviewImagePath),
+            "Preview.png",
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI [friendlyname] lines must map to body/model/skin selection metadata and resolve the vehicle preview.");
 
     var vehicleAsset =
         OmsiVehicleAssetLoader.Load(
