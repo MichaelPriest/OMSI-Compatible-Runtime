@@ -1,3 +1,9 @@
+cbuffer RuntimeSky : register(b0)
+{
+    float2 SkyUvOffset;
+    float2 SkyPadding;
+};
+
 Texture2D SkyTexture : register(t0);
 SamplerState SkySampler : register(s0);
 
@@ -33,10 +39,19 @@ SkyVertexOutput VSMain(uint vertexId : SV_VertexID)
 
 float4 PSMain(SkyVertexOutput input) : SV_TARGET
 {
+    float2 skyUv =
+        float2(
+            frac(
+                input.Uv.x +
+                SkyUvOffset.x),
+            saturate(
+                input.Uv.y +
+                SkyUvOffset.y));
+
     float4 sampled =
         SkyTexture.Sample(
             SkySampler,
-            input.Uv);
+            skyUv);
 
     sampled.a = 1.0f;
 
