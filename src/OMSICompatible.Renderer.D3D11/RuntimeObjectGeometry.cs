@@ -549,17 +549,14 @@ internal static class RuntimeObjectGeometryBuilder
         var positionOffset =
             vertexIndex * 3;
 
-        // OMSI model coordinates are X=lateral, Y=forward and Z=up.
-        // Runtime coordinates are X=lateral, Y=up and Z=forward. The
-        // runtime also mirrors the OMSI X axis to keep the same handedness
-        // used by CFG/BUS cameras, mesh transforms and animation pivots.
+        // Raw O3D vertex coordinates use the Direct3D-style model
+        // convention used by OMSI's mesh files. They are not the same
+        // coordinate convention as placement/camera values from CFG/BUS.
+        // Mature O3D tooling converts raw O3D vertices to a Y-up scene by
+        // mirroring X while preserving Y/Z.
         //
-        // O3D therefore maps to (-X, Z, Y). Applying (-X, Y, Z) leaves
-        // depth in the vertical axis and height in world depth, which makes
-        // buildings look exploded and vehicle parts appear rotated.
-        //
-        // Keep legacy .x behavior separate because those files are imported
-        // through their own source convention.
+        // Keep legacy .x behavior unchanged until its source convention is
+        // independently verified; only correct the O3D path here.
         var isO3d =
             string.Equals(
                 Path.GetExtension(
@@ -572,8 +569,8 @@ internal static class RuntimeObjectGeometryBuilder
             isO3d
                 ? new Vector3(
                     -mesh.Positions[positionOffset],
-                    mesh.Positions[positionOffset + 2],
-                    mesh.Positions[positionOffset + 1])
+                    mesh.Positions[positionOffset + 1],
+                    mesh.Positions[positionOffset + 2])
                 : new Vector3(
                     mesh.Positions[positionOffset],
                     mesh.Positions[positionOffset + 1],
@@ -594,8 +591,8 @@ internal static class RuntimeObjectGeometryBuilder
                 isO3d
                     ? new Vector3(
                         -mesh.Normals[positionOffset],
-                        mesh.Normals[positionOffset + 2],
-                        mesh.Normals[positionOffset + 1])
+                        mesh.Normals[positionOffset + 1],
+                        mesh.Normals[positionOffset + 2])
                     : new Vector3(
                         mesh.Normals[positionOffset],
                         mesh.Normals[positionOffset + 1],
