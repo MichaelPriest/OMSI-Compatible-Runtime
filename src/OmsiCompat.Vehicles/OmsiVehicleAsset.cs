@@ -72,7 +72,8 @@ public sealed record OmsiVehicleMeshAsset(
     IReadOnlyList<OmsiVehicleMaterial> Materials,
     IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
     string? MeshIdentifier = null,
-    string? AnimationParent = null)
+    string? AnimationParent = null,
+    int SectionIndex = 0)
 {
     public bool IsRenderable =>
         ErrorCode is null &&
@@ -80,12 +81,23 @@ public sealed record OmsiVehicleMeshAsset(
         Indices.Length >= 3;
 }
 
+public sealed record OmsiVehicleSectionAssetInfo(
+    int Index,
+    int ParentIndex,
+    double JointX,
+    double JointY,
+    double JointZ,
+    double FollowerLengthMeters,
+    double MaximumYawDegrees,
+    bool Reverse);
+
 public sealed record OmsiVehicleAsset(
     OmsiBusInfo Bus,
     IReadOnlyList<OmsiVehicleMeshAsset> Meshes,
     OmsiDriverPosition? DriverPosition,
     IReadOnlyList<OmsiVehicleTextTexture> TextTextures,
-    int SectionCount = 1)
+    int SectionCount = 1,
+    IReadOnlyList<OmsiVehicleSectionAssetInfo>? Sections = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(static mesh => mesh.IsRenderable);
