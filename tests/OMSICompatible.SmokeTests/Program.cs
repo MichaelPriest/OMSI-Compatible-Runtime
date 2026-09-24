@@ -1109,21 +1109,24 @@ try
             { Count: 1 } &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].VariableName ==
             "cockpit_light_test" &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items.Count == 1 &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].ItemIndex == 1 &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].AlphaMode == 1 &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].HasTransMapDirective &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].NoZWrite &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items.Count == 2 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].ItemIndex == 0 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].AlphaMode is null &&
+        !vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].HasTransMapDirective &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].ItemIndex == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].AlphaMode == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].HasTransMapDirective &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].NoZWrite &&
         Path.GetFileName(
-            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].TransMapTexturePath!) ==
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].TransMapTexturePath!) ==
             "panel_mask.bmp" &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].LightMapVariable ==
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].LightMapVariable ==
             "lights_stand" &&
         Path.GetFileName(
-            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].LightMapTexturePath!) ==
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].LightMapTexturePath!) ==
             "panel_item_lm.bmp" &&
         Path.GetFileName(
-            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].MaterialChangeTexturePath!) ==
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].MaterialChangeTexturePath!) ==
             "panel_n.bmp" &&
         Math.Abs(
             vehicleAsset.Meshes[0].Materials[0].EnvMapStrength -
