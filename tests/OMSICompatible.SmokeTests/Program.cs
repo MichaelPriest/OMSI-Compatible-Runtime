@@ -613,6 +613,27 @@ try
             "1"),
         Encoding.Unicode);
 
+    File.WriteAllText(
+        Path.Combine(
+            vehicleDirectory,
+            "Ignored.ovh"),
+        "not a bus",
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            vehicleDirectory,
+            "Ignored.cfg"),
+        "not a bus",
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            vehicleDirectory,
+            "Ignored.bus.bak"),
+        "not a bus",
+        Encoding.Unicode);
+
     if (!OmsiContentRoot.TryCreate(
             root,
             out var contentRoot,
@@ -627,7 +648,14 @@ try
     Require(maps.Count == 1, $"Expected 1 map, found {maps.Count}.");
 
     var buses = BusDiscovery.Discover(contentRoot);
-    Require(buses.Count == 1, $"Expected 1 bus, found {buses.Count}.");
+    Require(
+        buses.Count == 1 &&
+        string.Equals(
+            Path.GetExtension(
+                buses[0].FilePath),
+            ".bus",
+            StringComparison.OrdinalIgnoreCase),
+        $"Bus discovery must return only real .bus files; found {buses.Count}.");
 
     var bus = buses[0];
 
