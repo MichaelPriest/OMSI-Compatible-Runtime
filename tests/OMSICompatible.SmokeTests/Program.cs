@@ -444,6 +444,8 @@ try
             "0.1",
             "[mesh]",
             "triangle.o3d",
+            "[mesh_ident]",
+            "steering_parent",
             "[viewpoint]",
             "3",
             "[visible]",
@@ -573,6 +575,8 @@ try
             "0",
             "[mesh]",
             "triangle.o3d",
+            "[animparent]",
+            "steering_parent",
             "[viewpoint]",
             "1"),
         Encoding.Unicode);
@@ -906,6 +910,10 @@ try
             bus.Physics.TrackWidthMeters!.Value -
             2.4) <
         0.0001 &&
+        Math.Abs(
+            bus.Physics.AverageWheelDiameterMeters!.Value -
+            0.94) <
+        0.0001 &&
         bus.Physics.Axles.Count ==
             2 &&
         Math.Abs(
@@ -966,6 +974,10 @@ try
     Require(
         vehicleAsset.Meshes.Count == 2 &&
         vehicleAsset.RenderableMeshCount == 2 &&
+        vehicleAsset.Meshes[0].MeshIdentifier ==
+            "steering_parent" &&
+        vehicleAsset.Meshes[1].AnimationParent ==
+            "steering_parent" &&
         Math.Abs(
             vehicleAsset.Meshes[0].LodThreshold!.Value -
             0.1) < 0.0001 &&
