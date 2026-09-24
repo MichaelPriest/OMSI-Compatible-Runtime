@@ -13,10 +13,14 @@ internal enum RuntimeOmsiHostInputAction
     Clutch,
     ElectricalToggle,
     EngineToggle,
+    EngineStart,
+    EngineOff,
     GearDrive,
     GearNeutral,
     GearReverse,
     ParkingBrakeToggle,
+    ParkingBrakeSet,
+    ParkingBrakeRelease,
     StopBrakeToggle,
     MouseDriveToggle,
     DriverView,
@@ -27,6 +31,7 @@ internal enum RuntimeOmsiHostInputAction
     TicketSellingView,
     InteriorViewNext,
     InteriorViewPrevious,
+    ResetDriverView,
     ControllerToggle
 }
 
@@ -240,9 +245,9 @@ internal static class RuntimeOmsiKeyboardBindings
                     RuntimeOmsiHostInputAction.ScheduleView,
                 Keys.Home =>
                     RuntimeOmsiHostInputAction.TicketSellingView,
-                Keys.Right =>
-                    RuntimeOmsiHostInputAction.InteriorViewNext,
                 Keys.Left =>
+                    RuntimeOmsiHostInputAction.InteriorViewNext,
+                Keys.Right =>
                     RuntimeOmsiHostInputAction.InteriorViewPrevious,
                 Keys.K =>
                     RuntimeOmsiHostInputAction.ControllerToggle,
