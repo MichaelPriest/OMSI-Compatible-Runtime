@@ -26,6 +26,10 @@ public static class OmsiVehicleModelReader
             new List<OmsiVehicleAnimation>();
         var lightEffects =
             new List<OmsiVehicleLightEffect>();
+        var smoothSkin =
+            false;
+        var skinBoneBindings =
+            new List<OmsiVehicleSkinBoneBinding>();
         var overrides = new List<OmsiVehicleMaterialOverride>();
         var materialChangeGroupIndex = -1;
         MaterialBuilder? material = null;
@@ -83,7 +87,9 @@ public static class OmsiVehicleModelReader
                     overrides.ToArray(),
                     lightEffects.ToArray(),
                     currentMeshIdentifier,
-                    currentAnimationParent));
+                    currentAnimationParent,
+                    smoothSkin,
+                    skinBoneBindings.ToArray()));
             }
 
             currentMeshPath = null;
@@ -95,6 +101,10 @@ public static class OmsiVehicleModelReader
                 new List<OmsiVehicleAnimation>();
             lightEffects =
                 new List<OmsiVehicleLightEffect>();
+            smoothSkin =
+                false;
+            skinBoneBindings =
+                new List<OmsiVehicleSkinBoneBinding>();
             overrides = new List<OmsiVehicleMaterialOverride>();
             materialChangeGroupIndex = -1;
             materialChangeBase = null;
@@ -202,6 +212,48 @@ public static class OmsiVehicleModelReader
                 {
                     currentAnimationParent =
                         null;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "smoothskin",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                smoothSkin =
+                    true;
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "setbone",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length >= 2 &&
+                    int.TryParse(
+                        values[1],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var targetMeshOrdinal) &&
+                    targetMeshOrdinal >= 0)
+                {
+                    var boneName =
+                        values[0]
+                            .Trim()
+                            .Trim('"');
+
+                    if (!string.IsNullOrWhiteSpace(
+                            boneName))
+                    {
+                        skinBoneBindings.Add(
+                            new OmsiVehicleSkinBoneBinding(
+                                boneName,
+                                targetMeshOrdinal));
+                    }
                 }
 
                 continue;
