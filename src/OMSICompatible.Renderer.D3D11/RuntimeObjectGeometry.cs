@@ -124,7 +124,7 @@ internal static class RuntimeObjectGeometryBuilder
                         static mesh =>
                             string.Equals(
                                 mesh.ErrorCode,
-                                "protectedO3dUnsupported",
+                                "encryptedO3dUnsupported",
                                 StringComparison.OrdinalIgnoreCase)));
 
         var missingMeshes =
@@ -136,7 +136,7 @@ internal static class RuntimeObjectGeometryBuilder
                                 mesh.ErrorCode) &&
                             !string.Equals(
                                 mesh.ErrorCode,
-                                "protectedO3dUnsupported",
+                                "encryptedO3dUnsupported",
                                 StringComparison.OrdinalIgnoreCase)));
 
         var totalVertices = 0;
