@@ -245,7 +245,17 @@ public static class RuntimeVehicleInfoFactory
                         axle.DamperRateKilonewtonSecondsPerMeter),
                 vehicle.Bus.Physics.MomentOfInertiaZ,
                 vehicle.Bus.Physics.RotationPointLongitudinalMeters,
-                vehicle.Bus.Physics.InverseMinimumTurnRadius),
+                vehicle.Bus.Physics.InverseMinimumTurnRadius,
+                vehicle.Bus.Physics.Axles.Count > 0
+                    ? vehicle.Bus.Physics.Axles.Max(
+                        static axle =>
+                            axle.LongitudinalPositionMeters)
+                    : null,
+                vehicle.Bus.Physics.Axles.Count > 0
+                    ? vehicle.Bus.Physics.Axles.Min(
+                        static axle =>
+                            axle.LongitudinalPositionMeters)
+                    : null),
             vehicle.DriverPosition is null
                 ? null
                 : new RuntimeDriverPositionInfo(
