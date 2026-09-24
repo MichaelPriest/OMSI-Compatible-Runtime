@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using OmsiCompat.Core;
+using OmsiCompat.Scripting;
+using OmsiCompat.Vehicles;
 
 namespace OMSICompatible.Launcher;
 
@@ -673,6 +675,37 @@ internal sealed class SettingsForm : Form
                     "Alterações visuais aplicadas ao keyboard.cfg em memória.");
             };
 
+        var addVehicleEvent =
+            CreateButton(
+                "Adicionar evento de veículo...");
+
+        addVehicleEvent.AutoSize =
+            true;
+
+        addVehicleEvent.Click +=
+            (_, _) =>
+                AddVehicleKeyboardEvent();
+
+        var restore =
+            CreateButton(
+                "Restaurar padrão");
+
+        restore.AutoSize =
+            true;
+
+        restore.Click +=
+            (_, _) =>
+            {
+                LoadEditor(
+                    _keyboardEditor,
+                    Path.Combine(
+                        _contentRoot,
+                        "Inputs",
+                        "keyboard_reset.cfg"));
+
+                RefreshKeyboardVisual();
+            };
+
         var reload =
             CreateButton(
                 "Recarregar");
@@ -697,6 +730,10 @@ internal sealed class SettingsForm : Form
             capture);
         toolbar.Controls.Add(
             apply);
+        toolbar.Controls.Add(
+            addVehicleEvent);
+        toolbar.Controls.Add(
+            restore);
         toolbar.Controls.Add(
             reload);
 
@@ -877,6 +914,125 @@ internal sealed class SettingsForm : Form
 
         SetStatus(
             $"{entries.Count:N0} comando(s) de teclado carregado(s).");
+    }
+
+    private async void AddVehicleKeyboardEvent()
+    {
+        if (!OmsiContentRoot.TryCreate(
+                _contentRoot,
+                out var contentRoot,
+                out var error) ||
+            contentRoot is null)
+        {
+            SetStatus(
+                error ??
+                "Pasta OMSI inválida.");
+            return;
+        }
+
+        SetStatus(
+            "Carregando triggers dos veículos instalados...");
+
+        Cursor =
+            Cursors.WaitCursor;
+
+        IReadOnlyList<string> triggers;
+
+        try
+        {
+            triggers =
+                await Task.Run(
+                    () =>
+                    {
+                        var result =
+                            new HashSet<string>(
+                                StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var bus in
+                                 BusDiscovery.Discover(
+                                     contentRoot))
+                        {
+                            try
+                            {
+                                var catalog =
+                                    OmsiScriptCatalogLoader.Load(
+                                        contentRoot,
+                                        bus.ScriptManifest);
+
+                                foreach (var trigger in
+                                         catalog.Program.Triggers.Keys)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(
+                                            trigger))
+                                    {
+                                        result.Add(
+                                            trigger);
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // One broken third-party vehicle must not
+                                // prevent events from the remaining buses.
+                            }
+                        }
+
+                        return
+                            (IReadOnlyList<string>)
+                            result
+                                .OrderBy(
+                                    static trigger =>
+                                        trigger,
+                                    StringComparer.OrdinalIgnoreCase)
+                                .ToArray();
+                    });
+        }
+        finally
+        {
+            Cursor =
+                Cursors.Default;
+        }
+
+        if (triggers.Count == 0)
+        {
+            SetStatus(
+                "Nenhum trigger de veículo foi encontrado.");
+            return;
+        }
+
+        using var dialog =
+            new VehicleEventSelectionDialog(
+                triggers);
+
+        if (dialog.ShowDialog(
+                this) !=
+            DialogResult.OK ||
+            string.IsNullOrWhiteSpace(
+                dialog.SelectedTrigger))
+        {
+            SetStatus(
+                $"{triggers.Count:N0} evento(s) de veículo disponível(is).");
+            return;
+        }
+
+        var before =
+            _keyboardEditor.Text;
+
+        _keyboardEditor.Text =
+            OmsiInputConfiguration
+                .AppendKeyboardEntry(
+                    before,
+                    dialog.SelectedTrigger);
+
+        RefreshKeyboardVisual();
+
+        SetStatus(
+            string.Equals(
+                before,
+                _keyboardEditor.Text,
+                StringComparison.Ordinal)
+                ? $"O evento {dialog.SelectedTrigger} já existia no keyboard.cfg."
+                : $"Evento adicionado: {dialog.SelectedTrigger}. Agora atribua a tecla desejada.");
     }
 
     private void BeginKeyboardCapture()
