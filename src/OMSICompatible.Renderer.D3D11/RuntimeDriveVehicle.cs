@@ -37,6 +37,7 @@ internal sealed class RuntimeDriveVehicle
     private readonly float _trackWidthMeters;
     private readonly float _wheelRadiusMeters;
     private readonly float _rollingResistanceNewtons;
+    private readonly float _suspensionSpringNewtonsPerMeter;
     private readonly float _suspensionResponse;
     private readonly float _yawResponse;
     private float _yawRateRadiansPerSecond;
@@ -153,6 +154,10 @@ internal sealed class RuntimeDriveVehicle
                     DefaultSpringKilonewtonsPerMeter),
                 25.0f,
                 1_500.0f);
+
+        _suspensionSpringNewtonsPerMeter =
+            springRate *
+            1_000.0f;
 
         var damperRate =
             Math.Clamp(
@@ -1062,19 +1067,40 @@ internal sealed class RuntimeDriveVehicle
                 DegreesToRadians(
                     8.0));
 
+        // Longitudinal body pitch comes from suspension load transfer,
+        // not a generic acceleration-to-angle multiplier. With the MEP
+        // Quadbus II values (8 t, CG 1.2 m, ~240/280 kN/m springs) this
+        // produces sub-degree dive/squat under normal driving instead of
+        // several degrees of exaggerated body rotation.
+        var longitudinalLoadTransferNewtons =
+            -_longitudinalAccelerationMetersPerSecondSquared *
+            _massKilograms *
+            _centerOfGravityHeightMeters /
+            Math.Max(
+                _wheelBaseMeters,
+                1.0f);
+
+        // RuntimeVehiclePhysicsInfo currently carries the real axle spring
+        // values as their average. Treat that as one spring rate per axle;
+        // front compression plus rear extension determines body pitch.
+        var suspensionPitchTravelMeters =
+            longitudinalLoadTransferNewtons *
+            (2.0f /
+             Math.Max(
+                 _suspensionSpringNewtonsPerMeter,
+                 25_000.0f));
+
         var pitchTarget =
             Math.Clamp(
-                -_longitudinalAccelerationMetersPerSecondSquared /
-                Gravity *
-                (_centerOfGravityHeightMeters /
-                 Math.Max(
-                     _wheelBaseMeters,
-                     1.0f)) *
-                0.85f,
+                MathF.Atan2(
+                    suspensionPitchTravelMeters,
+                    Math.Max(
+                        _wheelBaseMeters,
+                        1.0f)),
                 DegreesToRadians(
-                    -5.0),
+                    -2.0),
                 DegreesToRadians(
-                    5.0));
+                    2.0));
 
         var response =
             (2.0f +
@@ -1161,8 +1187,12 @@ internal sealed class RuntimeDriveVehicle
                 ? _frontAxleLongitudinalMeters
                 : _rearAxleLongitudinalMeters;
 
+        // Compensate wheel position for body rotation. A positive
+        // nose-down pitch lowers the front body, so the front wheel mesh
+        // must move upward relative to the body to remain on the road.
+        // The old negative sign doubled the visual dive/squat.
         var pitch =
-            -_bodyPitchRadians *
+            _bodyPitchRadians *
             axleLongitudinal;
 
         var roll =
@@ -1296,7 +1326,8 @@ internal sealed class RuntimeDriveVehicle
         float aspect,
         RuntimeTerrainGeometry terrainGeometry,
         float headingOffsetRadians = 0.0f,
-        float pitchOffsetRadians = 0.0f)
+        float pitchOffsetRadians = 0.0f,
+        float fieldOfViewScale = 1.0f)
     {
         var localEye =
             new Vector3(
@@ -1361,8 +1392,12 @@ internal sealed class RuntimeDriveVehicle
 
         var fovDegrees =
             Math.Clamp(
-                camera.FieldOfViewDegrees,
-                25.0,
+                camera.FieldOfViewDegrees *
+                Math.Clamp(
+                    fieldOfViewScale,
+                    0.35f,
+                    2.0f),
+                18.0,
                 120.0);
 
         var projection =
@@ -1403,7 +1438,8 @@ internal sealed class RuntimeDriveVehicle
         float aspect,
         RuntimeTerrainGeometry terrainGeometry,
         float headingOffsetRadians = 0.0f,
-        float pitchOffsetRadians = 0.0f)
+        float pitchOffsetRadians = 0.0f,
+        float fieldOfViewScale = 1.0f)
     {
         return CreateDriverViewProjection(
             new RuntimeDriverCameraInfo(
@@ -1417,7 +1453,8 @@ internal sealed class RuntimeDriveVehicle
             aspect,
             terrainGeometry,
             headingOffsetRadians,
-            pitchOffsetRadians);
+            pitchOffsetRadians,
+            fieldOfViewScale);
     }
 
     public Matrix4x4 CreateChaseViewProjection(
