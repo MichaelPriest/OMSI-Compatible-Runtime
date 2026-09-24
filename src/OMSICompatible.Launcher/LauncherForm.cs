@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OMSICompatible.Renderer.D3D11;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Vehicles;
@@ -7,6 +8,23 @@ namespace OMSICompatible.Launcher;
 
 internal sealed class LauncherForm : Form
 {
+    private sealed record BusSkinSelection(
+        OmsiBusInfo Bus,
+        OmsiVehicleRepaint? Repaint)
+    {
+        public string Name =>
+            Repaint?.Name ??
+            Bus.Skin;
+
+        public string Detail =>
+            Repaint is null
+                ? $"{Bus.Carroceria} · Skin base: {Bus.Skin}"
+                : $"{Bus.Carroceria} · Repaint CTI: {Repaint.Name}";
+
+        public override string ToString() =>
+            Name;
+    }
+
     private readonly MapHeroPanel _hero =
         new();
 
@@ -28,8 +46,21 @@ internal sealed class LauncherForm : Form
     private readonly CheckBox _noBusCheckBox =
         new();
 
-    private readonly PictureBox _busPreview =
+    private readonly Panel _busPreviewHost =
         new();
+
+    private readonly PictureBox _busPreviewFallback =
+        new();
+
+    private D3D11RenderWindow? _busPreviewWindow;
+    private int _busPreviewGeneration;
+
+    private readonly Dictionary<
+        string,
+        IReadOnlyList<OmsiVehicleRepaint>>
+        _repaintCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
 
     private readonly Label _busPreviewTitle =
         new();
@@ -108,6 +139,10 @@ internal sealed class LauncherForm : Form
                 10.0f);
 
         BuildInterface();
+
+        FormClosed +=
+            (_, _) =>
+                DisposeBusPreview();
 
         _updatingBusSelection = true;
         _noBusCheckBox.Checked =
@@ -585,7 +620,7 @@ internal sealed class LauncherForm : Form
         previewPanel.RowStyles.Add(
             new RowStyle(
                 SizeType.Absolute,
-                150));
+                240));
         previewPanel.RowStyles.Add(
             new RowStyle(
                 SizeType.AutoSize));
@@ -593,15 +628,23 @@ internal sealed class LauncherForm : Form
             new RowStyle(
                 SizeType.AutoSize));
 
-        _busPreview.Dock =
+        _busPreviewHost.Dock =
             DockStyle.Fill;
-        _busPreview.SizeMode =
-            PictureBoxSizeMode.Zoom;
-        _busPreview.BackColor =
+        _busPreviewHost.BackColor =
             Color.FromArgb(
                 10,
                 14,
                 20);
+
+        _busPreviewFallback.Dock =
+            DockStyle.Fill;
+        _busPreviewFallback.SizeMode =
+            PictureBoxSizeMode.Zoom;
+        _busPreviewFallback.BackColor =
+            _busPreviewHost.BackColor;
+
+        _busPreviewHost.Controls.Add(
+            _busPreviewFallback);
 
         _busPreviewTitle.AutoSize =
             true;
@@ -629,7 +672,7 @@ internal sealed class LauncherForm : Form
             "Escolha carroceria, modelo e skin";
 
         previewPanel.Controls.Add(
-            _busPreview,
+            _busPreviewHost,
             0,
             0);
         previewPanel.Controls.Add(
@@ -1415,7 +1458,7 @@ internal sealed class LauncherForm : Form
         {
             _skinBox.Items.Clear();
 
-            var skins =
+            var buses =
                 _buses
                     .Where(
                         bus =>
@@ -1437,29 +1480,147 @@ internal sealed class LauncherForm : Form
                         StringComparer.OrdinalIgnoreCase)
                     .ToArray();
 
-            foreach (var skin in skins)
+            var selections =
+                new List<
+                    BusSkinSelection>();
+
+            foreach (var bus in
+                     buses)
             {
-                _skinBox.Items.Add(
-                    skin);
+                selections.Add(
+                    new BusSkinSelection(
+                        bus,
+                        null));
+
+                foreach (var repaint in
+                         GetRepaints(
+                             bus))
+                {
+                    selections.Add(
+                        new BusSkinSelection(
+                            bus,
+                            repaint));
+                }
             }
 
-            _skinBox.DisplayMember =
-                nameof(
-                    OmsiBusInfo.Skin);
+            foreach (var selection in
+                     selections
+                         .GroupBy(
+                             static item =>
+                                 item.Bus.RelativePath +
+                                 "\n" +
+                                 item.Name +
+                                 "\n" +
+                                 (item.Repaint?.RelativeCtiPath ?? ""),
+                             StringComparer.OrdinalIgnoreCase)
+                         .Select(
+                             static group =>
+                                 group.First())
+                         .OrderBy(
+                             static item =>
+                                 item.Name,
+                             StringComparer.OrdinalIgnoreCase))
+            {
+                _skinBox.Items.Add(
+                    selection);
+            }
+
+            BusSkinSelection? target =
+                null;
+
+            if (preferredBus is not null)
+            {
+                target =
+                    selections.FirstOrDefault(
+                        item =>
+                            string.Equals(
+                                item.Bus.RelativePath,
+                                preferredBus.RelativePath,
+                                StringComparison.OrdinalIgnoreCase) &&
+                            RepaintMatchesSavedSelection(
+                                item.Repaint));
+            }
+
+            target ??=
+                selections.FirstOrDefault(
+                    item =>
+                        preferredBus is not null &&
+                        string.Equals(
+                            item.Bus.RelativePath,
+                            preferredBus.RelativePath,
+                            StringComparison.OrdinalIgnoreCase));
+
+            target ??=
+                selections.FirstOrDefault();
 
             _skinBox.SelectedItem =
-                preferredBus is not null &&
-                skins.Contains(
-                    preferredBus)
-                    ? preferredBus
-                    : skins.FirstOrDefault();
+                target;
         }
         finally
         {
-            _updatingBusSelection = previous;
+            _updatingBusSelection =
+                previous;
         }
 
         UpdateBusPreview();
+    }
+
+    private IReadOnlyList<OmsiVehicleRepaint> GetRepaints(
+        OmsiBusInfo bus)
+    {
+        if (_repaintCache.TryGetValue(
+                bus.RelativePath,
+                out var cached))
+        {
+            return cached;
+        }
+
+        var discovered =
+            OmsiVehicleRepaintCatalog.Discover(
+                bus);
+
+        _repaintCache[
+            bus.RelativePath] =
+            discovered;
+
+        return discovered;
+    }
+
+    private bool RepaintMatchesSavedSelection(
+        OmsiVehicleRepaint? repaint)
+    {
+        if (string.IsNullOrWhiteSpace(
+                _settings.RepaintName) &&
+            string.IsNullOrWhiteSpace(
+                _settings.RepaintCtiRelativePath))
+        {
+            return repaint is null;
+        }
+
+        if (repaint is null)
+        {
+            return false;
+        }
+
+        var nameMatches =
+            string.IsNullOrWhiteSpace(
+                _settings.RepaintName) ||
+            string.Equals(
+                repaint.Name,
+                _settings.RepaintName,
+                StringComparison.OrdinalIgnoreCase);
+
+        var ctiMatches =
+            string.IsNullOrWhiteSpace(
+                _settings.RepaintCtiRelativePath) ||
+            string.Equals(
+                repaint.RelativeCtiPath,
+                _settings.RepaintCtiRelativePath,
+                StringComparison.OrdinalIgnoreCase);
+
+        return
+            nameMatches &&
+            ctiMatches;
     }
 
     private void ApplyNoBusMode()
@@ -1477,11 +1638,20 @@ internal sealed class LauncherForm : Form
         UpdateBusPreview();
     }
 
-    private void UpdateBusPreview()
+    private async void UpdateBusPreview()
     {
-        _busPreview.Image?.Dispose();
-        _busPreview.Image =
+        var generation =
+            ++_busPreviewGeneration;
+
+        DisposeBusPreviewWindow();
+
+        _busPreviewFallback.Image?.Dispose();
+        _busPreviewFallback.Image =
             null;
+
+        _busPreviewHost.Controls.Clear();
+        _busPreviewHost.Controls.Add(
+            _busPreviewFallback);
 
         if (_noBusCheckBox.Checked)
         {
@@ -1492,24 +1662,139 @@ internal sealed class LauncherForm : Form
             return;
         }
 
+        var selection =
+            SelectedSkin();
+
         var bus =
-            SelectedBus();
+            selection?.Bus;
 
         _busPreviewTitle.Text =
             bus?.Modelo ??
             "Nenhum ônibus selecionado";
 
         _busPreviewDetail.Text =
-            bus is null
+            selection is null
                 ? "Escolha carroceria, modelo e skin"
-                : $"{bus.Carroceria} · Skin: {bus.Skin}";
+                : selection.Detail +
+                  " · carregando prévia 3D...";
 
+        if (bus is null)
+        {
+            return;
+        }
+
+        LoadStaticPreviewFallback(
+            bus);
+
+        if (!OmsiContentRoot.TryCreate(
+                _contentPathBox.Text,
+                out var contentRoot,
+                out _) ||
+            contentRoot is null)
+        {
+            _busPreviewDetail.Text =
+                selection.Detail +
+                " · prévia 3D indisponível";
+            return;
+        }
+
+        try
+        {
+            var repaint =
+                selection.Repaint;
+
+            var asset =
+                await Task.Run(
+                    () =>
+                        OmsiVehicleAssetLoader.Load(
+                            contentRoot,
+                            bus,
+                            progress:
+                                null,
+                            repaint:
+                                repaint));
+
+            if (generation !=
+                    _busPreviewGeneration ||
+                IsDisposed ||
+                !IsHandleCreated)
+            {
+                return;
+            }
+
+            if (asset.RenderableMeshCount <= 0)
+            {
+                _busPreviewDetail.Text =
+                    selection.Detail +
+                    " · modelo sem mesh 3D renderizável";
+                return;
+            }
+
+            var runtimeInfo =
+                VehiclePreviewFactory.Create(
+                    contentRoot.RootPath,
+                    asset);
+
+            var preview =
+                new D3D11RenderWindow(
+                    runtimeInfo,
+                    scriptRuntime:
+                        null,
+                    targetFps:
+                        30,
+                    vsync:
+                        true,
+                    vehiclePreviewMode:
+                        true)
+                {
+                    TopLevel =
+                        false,
+                    FormBorderStyle =
+                        FormBorderStyle.None,
+                    Dock =
+                        DockStyle.Fill
+                };
+
+            _busPreviewHost.Controls.Clear();
+            _busPreviewHost.Controls.Add(
+                preview);
+
+            _busPreviewWindow =
+                preview;
+
+            preview.Show();
+
+            _busPreviewDetail.Text =
+                selection.Detail +
+                " · 3D: arraste para girar · roda do mouse para zoom";
+        }
+        catch (Exception ex)
+        {
+            if (generation !=
+                _busPreviewGeneration)
+            {
+                return;
+            }
+
+            _busPreviewDetail.Text =
+                selection.Detail +
+                $" · prévia 3D indisponível ({ex.GetType().Name})";
+
+            AppendRuntimeLog(
+                $"Prévia 3D: {ex.Message}");
+        }
+    }
+
+    private void LoadStaticPreviewFallback(
+        OmsiBusInfo bus)
+    {
         var preview =
-            bus?.PreviewImagePath;
+            bus.PreviewImagePath;
 
         if (string.IsNullOrWhiteSpace(
                 preview) ||
-            !File.Exists(preview))
+            !File.Exists(
+                preview))
         {
             return;
         }
@@ -1517,23 +1802,66 @@ internal sealed class LauncherForm : Form
         try
         {
             using var stream =
-                File.OpenRead(preview);
+                File.OpenRead(
+                    preview);
 
             using var image =
-                Image.FromStream(stream);
+                Image.FromStream(
+                    stream);
 
-            _busPreview.Image =
-                new Bitmap(image);
+            _busPreviewFallback.Image =
+                new Bitmap(
+                    image);
         }
         catch
         {
-            _busPreview.Image =
+            _busPreviewFallback.Image =
                 null;
         }
     }
 
+    private void DisposeBusPreviewWindow()
+    {
+        var preview =
+            _busPreviewWindow;
+
+        _busPreviewWindow =
+            null;
+
+        if (preview is null)
+        {
+            return;
+        }
+
+        try
+        {
+            preview.Close();
+            preview.Dispose();
+        }
+        catch
+        {
+        }
+    }
+
+    private void DisposeBusPreview()
+    {
+        _busPreviewGeneration++;
+        DisposeBusPreviewWindow();
+
+        _busPreviewFallback.Image?.Dispose();
+        _busPreviewFallback.Image =
+            null;
+    }
+
+    private BusSkinSelection? SelectedSkin() =>
+        _skinBox.SelectedItem as
+            BusSkinSelection;
+
     private OmsiBusInfo? SelectedBus() =>
-        _skinBox.SelectedItem as OmsiBusInfo;
+        SelectedSkin()?.Bus;
+
+    private OmsiVehicleRepaint? SelectedRepaint() =>
+        SelectedSkin()?.Repaint;
 
     private OmsiMapEntryPointGroup? SelectedEntryPoint() =>
         _spawnBox.SelectedItem as OmsiMapEntryPointGroup;
@@ -1606,8 +1934,16 @@ internal sealed class LauncherForm : Form
 
             _playButton.Enabled = false;
 
+            var skinSelection =
+                SelectedSkin();
+
             AppendRuntimeLog(
-                $"Iniciando {map.FolderName} · {(noBus ? "sem ônibus" : bus!.SelectionLabel)} · {entryPoint.Name}...");
+                $"Iniciando {map.FolderName} · {(noBus ? "sem ônibus" : $"{bus!.Carroceria} — {bus.Modelo} — {skinSelection?.Name ?? bus.Skin}")} · {entryPoint.Name}...");
+
+            var repaint =
+                noBus
+                    ? null
+                    : SelectedRepaint();
 
             if (!_runtime.Start(
                     _contentPathBox.Text,
@@ -1615,7 +1951,9 @@ internal sealed class LauncherForm : Form
                     noBus
                         ? null
                         : bus?.RelativePath,
-                    entryPoint.Name))
+                    entryPoint.Name,
+                    repaint?.Name,
+                    repaint?.RelativeCtiPath))
             {
                 throw new InvalidOperationException(
                     "O runtime não pôde ser iniciado.");
@@ -1722,13 +2060,18 @@ internal sealed class LauncherForm : Form
 
     private void SaveSettings()
     {
+        var repaint =
+            SelectedRepaint();
+
         new LauncherSettings(
             _contentPathBox.Text,
             _mapBox.SelectedItem
                 ?.ToString(),
             SelectedBus()?.RelativePath,
             SelectedEntryPoint()?.Name,
-            _noBusCheckBox.Checked)
+            _noBusCheckBox.Checked,
+            repaint?.Name,
+            repaint?.RelativeCtiPath)
             .Save();
     }
 
