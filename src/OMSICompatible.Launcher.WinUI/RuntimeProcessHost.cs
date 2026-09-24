@@ -46,7 +46,8 @@ internal sealed class RuntimeProcessHost :
         string contentPath,
         string mapName,
         string? busRelativePath,
-        string entryPointName)
+        string entryPointName,
+        string? repaintName = null)
     {
         if (IsRunning)
         {
@@ -112,6 +113,17 @@ internal sealed class RuntimeProcessHost :
                 startInfo,
                 "--bus",
                 busRelativePath);
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                repaintName) &&
+            !string.IsNullOrWhiteSpace(
+                busRelativePath))
+        {
+            Add(
+                startInfo,
+                "--repaint",
+                repaintName);
         }
 
         Add(
