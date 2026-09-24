@@ -1236,6 +1236,22 @@ try
                 vehicleAsset.Meshes.Count]
             .SectionIndex ==
             1 &&
+        articulatedAsset.Meshes[
+                vehicleAsset.Meshes.Count]
+            .LightEffects is
+            { Count: > 0 } &&
+        vehicleAsset.Meshes[0]
+            .LightEffects is
+            { Count: > 0 } &&
+        Math.Abs(
+            articulatedAsset.Meshes[
+                    vehicleAsset.Meshes.Count]
+                .LightEffects![0]
+                .PositionY -
+            vehicleAsset.Meshes[0]
+                .LightEffects![0]
+                .PositionY) <
+        0.0001 &&
         Math.Abs(
             articulatedAsset.Meshes[
                     vehicleAsset.Meshes.Count]
