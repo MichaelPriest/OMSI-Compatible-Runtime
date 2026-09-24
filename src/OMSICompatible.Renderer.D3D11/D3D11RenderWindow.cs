@@ -148,6 +148,7 @@ public sealed class D3D11RenderWindow : Form
     private MouseButtons _freeCameraDragButton =
         MouseButtons.None;
     private bool _mouseDriveMode;
+    private string? _activeVehicleMouseTrigger;
     private bool _driveMode = true;
     private RuntimeVehicleViewMode _vehicleViewMode =
         RuntimeVehicleViewMode.Driver;
@@ -7932,6 +7933,270 @@ public sealed class D3D11RenderWindow : Form
             : trigger +
               "_off";
 
+    private bool TryDispatchVehicleMouseEvent(
+        System.Drawing.Point location)
+    {
+        if (_scriptRuntime is null ||
+            !_driveMode ||
+            _vehicleViewMode !=
+                RuntimeVehicleViewMode.Driver ||
+            _mouseDriveMode ||
+            ClientSize.Width <= 0 ||
+            ClientSize.Height <= 0)
+        {
+            return false;
+        }
+
+        var geometry =
+            _vehicleInteriorGeometry;
+
+        if (geometry.Vertices.Length == 0 ||
+            geometry.Batches.Count == 0)
+        {
+            return false;
+        }
+
+        var viewProjection =
+            CreateViewProjection();
+
+        if (!Matrix4x4.Invert(
+                viewProjection,
+                out var inverseViewProjection))
+        {
+            return false;
+        }
+
+        var ndcX =
+            location.X /
+                (float)ClientSize.Width *
+                2.0f -
+            1.0f;
+        var ndcY =
+            1.0f -
+            location.Y /
+                (float)ClientSize.Height *
+                2.0f;
+
+        var nearClip =
+            Vector4.Transform(
+                new Vector4(
+                    ndcX,
+                    ndcY,
+                    0.0f,
+                    1.0f),
+                inverseViewProjection);
+        var farClip =
+            Vector4.Transform(
+                new Vector4(
+                    ndcX,
+                    ndcY,
+                    1.0f,
+                    1.0f),
+                inverseViewProjection);
+
+        if (Math.Abs(
+                nearClip.W) <
+                0.000001f ||
+            Math.Abs(
+                farClip.W) <
+                0.000001f)
+        {
+            return false;
+        }
+
+        var rayOrigin =
+            new Vector3(
+                nearClip.X,
+                nearClip.Y,
+                nearClip.Z) /
+            nearClip.W;
+        var rayFar =
+            new Vector3(
+                farClip.X,
+                farClip.Y,
+                farClip.Z) /
+            farClip.W;
+        var rayDirection =
+            rayFar -
+            rayOrigin;
+
+        if (rayDirection.LengthSquared() <
+            0.000001f)
+        {
+            return false;
+        }
+
+        rayDirection =
+            Vector3.Normalize(
+                rayDirection);
+
+        var vehicleWorld =
+            _vehicle.CreateWorldMatrix();
+
+        var bestDistance =
+            float.MaxValue;
+        string? bestTrigger =
+            null;
+
+        foreach (var batch in
+                 geometry.Batches)
+        {
+            if (string.IsNullOrWhiteSpace(
+                    batch.MouseEventTrigger) ||
+                !IsVehicleBatchVisible(
+                    batch) ||
+                batch.VertexCount <
+                    3)
+            {
+                continue;
+            }
+
+            var world =
+                CreateVehicleAnimationMatrix(
+                    batch) *
+                CreateArticulatedSectionMatrix(
+                    batch.SectionIndex) *
+                vehicleWorld;
+
+            var start =
+                checked(
+                    (int)batch.StartVertex);
+            var end =
+                Math.Min(
+                    checked(
+                        (int)(
+                            batch.StartVertex +
+                            batch.VertexCount)),
+                    geometry.Vertices.Length);
+
+            for (var vertex = start;
+                 vertex + 2 < end;
+                 vertex += 3)
+            {
+                var a =
+                    Vector3.Transform(
+                        geometry.Vertices[
+                            vertex].Position,
+                        world);
+                var b =
+                    Vector3.Transform(
+                        geometry.Vertices[
+                            vertex + 1].Position,
+                        world);
+                var c =
+                    Vector3.Transform(
+                        geometry.Vertices[
+                            vertex + 2].Position,
+                        world);
+
+                if (TryIntersectRayTriangle(
+                        rayOrigin,
+                        rayDirection,
+                        a,
+                        b,
+                        c,
+                        out var distance) &&
+                    distance <
+                        bestDistance)
+                {
+                    bestDistance =
+                        distance;
+                    bestTrigger =
+                        batch.MouseEventTrigger;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                bestTrigger))
+        {
+            return false;
+        }
+
+        _activeVehicleMouseTrigger =
+            bestTrigger;
+
+        DispatchOmsiScriptTrigger(
+            bestTrigger);
+
+        return true;
+    }
+
+    private static bool TryIntersectRayTriangle(
+        Vector3 origin,
+        Vector3 direction,
+        Vector3 a,
+        Vector3 b,
+        Vector3 c,
+        out float distance)
+    {
+        distance =
+            0.0f;
+
+        var edge1 =
+            b - a;
+        var edge2 =
+            c - a;
+        var p =
+            Vector3.Cross(
+                direction,
+                edge2);
+        var determinant =
+            Vector3.Dot(
+                edge1,
+                p);
+
+        if (Math.Abs(
+                determinant) <
+            0.000001f)
+        {
+            return false;
+        }
+
+        var inverseDeterminant =
+            1.0f /
+            determinant;
+        var t =
+            origin - a;
+        var u =
+            Vector3.Dot(
+                t,
+                p) *
+            inverseDeterminant;
+
+        if (u < 0.0f ||
+            u > 1.0f)
+        {
+            return false;
+        }
+
+        var q =
+            Vector3.Cross(
+                t,
+                edge1);
+        var v =
+            Vector3.Dot(
+                direction,
+                q) *
+            inverseDeterminant;
+
+        if (v < 0.0f ||
+            u + v >
+                1.0f)
+        {
+            return false;
+        }
+
+        distance =
+            Vector3.Dot(
+                edge2,
+                q) *
+            inverseDeterminant;
+
+        return distance >
+               0.001f;
+    }
+
     private void OnRuntimeMouseDown(
         object? sender,
         MouseEventArgs e)
@@ -7955,6 +8220,14 @@ public sealed class D3D11RenderWindow : Form
                 Capture = true;
             }
 
+            return;
+        }
+
+        if (e.Button ==
+                MouseButtons.Left &&
+            TryDispatchVehicleMouseEvent(
+                e.Location))
+        {
             return;
         }
 
@@ -7996,6 +8269,20 @@ public sealed class D3D11RenderWindow : Form
                 Capture = false;
             }
 
+            return;
+        }
+
+        if (e.Button ==
+                MouseButtons.Left &&
+            !string.IsNullOrWhiteSpace(
+                _activeVehicleMouseTrigger))
+        {
+            DispatchOmsiScriptTrigger(
+                ReleaseTriggerName(
+                    _activeVehicleMouseTrigger));
+
+            _activeVehicleMouseTrigger =
+                null;
             return;
         }
 
