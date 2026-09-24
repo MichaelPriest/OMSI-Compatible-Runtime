@@ -474,12 +474,25 @@ try
             zeroKeyO3dPath);
 
     Require(
-        !zeroKeyGeometry.IsLoaded &&
-        string.Equals(
-            zeroKeyGeometry.ErrorCode,
-            "encryptedO3dUnsupported",
-            StringComparison.OrdinalIgnoreCase),
-        "OMSI v5 O3D with a zero encryption key must not be interpreted as plain vertex geometry.");
+        zeroKeyGeometry.IsLoaded &&
+        zeroKeyGeometry.ErrorCode is null &&
+        zeroKeyGeometry.Positions.Length == 9 &&
+        Math.Abs(
+            zeroKeyGeometry.Positions[0] -
+            -1.0f) < 0.0001 &&
+        Math.Abs(
+            zeroKeyGeometry.Positions[3] -
+            1.0f) < 0.0001 &&
+        Math.Abs(
+            zeroKeyGeometry.Positions[8] -
+            1.0f) < 0.0001 &&
+        Math.Abs(
+            zeroKeyGeometry.Normals[2] -
+            1.0f) < 0.0001 &&
+        Math.Abs(
+            zeroKeyGeometry.Uvs[5] -
+            1.0f) < 0.0001,
+        "OMSI v5 zero-key encrypted vertex stream was not decoded back to the original geometry.");
 
     File.WriteAllBytes(
         Path.Combine(
@@ -1296,7 +1309,7 @@ static void WriteSyntheticO3d(
         writer.Write((ushort)3);
     }
 
-    static void Vertex(
+    void Vertex(
         BinaryWriter writer,
         float x,
         float y,
@@ -1304,13 +1317,34 @@ static void WriteSyntheticO3d(
         float u,
         float v)
     {
-        writer.Write(x);
-        writer.Write(y);
-        writer.Write(z);
+        var encodeZeroKey =
+            extendedHeader &&
+            protectionKey == 0;
 
-        writer.Write(0.0f);
-        writer.Write(0.0f);
-        writer.Write(1.0f);
+        if (encodeZeroKey)
+        {
+            // For a zero-key/options=0 stream with integer positions the
+            // first salt remains zero. Encode the known triangle with the
+            // inverse of that first-step vertex permutation so the reader
+            // must restore the original values.
+            writer.Write(y);
+            writer.Write(x);
+            writer.Write(z);
+
+            writer.Write(0.0f);
+            writer.Write(-1.0f);
+            writer.Write(0.0f);
+        }
+        else
+        {
+            writer.Write(x);
+            writer.Write(y);
+            writer.Write(z);
+
+            writer.Write(0.0f);
+            writer.Write(0.0f);
+            writer.Write(1.0f);
+        }
 
         writer.Write(u);
         writer.Write(v);
