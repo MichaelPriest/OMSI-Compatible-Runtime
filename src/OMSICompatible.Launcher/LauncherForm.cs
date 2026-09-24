@@ -69,6 +69,8 @@ internal sealed class LauncherForm : Form
     private IReadOnlyList<OmsiMapEntryPointGroup> _entryPoints =
         Array.Empty<OmsiMapEntryPointGroup>();
 
+    private bool _updatingBusSelection;
+
     public LauncherForm(
         string? explicitContentPath)
     {
@@ -479,6 +481,11 @@ internal sealed class LauncherForm : Form
         _carroceriaBox.SelectedIndexChanged +=
             (_, _) =>
             {
+                if (_updatingBusSelection)
+                {
+                    return;
+                }
+
                 PopulateModels(
                     _carroceriaBox.SelectedItem
                         as string,
@@ -490,6 +497,11 @@ internal sealed class LauncherForm : Form
         _modeloBox.SelectedIndexChanged +=
             (_, _) =>
             {
+                if (_updatingBusSelection)
+                {
+                    return;
+                }
+
                 PopulateSkins(
                     _carroceriaBox.SelectedItem
                         as string,
@@ -503,6 +515,11 @@ internal sealed class LauncherForm : Form
         _skinBox.SelectedIndexChanged +=
             (_, _) =>
             {
+                if (_updatingBusSelection)
+                {
+                    return;
+                }
+
                 UpdateBusPreview();
                 UpdatePlayAvailability();
                 SaveSettings();
@@ -1100,7 +1117,9 @@ internal sealed class LauncherForm : Form
         string? selectMap)
     {
         _mapBox.Items.Clear();
-        _busBox.Items.Clear();
+        _carroceriaBox.Items.Clear();
+        _modeloBox.Items.Clear();
+        _skinBox.Items.Clear();
         _spawnBox.Items.Clear();
 
         _maps =
@@ -1136,25 +1155,19 @@ internal sealed class LauncherForm : Form
             BusDiscovery.Discover(
                 contentRoot);
 
-        foreach (var bus in _buses)
-        {
-            _busBox.Items.Add(bus);
-        }
+        var selectedBus =
+            _buses.FirstOrDefault(
+                bus =>
+                    string.Equals(
+                        bus.RelativePath,
+                        _settings.BusRelativePath,
+                        StringComparison.OrdinalIgnoreCase))
+            ?? _buses.FirstOrDefault();
 
-        if (_buses.Count > 0)
-        {
-            var selectedBus =
-                _buses.FirstOrDefault(
-                    bus =>
-                        string.Equals(
-                            bus.RelativePath,
-                            _settings.BusRelativePath,
-                            StringComparison.OrdinalIgnoreCase));
+        SelectBus(
+            selectedBus);
 
-            _busBox.SelectedItem =
-                selectedBus ??
-                _buses[0];
-        }
+        ApplyNoBusMode();
 
         foreach (var map in _maps)
         {
@@ -1249,8 +1262,266 @@ internal sealed class LauncherForm : Form
     }
 
 
+    private void SelectBus(
+        OmsiBusInfo? bus)
+    {
+        _updatingBusSelection = true;
+
+        try
+        {
+            _carroceriaBox.Items.Clear();
+
+            foreach (var carroceria in
+                     _buses
+                         .Select(
+                             static item =>
+                                 item.Carroceria)
+                         .Distinct(
+                             StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(
+                             static value =>
+                                 value,
+                             StringComparer.OrdinalIgnoreCase))
+            {
+                _carroceriaBox.Items.Add(
+                    carroceria);
+            }
+
+            var targetCarroceria =
+                bus?.Carroceria ??
+                _carroceriaBox.Items
+                    .Cast<object>()
+                    .FirstOrDefault()
+                    ?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(
+                    targetCarroceria))
+            {
+                _carroceriaBox.SelectedItem =
+                    _carroceriaBox.Items
+                        .Cast<object>()
+                        .FirstOrDefault(
+                            value =>
+                                string.Equals(
+                                    value?.ToString(),
+                                    targetCarroceria,
+                                    StringComparison.OrdinalIgnoreCase));
+            }
+
+            PopulateModels(
+                targetCarroceria,
+                bus);
+        }
+        finally
+        {
+            _updatingBusSelection = false;
+        }
+
+        UpdateBusPreview();
+    }
+
+    private void PopulateModels(
+        string? carroceria,
+        OmsiBusInfo? preferredBus)
+    {
+        var previous =
+            _updatingBusSelection;
+
+        _updatingBusSelection = true;
+
+        try
+        {
+            _modeloBox.Items.Clear();
+
+            foreach (var modelo in
+                     _buses
+                         .Where(
+                             bus =>
+                                 string.Equals(
+                                     bus.Carroceria,
+                                     carroceria,
+                                     StringComparison.OrdinalIgnoreCase))
+                         .Select(
+                             static bus =>
+                                 bus.Modelo)
+                         .Distinct(
+                             StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(
+                             static value =>
+                                 value,
+                             StringComparer.OrdinalIgnoreCase))
+            {
+                _modeloBox.Items.Add(
+                    modelo);
+            }
+
+            var targetModelo =
+                preferredBus?.Modelo ??
+                _modeloBox.Items
+                    .Cast<object>()
+                    .FirstOrDefault()
+                    ?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(
+                    targetModelo))
+            {
+                _modeloBox.SelectedItem =
+                    _modeloBox.Items
+                        .Cast<object>()
+                        .FirstOrDefault(
+                            value =>
+                                string.Equals(
+                                    value?.ToString(),
+                                    targetModelo,
+                                    StringComparison.OrdinalIgnoreCase));
+            }
+
+            PopulateSkins(
+                carroceria,
+                targetModelo,
+                preferredBus);
+        }
+        finally
+        {
+            _updatingBusSelection = previous;
+        }
+
+        UpdateBusPreview();
+    }
+
+    private void PopulateSkins(
+        string? carroceria,
+        string? modelo,
+        OmsiBusInfo? preferredBus)
+    {
+        var previous =
+            _updatingBusSelection;
+
+        _updatingBusSelection = true;
+
+        try
+        {
+            _skinBox.Items.Clear();
+
+            var skins =
+                _buses
+                    .Where(
+                        bus =>
+                            string.Equals(
+                                bus.Carroceria,
+                                carroceria,
+                                StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(
+                                bus.Modelo,
+                                modelo,
+                                StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(
+                        static bus =>
+                            bus.Skin,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(
+                        static bus =>
+                            bus.RelativePath,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            foreach (var skin in skins)
+            {
+                _skinBox.Items.Add(
+                    skin);
+            }
+
+            _skinBox.DisplayMember =
+                nameof(
+                    OmsiBusInfo.Skin);
+
+            _skinBox.SelectedItem =
+                preferredBus is not null &&
+                skins.Contains(
+                    preferredBus)
+                    ? preferredBus
+                    : skins.FirstOrDefault();
+        }
+        finally
+        {
+            _updatingBusSelection = previous;
+        }
+
+        UpdateBusPreview();
+    }
+
+    private void ApplyNoBusMode()
+    {
+        var enabled =
+            !_noBusCheckBox.Checked;
+
+        _carroceriaBox.Enabled =
+            enabled;
+        _modeloBox.Enabled =
+            enabled;
+        _skinBox.Enabled =
+            enabled;
+
+        UpdateBusPreview();
+    }
+
+    private void UpdateBusPreview()
+    {
+        _busPreview.Image?.Dispose();
+        _busPreview.Image =
+            null;
+
+        if (_noBusCheckBox.Checked)
+        {
+            _busPreviewTitle.Text =
+                "Iniciar sem ônibus";
+            _busPreviewDetail.Text =
+                "Mapa em câmera livre · nenhum veículo carregado";
+            return;
+        }
+
+        var bus =
+            SelectedBus();
+
+        _busPreviewTitle.Text =
+            bus?.Modelo ??
+            "Nenhum ônibus selecionado";
+
+        _busPreviewDetail.Text =
+            bus is null
+                ? "Escolha carroceria, modelo e skin"
+                : $"{bus.Carroceria} · Skin: {bus.Skin}";
+
+        var preview =
+            bus?.PreviewImagePath;
+
+        if (string.IsNullOrWhiteSpace(
+                preview) ||
+            !File.Exists(preview))
+        {
+            return;
+        }
+
+        try
+        {
+            using var stream =
+                File.OpenRead(preview);
+
+            using var image =
+                Image.FromStream(stream);
+
+            _busPreview.Image =
+                new Bitmap(image);
+        }
+        catch
+        {
+            _busPreview.Image =
+                null;
+        }
+    }
+
     private OmsiBusInfo? SelectedBus() =>
-        _busBox.SelectedItem as OmsiBusInfo;
+        _skinBox.SelectedItem as OmsiBusInfo;
 
     private OmsiMapEntryPointGroup? SelectedEntryPoint() =>
         _spawnBox.SelectedItem as OmsiMapEntryPointGroup;
@@ -1259,8 +1530,9 @@ internal sealed class LauncherForm : Form
     {
         _playButton.Enabled =
             SelectedMap() is not null &&
-            SelectedBus() is not null &&
             SelectedEntryPoint() is not null &&
+            (_noBusCheckBox.Checked ||
+             SelectedBus() is not null) &&
             !_runtime.IsRunning;
     }
 
@@ -1281,10 +1553,14 @@ internal sealed class LauncherForm : Form
             return;
         }
 
+        var noBus =
+            _noBusCheckBox.Checked;
+
         var bus =
             SelectedBus();
 
-        if (bus is null)
+        if (!noBus &&
+            bus is null)
         {
             ShowError(
                 "Selecione um ônibus.");
@@ -1319,12 +1595,14 @@ internal sealed class LauncherForm : Form
             _playButton.Enabled = false;
 
             AppendRuntimeLog(
-                $"Iniciando {map.FolderName} · {bus.DisplayName} · {entryPoint.Name}...");
+                $"Iniciando {map.FolderName} · {(noBus ? "sem ônibus" : bus!.SelectionLabel)} · {entryPoint.Name}...");
 
             if (!_runtime.Start(
                     _contentPathBox.Text,
                     map.FolderName,
-                    bus.RelativePath,
+                    noBus
+                        ? null
+                        : bus?.RelativePath,
                     entryPoint.Name))
             {
                 throw new InvalidOperationException(
@@ -1415,7 +1693,8 @@ internal sealed class LauncherForm : Form
             _mapBox.SelectedItem
                 ?.ToString(),
             SelectedBus()?.RelativePath,
-            SelectedEntryPoint()?.Name)
+            SelectedEntryPoint()?.Name,
+            _noBusCheckBox.Checked)
             .Save();
     }
 
