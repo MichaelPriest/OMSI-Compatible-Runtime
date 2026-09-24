@@ -18,6 +18,7 @@ internal sealed class RuntimeDriveVehicle
     private const float DefaultMassKilograms = 11_000.0f;
     private const float DefaultCenterOfGravityHeightMeters = 1.2f;
     private const float DefaultTrackWidthMeters = 2.4f;
+    private const float DefaultWheelDiameterMeters = 0.94f;
     private const float DefaultRollingResistanceNewtons = 1_000.0f;
     private const float DefaultSpringKilonewtonsPerMeter = 240.0f;
     private const float DefaultDamperKilonewtonSecondsPerMeter = 20.0f;
@@ -29,6 +30,7 @@ internal sealed class RuntimeDriveVehicle
     private readonly float _massKilograms;
     private readonly float _centerOfGravityHeightMeters;
     private readonly float _trackWidthMeters;
+    private readonly float _wheelRadiusMeters;
     private readonly float _rollingResistanceNewtons;
     private readonly float _suspensionResponse;
     private readonly float _yawResponse;
@@ -38,6 +40,7 @@ internal sealed class RuntimeDriveVehicle
     private float _bodyPitchRadians;
     private float _bodyRollRadians;
     private float _longitudinalAccelerationMetersPerSecondSquared;
+    private float _wheelRotationRadians;
 
     public RuntimeDriveVehicle(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -87,6 +90,14 @@ internal sealed class RuntimeDriveVehicle
                     DefaultTrackWidthMeters),
                 1.2f,
                 3.5f);
+
+        _wheelRadiusMeters =
+            Math.Clamp(
+                (float)(physics?.AverageWheelDiameterMeters ??
+                    DefaultWheelDiameterMeters) *
+                0.5f,
+                0.20f,
+                0.80f);
 
         _rollingResistanceNewtons =
             Math.Clamp(
@@ -201,6 +212,29 @@ internal sealed class RuntimeDriveVehicle
     public float YawRateRadiansPerSecond =>
         _yawRateRadiansPerSecond;
 
+    public float WheelRotationRadians =>
+        _wheelRotationRadians;
+
+    public float FrontLeftSuspensionMeters =>
+        ResolveSuspensionOffset(
+            front: true,
+            left: true);
+
+    public float FrontRightSuspensionMeters =>
+        ResolveSuspensionOffset(
+            front: true,
+            left: false);
+
+    public float RearLeftSuspensionMeters =>
+        ResolveSuspensionOffset(
+            front: false,
+            left: true);
+
+    public float RearRightSuspensionMeters =>
+        ResolveSuspensionOffset(
+            front: false,
+            left: false);
+
     public void Reset(
         IReadOnlyList<RuntimeSplineInfo> splines,
         RuntimeTerrainGeometry terrainGeometry,
@@ -299,6 +333,7 @@ internal sealed class RuntimeDriveVehicle
         _bodyPitchRadians = 0.0f;
         _bodyRollRadians = 0.0f;
         _longitudinalAccelerationMetersPerSecondSquared = 0.0f;
+        _wheelRotationRadians = 0.0f;
 
         ElectricalSystemEnabled = false;
         EngineRunning = false;
@@ -778,10 +813,29 @@ internal sealed class RuntimeDriveVehicle
                 MathF.Cos(
                     HeadingRadians));
 
-        Position +=
-            forward *
+        var travelledMeters =
             SpeedMetersPerSecond *
             deltaSeconds;
+
+        Position +=
+            forward *
+            travelledMeters;
+
+        _wheelRotationRadians +=
+            travelledMeters /
+            _wheelRadiusMeters;
+
+        if (Math.Abs(
+                _wheelRotationRadians) >
+            MathF.PI *
+            10_000.0f)
+        {
+            _wheelRotationRadians =
+                MathF.IEEERemainder(
+                    _wheelRotationRadians,
+                    MathF.PI *
+                    2.0f);
+        }
 
         if (_terrain.TrySample(
                 Position.X,
@@ -931,6 +985,33 @@ internal sealed class RuntimeDriveVehicle
                 pitchTarget,
                 response *
                 0.75f);
+    }
+
+    private float ResolveSuspensionOffset(
+        bool front,
+        bool left)
+    {
+        var pitch =
+            _bodyPitchRadians *
+            _wheelBaseMeters *
+            0.5f *
+            (front
+                ? -1.0f
+                : 1.0f);
+
+        var roll =
+            _bodyRollRadians *
+            _trackWidthMeters *
+            0.5f *
+            (left
+                ? -1.0f
+                : 1.0f);
+
+        return Math.Clamp(
+            pitch +
+            roll,
+            -0.22f,
+            0.22f);
     }
 
     public Vector3 GetDriverCameraPosition(
