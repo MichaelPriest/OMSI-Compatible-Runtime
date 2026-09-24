@@ -180,6 +180,16 @@ internal sealed class RuntimeDriveVehicle
         SteeringInput *
         _maximumSteeringRadians;
 
+    public float FrontLeftSteeringRadians =>
+        ResolveAckermannSteeringAngle(
+            leftWheel:
+                true);
+
+    public float FrontRightSteeringRadians =>
+        ResolveAckermannSteeringAngle(
+            leftWheel:
+                false);
+
     public float BrakeLevel { get; private set; }
 
     public float AcceleratorLevel { get; private set; }
@@ -985,6 +995,54 @@ internal sealed class RuntimeDriveVehicle
                 pitchTarget,
                 response *
                 0.75f);
+    }
+
+    private float ResolveAckermannSteeringAngle(
+        bool leftWheel)
+    {
+        var centerAngle =
+            SteeringAngleRadians;
+
+        if (Math.Abs(
+                centerAngle) <
+            0.00001f)
+        {
+            return 0.0f;
+        }
+
+        var sign =
+            Math.Sign(
+                centerAngle);
+
+        var centerRadius =
+            _wheelBaseMeters /
+            Math.Max(
+                Math.Abs(
+                    MathF.Tan(
+                        centerAngle)),
+                0.0001f);
+
+        var halfTrack =
+            _trackWidthMeters *
+            0.5f;
+
+        var isInnerWheel =
+            sign > 0
+                ? !leftWheel
+                : leftWheel;
+
+        var wheelRadius =
+            Math.Max(
+                centerRadius +
+                (isInnerWheel
+                    ? -halfTrack
+                    : halfTrack),
+                0.25f);
+
+        return sign *
+               MathF.Atan(
+                   _wheelBaseMeters /
+                   wheelRadius);
     }
 
     private float ResolveSuspensionOffset(
