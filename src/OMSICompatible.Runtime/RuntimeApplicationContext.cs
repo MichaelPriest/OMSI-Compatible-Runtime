@@ -25,6 +25,7 @@ internal sealed class RuntimeApplicationContext :
     private (int X, int Y)? _pendingStreamingCenter;
     private int _loadedCenterX;
     private int _loadedCenterY;
+    private bool _loadEntireMap;
     private bool _closing;
 
     private const int CompleteMapTileThreshold = 64;
@@ -169,6 +170,9 @@ internal sealed class RuntimeApplicationContext :
                 (discoveredTileCount > 0 &&
                  discoveredTileCount <=
                      CompleteMapTileThreshold);
+
+            _loadEntireMap =
+                loadEntireMap;
 
             var streamingRadius =
                 Math.Clamp(
@@ -666,7 +670,7 @@ internal sealed class RuntimeApplicationContext :
         int tileY)
     {
         if (_closing ||
-            _vehicleAsset is null)
+            _loadEntireMap)
         {
             return;
         }
