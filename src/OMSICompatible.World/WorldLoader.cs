@@ -399,7 +399,8 @@ public static class WorldLoader
                     declaredPath,
                     dependency?.ResolvedPath,
                     false,
-                    Array.Empty<WorldSplineSurface>());
+                    Array.Empty<WorldSplineSurface>(),
+                    Array.Empty<WorldSplinePath>());
                 continue;
             }
 
@@ -443,11 +444,24 @@ public static class WorldLoader
                     })
                     .ToArray();
 
+                var paths =
+                    definition.Paths
+                        .Select(
+                            static path =>
+                                new WorldSplinePath(
+                                    path.Type,
+                                    path.X,
+                                    path.Z,
+                                    path.Width,
+                                    path.Direction))
+                        .ToArray();
+
                 result[declaredPath] = new WorldSplineAsset(
                     declaredPath,
                     dependency.ResolvedPath,
                     definition.Exists,
-                    surfaces);
+                    surfaces,
+                    paths);
             }
             catch (Exception ex) when (
                 ex is IOException or
@@ -459,7 +473,8 @@ public static class WorldLoader
                     declaredPath,
                     dependency.ResolvedPath,
                     false,
-                    Array.Empty<WorldSplineSurface>());
+                    Array.Empty<WorldSplineSurface>(),
+                    Array.Empty<WorldSplinePath>());
             }
         }
 
