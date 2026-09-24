@@ -1163,6 +1163,29 @@ try
         vehicleAsset.FailedMeshCount == 0,
         "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
 
+    var trailerSoundDirectory =
+        Path.Combine(
+            vehicleDirectory,
+            "sound");
+
+    Directory.CreateDirectory(
+        trailerSoundDirectory);
+
+    File.WriteAllText(
+        Path.Combine(
+            trailerSoundDirectory,
+            "trailer.cfg"),
+        Lines(
+            "[loopsound]",
+            "idle.wav",
+            "44100",
+            "engine_n",
+            "600",
+            "0.7",
+            "[viewpoint]",
+            "5"),
+        Encoding.Unicode);
+
     File.WriteAllText(
         Path.Combine(
             vehicleDirectory,
@@ -1170,10 +1193,37 @@ try
         Lines(
             "[model]",
             @"model\model.cfg",
+            "[sound]",
+            @"sound\trailer.cfg",
             "[friendlyname]",
             "Synthetic Coachworks",
             "Camera Bus Trailer",
             "Test Skin",
+            "[mass]",
+            "6",
+            "[momentofintertia]",
+            "150",
+            "40",
+            "150",
+            "[schwerpunkt]",
+            "1.2",
+            "[rollwiderstand]",
+            "500",
+            "[rot_pnt_long]",
+            "-0.39",
+            "[newachse]",
+            "achse_long",
+            "-1.19687",
+            "achse_raddurchmesser",
+            "1.02",
+            "achse_feder",
+            "280",
+            "achse_maxforce",
+            "116",
+            "achse_daempfer",
+            "20",
+            "achse_antrieb",
+            "1",
             "[coupling_front]",
             "0",
             "3.5",
@@ -1208,8 +1258,29 @@ try
         0.0001 &&
         trailerCharacter.Type ==
             1 &&
-        trailerBus.FrontCouplingOpenForSound,
-        "OMSI trailer coupling point, articulation limits and open-for-sound flag must be parsed.");
+        trailerBus.FrontCouplingOpenForSound &&
+        trailerBus.SoundConfigPath is
+            { Length: > 0 } &&
+        Path.GetFileName(
+            trailerBus.SoundConfigPath) ==
+            "trailer.cfg" &&
+        Math.Abs(
+            trailerBus.Physics.MassTonnes!.Value -
+            6.0) <
+        0.0001 &&
+        Math.Abs(
+            trailerBus.Physics.MomentOfInertiaZ!.Value -
+            150.0) <
+        0.0001 &&
+        Math.Abs(
+            trailerBus.Physics.RotationPointLongitudinalMeters!.Value +
+            0.39) <
+        0.0001 &&
+        Math.Abs(
+            trailerBus.Physics.AverageWheelDiameterMeters!.Value -
+            1.02) <
+        0.0001,
+        "OMSI trailer coupling, sound and per-section physical data must be parsed from the coupled .bus file.");
 
     var articulatedAsset =
         OmsiArticulatedVehicleAssetLoader.Load(
@@ -1232,6 +1303,44 @@ try
         Math.Abs(
             articulatedAsset.Sections[0].MaximumYawDegrees -
             52.5) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].OriginY +
+            8.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].FollowerLengthMeters -
+            3.89) <
+        0.0001 &&
+        articulatedAsset.Sections[0].OpenForSound &&
+        articulatedAsset.Sections[0].SoundConfigPath is
+            { Length: > 0 } &&
+        Path.GetFileName(
+            articulatedAsset.Sections[0].SoundConfigPath) ==
+            "trailer.cfg" &&
+        Math.Abs(
+            articulatedAsset.Sections[0].MassTonnes!.Value -
+            6.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].YawInertiaTonneSquareMeters!.Value -
+            150.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].AverageWheelDiameterMeters!.Value -
+            1.02) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Bus.Physics.MassTonnes!.Value -
+            16.9) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Bus.Physics.RollingResistanceNewtons!.Value -
+            1500.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Bus.Physics.MomentOfInertiaZ!.Value -
+            300.0) <
         0.0001 &&
         articulatedAsset.Meshes.Count ==
             vehicleAsset.Meshes.Count * 2 &&
