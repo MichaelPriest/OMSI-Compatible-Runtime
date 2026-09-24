@@ -16,6 +16,13 @@ namespace OMSICompatible.Renderer.D3D11;
 public sealed class D3D11RenderWindow : Form
 {
     [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimeSkyConstants
+    {
+        public Vector2 UvOffset;
+        public Vector2 Padding;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct RuntimeCameraConstants
     {
         public Matrix4x4 ViewProjection;
@@ -183,6 +190,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11VertexShader? _skyVertexShader;
     private ID3D11PixelShader? _skyPixelShader;
     private ID3D11SamplerState? _skySampler;
+    private ID3D11Buffer? _skyConstantsBuffer;
     private RuntimeGpuTexture? _skyTexture;
 
     private ID3D11Buffer? _tileVertexBuffer;
@@ -979,7 +987,11 @@ public sealed class D3D11RenderWindow : Form
 
         _skySampler =
             _device.CreateSamplerState(
-                SamplerDescription.LinearClamp);
+                SamplerDescription.LinearWrap);
+
+        _skyConstantsBuffer =
+            _device.CreateConstantBuffer<
+                RuntimeSkyConstants>();
 
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
@@ -996,6 +1008,107 @@ public sealed class D3D11RenderWindow : Form
                 skyPath);
     }
 
+    private Vector2 ResolveSkyUvOffset()
+    {
+        float yaw;
+        float pitch;
+
+        if (_vehiclePreviewMode)
+        {
+            yaw =
+                _previewYaw +
+                MathF.PI;
+            pitch =
+                -_previewPitch;
+        }
+        else if (!_driveMode)
+        {
+            yaw =
+                _camera.Yaw;
+            pitch =
+                _camera.Pitch;
+        }
+        else
+        {
+            var vehicle =
+                _windowInfo.Vehicle;
+
+            if (_vehicleViewMode ==
+                    RuntimeVehicleViewMode.Driver &&
+                vehicle?.DriverCameras.Count > 0)
+            {
+                var index =
+                    Math.Clamp(
+                        _driverCameraIndex,
+                        0,
+                        vehicle.DriverCameras.Count - 1);
+
+                var camera =
+                    vehicle.DriverCameras[index];
+
+                yaw =
+                    _vehicle.HeadingRadians +
+                    DegreesToRadians(
+                        camera.HeadingDegrees) +
+                    _interiorCameraYawOffsetRadians;
+
+                pitch =
+                    DegreesToRadians(
+                        camera.PitchDegrees) +
+                    _interiorCameraPitchOffsetRadians;
+            }
+            else if (_vehicleViewMode ==
+                         RuntimeVehicleViewMode.Passenger &&
+                     vehicle?.PassengerCameras.Count > 0)
+            {
+                var index =
+                    Math.Clamp(
+                        _passengerCameraIndex,
+                        0,
+                        vehicle.PassengerCameras.Count - 1);
+
+                var camera =
+                    vehicle.PassengerCameras[index];
+
+                yaw =
+                    _vehicle.HeadingRadians +
+                    DegreesToRadians(
+                        camera.HeadingDegrees) +
+                    _interiorCameraYawOffsetRadians;
+
+                pitch =
+                    DegreesToRadians(
+                        camera.PitchDegrees) +
+                    _interiorCameraPitchOffsetRadians;
+            }
+            else
+            {
+                yaw =
+                    _vehicle.HeadingRadians +
+                    _exteriorCameraYawOffsetRadians;
+
+                var basePitch =
+                    MathF.Atan2(
+                        4.4f,
+                        14.0f);
+
+                pitch =
+                    -Math.Clamp(
+                        basePitch +
+                        _exteriorCameraPitchOffsetRadians,
+                        -1.15f,
+                        1.25f);
+            }
+        }
+
+        return new Vector2(
+            -yaw /
+                (MathF.PI *
+                 2.0f),
+            -pitch /
+                MathF.PI);
+    }
+
     private void DrawSky()
     {
         if (_deviceContext is null ||
@@ -1003,6 +1116,7 @@ public sealed class D3D11RenderWindow : Form
             _skyVertexShader is null ||
             _skyPixelShader is null ||
             _skySampler is null ||
+            _skyConstantsBuffer is null ||
             _skyTexture is null)
         {
             return;
@@ -1023,6 +1137,27 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.PSSetShader(
             _skyPixelShader);
+
+        Span<RuntimeSkyConstants> skyConstants =
+            stackalloc RuntimeSkyConstants[1];
+
+        skyConstants[0] =
+            new RuntimeSkyConstants
+            {
+                UvOffset =
+                    ResolveSkyUvOffset(),
+                Padding =
+                    Vector2.Zero
+            };
+
+        _skyConstantsBuffer.SetData(
+            _deviceContext,
+            skyConstants,
+            MapMode.WriteDiscard);
+
+        _deviceContext.PSSetConstantBuffer(
+            0,
+            _skyConstantsBuffer);
 
         _deviceContext.PSSetSampler(
             0,
@@ -8218,6 +8353,7 @@ public sealed class D3D11RenderWindow : Form
 
             _skyTexture?.Dispose();
             _skyTexture = null;
+            _skyConstantsBuffer?.Dispose();
             _skySampler?.Dispose();
             _skyPixelShader?.Dispose();
             _skyVertexShader?.Dispose();
