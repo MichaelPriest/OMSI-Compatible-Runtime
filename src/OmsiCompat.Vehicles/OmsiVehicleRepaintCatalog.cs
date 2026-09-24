@@ -234,27 +234,39 @@ public static class OmsiVehicleRepaintCatalog
             OmsiSectionDocument.ParseFile(
                 ctiPath);
 
-        RepaintBuilder? current =
+        var builders =
+            new Dictionary<string, RepaintBuilder>(
+                StringComparer.OrdinalIgnoreCase);
+
+        string? currentRepaintName =
             null;
 
-        void Commit()
+        RepaintBuilder GetBuilder(
+            string repaintName)
         {
-            if (current is null)
+            var normalized =
+                string.IsNullOrWhiteSpace(
+                    repaintName)
+                    ? Path.GetFileNameWithoutExtension(
+                        ctiPath)
+                    : repaintName.Trim();
+
+            if (!builders.TryGetValue(
+                    normalized,
+                    out var builder))
             {
-                return;
+                builder =
+                    new RepaintBuilder(
+                        bus,
+                        ctiPath,
+                        normalized);
+
+                builders[
+                    normalized] =
+                    builder;
             }
 
-            var repaint =
-                current.Build();
-
-            if (repaint is not null)
-            {
-                destination.Add(
-                    repaint);
-            }
-
-            current =
-                null;
+            return builder;
         }
 
         foreach (var section in
@@ -264,39 +276,33 @@ public static class OmsiVehicleRepaintCatalog
                     "item",
                     StringComparison.OrdinalIgnoreCase))
             {
-                Commit();
-
                 var values =
                     Values(section)
                         .ToArray();
 
-                if (values.Length == 0)
+                if (values.Length < 3)
                 {
                     continue;
                 }
 
-                current =
-                    new RepaintBuilder(
-                        bus,
-                        ctiPath,
-                        values[0]);
+                currentRepaintName =
+                    values[0];
+
+                var builder =
+                    GetBuilder(
+                        currentRepaintName);
 
                 for (var index = 1;
                      index + 1 < values.Length;
                      index += 2)
                 {
                     ApplyTexturePair(
-                        current,
+                        builder,
                         textureSlots,
                         values[index],
                         values[index + 1]);
                 }
 
-                continue;
-            }
-
-            if (current is null)
-            {
                 continue;
             }
 
@@ -309,6 +315,8 @@ public static class OmsiVehicleRepaintCatalog
                         .ToArray();
 
                 if (values.Length >= 2 &&
+                    !string.IsNullOrWhiteSpace(
+                        currentRepaintName) &&
                     double.TryParse(
                         values[1],
                         System.Globalization.NumberStyles.Float,
@@ -316,8 +324,10 @@ public static class OmsiVehicleRepaintCatalog
                         out var parsed) &&
                     double.IsFinite(parsed))
                 {
-                    current.SetVariables[
-                        values[0]] =
+                    GetBuilder(
+                            currentRepaintName)
+                        .SetVariables[
+                            values[0]] =
                         parsed;
                 }
 
@@ -335,10 +345,13 @@ public static class OmsiVehicleRepaintCatalog
                     Values(section)
                         .ToArray();
 
-                if (values.Length >= 2)
+                if (values.Length >= 2 &&
+                    !string.IsNullOrWhiteSpace(
+                        currentRepaintName))
                 {
                     ApplyTexturePair(
-                        current,
+                        GetBuilder(
+                            currentRepaintName),
                         textureSlots,
                         values[0],
                         values[1]);
@@ -346,7 +359,18 @@ public static class OmsiVehicleRepaintCatalog
             }
         }
 
-        Commit();
+        foreach (var builder in
+                 builders.Values)
+        {
+            var repaint =
+                builder.Build();
+
+            if (repaint is not null)
+            {
+                destination.Add(
+                    repaint);
+            }
+        }
     }
 
     private static void ApplyTexturePair(
