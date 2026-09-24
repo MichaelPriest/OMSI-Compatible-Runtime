@@ -71,12 +71,24 @@ public sealed record OmsiVehicleScriptManifest(
 public sealed record OmsiVehicleAxle(
     double LongitudinalPositionMeters,
     double? WheelDiameterMeters,
-    double? DriveFactor);
+    double? DriveFactor,
+    double? MaximumWidthMeters = null,
+    double? MinimumWidthMeters = null,
+    double? SpringRateKilonewtonsPerMeter = null,
+    double? MaximumForceKilonewtons = null,
+    double? DamperRateKilonewtonSecondsPerMeter = null);
 
 public sealed record OmsiVehiclePhysics(
     IReadOnlyList<OmsiVehicleAxle> Axles,
     double? RotationPointLongitudinalMeters,
-    double? InverseMinimumTurnRadius)
+    double? InverseMinimumTurnRadius,
+    double? MassTonnes = null,
+    double? MomentOfInertiaX = null,
+    double? MomentOfInertiaY = null,
+    double? MomentOfInertiaZ = null,
+    double? CenterOfGravityHeightMeters = null,
+    double? RollingResistanceNewtons = null,
+    double? AiDeltaHeightMeters = null)
 {
     public double? WheelBaseMeters
     {
@@ -106,6 +118,29 @@ public sealed record OmsiVehiclePhysics(
                 : null;
         }
     }
+
+    public double? TrackWidthMeters =>
+        Axles
+            .Select(
+                static axle =>
+                    axle.MaximumWidthMeters)
+            .Where(
+                static width =>
+                    width.HasValue &&
+                    double.IsFinite(
+                        width.Value) &&
+                    width.Value >
+                    0.5)
+            .Select(
+                static width =>
+                    width!.Value)
+            .DefaultIfEmpty(
+                double.NaN)
+            .Average() is var average &&
+        double.IsFinite(
+            average)
+            ? average
+            : null;
 
     public double? MaximumSteeringAngleDegrees
     {
