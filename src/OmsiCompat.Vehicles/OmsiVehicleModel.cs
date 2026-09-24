@@ -129,6 +129,10 @@ public sealed record OmsiVehicleAnimation(
     double? MaxSpeed,
     double? Delay);
 
+public sealed record OmsiVehicleSkinBoneBinding(
+    string BoneName,
+    int TargetMeshOrdinal);
+
 public sealed record OmsiVehicleMeshReference(
     int Ordinal,
     string DeclaredPath,
@@ -140,7 +144,9 @@ public sealed record OmsiVehicleMeshReference(
     IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides,
     IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
     string? MeshIdentifier = null,
-    string? AnimationParent = null);
+    string? AnimationParent = null,
+    bool SmoothSkin = false,
+    IReadOnlyList<OmsiVehicleSkinBoneBinding>? SkinBoneBindings = null);
 
 public sealed record OmsiVehicleModel(
     string SourcePath,
