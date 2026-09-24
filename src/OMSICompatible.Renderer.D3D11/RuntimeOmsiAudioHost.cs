@@ -585,6 +585,21 @@ internal sealed class RuntimeOmsiAudioHost :
                       spatial.Gain
                     : 0.0f;
 
+            // OMSI engine loops identify their playback-speed source in the
+            // [loopsound] declaration (normally engine_n). Do not allow a
+            // stale/init RPM variable to make the engine audibly idle while
+            // the host/script engine state is still off. This deliberately
+            // does not mute unrelated loops such as doors, electrics or
+            // ambient equipment.
+            if (!engineRunning &&
+                sound.Loop &&
+                IsEngineSpeedVariable(
+                    sound.PitchVariable))
+            {
+                volume =
+                    0.0f;
+            }
+
             if (sound.Loop)
             {
                 UpdateLoop(
@@ -627,6 +642,32 @@ internal sealed class RuntimeOmsiAudioHost :
                 sound.Id] =
                 active;
         }
+    }
+
+    private static bool IsEngineSpeedVariable(
+        string? variable)
+    {
+        if (string.IsNullOrWhiteSpace(
+                variable))
+        {
+            return false;
+        }
+
+        var normalized =
+            variable.Trim();
+
+        return normalized.Equals(
+                   "engine_n",
+                   StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(
+                   "engine_n_",
+                   StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals(
+                   "engine_speed",
+                   StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(
+                   "engine_speed_",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     public void Dispose()
