@@ -119,6 +119,29 @@ public sealed record OmsiVehiclePhysics(
         }
     }
 
+    public double? AverageWheelDiameterMeters =>
+        Axles
+            .Select(
+                static axle =>
+                    axle.WheelDiameterMeters)
+            .Where(
+                static diameter =>
+                    diameter.HasValue &&
+                    double.IsFinite(
+                        diameter.Value) &&
+                    diameter.Value >
+                    0.1)
+            .Select(
+                static diameter =>
+                    diameter!.Value)
+            .DefaultIfEmpty(
+                double.NaN)
+            .Average() is var average &&
+        double.IsFinite(
+            average)
+            ? average
+            : null;
+
     public double? TrackWidthMeters =>
         Axles
             .Select(
