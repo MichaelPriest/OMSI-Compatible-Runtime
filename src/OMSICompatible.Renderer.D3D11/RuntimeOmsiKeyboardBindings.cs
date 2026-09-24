@@ -371,13 +371,11 @@ internal static class RuntimeOmsiKeyboardBindings
         string? preferredLanguage)
     {
         var candidates =
-            new List<string>
-            {
-                Path.Combine(
-                    inputs,
-                    "ENG.kyb")
-            };
+            new List<string>();
 
+        // keyboard.cfg stores key-table indices, so those indices must be
+        // interpreted with the same language table selected by OMSI.
+        // Falling back to ENG first can map physical keys incorrectly.
         if (!string.IsNullOrWhiteSpace(
                 preferredLanguage))
         {
@@ -392,6 +390,10 @@ internal static class RuntimeOmsiKeyboardBindings
             Path.Combine(
                 inputs,
                 "PTB.kyb"));
+        candidates.Add(
+            Path.Combine(
+                inputs,
+                "ENG.kyb"));
         candidates.Add(
             Path.Combine(
                 inputs,
