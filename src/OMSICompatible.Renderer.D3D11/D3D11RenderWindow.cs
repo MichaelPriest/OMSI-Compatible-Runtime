@@ -18,8 +18,8 @@ public sealed class D3D11RenderWindow : Form
     [StructLayout(LayoutKind.Sequential)]
     private struct RuntimeSkyConstants
     {
-        public Vector2 UvOffset;
-        public Vector2 Padding;
+        // x = yaw, y = pitch, z = tan(verticalFov / 2), w = aspect.
+        public Vector4 ViewParameters;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1023,10 +1023,19 @@ public sealed class D3D11RenderWindow : Form
                 skyPath);
     }
 
-    private Vector2 ResolveSkyUvOffset()
+    private Vector4 ResolveSkyViewParameters()
     {
         float yaw;
         float pitch;
+        float verticalFieldOfViewRadians;
+
+        var aspect =
+            Math.Max(
+                ClientSize.Width,
+                1) /
+            (float)Math.Max(
+                ClientSize.Height,
+                1);
 
         if (_vehiclePreviewMode)
         {
@@ -1035,6 +1044,9 @@ public sealed class D3D11RenderWindow : Form
                 MathF.PI;
             pitch =
                 -_previewPitch;
+            verticalFieldOfViewRadians =
+                MathF.PI /
+                4.0f;
         }
         else if (!_driveMode)
         {
@@ -1042,6 +1054,9 @@ public sealed class D3D11RenderWindow : Form
                 _camera.Yaw;
             pitch =
                 _camera.Pitch;
+            verticalFieldOfViewRadians =
+                MathF.PI /
+                3.0f;
         }
         else
         {
@@ -1071,6 +1086,17 @@ public sealed class D3D11RenderWindow : Form
                     DegreesToRadians(
                         camera.PitchDegrees) +
                     _interiorCameraPitchOffsetRadians;
+
+                verticalFieldOfViewRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            camera.FieldOfViewDegrees *
+                            Math.Clamp(
+                                _interiorCameraFieldOfViewScale,
+                                0.35f,
+                                2.0f),
+                            18.0,
+                            120.0));
             }
             else if (_vehicleViewMode ==
                          RuntimeVehicleViewMode.Passenger &&
@@ -1095,6 +1121,17 @@ public sealed class D3D11RenderWindow : Form
                     DegreesToRadians(
                         camera.PitchDegrees) +
                     _interiorCameraPitchOffsetRadians;
+
+                verticalFieldOfViewRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            camera.FieldOfViewDegrees *
+                            Math.Clamp(
+                                _interiorCameraFieldOfViewScale,
+                                0.35f,
+                                2.0f),
+                            18.0,
+                            120.0));
             }
             else
             {
@@ -1113,15 +1150,22 @@ public sealed class D3D11RenderWindow : Form
                         _exteriorCameraPitchOffsetRadians,
                         -1.15f,
                         1.25f);
+
+                verticalFieldOfViewRadians =
+                    MathF.PI /
+                    3.0f;
             }
         }
 
-        return new Vector2(
-            -yaw /
-                (MathF.PI *
-                 2.0f),
-            -pitch /
-                MathF.PI);
+        return new Vector4(
+            yaw,
+            pitch,
+            MathF.Tan(
+                verticalFieldOfViewRadians *
+                0.5f),
+            MathF.Max(
+                aspect,
+                0.1f));
     }
 
     private void DrawSky()
@@ -1159,10 +1203,8 @@ public sealed class D3D11RenderWindow : Form
         skyConstants[0] =
             new RuntimeSkyConstants
             {
-                UvOffset =
-                    ResolveSkyUvOffset(),
-                Padding =
-                    Vector2.Zero
+                ViewParameters =
+                    ResolveSkyViewParameters()
             };
 
         _skyConstantsBuffer.SetData(
