@@ -48,6 +48,9 @@ public sealed record RuntimeSplinePathInfo(
     int Direction);
 
 public sealed record RuntimeSplineInfo(
+    long Id,
+    long PreviousId,
+    long NextId,
     int TileX,
     int TileY,
     double X,
