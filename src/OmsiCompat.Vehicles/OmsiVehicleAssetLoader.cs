@@ -88,7 +88,9 @@ public static class OmsiVehicleAssetLoader
                     mesh.LightEffects ??
                         Array.Empty<OmsiVehicleLightEffect>(),
                     mesh.MeshIdentifier,
-                    mesh.AnimationParent));
+                    mesh.AnimationParent,
+                    0,
+                    mesh.Ordinal));
                 continue;
             }
 
@@ -438,6 +440,11 @@ public static class OmsiVehicleAssetLoader
                 })
                 .ToArray();
 
+            var skin =
+                BuildSmoothSkin(
+                    geometry,
+                    mesh);
+
             meshes.Add(new OmsiVehicleMeshAsset(
                 mesh.DeclaredPath,
                 meshPath,
@@ -457,7 +464,11 @@ public static class OmsiVehicleAssetLoader
                 mesh.LightEffects ??
                     Array.Empty<OmsiVehicleLightEffect>(),
                 mesh.MeshIdentifier,
-                mesh.AnimationParent));
+                mesh.AnimationParent,
+                0,
+                mesh.Ordinal,
+                skin.Weights,
+                skin.TargetMeshOrdinals));
         }
 
         progress?.Report(
@@ -470,6 +481,133 @@ public static class OmsiVehicleAssetLoader
             meshes.ToArray(),
             OmsiDriverPositionReader.ReadFile(bus.PassengerCabinPath),
             model.TextTextures);
+    }
+
+    private sealed record SmoothSkinData(
+        float[] Weights,
+        IReadOnlyList<int> TargetMeshOrdinals);
+
+    private static SmoothSkinData BuildSmoothSkin(
+        OmsiO3dGeometry geometry,
+        OmsiVehicleMeshReference mesh)
+    {
+        var vertexCount =
+            geometry.Positions.Length /
+            3;
+
+        if (!mesh.SmoothSkin ||
+            vertexCount <= 0 ||
+            mesh.SkinBoneBindings is not
+                { Count: > 0 } ||
+            geometry.Bones is not
+                { Count: > 0 })
+        {
+            return new SmoothSkinData(
+                Array.Empty<float>(),
+                Array.Empty<int>());
+        }
+
+        // Articulated OMSI bellows conventionally expose four setbone
+        // targets (25/50/75/100%). Keep four hardware channels; any
+        // unmapped/base O3D bone remains the implicit identity weight.
+        var bindings =
+            mesh.SkinBoneBindings
+                .Take(4)
+                .ToArray();
+
+        var weights =
+            new float[
+                checked(
+                    vertexCount *
+                    4)];
+
+        for (var slot = 0;
+             slot < bindings.Length;
+             slot++)
+        {
+            var binding =
+                bindings[slot];
+
+            var bone =
+                geometry.Bones
+                    .FirstOrDefault(
+                        item =>
+                            string.Equals(
+                                item.Name,
+                                binding.BoneName,
+                                StringComparison.OrdinalIgnoreCase));
+
+            if (bone is null)
+            {
+                continue;
+            }
+
+            foreach (var influence in
+                     bone.Weights)
+            {
+                if (influence.VertexIndex < 0 ||
+                    influence.VertexIndex >=
+                        vertexCount ||
+                    !float.IsFinite(
+                        influence.Weight) ||
+                    influence.Weight <=
+                        0.0f)
+                {
+                    continue;
+                }
+
+                var offset =
+                    checked(
+                        influence.VertexIndex *
+                            4 +
+                        slot);
+
+                // Blender's old OMSI exporter can repeat a vertex-weight
+                // record once per adjacent face. Those repetitions are not
+                // additive; retain the strongest copy.
+                weights[offset] =
+                    Math.Max(
+                        weights[offset],
+                        influence.Weight);
+            }
+        }
+
+        for (var vertex = 0;
+             vertex < vertexCount;
+             vertex++)
+        {
+            var offset =
+                vertex *
+                4;
+
+            var sum =
+                weights[offset] +
+                weights[offset + 1] +
+                weights[offset + 2] +
+                weights[offset + 3];
+
+            if (sum <= 1.0001f)
+            {
+                continue;
+            }
+
+            var scale =
+                1.0f /
+                sum;
+
+            weights[offset] *= scale;
+            weights[offset + 1] *= scale;
+            weights[offset + 2] *= scale;
+            weights[offset + 3] *= scale;
+        }
+
+        return new SmoothSkinData(
+            weights,
+            bindings
+                .Select(
+                    static binding =>
+                        binding.TargetMeshOrdinal)
+                .ToArray());
     }
 
     private static int GetTextureOccurrenceIndex(
