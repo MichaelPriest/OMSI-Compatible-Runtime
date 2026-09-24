@@ -53,6 +53,9 @@ public static class OmsiArticulatedVehicleAssetLoader
             new List<OmsiVehicleTextTexture>(
                 leading.TextTextures);
 
+        var sections =
+            new List<OmsiVehicleSectionAssetInfo>();
+
         var visited =
             new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase)
@@ -168,7 +171,38 @@ public static class OmsiArticulatedVehicleAssetLoader
                             mesh,
                             childOffset,
                             textTextureOffset,
-                            sectionPrefix)));
+                            sectionPrefix,
+                            sectionCount)));
+
+            var joint =
+                new SectionOffset(
+                    parentOffset.X +
+                    parentBack.X,
+                    parentOffset.Y +
+                    parentBack.Y,
+                    parentOffset.Z +
+                    parentBack.Z);
+
+            var followerLength =
+                ResolveFollowerLength(
+                    childBus,
+                    childFront);
+
+            sections.Add(
+                new OmsiVehicleSectionAssetInfo(
+                    sectionCount,
+                    sectionCount - 1,
+                    joint.X,
+                    joint.Y,
+                    joint.Z,
+                    followerLength,
+                    Math.Clamp(
+                        childBus.FrontCouplingCharacter?
+                            .MaximumYawDegrees ??
+                        55.0,
+                        5.0,
+                        89.0),
+                    coupledBack.Reverse));
 
             sectionCount++;
 
@@ -211,7 +245,9 @@ public static class OmsiArticulatedVehicleAssetLoader
             TextTextures =
                 textTextures.ToArray(),
             SectionCount =
-                sectionCount
+                sectionCount,
+            Sections =
+                sections.ToArray()
         };
     }
 
@@ -219,7 +255,8 @@ public static class OmsiArticulatedVehicleAssetLoader
         OmsiVehicleMeshAsset mesh,
         SectionOffset offset,
         int textTextureOffset,
-        string sectionPrefix)
+        string sectionPrefix,
+        int sectionIndex)
     {
         var transform =
             mesh.Transform with
@@ -303,7 +340,9 @@ public static class OmsiArticulatedVehicleAssetLoader
                     mesh.AnimationParent)
                     ? null
                     : sectionPrefix +
-                      mesh.AnimationParent
+                      mesh.AnimationParent,
+            SectionIndex =
+                sectionIndex
         };
     }
 
@@ -348,6 +387,46 @@ public static class OmsiArticulatedVehicleAssetLoader
             MaterialChangeSets =
                 changeSets
         };
+    }
+
+    private static double ResolveFollowerLength(
+        OmsiBusInfo childBus,
+        OmsiVehicleCouplingPoint childFront)
+    {
+        var rotationPoint =
+            childBus.Physics
+                .RotationPointLongitudinalMeters;
+
+        if (rotationPoint.HasValue)
+        {
+            var distance =
+                Math.Abs(
+                    childFront.Y -
+                    rotationPoint.Value);
+
+            if (double.IsFinite(
+                    distance) &&
+                distance > 0.75)
+            {
+                return Math.Clamp(
+                    distance,
+                    1.0,
+                    15.0);
+            }
+        }
+
+        if (childBus.Physics.WheelBaseMeters is
+            { } wheelBase &&
+            double.IsFinite(
+                wheelBase))
+        {
+            return Math.Clamp(
+                wheelBase,
+                1.0,
+                15.0);
+        }
+
+        return 5.5;
     }
 
     private static OmsiVehicleRepaint?
