@@ -73,11 +73,18 @@ jobs:
           1. Clique em Procurar.
           2. Selecione a pasta raiz do conteúdo OMSI.
              Exemplo: G:\Games\OMSI 2 Steam Edition
-          3. Escolha o mapa.
-          4. Clique em JOGAR.
+          3. Escolha o mapa e o ponto inicial.
+          4. Escolha o ônibus por Carroceria > Modelo > Skin.
+             Os três níveis vêm do [friendlyname] do arquivo .bus.
+          5. Quando houver Preview.png/preview.jpg na pasta do veículo,
+             a imagem é mostrada na seleção.
+          6. Para explorar somente o mapa, marque "Iniciar sem ônibus".
+          7. Clique em JOGAR.
 
           O launcher usa picture.jpg/preview do mapa quando disponível.
           O loading mostra etapas reais do carregamento.
+          O modo "Iniciar sem ônibus" abre o mapa em câmera livre e não
+          carrega meshes, scripts ou materiais de veículo.
           O jogo não inicia Omsi.exe.
 
           CONTROLES OMSI - MODO DIRIGIR
