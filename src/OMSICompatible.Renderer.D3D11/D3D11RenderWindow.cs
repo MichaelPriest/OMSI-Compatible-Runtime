@@ -5525,20 +5525,20 @@ public sealed class D3D11RenderWindow : Form
                 return;
             }
 
-            var deltaX =
+            var previewDeltaX =
                 e.X - _lastMousePosition.X;
-            var deltaY =
+            var previewDeltaY =
                 e.Y - _lastMousePosition.Y;
 
             _lastMousePosition =
                 e.Location;
 
             _previewYaw +=
-                deltaX * 0.008f;
+                previewDeltaX * 0.008f;
             _previewPitch =
                 Math.Clamp(
                     _previewPitch -
-                    deltaY * 0.006f,
+                    previewDeltaY * 0.006f,
                     -0.35f,
                     0.75f);
 
