@@ -113,6 +113,12 @@ public sealed class D3D11RenderWindow : Form
     private readonly Dictionary<int, float>
         _articulatedSectionYawRadians =
             [];
+    private readonly Dictionary<int, float>
+        _articulatedSectionYawRateRadiansPerSecond =
+            [];
+    private readonly Dictionary<int, Vector2>
+        _articulatedSectionJointWorldPosition =
+            [];
 
     private double _lastFrameTimeSeconds;
     private bool _graphicsPrepared;
@@ -4980,6 +4986,8 @@ public sealed class D3D11RenderWindow : Form
     {
         _articulatedSectionAbsoluteHeadingRadians.Clear();
         _articulatedSectionYawRadians.Clear();
+        _articulatedSectionYawRateRadiansPerSecond.Clear();
+        _articulatedSectionJointWorldPosition.Clear();
 
         foreach (var section in
                  _windowInfo.Vehicle?.Sections ??
@@ -4992,6 +5000,20 @@ public sealed class D3D11RenderWindow : Form
             _articulatedSectionYawRadians[
                 section.Index] =
                 0.0f;
+
+            _articulatedSectionYawRateRadiansPerSecond[
+                section.Index] =
+                0.0f;
+        }
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections ??
+                 Array.Empty<RuntimeVehicleSectionInfo>())
+        {
+            _articulatedSectionJointWorldPosition[
+                section.Index] =
+                ResolveArticulatedJointWorldPosition(
+                    section);
         }
     }
 
@@ -5032,27 +5054,125 @@ public sealed class D3D11RenderWindow : Form
                     parentHeading;
             }
 
+            var hitchWorld =
+                ResolveArticulatedJointWorldPosition(
+                    section);
+
+            var previousHitch =
+                _articulatedSectionJointWorldPosition
+                    .TryGetValue(
+                        section.Index,
+                        out var storedHitch)
+                    ? storedHitch
+                    : hitchWorld;
+
+            _articulatedSectionJointWorldPosition[
+                section.Index] =
+                hitchWorld;
+
+            var hitchVelocity =
+                (hitchWorld -
+                 previousHitch) /
+                Math.Max(
+                    deltaSeconds,
+                    0.0001f);
+
             var followerLength =
                 Math.Clamp(
                     (float)section.FollowerLengthMeters,
-                    1.0f,
-                    15.0f);
+                    0.75f,
+                    20.0f);
 
-            var headingDifference =
-                NormalizeRadians(
-                    parentHeading -
-                    sectionHeading);
+            // A coupled OMSI section is constrained by its front hitch and
+            // its own rotation point/rear axle. For a no-slip follower the
+            // yaw rate is the lateral hitch velocity divided by the
+            // hitch-to-rotation-point distance. Unlike the old speed/L
+            // approximation this also accounts for the parent's yaw rate,
+            // off-axis coupling points and reversing.
+            var sectionRight =
+                new Vector2(
+                    MathF.Cos(
+                        sectionHeading),
+                    -MathF.Sin(
+                        sectionHeading));
 
-            var angularVelocity =
-                _vehicle.SpeedMetersPerSecond /
-                followerLength *
-                MathF.Sin(
-                    headingDifference);
+            var targetYawRate =
+                Vector2.Dot(
+                    hitchVelocity,
+                    sectionRight) /
+                followerLength;
+
+            var massKilograms =
+                Math.Clamp(
+                    (float)(section.MassTonnes ??
+                        10.0) *
+                    1000.0f,
+                    1_000.0f,
+                    50_000.0f);
+
+            var yawInertiaKilogramSquareMeters =
+                Math.Clamp(
+                    (float)(section.YawInertiaTonneSquareMeters ??
+                        (massKilograms *
+                         followerLength *
+                         followerLength /
+                         12.0f /
+                         1000.0f)) *
+                    1000.0f,
+                    5_000.0f,
+                    8_000_000.0f);
+
+            var inertialRatio =
+                Math.Clamp(
+                    yawInertiaKilogramSquareMeters /
+                    Math.Max(
+                        massKilograms *
+                        followerLength *
+                        followerLength,
+                        1.0f),
+                    0.03f,
+                    1.5f);
+
+            var responseTime =
+                Math.Clamp(
+                    0.035f +
+                    inertialRatio *
+                    0.30f,
+                    0.04f,
+                    0.45f);
+
+            var blend =
+                1.0f -
+                MathF.Exp(
+                    -deltaSeconds /
+                    responseTime);
+
+            var yawRate =
+                _articulatedSectionYawRateRadiansPerSecond
+                    .TryGetValue(
+                        section.Index,
+                        out var storedYawRate)
+                    ? storedYawRate
+                    : 0.0f;
+
+            yawRate +=
+                (targetYawRate -
+                 yawRate) *
+                blend;
+
+            // Prevent violent numerical snaps after a hitch crosses a tile
+            // or frame-time spike while still allowing realistic jackknife
+            // behaviour when reversing.
+            yawRate =
+                Math.Clamp(
+                    yawRate,
+                    -2.8f,
+                    2.8f);
 
             sectionHeading =
                 NormalizeRadians(
                     sectionHeading +
-                    angularVelocity *
+                    yawRate *
                     deltaSeconds);
 
             var relativeYaw =
@@ -5067,16 +5187,34 @@ public sealed class D3D11RenderWindow : Form
                         5.0,
                         89.0));
 
-            relativeYaw =
-                Math.Clamp(
-                    relativeYaw,
-                    -maximumYaw,
-                    maximumYaw);
-
-            sectionHeading =
-                NormalizeRadians(
-                    parentHeading +
-                    relativeYaw);
+            if (relativeYaw >
+                maximumYaw)
+            {
+                relativeYaw =
+                    maximumYaw;
+                sectionHeading =
+                    NormalizeRadians(
+                        parentHeading +
+                        relativeYaw);
+                yawRate =
+                    Math.Min(
+                        yawRate,
+                        _vehicle.YawRateRadiansPerSecond);
+            }
+            else if (relativeYaw <
+                     -maximumYaw)
+            {
+                relativeYaw =
+                    -maximumYaw;
+                sectionHeading =
+                    NormalizeRadians(
+                        parentHeading +
+                        relativeYaw);
+                yawRate =
+                    Math.Max(
+                        yawRate,
+                        _vehicle.YawRateRadiansPerSecond);
+            }
 
             _articulatedSectionAbsoluteHeadingRadians[
                 section.Index] =
@@ -5085,7 +5223,55 @@ public sealed class D3D11RenderWindow : Form
             _articulatedSectionYawRadians[
                 section.Index] =
                 relativeYaw;
+
+            _articulatedSectionYawRateRadiansPerSecond[
+                section.Index] =
+                yawRate;
         }
+    }
+
+    private Vector2 ResolveArticulatedJointWorldPosition(
+        RuntimeVehicleSectionInfo section)
+    {
+        var local =
+            new Vector3(
+                (float)section.JointX,
+                0.0f,
+                (float)section.JointZ);
+
+        if (section.ParentIndex > 0)
+        {
+            local =
+                Vector3.Transform(
+                    local,
+                    CreateArticulatedSectionMatrix(
+                        section.ParentIndex));
+        }
+
+        var sine =
+            MathF.Sin(
+                _vehicle.HeadingRadians);
+        var cosine =
+            MathF.Cos(
+                _vehicle.HeadingRadians);
+
+        var rotatedX =
+            local.X *
+                cosine +
+            local.Z *
+                sine;
+
+        var rotatedZ =
+            -local.X *
+                sine +
+            local.Z *
+                cosine;
+
+        return new Vector2(
+            _vehicle.Position.X +
+                rotatedX,
+            _vehicle.Position.Z +
+                rotatedZ);
     }
 
     private Matrix4x4 CreateArticulatedSectionMatrix(
@@ -7201,11 +7387,12 @@ public sealed class D3D11RenderWindow : Form
         var centerY =
             ClientSize.Height * 0.5f;
 
-        // Screen X follows steering direction: moving the cross
-        // left steers left; moving it right steers right.
+        // Runtime vehicle yaw uses the opposite screen-X sign
+        // from the OMSI mouse cross. User-facing behaviour must remain:
+        // mouse right -> vehicle right, mouse left -> vehicle left.
         var horizontal =
             Math.Clamp(
-                (location.X - centerX) /
+                (centerX - location.X) /
                 halfWidth,
                 -1.0f,
                 1.0f);
