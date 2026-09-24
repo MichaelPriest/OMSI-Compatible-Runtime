@@ -120,6 +120,8 @@ public sealed class D3D11RenderWindow : Form
     private float _mouseDriveAccelerator;
     private float _mouseDriveBrake;
     private float _mouseDriveSteering;
+    private bool _simulationPaused;
+    private readonly RuntimeOmsiMenuBar? _omsiMenuBar;
     private int _captionFrame;
     private int? _streamingTileX;
     private int? _streamingTileY;
@@ -340,6 +342,27 @@ public sealed class D3D11RenderWindow : Form
         MouseUp += OnRuntimeMouseUp;
         MouseMove += OnRuntimeMouseMove;
         MouseWheel += OnRuntimeMouseWheel;
+
+        _omsiMenuBar =
+            _vehiclePreviewMode
+                ? null
+                : new RuntimeOmsiMenuBar();
+
+        if (_omsiMenuBar is not null)
+        {
+            _omsiMenuBar.Anchor =
+                AnchorStyles.Right |
+                AnchorStyles.Bottom;
+            _omsiMenuBar.CommandInvoked +=
+                OnOmsiMenuCommandInvoked;
+
+            Controls.Add(
+                _omsiMenuBar);
+
+            PerformLayout();
+            LayoutOmsiMenuBar();
+            SyncOmsiMenuState();
+        }
 
         _renderTimer = new System.Windows.Forms.Timer
         {
@@ -2126,10 +2149,181 @@ public sealed class D3D11RenderWindow : Form
         return vertices.ToArray();
     }
 
+    protected override bool ProcessCmdKey(
+        ref Message msg,
+        Keys keyData)
+    {
+        if (!_vehiclePreviewMode &&
+            (keyData & Keys.KeyCode) ==
+            Keys.Menu)
+        {
+            ToggleOmsiMenu();
+            return true;
+        }
+
+        if (!_vehiclePreviewMode &&
+            _omsiMenuBar?.Visible ==
+                true &&
+            (keyData & Keys.KeyCode) ==
+            Keys.Escape)
+        {
+            _omsiMenuBar.HideMenu();
+            return true;
+        }
+
+        return base.ProcessCmdKey(
+            ref msg,
+            keyData);
+    }
+
+    private void ToggleOmsiMenu()
+    {
+        if (_omsiMenuBar is null)
+        {
+            return;
+        }
+
+        if (!_omsiMenuBar.Visible &&
+            _mouseDriveMode)
+        {
+            DisableMouseDriveMode();
+        }
+
+        _omsiMenuBar.ToggleMenu();
+
+        if (_omsiMenuBar.Visible)
+        {
+            LayoutOmsiMenuBar();
+            _omsiMenuBar.BringToFront();
+        }
+
+        SyncOmsiMenuState();
+        UpdateCaption();
+    }
+
+    private void LayoutOmsiMenuBar()
+    {
+        if (_omsiMenuBar is null)
+        {
+            return;
+        }
+
+        _omsiMenuBar.MaximumSize =
+            new System.Drawing.Size(
+                Math.Max(
+                    ClientSize.Width -
+                    24,
+                    320),
+                0);
+
+        _omsiMenuBar.Location =
+            new System.Drawing.Point(
+                Math.Max(
+                    12,
+                    ClientSize.Width -
+                    _omsiMenuBar.Width -
+                    12),
+                Math.Max(
+                    12,
+                    ClientSize.Height -
+                    _omsiMenuBar.Height -
+                    12));
+    }
+
+    private void SyncOmsiMenuState()
+    {
+        if (_omsiMenuBar is null)
+        {
+            return;
+        }
+
+        _omsiMenuBar.SetPaused(
+            _simulationPaused);
+        _omsiMenuBar.SetMouseSteeringActive(
+            _mouseDriveMode);
+        _omsiMenuBar.SetControllerActive(
+            _controllerInputEnabled);
+    }
+
+    private void OnOmsiMenuCommandInvoked(
+        RuntimeOmsiMenuCommand command)
+    {
+        switch (command)
+        {
+            case RuntimeOmsiMenuCommand.Close:
+                _omsiMenuBar?.HideMenu();
+                break;
+
+            case RuntimeOmsiMenuCommand.StartMenu:
+                Close();
+                return;
+
+            case RuntimeOmsiMenuCommand.Schedule:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ScheduleView);
+                break;
+
+            case RuntimeOmsiMenuCommand.Pause:
+                _simulationPaused =
+                    !_simulationPaused;
+                break;
+
+            case RuntimeOmsiMenuCommand.DriverView:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.DriverView);
+                break;
+
+            case RuntimeOmsiMenuCommand.PassengerView:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.PassengerView);
+                break;
+
+            case RuntimeOmsiMenuCommand.ExteriorView:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ExteriorView);
+                break;
+
+            case RuntimeOmsiMenuCommand.FreeMapCamera:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.FreeCameraView);
+                break;
+
+            case RuntimeOmsiMenuCommand.MouseSteering:
+                if (_driveMode)
+                {
+                    ToggleMouseDriveMode();
+                }
+
+                break;
+
+            case RuntimeOmsiMenuCommand.GameController:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ControllerToggle);
+                break;
+
+            case RuntimeOmsiMenuCommand.ResetVehicle:
+                if (_terrainGeometry.Vertices.Length >
+                    0)
+                {
+                    _vehicle.Reset(
+                        _windowInfo.Splines,
+                        _terrainGeometry,
+                        _windowInfo.Spawn);
+                }
+
+                break;
+        }
+
+        SyncOmsiMenuState();
+        UpdateCaption();
+    }
+
     private void OnClientSizeChanged(
         object? sender,
         EventArgs e)
     {
+        LayoutOmsiMenuBar();
+
         if (_swapChain is null ||
             ClientSize.Width <= 0 ||
             ClientSize.Height <= 0)
@@ -2173,9 +2367,19 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         EventArgs e)
     {
-        UpdateSimulation();
-        CheckStreamingCenter();
+        if (!_simulationPaused)
+        {
+            UpdateSimulation();
+            CheckStreamingCenter();
+        }
+
         RenderFrame();
+
+        if (_omsiMenuBar?.Visible ==
+            true)
+        {
+            _omsiMenuBar.BringToFront();
+        }
 
         _captionFrame++;
         if (_captionFrame >= 15)
@@ -6187,6 +6391,13 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         MouseEventArgs e)
     {
+        if (!_vehiclePreviewMode &&
+            _omsiMenuBar?.Visible ==
+                true)
+        {
+            _omsiMenuBar.HideMenu();
+        }
+
         if (_vehiclePreviewMode)
         {
             if (e.Button is
@@ -6370,6 +6581,8 @@ public sealed class D3D11RenderWindow : Form
 
         Cursor.Position =
             PointToScreen(center);
+
+        SyncOmsiMenuState();
     }
 
     private void DisableMouseDriveMode()
@@ -6386,6 +6599,8 @@ public sealed class D3D11RenderWindow : Form
         Capture = false;
         Cursor =
             Cursors.Default;
+
+        SyncOmsiMenuState();
     }
 
     private void UpdateOmsiMouseAxes(
@@ -6714,14 +6929,22 @@ public sealed class D3D11RenderWindow : Form
                     "F1 cockpit"
             };
 
+        var pauseState =
+            _simulationPaused
+                ? "PAUSADO · "
+                : string.Empty;
+
         var control = _driveMode
-            ? $"OMSI DRIVE · {vehicleView} · {_vehicle.SpeedKph:0} km/h · gear {gear} · " +
+            ? $"{pauseState}OMSI DRIVE · {vehicleView} · {_vehicle.SpeedKph:0} km/h · gear {gear} · " +
               $"E:{(_vehicle.ElectricalSystemEnabled ? "ON" : "OFF")} " +
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
               $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · Insert schedule · Home tickets · F4 free cam · F9 mirrors · D/N/R · E/M · Num. park · Tab free cam"
-            : "FREE CAM · WASD move · RMB look · Q/E vertical · R reset · F1/F2/F3 OMSI view · Tab OMSI drive";
+            : $"{pauseState}FREE CAM · WASD move · RMB look · Q/E vertical · R reset · F1/F2/F3 OMSI view · Tab OMSI drive";
+
+        control +=
+            " · Alt menu";
 
         Text =
             $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
@@ -6735,6 +6958,12 @@ public sealed class D3D11RenderWindow : Form
     {
         if (disposing)
         {
+            if (_omsiMenuBar is not null)
+            {
+                _omsiMenuBar.CommandInvoked -=
+                    OnOmsiMenuCommandInvoked;
+            }
+
             if (_scriptRuntime is not null)
             {
                 _scriptRuntime.SystemMacroHandler =
