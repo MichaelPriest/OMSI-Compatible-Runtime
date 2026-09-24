@@ -78,9 +78,6 @@ public static class OmsiArticulatedVehicleAssetLoader
             bus.Physics.MassTonnes;
         var combinedRollingResistanceNewtons =
             bus.Physics.RollingResistanceNewtons;
-        var combinedYawInertia =
-            bus.Physics.MomentOfInertiaZ;
-
         while (sectionCount <
                MaximumSectionCount &&
                parent.CoupledBack is
@@ -201,6 +198,9 @@ public static class OmsiArticulatedVehicleAssetLoader
                     joint.X,
                     joint.Y,
                     joint.Z,
+                    childOffset.X,
+                    childOffset.Y,
+                    childOffset.Z,
                     followerLength,
                     Math.Clamp(
                         childBus.FrontCouplingCharacter?
@@ -209,11 +209,14 @@ public static class OmsiArticulatedVehicleAssetLoader
                         5.0,
                         89.0),
                     coupledBack.Reverse,
+                    childBus.SoundConfigPath,
+                    childBus.FrontCouplingOpenForSound,
                     childBus.Physics.MassTonnes,
                     childBus.Physics.MomentOfInertiaZ,
                     childBus.Physics.RotationPointLongitudinalMeters,
                     childBus.Physics.WheelBaseMeters,
-                    childBus.Physics.RollingResistanceNewtons));
+                    childBus.Physics.RollingResistanceNewtons,
+                    childBus.Physics.AverageWheelDiameterMeters));
 
             combinedMassTonnes =
                 SumOptional(
@@ -223,11 +226,6 @@ public static class OmsiArticulatedVehicleAssetLoader
                 SumOptional(
                     combinedRollingResistanceNewtons,
                     childBus.Physics.RollingResistanceNewtons);
-            combinedYawInertia =
-                SumOptional(
-                    combinedYawInertia,
-                    childBus.Physics.MomentOfInertiaZ);
-
             sectionCount++;
 
             progress?.Report(
@@ -272,9 +270,7 @@ public static class OmsiArticulatedVehicleAssetLoader
                 MassTonnes =
                     combinedMassTonnes,
                 RollingResistanceNewtons =
-                    combinedRollingResistanceNewtons,
-                MomentOfInertiaZ =
-                    combinedYawInertia
+                    combinedRollingResistanceNewtons
             };
 
         return leading with
