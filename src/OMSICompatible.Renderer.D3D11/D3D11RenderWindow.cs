@@ -149,7 +149,9 @@ public sealed class D3D11RenderWindow : Form
         MouseButtons.None;
     private bool _mouseDriveMode;
     private string? _activeVehicleMouseTrigger;
-    private bool _fallbackEngineKeyActive;
+    private readonly Dictionary<Keys, string>
+        _fallbackOmsiPressTriggers =
+            [];
     private bool _driveMode = true;
     private RuntimeVehicleViewMode _vehicleViewMode =
         RuntimeVehicleViewMode.Driver;
@@ -6899,19 +6901,100 @@ public sealed class D3D11RenderWindow : Form
                 return;
             }
 
-            // Some OMSI installations/custom keyboard.cfg files do not
-            // contain the default engine key although M remains the native
-            // OMSI engine-start control. Preserve that default without
-            // replacing any explicit user binding.
+            // Preserve OMSI's standard drive keys even when a custom or
+            // partially parsed keyboard.cfg omits one of them. Explicit
+            // bindings always win because this path runs only when no
+            // binding matched the physical key.
             if (_driveMode &&
-                e.KeyCode ==
-                    Keys.M)
+                TryApplyOmsiDefaultDriveKeyFallback(
+                    e.KeyCode))
             {
-                DispatchOmsiScriptTrigger(
-                    "kw_m_enginestart");
-
-                _fallbackEngineKeyActive =
+                UpdateCaption();
+                e.SuppressKeyPress =
                     true;
+            }
+
+            return;
+        }
+
+        ApplyLegacyKeyboardFallback(
+            e);
+    }
+
+    private bool TryApplyOmsiDefaultDriveKeyFallback(
+        Keys key)
+    {
+        switch (key)
+        {
+            case Keys.E:
+                // Host-owned electrical state is authoritative for the
+                // runtime, but still send the standard cockpit trigger when
+                // that vehicle implements it so key/switch animations follow.
+                if (_scriptRuntime?.HasTrigger(
+                        "cp_batterietrennschalter_toggle") ==
+                    true)
+                {
+                    const string trigger =
+                        "cp_batterietrennschalter_toggle";
+
+                    DispatchOmsiScriptTrigger(
+                        trigger);
+                    _fallbackOmsiPressTriggers[
+                        key] =
+                        trigger;
+                }
+                else if (_scriptRuntime?.HasTrigger(
+                             "kw_batterietrennschalter") ==
+                         true)
+                {
+                    const string trigger =
+                        "kw_batterietrennschalter";
+
+                    DispatchOmsiScriptTrigger(
+                        trigger);
+                    _fallbackOmsiPressTriggers[
+                        key] =
+                        trigger;
+                }
+
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ElectricalToggle);
+                return true;
+
+            case Keys.N:
+                DispatchDefaultScriptTriggerIfPresent(
+                    key,
+                    "automatic_N");
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.GearNeutral);
+                return true;
+
+            case Keys.D:
+                DispatchDefaultScriptTriggerIfPresent(
+                    key,
+                    "automatic_D");
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.GearDrive);
+                return true;
+
+            case Keys.R:
+                DispatchDefaultScriptTriggerIfPresent(
+                    key,
+                    "automatic_R");
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.GearReverse);
+                return true;
+
+            case Keys.M:
+                const string engineTrigger =
+                    "kw_m_enginestart";
+
+                DispatchOmsiScriptTrigger(
+                    engineTrigger);
+
+                _fallbackOmsiPressTriggers[
+                    key] =
+                    engineTrigger;
 
                 if (_scriptRuntime?.HasLocalVariable(
                         "engine_on") ==
@@ -6927,16 +7010,30 @@ public sealed class D3D11RenderWindow : Form
                     _vehicle.ToggleEngine();
                 }
 
-                UpdateCaption();
-                e.SuppressKeyPress =
-                    true;
-            }
+                return true;
 
+            default:
+                return false;
+        }
+    }
+
+    private void DispatchDefaultScriptTriggerIfPresent(
+        Keys key,
+        string trigger)
+    {
+        if (_scriptRuntime?.HasTrigger(
+                trigger) !=
+            true)
+        {
             return;
         }
 
-        ApplyLegacyKeyboardFallback(
-            e);
+        DispatchOmsiScriptTrigger(
+            trigger);
+
+        _fallbackOmsiPressTriggers[
+            key] =
+            trigger;
     }
 
     private void ApplyLegacyKeyboardFallback(
@@ -7391,15 +7488,13 @@ public sealed class D3D11RenderWindow : Form
                         e.KeyCode)
                 .ToArray();
 
-        if (_fallbackEngineKeyActive &&
-            e.KeyCode ==
-                Keys.M)
+        if (_fallbackOmsiPressTriggers.Remove(
+                e.KeyCode,
+                out var fallbackTrigger))
         {
             DispatchOmsiScriptTrigger(
-                "kw_m_enginestart_off");
-
-            _fallbackEngineKeyActive =
-                false;
+                ReleaseTriggerName(
+                    fallbackTrigger));
         }
 
         foreach (var binding in
@@ -7692,6 +7787,9 @@ public sealed class D3D11RenderWindow : Form
                     RuntimeOmsiHostInputAction.ParkingBrakeRelease,
                 "parking_brake_mouse" =>
                     RuntimeOmsiHostInputAction.ParkingBrakeToggle,
+                "kw_batterietrennschalter" or
+                "cp_batterietrennschalter_toggle" =>
+                    RuntimeOmsiHostInputAction.ElectricalToggle,
                 "kw_m_enginestart" or
                 "kw_m_engine_startbutton" =>
                     RuntimeOmsiHostInputAction.EngineStart,
@@ -7733,6 +7831,8 @@ public sealed class D3D11RenderWindow : Form
                 "parking_brake_set" or
                 "parking_brake_release" or
                 "parking_brake_mouse" or
+                "kw_batterietrennschalter" or
+                "cp_batterietrennschalter_toggle" or
                 "kw_m_enginestart" or
                 "kw_m_engine_startbutton" or
                 "kw_m_engineshutdown" or
