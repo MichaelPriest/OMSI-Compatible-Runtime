@@ -146,7 +146,8 @@ public sealed record OmsiVehicleMeshReference(
     string? MeshIdentifier = null,
     string? AnimationParent = null,
     bool SmoothSkin = false,
-    IReadOnlyList<OmsiVehicleSkinBoneBinding>? SkinBoneBindings = null);
+    IReadOnlyList<OmsiVehicleSkinBoneBinding>? SkinBoneBindings = null,
+    string? MouseEventTrigger = null);
 
 public sealed record OmsiVehicleModel(
     string SourcePath,
