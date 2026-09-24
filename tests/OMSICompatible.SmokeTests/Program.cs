@@ -434,6 +434,12 @@ try
             "50",
             "50",
             "50",
+            "[CTCTexture]",
+            "body",
+            "regen.tga",
+            "[CTCTexture]",
+            "detail",
+            "detail.bmp",
             "[LOD]",
             "0.1",
             "[mesh]",
@@ -655,6 +661,42 @@ try
 
     File.WriteAllBytes(
         Path.Combine(
+            vehicleModelDirectory,
+            "regen.tga"),
+        [0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleDirectory,
+            "skin_body.tga"),
+        [0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            vehicleDirectory,
+            "skin_detail.bmp"),
+        [0x42, 0x4D]);
+
+    File.WriteAllText(
+        Path.Combine(
+            vehicleDirectory,
+            "synthetic-repaints.cti"),
+        Lines(
+            "[item]",
+            "Blue Fleet",
+            "body",
+            "skin_body.tga",
+            "[item]",
+            "Blue Fleet",
+            "detail",
+            "skin_detail.bmp",
+            "[setvar]",
+            "mesh_visible",
+            "1"),
+        Encoding.Unicode);
+
+    File.WriteAllBytes(
+        Path.Combine(
             vehicleDirectory,
             "Preview.png"),
         [0x89, 0x50, 0x4E, 0x47]);
@@ -810,6 +852,44 @@ try
             "Preview.png",
             StringComparison.OrdinalIgnoreCase),
         "OMSI [friendlyname] lines must map to body/model/skin selection metadata and resolve the vehicle preview.");
+
+    var repaints =
+        OmsiVehicleRepaintCatalog.Discover(
+            bus);
+
+    Require(
+        repaints.Count == 1 &&
+        repaints[0].Name == "Blue Fleet" &&
+        repaints[0].TextureOverrides.Count == 2 &&
+        repaints[0].SetVariables.TryGetValue(
+            "mesh_visible",
+            out var repaintVisible) &&
+        Math.Abs(
+            repaintVisible -
+            1.0) <
+        0.0001,
+        "OMSI CTI repaint items with the same skin name must be merged, including [setvar] values.");
+
+    var repaintedVehicleAsset =
+        OmsiVehicleAssetLoader.Load(
+            contentRoot,
+            bus,
+            repaint:
+                repaints[0]);
+
+    Require(
+        repaintedVehicleAsset.Meshes
+            .SelectMany(
+                static mesh =>
+                    mesh.Materials)
+            .Any(
+                material =>
+                    string.Equals(
+                        Path.GetFileName(
+                            material.TexturePath),
+                        "skin_body.tga",
+                        StringComparison.OrdinalIgnoreCase)),
+        "Selected OMSI CTI repaint must replace the matching vehicle material texture.");
 
     var vehicleAsset =
         OmsiVehicleAssetLoader.Load(
