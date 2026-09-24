@@ -973,6 +973,7 @@ internal sealed class RuntimeApplicationContext :
                 : new RuntimeVehicleInfo(
                 vehicle.Bus.DisplayName,
                 vehicle.Bus.RelativePath,
+                vehicle.Bus.SoundConfigPath,
                 vehicle.Meshes
                     .Select(
                         static mesh =>
