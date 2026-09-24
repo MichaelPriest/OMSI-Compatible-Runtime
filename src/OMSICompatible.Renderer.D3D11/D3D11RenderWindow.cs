@@ -2163,20 +2163,27 @@ public sealed class D3D11RenderWindow : Form
 
     private void CheckStreamingCenter()
     {
-        if (!_driveMode ||
-            !_windowInfo.ActiveTileRadius.HasValue)
+        if (!_windowInfo.ActiveTileRadius.HasValue)
         {
             return;
         }
 
+        // Match OMSI's streamed world behaviour: while driving the
+        // vehicle is the streaming focus; in free/map camera mode the
+        // camera itself becomes the streaming focus.
+        var streamingPosition =
+            _driveMode
+                ? _vehicle.Position
+                : _camera.Position;
+
         var tileX =
             (int)Math.Floor(
-                _vehicle.Position.X /
+                streamingPosition.X /
                 300.0f);
 
         var tileY =
             (int)Math.Floor(
-                _vehicle.Position.Z /
+                streamingPosition.Z /
                 300.0f);
 
         if (_streamingTileX == tileX &&
@@ -5289,12 +5296,47 @@ public sealed class D3D11RenderWindow : Form
             "Velocity_Ground",
             _vehicle.SpeedKph);
 
+        // Runtime world yaw uses positive values for a right turn,
+        // while OMSI's built-in axle animation variables use the opposite
+        // sign convention. Inverting here keeps the bus path and the
+        // visible steering wheel/front wheels synchronized.
+        var omsiSteering =
+            -_vehicle.SteeringAngleRadians;
+
         _scriptRuntime.SetLocal(
             "Axle_Steering_0_L",
-            _vehicle.SteeringAngleRadians);
+            omsiSteering);
         _scriptRuntime.SetLocal(
             "Axle_Steering_0_R",
-            _vehicle.SteeringAngleRadians);
+            omsiSteering);
+
+        var wheelRotation =
+            _vehicle.WheelRotationRadians;
+
+        for (var axle = 0;
+             axle < 4;
+             axle++)
+        {
+            _scriptRuntime.SetLocal(
+                $"Wheel_Rotation_{axle}_L",
+                wheelRotation);
+            _scriptRuntime.SetLocal(
+                $"Wheel_Rotation_{axle}_R",
+                wheelRotation);
+        }
+
+        _scriptRuntime.SetLocal(
+            "Axle_Suspension_0_L",
+            _vehicle.FrontLeftSuspensionMeters);
+        _scriptRuntime.SetLocal(
+            "Axle_Suspension_0_R",
+            _vehicle.FrontRightSuspensionMeters);
+        _scriptRuntime.SetLocal(
+            "Axle_Suspension_1_L",
+            _vehicle.RearLeftSuspensionMeters);
+        _scriptRuntime.SetLocal(
+            "Axle_Suspension_1_R",
+            _vehicle.RearRightSuspensionMeters);
     }
 
     private void OnRuntimeKeyDown(
@@ -6579,10 +6621,11 @@ public sealed class D3D11RenderWindow : Form
         var driveInputMode =
             _mouseDriveMode
                 ? "MOUSE: ←/→ steer · ↑ throttle · ↓ brake · RMB exit"
-                : _omsiGameController is
+                : _controllerInputEnabled &&
+                  _omsiGameController is
                     { ConnectedDeviceCount: > 0 }
-                    ? $"GAME CONTROLLER: {_omsiGameController.ConnectedDeviceCount} ativo(s) · Inputs/gamectrler.cfg"
-                    : "KEYBOARD: Inputs/keyboard.cfg · Num8 throttle · Num2 brake · Num4/6 steer · O mouse";
+                    ? $"OMSI STEERING: GAME CONTROLLER · {_omsiGameController.ConnectedDeviceCount} ativo(s) · K alterna · O mouse"
+                    : "OMSI STEERING: KEYBOARD · Inputs/keyboard.cfg · O ativa mouse · K controller";
 
         var vehicleView =
             _vehicleViewMode switch
