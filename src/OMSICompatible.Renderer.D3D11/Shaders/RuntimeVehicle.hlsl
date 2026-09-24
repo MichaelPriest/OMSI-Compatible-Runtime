@@ -331,10 +331,36 @@ float4 ApplyEnvMap(
         ResolveEnvMapMask(
             input);
 
+    float3 toCamera =
+        normalize(
+            CameraPosition -
+            input.WorldPosition);
+
+    float normalFacing =
+        saturate(
+            abs(
+                dot(
+                    normal,
+                    toCamera)));
+
+    // OMSI's static envmaps are authored as a subtle material reflection,
+    // including glass strengths up to 1. A straight lerp at strength=1
+    // turns the glass into a flat mirror. Preserve the authored strength
+    // but apply a view-angle response: modest head-on reflection and
+    // stronger reflection toward grazing angles.
+    float fresnel =
+        0.15f +
+        0.75f *
+        pow(
+            1.0f -
+            normalFacing,
+            3.0f);
+
     float strength =
         saturate(
             EnvMapStrength *
-            mask);
+            mask *
+            fresnel);
 
     color.rgb =
         lerp(
