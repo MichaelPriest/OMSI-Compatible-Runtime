@@ -91,7 +91,7 @@ public sealed record OmsiVehicleAsset(
         Meshes.Count(static mesh =>
             string.Equals(
                 mesh.ErrorCode,
-                "protectedO3dUnsupported",
+                "encryptedO3dUnsupported",
                 StringComparison.OrdinalIgnoreCase));
 
     public int FailedMeshCount =>
@@ -99,6 +99,6 @@ public sealed record OmsiVehicleAsset(
             !mesh.IsRenderable &&
             !string.Equals(
                 mesh.ErrorCode,
-                "protectedO3dUnsupported",
+                "encryptedO3dUnsupported",
                 StringComparison.OrdinalIgnoreCase));
 }
