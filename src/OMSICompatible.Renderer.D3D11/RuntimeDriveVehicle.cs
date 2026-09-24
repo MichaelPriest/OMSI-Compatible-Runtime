@@ -418,7 +418,8 @@ internal sealed class RuntimeDriveVehicle
         bool running)
     {
         EngineRunning =
-            running;
+            running &&
+            ElectricalSystemEnabled;
     }
 
     public void SetParkingBrake(
