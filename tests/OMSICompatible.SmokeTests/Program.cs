@@ -37,6 +37,97 @@ try
     Directory.CreateDirectory(vehicleModelDirectory);
     Directory.CreateDirectory(programDirectory);
 
+    File.WriteAllText(
+        Path.Combine(
+            root,
+            "options.cfg"),
+        Lines(
+            "GENERAL ------------------------",
+            "[language]",
+            "PTBR",
+            "[ticketselling]",
+            "2",
+            "[no_collision_pedastrians]",
+            "[autoCenter]",
+            "[nopreview]",
+            "[font_typewriter]",
+            "Courier New",
+            "MULTITHREADING ------------------------",
+            "[no_multithreading_calculate]",
+            "[no_multithreading_texload]",
+            "GRAPHICS ------------------------",
+            "[performance_realreflexions]",
+            "economy",
+            "[performance_reflTexSize]",
+            "9",
+            "[texmax256]",
+            "[texture_uselow]",
+            "[no_tex_low_high_switch]",
+            "[no_lightmap_terr]",
+            "[no_reflmap]",
+            "[maxFPS]",
+            "45",
+            "SOUND ------------------------",
+            "[sound_maxcount]",
+            "333",
+            "[sound_vol_master]",
+            "0.5",
+            "[sound_noreverb]",
+            "GAME CONTROLERS ------------------------",
+            "[gamectrleron]",
+            "AI ------------------------",
+            "[AIMaxCountRandom]",
+            "77",
+            "123",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "[AIUnschedFactor]",
+            "65",
+            "[AIMaxCountParked]",
+            "35",
+            "[AIPassFactor]",
+            "120",
+            "[AIMaxCountScheduled]",
+            "44",
+            "[AIPriorityScheduled]",
+            "3"));
+
+    var importedOptions =
+        OmsiRuntimeOptions.ImportFromOmsi(
+            root);
+
+    Require(
+        importedOptions.Language == "PTBR" &&
+        importedOptions.TicketSalesMode == 2 &&
+        !importedOptions.UserVehiclePedestrianCollisions &&
+        importedOptions.AutomaticSteeringCenter &&
+        !importedOptions.ShowVehiclePreview &&
+        importedOptions.ReducedMultithreading &&
+        importedOptions.GameControllerEnabled &&
+        importedOptions.TargetFps == 45 &&
+        importedOptions.RealTimeReflectionTextureSize == 512 &&
+        importedOptions.LimitTexturesTo256 &&
+        importedOptions.OnlyLowResolutionTextures &&
+        !importedOptions.LowResolutionTexturesAtDistance &&
+        !importedOptions.MaterialTerrainLightMap &&
+        !importedOptions.MaterialReflectionMap &&
+        importedOptions.MaximumSoundCount == 333 &&
+        importedOptions.MasterVolumePercent == 50 &&
+        !importedOptions.ReverbEffects &&
+        importedOptions.MaximumUnscheduledTraffic == 77 &&
+        importedOptions.MaximumPeople == 123 &&
+        importedOptions.RoadTrafficFactorPercent == 65 &&
+        importedOptions.ParkedCarsPercent == 35 &&
+        importedOptions.PassengerFactorPercent == 120 &&
+        importedOptions.MaximumScheduledTraffic == 44 &&
+        importedOptions.ScheduledTrafficPriority == 3,
+        "OMSI options.cfg compatibility import did not preserve the expected OMSI 2 settings.");
+
     var legacyDirectXPath =
         Path.Combine(
             sceneryDirectory,
