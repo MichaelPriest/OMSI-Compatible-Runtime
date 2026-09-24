@@ -25,6 +25,7 @@ internal sealed record RuntimeOmsiControllerFrame(
     float? Brake,
     float? Accelerator,
     float? Clutch,
+    IReadOnlyList<string> Pressed,
     IReadOnlyList<string> Triggered,
     IReadOnlyList<string> Released)
 {
@@ -34,6 +35,7 @@ internal sealed record RuntimeOmsiControllerFrame(
             null,
             null,
             null,
+            Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<string>());
 
@@ -250,6 +252,9 @@ internal sealed class RuntimeOmsiGameControllerHost :
         float? clutch =
             null;
 
+        var pressed =
+            new List<string>();
+
         var triggered =
             new List<string>();
 
@@ -353,8 +358,16 @@ internal sealed class RuntimeOmsiGameControllerHost :
                         button.ButtonIndex];
 
                 if (current &&
-                    (!previous ||
-                     button.Continuous))
+                    !previous)
+                {
+                    pressed.Add(
+                        button.Trigger);
+
+                    triggered.Add(
+                        button.Trigger);
+                }
+                else if (current &&
+                         button.Continuous)
                 {
                     triggered.Add(
                         button.Trigger);
@@ -364,8 +377,7 @@ internal sealed class RuntimeOmsiGameControllerHost :
                     previous)
                 {
                     released.Add(
-                        button.Trigger +
-                        "_off");
+                        button.Trigger);
                 }
 
                 binding.PreviousButtons[
@@ -379,6 +391,7 @@ internal sealed class RuntimeOmsiGameControllerHost :
             brake,
             accelerator,
             clutch,
+            pressed,
             triggered,
             released);
     }
