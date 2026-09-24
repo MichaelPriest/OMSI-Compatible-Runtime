@@ -15,6 +15,7 @@ public static class OmsiVehicleModelReader
         string? currentMeshPath = null;
         string? currentMeshIdentifier = null;
         string? currentAnimationParent = null;
+        string? currentMouseEventTrigger = null;
         var currentOrdinal = -1;
         var currentTransform =
             OmsiVehicleMeshTransform.Identity;
@@ -89,12 +90,14 @@ public static class OmsiVehicleModelReader
                     currentMeshIdentifier,
                     currentAnimationParent,
                     smoothSkin,
-                    skinBoneBindings.ToArray()));
+                    skinBoneBindings.ToArray(),
+                    currentMouseEventTrigger));
             }
 
             currentMeshPath = null;
             currentMeshIdentifier = null;
             currentAnimationParent = null;
+            currentMouseEventTrigger = null;
             visibilityConditions =
                 new List<OmsiVehicleVisibilityCondition>();
             animations =
@@ -211,6 +214,26 @@ public static class OmsiVehicleModelReader
                         currentAnimationParent))
                 {
                     currentAnimationParent =
+                        null;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "mouseevent",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                currentMouseEventTrigger =
+                    Values(section)
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+
+                if (string.IsNullOrWhiteSpace(
+                        currentMouseEventTrigger))
+                {
+                    currentMouseEventTrigger =
                         null;
                 }
 
