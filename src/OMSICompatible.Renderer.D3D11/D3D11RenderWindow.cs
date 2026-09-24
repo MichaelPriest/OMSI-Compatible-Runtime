@@ -4973,7 +4973,10 @@ public sealed class D3D11RenderWindow : Form
         _omsiAudio?.Update(
             _scriptRuntime,
             IsInteriorSoundView(),
-            _vehicle.EngineRunning);
+            _vehicle.EngineRunning,
+            ResolveActiveCameraPosition(),
+            _vehicle.Position,
+            _vehicle.HeadingRadians);
 
         UpdateVehicleAnimationStates(
             deltaSeconds);
@@ -6673,7 +6676,10 @@ public sealed class D3D11RenderWindow : Form
         _omsiAudio?.Trigger(
             trigger,
             _scriptRuntime,
-            IsInteriorSoundView());
+            IsInteriorSoundView(),
+            ResolveActiveCameraPosition(),
+            _vehicle.Position,
+            _vehicle.HeadingRadians);
     }
 
     private bool IsInteriorSoundView() =>
