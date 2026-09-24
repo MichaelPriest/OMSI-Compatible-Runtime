@@ -198,6 +198,78 @@ internal sealed class RuntimeFreeCamera
             deltaSeconds;
     }
 
+    public void Pan(
+        float deltaX,
+        float deltaY,
+        float viewportHeight)
+    {
+        var forward =
+            Forward;
+
+        var horizontalForward =
+            new Vector3(
+                forward.X,
+                0.0f,
+                forward.Z);
+
+        if (horizontalForward.LengthSquared() <=
+            0.000001f)
+        {
+            horizontalForward =
+                Vector3.UnitZ;
+        }
+        else
+        {
+            horizontalForward =
+                Vector3.Normalize(
+                    horizontalForward);
+        }
+
+        var right =
+            Vector3.Cross(
+                Vector3.UnitY,
+                horizontalForward);
+
+        if (right.LengthSquared() >
+            0.000001f)
+        {
+            right =
+                Vector3.Normalize(
+                    right);
+        }
+
+        var scale =
+            Math.Max(
+                MoveSpeed,
+                1.0f) /
+            Math.Max(
+                viewportHeight,
+                180.0f) *
+            1.6f;
+
+        Position +=
+            -right *
+                deltaX *
+                scale +
+            Vector3.UnitY *
+                deltaY *
+                scale;
+    }
+
+    public void Dolly(float wheelSteps)
+    {
+        if (wheelSteps == 0.0f)
+        {
+            return;
+        }
+
+        Position +=
+            Forward *
+            MoveSpeed *
+            wheelSteps *
+            0.18f;
+    }
+
     public void AdjustSpeed(float wheelSteps)
     {
         if (wheelSteps == 0.0f)
