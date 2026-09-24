@@ -117,6 +117,8 @@ public sealed class D3D11RenderWindow : Form
     private double _lastFrameTimeSeconds;
     private bool _graphicsPrepared;
     private bool _mouseLooking;
+    private MouseButtons _freeCameraDragButton =
+        MouseButtons.None;
     private bool _mouseDriveMode;
     private bool _driveMode = true;
     private RuntimeVehicleViewMode _vehicleViewMode =
@@ -5907,20 +5909,8 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        var freeCameraMovementKey =
-            !_driveMode &&
-            e.KeyCode is
-                Keys.W or
-                Keys.A or
-                Keys.D or
-                Keys.Q or
-                Keys.E or
-                Keys.ShiftKey or
-                Keys.ControlKey;
-
         var matchedOmsiBinding =
             !_vehiclePreviewMode &&
-            !freeCameraMovementKey &&
             DispatchOmsiKeyboardKeyDown(
                 e);
 
@@ -6971,26 +6961,28 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.Button != MouseButtons.Right)
-        {
-            return;
-        }
-
         if (_driveMode &&
-            _mouseDriveMode)
+            _mouseDriveMode &&
+            e.Button == MouseButtons.Right)
         {
             DisableMouseDriveMode();
             UpdateCaption();
             return;
         }
 
-        if (_driveMode)
+        if (_driveMode ||
+            e.Button is not
+                (MouseButtons.Right or
+                 MouseButtons.Middle))
         {
             return;
         }
 
         _mouseLooking = true;
-        _lastMousePosition = e.Location;
+        _freeCameraDragButton =
+            e.Button;
+        _lastMousePosition =
+            e.Location;
         Capture = true;
     }
 
@@ -7011,13 +7003,16 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.Button != MouseButtons.Right ||
-            _mouseDriveMode)
+        if (_mouseDriveMode ||
+            e.Button !=
+                _freeCameraDragButton)
         {
             return;
         }
 
         _mouseLooking = false;
+        _freeCameraDragButton =
+            MouseButtons.None;
 
         if (!_driveMode)
         {
@@ -7076,9 +7071,20 @@ public sealed class D3D11RenderWindow : Form
 
         _lastMousePosition = e.Location;
 
-        _camera.Rotate(
-            deltaX,
-            deltaY);
+        if (_freeCameraDragButton ==
+            MouseButtons.Middle)
+        {
+            _camera.Pan(
+                deltaX,
+                deltaY,
+                ClientSize.Height);
+        }
+        else
+        {
+            _camera.Rotate(
+                deltaX,
+                deltaY);
+        }
     }
 
     private void OnRuntimeMouseWheel(
@@ -7111,8 +7117,21 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        _camera.AdjustSpeed(
-            e.Delta / 120.0f);
+        var wheelSteps =
+            e.Delta /
+            120.0f;
+
+        if (_pressedKeys.Contains(
+                Keys.ControlKey))
+        {
+            _camera.AdjustSpeed(
+                wheelSteps);
+        }
+        else
+        {
+            _camera.Dolly(
+                wheelSteps);
+        }
     }
 
     private void ToggleMouseDriveMode()
@@ -7125,6 +7144,8 @@ public sealed class D3D11RenderWindow : Form
 
         _mouseDriveMode = true;
         _mouseLooking = false;
+        _freeCameraDragButton =
+            MouseButtons.None;
         _mouseDriveAccelerator = 0.0f;
         _mouseDriveBrake = 0.0f;
         _mouseDriveSteering = 0.0f;
@@ -7151,6 +7172,8 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _mouseDriveMode = false;
+        _freeCameraDragButton =
+            MouseButtons.None;
         _mouseDriveAccelerator = 0.0f;
         _mouseDriveBrake = 0.0f;
         _mouseDriveSteering = 0.0f;
@@ -7498,7 +7521,7 @@ public sealed class D3D11RenderWindow : Form
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
               $"{driveInputMode} · S views · F1/F2/F3/F4 cameras · ←/→ perspectives · Insert/Home hold · P pause · C/Space reset · Shift+Z status · D/N/R · E/M · Tab clutch"
-            : $"{pauseState}FREE CAM · W/↓ move · A/D strafe · RMB look · Q/E vertical · S views · F1/F2/F3/F4 cameras · C reset";
+            : $"{pauseState}FREE CAM · RMB look · MMB pan · wheel zoom · Ctrl+wheel speed · unbound WASD/QE optional · S views · F1/F2/F3/F4 cameras · C reset";
 
         control +=
             " · Alt menu";
