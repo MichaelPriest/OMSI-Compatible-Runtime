@@ -110,6 +110,7 @@ public sealed record WorldDefinition(
     IReadOnlyDictionary<string, WorldSplineAsset> SplineAssets,
     IReadOnlyDictionary<string, WorldSceneryAsset> SceneryAssets,
     IReadOnlyList<WorldGroundTexture> GroundTextures,
+    OmsiCompat.Map.OmsiMapAiCatalog AiCatalog,
     WorldDependencyReport Dependencies,
     int PlacementParseIssueCount,
     int TerrainParseIssueCount,
