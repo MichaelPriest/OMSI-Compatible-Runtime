@@ -825,7 +825,14 @@ try
             "achse_daempfer",
             "20",
             "achse_antrieb",
-            "1"),
+            "1",
+            "[coupling_back]",
+            "0",
+            "-4.5",
+            "0.5",
+            "[couple_back]",
+            "SyntheticTrailer.bus",
+            "false"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -927,6 +934,20 @@ try
             20.0) <
         0.0001,
         "OMSI vehicle dynamics must parse mass, inertia, center of gravity, rolling resistance, track width and suspension from the .bus file.");
+
+    Require(
+        bus.BackCoupling is
+            { } backCoupling &&
+        Math.Abs(
+            backCoupling.Y +
+            4.5) <
+        0.0001 &&
+        bus.CoupledBack is
+            { } coupledBack &&
+        coupledBack.DeclaredBusPath ==
+            "SyntheticTrailer.bus" &&
+        !coupledBack.Reverse,
+        "OMSI [coupling_back]/[couple_back] metadata must be parsed from the leading .bus file.");
 
     var repaints =
         OmsiVehicleRepaintCatalog.Discover(
@@ -1138,6 +1159,74 @@ try
         vehicleAsset.ProtectedMeshCount == 0 &&
         vehicleAsset.FailedMeshCount == 0,
         "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
+
+    File.WriteAllText(
+        Path.Combine(
+            vehicleDirectory,
+            "SyntheticTrailer.bus"),
+        Lines(
+            "[model]",
+            @"model\model.cfg",
+            "[friendlyname]",
+            "Synthetic Coachworks",
+            "Camera Bus Trailer",
+            "Test Skin",
+            "[coupling_front]",
+            "0",
+            "3.5",
+            "0.5",
+            "[coupling_front_character]",
+            "52.5",
+            "-20",
+            "20",
+            "1",
+            "[couple_front_open_for_sound]"),
+        Encoding.Unicode);
+
+    var trailerBus =
+        OmsiBusReader.ReadFile(
+            root,
+            Path.Combine(
+                vehicleDirectory,
+                "SyntheticTrailer.bus"));
+
+    Require(
+        trailerBus.FrontCoupling is
+            { } trailerFront &&
+        Math.Abs(
+            trailerFront.Y -
+            3.5) <
+        0.0001 &&
+        trailerBus.FrontCouplingCharacter is
+            { } trailerCharacter &&
+        Math.Abs(
+            trailerCharacter.MaximumYawDegrees -
+            52.5) <
+        0.0001 &&
+        trailerCharacter.Type ==
+            1 &&
+        trailerBus.FrontCouplingOpenForSound,
+        "OMSI trailer coupling point, articulation limits and open-for-sound flag must be parsed.");
+
+    var articulatedAsset =
+        OmsiArticulatedVehicleAssetLoader.Load(
+            contentRoot,
+            bus);
+
+    Require(
+        articulatedAsset.SectionCount ==
+            2 &&
+        articulatedAsset.Meshes.Count ==
+            vehicleAsset.Meshes.Count * 2 &&
+        Math.Abs(
+            articulatedAsset.Meshes[
+                    vehicleAsset.Meshes.Count]
+                .Transform.PositionY -
+            vehicleAsset.Meshes[0]
+                .Transform.PositionY +
+            8.0) <
+        0.0001,
+        "OMSI articulated loader must follow [couple_back] and place the trailer origin so coupling_back and coupling_front coincide.");
 
     Require(
         vehicleAsset.Meshes[0].Positions.Length == 9 &&
