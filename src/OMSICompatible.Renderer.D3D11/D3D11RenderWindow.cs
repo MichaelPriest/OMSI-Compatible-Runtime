@@ -732,9 +732,12 @@ public sealed class D3D11RenderWindow : Form
         }
 
         InitializeGraphics();
+
+        // sound.cfg must exist before {init} because OMSI scripts may emit
+        // T.L/T.F sound events during initialization.
+        InitializeOmsiAudio();
         InitializeVehicleScripts();
         InitializeOmsiGameControllers();
-        InitializeOmsiAudio();
         UpdateCaption();
 
         _graphicsPrepared =
