@@ -12,4 +12,10 @@
     <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
     <ProjectReference Include="../OMSICompatible.Renderer.D3D11/OMSICompatible.Renderer.D3D11.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="../OMSICompatible.Renderer.D3D11/Shaders/*.hlsl"
+             Link="Shaders/%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
