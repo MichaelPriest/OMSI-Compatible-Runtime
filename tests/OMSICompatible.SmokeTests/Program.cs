@@ -1216,8 +1216,26 @@ try
     Require(
         articulatedAsset.SectionCount ==
             2 &&
+        articulatedAsset.Sections is
+            { Count: 1 } &&
+        articulatedAsset.Sections[0].Index ==
+            1 &&
+        articulatedAsset.Sections[0].ParentIndex ==
+            0 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].JointY +
+            4.5) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].MaximumYawDegrees -
+            52.5) <
+        0.0001 &&
         articulatedAsset.Meshes.Count ==
             vehicleAsset.Meshes.Count * 2 &&
+        articulatedAsset.Meshes[
+                vehicleAsset.Meshes.Count]
+            .SectionIndex ==
+            1 &&
         Math.Abs(
             articulatedAsset.Meshes[
                     vehicleAsset.Meshes.Count]
@@ -1226,7 +1244,7 @@ try
                 .Transform.PositionY +
             8.0) <
         0.0001,
-        "OMSI articulated loader must follow [couple_back] and place the trailer origin so coupling_back and coupling_front coincide.");
+        "OMSI articulated loader must follow [couple_back], preserve the joint metadata and place the trailer origin so coupling_back and coupling_front coincide.");
 
     Require(
         vehicleAsset.Meshes[0].Positions.Length == 9 &&
