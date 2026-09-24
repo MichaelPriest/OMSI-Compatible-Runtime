@@ -64,6 +64,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Border
@@ -151,9 +152,8 @@
                     Margin="0,18,0,0"
                     ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.15*"/>
-                        <ColumnDefinition Width="1.15*"/>
-                        <ColumnDefinition Width="0.9*"/>
+                        <ColumnDefinition Width="1.2*"/>
+                        <ColumnDefinition Width="0.8*"/>
                     </Grid.ColumnDefinitions>
 
                     <Border
@@ -187,28 +187,6 @@
                         Padding="16">
                         <StackPanel Spacing="8">
                             <TextBlock
-                                Text="ÔNIBUS"
-                                Foreground="#8192A8"
-                                FontSize="11"
-                                FontWeight="SemiBold"/>
-                            <ComboBox
-                                x:Name="BusBox"
-                                HorizontalAlignment="Stretch"
-                                DisplayMemberPath="DisplayName"
-                                PlaceholderText="Selecione o ônibus"
-                                SelectionChanged="SelectionChanged"/>
-                        </StackPanel>
-                    </Border>
-
-                    <Border
-                        Grid.Column="2"
-                        Background="#151B24"
-                        BorderBrush="#253140"
-                        BorderThickness="1"
-                        CornerRadius="16"
-                        Padding="16">
-                        <StackPanel Spacing="8">
-                            <TextBlock
                                 Text="PONTO INICIAL"
                                 Foreground="#8192A8"
                                 FontSize="11"
@@ -223,8 +201,123 @@
                     </Border>
                 </Grid>
 
-                <Grid
+                <Border
                     Grid.Row="3"
+                    Margin="0,18,0,0"
+                    Background="#151B24"
+                    BorderBrush="#253140"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    Padding="18">
+                    <Grid ColumnSpacing="20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.15*"/>
+                            <ColumnDefinition Width="0.85*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel
+                            Grid.Column="0"
+                            Spacing="10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Text="SELEÇÃO DO ÔNIBUS"
+                                    Foreground="#8192A8"
+                                    FontSize="11"
+                                    FontWeight="SemiBold"/>
+                                <CheckBox
+                                    x:Name="NoBusCheckBox"
+                                    Grid.Column="1"
+                                    Content="Iniciar sem ônibus"
+                                    Foreground="#D8E1EC"
+                                    Checked="NoBusModeChanged"
+                                    Unchecked="NoBusModeChanged"/>
+                            </Grid>
+
+                            <ComboBox
+                                x:Name="CarroceriaBox"
+                                Header="Carroceria"
+                                HorizontalAlignment="Stretch"
+                                PlaceholderText="Selecione a carroceria"
+                                SelectionChanged="CarroceriaBox_SelectionChanged"/>
+
+                            <ComboBox
+                                x:Name="ModeloBox"
+                                Header="Modelo"
+                                HorizontalAlignment="Stretch"
+                                PlaceholderText="Selecione o modelo"
+                                SelectionChanged="ModeloBox_SelectionChanged"/>
+
+                            <ComboBox
+                                x:Name="SkinBox"
+                                Header="Skin"
+                                HorizontalAlignment="Stretch"
+                                DisplayMemberPath="Skin"
+                                PlaceholderText="Selecione a skin"
+                                SelectionChanged="SkinBox_SelectionChanged"/>
+                        </StackPanel>
+
+                        <Border
+                            Grid.Column="1"
+                            MinHeight="230"
+                            Background="#0E141C"
+                            BorderBrush="#24303E"
+                            BorderThickness="1"
+                            CornerRadius="14">
+                            <Grid>
+                                <Image
+                                    x:Name="BusPreviewImage"
+                                    Stretch="UniformToFill"
+                                    Opacity="0.92"/>
+                                <TextBlock
+                                    x:Name="BusPreviewEmptyText"
+                                    Text="Sem imagem de prévia"
+                                    Foreground="#7F8FA3"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="13"/>
+                                <Rectangle>
+                                    <Rectangle.Fill>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#10000000" Offset="0"/>
+                                            <GradientStop Color="#E0000000" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Rectangle.Fill>
+                                </Rectangle>
+                                <StackPanel
+                                    VerticalAlignment="Bottom"
+                                    Margin="18"
+                                    Spacing="3">
+                                    <TextBlock
+                                        x:Name="BusPreviewTitle"
+                                        Text="Nenhum ônibus selecionado"
+                                        Foreground="White"
+                                        FontSize="19"
+                                        FontWeight="SemiBold"
+                                        TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock
+                                        x:Name="BusPreviewSubtitle"
+                                        Text="Escolha carroceria e modelo"
+                                        Foreground="#C4CFDB"
+                                        FontSize="13"
+                                        TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock
+                                        x:Name="BusPreviewSkin"
+                                        Text=""
+                                        Foreground="#70C7FF"
+                                        FontSize="12"
+                                        FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <Grid
+                    Grid.Row="4"
                     Margin="0,18,0,0"
                     ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
@@ -280,7 +373,7 @@
                 </Grid>
 
                 <Expander
-                    Grid.Row="4"
+                    Grid.Row="5"
                     Header="Diagnóstico"
                     Margin="0,18,0,0"
                     IsExpanded="False">
