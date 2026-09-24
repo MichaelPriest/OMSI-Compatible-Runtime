@@ -438,11 +438,11 @@ internal sealed class LauncherForm : Form
             };
 
         vehicleSpawnRow.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 48));
+            new ColumnStyle(SizeType.Percent, 40));
         vehicleSpawnRow.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 30));
+            new ColumnStyle(SizeType.Percent, 42));
         vehicleSpawnRow.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 22));
+            new ColumnStyle(SizeType.Percent, 18));
 
         var vehiclePanel =
             new TableLayoutPanel
@@ -621,7 +621,7 @@ internal sealed class LauncherForm : Form
         previewPanel.RowStyles.Add(
             new RowStyle(
                 SizeType.Absolute,
-                240));
+                300));
         previewPanel.RowStyles.Add(
             new RowStyle(
                 SizeType.AutoSize));
@@ -1700,6 +1700,17 @@ internal sealed class LauncherForm : Form
             return;
         }
 
+        await Task.Delay(
+            120);
+
+        if (generation !=
+                _busPreviewGeneration ||
+            IsDisposed ||
+            !IsHandleCreated)
+        {
+            return;
+        }
+
         try
         {
             var repaint =
@@ -1708,7 +1719,7 @@ internal sealed class LauncherForm : Form
             var asset =
                 await Task.Run(
                     () =>
-                        OmsiVehicleAssetLoader.Load(
+                        OmsiArticulatedVehicleAssetLoader.Load(
                             contentRoot,
                             bus,
                             progress:
@@ -1752,7 +1763,7 @@ internal sealed class LauncherForm : Form
                     scriptRuntime:
                         previewScriptRuntime,
                     targetFps:
-                        30,
+                        60,
                     vsync:
                         true,
                     vehiclePreviewMode:
