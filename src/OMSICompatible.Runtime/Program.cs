@@ -35,6 +35,11 @@ internal static class Program
                 args,
                 "--repaint");
 
+        var repaintCtiRelativePath =
+            GetOption(
+                args,
+                "--repaint-cti");
+
         var noBus =
             HasFlag(
                 args,
@@ -167,7 +172,8 @@ internal static class Program
                 selectedBus,
                 selectedEntryPoint,
                 externalLoading,
-                repaintName);
+                repaintName,
+                repaintCtiRelativePath);
 
         Application.Run(context);
         return 0;
