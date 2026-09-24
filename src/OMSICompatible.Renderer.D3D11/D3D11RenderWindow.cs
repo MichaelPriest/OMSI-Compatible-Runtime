@@ -1277,7 +1277,7 @@ public sealed class D3D11RenderWindow : Form
             $"exteriorMeshes={_vehicleExteriorGeometry.RenderedMeshCount}; " +
             $"interiorVertices={_vehicleInteriorGeometry.Vertices.Length}; " +
             $"interiorMeshes={_vehicleInteriorGeometry.RenderedMeshCount}; " +
-            $"protected={Math.Max(_vehicleExteriorGeometry.ProtectedMeshCount, _vehicleInteriorGeometry.ProtectedMeshCount)}; " +
+            $"encrypted={Math.Max(_vehicleExteriorGeometry.ProtectedMeshCount, _vehicleInteriorGeometry.ProtectedMeshCount)}; " +
             $"failed={Math.Max(_vehicleExteriorGeometry.MissingMeshCount, _vehicleInteriorGeometry.MissingMeshCount)}");
 
         AppendVehicleGeometryDiagnostics();
@@ -5489,7 +5489,7 @@ public sealed class D3D11RenderWindow : Form
                 : $"mirrors OFF {_reflectionTargets.Count:N0}";
 
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · runtime objects {_objectGeometry.RenderedObjectCount:N0}/{runtimeObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0} loaded · texture failures {_failedObjectTexturePaths.Count:N0} · protected {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · runtime objects {_objectGeometry.RenderedObjectCount:N0}/{runtimeObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0} loaded · texture failures {_failedObjectTexturePaths.Count:N0} · encrypted {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicle.Gear switch
