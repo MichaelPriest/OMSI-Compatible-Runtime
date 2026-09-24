@@ -303,16 +303,6 @@ internal sealed class RuntimeApplicationContext :
                     new OmsiScriptRuntime(
                         scriptCatalog);
 
-                if (selectedRepaint is not null)
-                {
-                    foreach (var pair in
-                             selectedRepaint.SetVariables)
-                    {
-                        scriptRuntime.SetLocal(
-                            pair.Key,
-                            pair.Value);
-                    }
-                }
             }
 
             ReportProgress(
@@ -326,7 +316,11 @@ internal sealed class RuntimeApplicationContext :
                     runtimeInfo,
                     scriptRuntime,
                     _options.TargetFps,
-                    _options.RuntimeVSync);
+                    _options.RuntimeVSync,
+                    vehiclePreviewMode:
+                        false,
+                    initialVehicleVariables:
+                        selectedRepaint?.SetVariables);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
