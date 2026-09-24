@@ -65,6 +65,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
     private readonly OmsiScriptRuntime? _scriptRuntime;
+    private readonly IReadOnlyDictionary<string, double>? _initialVehicleVariables;
     private readonly OmsiSystemMacroHandler? _previousSystemMacroHandler;
     private readonly HashSet<string> _reportedUnhandledSystemMacros =
         new(
@@ -225,10 +226,17 @@ public sealed class D3D11RenderWindow : Form
         OmsiScriptRuntime? scriptRuntime = null,
         int targetFps = 60,
         bool vsync = true,
-        bool vehiclePreviewMode = false)
+        bool vehiclePreviewMode = false,
+        IReadOnlyDictionary<string, double>? initialVehicleVariables = null)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
+        _initialVehicleVariables =
+            initialVehicleVariables is null
+                ? null
+                : new Dictionary<string, double>(
+                    initialVehicleVariables,
+                    StringComparer.OrdinalIgnoreCase);
         _vsync = vsync;
         _vehiclePreviewMode =
             vehiclePreviewMode;
@@ -4877,6 +4885,18 @@ public sealed class D3D11RenderWindow : Form
             0.0);
 
         _scriptRuntime.ExecuteInit();
+
+        if (_initialVehicleVariables is
+            { Count: > 0 })
+        {
+            foreach (var pair in
+                     _initialVehicleVariables)
+            {
+                _scriptRuntime.SetLocal(
+                    pair.Key,
+                    pair.Value);
+            }
+        }
 
         WriteVehicleRuntimeStateDiagnostics();
     }
