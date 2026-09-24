@@ -6491,6 +6491,25 @@ public sealed class D3D11RenderWindow : Form
                     $"{variable}={_scriptRuntime.GetLocal(variable).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)}");
             }
 
+            lines.Add(
+                "");
+            lines.Add(
+                "mouseEvents:");
+
+            foreach (var mesh in
+                     _windowInfo.Vehicle.Meshes
+                         .Where(
+                             static mesh =>
+                                 !string.IsNullOrWhiteSpace(
+                                     mesh.MouseEventTrigger))
+                         .OrderBy(
+                             static mesh =>
+                                 mesh.ModelOrdinal))
+            {
+                lines.Add(
+                    $"mesh#{mesh.ModelOrdinal} path={mesh.DeclaredPath} trigger={mesh.MouseEventTrigger} viewpoint={mesh.ViewpointFlag}");
+            }
+
             File.WriteAllLines(
                 Path.Combine(
                     AppContext.BaseDirectory,
