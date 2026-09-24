@@ -7590,12 +7590,12 @@ public sealed class D3D11RenderWindow : Form
         var centerY =
             ClientSize.Height * 0.5f;
 
-        // Positive steering in RuntimeDriveVehicle is a right turn.
-        // Keep the mouse cross in the same user-facing direction:
-        // mouse right -> positive/right, mouse left -> negative/left.
+        // OMSI mouse steering is mirrored relative to runtime's
+        // internal steering sign. User-facing behaviour must be:
+        // mouse right -> vehicle right, mouse left -> vehicle left.
         var horizontal =
             Math.Clamp(
-                (location.X - centerX) /
+                (centerX - location.X) /
                 halfWidth,
                 -1.0f,
                 1.0f);
