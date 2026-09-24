@@ -52,6 +52,7 @@ public static class OmsiO3dGeometryReader
             var version = reader.ReadByte();
             var longHeader = version > 3;
             var longTriangleIndices = false;
+            var extendedOptions = (byte)0;
             var protectionKey = uint.MaxValue;
 
             if (longHeader)
@@ -62,23 +63,16 @@ public static class OmsiO3dGeometryReader
                         "truncatedExtendedHeader");
                 }
 
-                var options = reader.ReadByte();
+                extendedOptions = reader.ReadByte();
                 protectionKey = reader.ReadUInt32();
 
                 longTriangleIndices =
-                    (options & 0x01) != 0;
+                    (extendedOptions & 0x01) != 0;
             }
 
-            // Extended O3D headers use 0xFFFFFFFF for plain vertex
-            // payloads. Any other key value, including zero, marks the
-            // vertex stream as encrypted. Do not interpret encrypted bytes
-            // as floats: doing so can produce plausible counts while
-            // rendering badly deformed geometry.
-            if (protectionKey != uint.MaxValue)
-            {
-                return OmsiO3dGeometry.Error(
-                    "encryptedO3dUnsupported");
-            }
+            var encryptedVertices =
+                longHeader &&
+                protectionKey != uint.MaxValue;
 
             float[]? positions = null;
             float[]? normals = null;
@@ -117,6 +111,15 @@ public static class OmsiO3dGeometryReader
                         uvs =
                             new float[checked((int)vertexCount * 2)];
 
+                        var vertexDecoder =
+                            encryptedVertices
+                                ? new EncryptedVertexDecoder(
+                                    protectionKey,
+                                    version,
+                                    extendedOptions,
+                                    vertexCount)
+                                : null;
+
                         for (var index = 0U;
                              index < vertexCount;
                              index++)
@@ -127,18 +130,39 @@ public static class OmsiO3dGeometryReader
                                     "invalidVertexSection");
                             }
 
-                            var p = checked((int)index * 3);
-                            positions[p] = reader.ReadSingle();
-                            positions[p + 1] = reader.ReadSingle();
-                            positions[p + 2] = reader.ReadSingle();
+                            var x = reader.ReadSingle();
+                            var y = reader.ReadSingle();
+                            var z = reader.ReadSingle();
 
-                            normals[p] = reader.ReadSingle();
-                            normals[p + 1] = reader.ReadSingle();
-                            normals[p + 2] = reader.ReadSingle();
+                            var normalX = reader.ReadSingle();
+                            var normalY = reader.ReadSingle();
+                            var normalZ = reader.ReadSingle();
+
+                            var u = reader.ReadSingle();
+                            var v = reader.ReadSingle();
+
+                            vertexDecoder?.Decode(
+                                ref x,
+                                ref y,
+                                ref z,
+                                ref normalX,
+                                ref normalY,
+                                ref normalZ,
+                                ref u,
+                                ref v);
+
+                            var p = checked((int)index * 3);
+                            positions[p] = x;
+                            positions[p + 1] = y;
+                            positions[p + 2] = z;
+
+                            normals[p] = normalX;
+                            normals[p + 1] = normalY;
+                            normals[p + 2] = normalZ;
 
                             var t = checked((int)index * 2);
-                            uvs[t] = reader.ReadSingle();
-                            uvs[t + 1] = reader.ReadSingle();
+                            uvs[t] = u;
+                            uvs[t + 1] = v;
                         }
 
                         break;
@@ -316,6 +340,209 @@ public static class OmsiO3dGeometryReader
         {
             return OmsiO3dGeometry.Error(
                 "accessDenied");
+        }
+    }
+
+    private sealed class EncryptedVertexDecoder
+    {
+        private readonly uint _productId;
+        private readonly bool _hasProductId;
+        private readonly bool _alternateSeed;
+        private readonly ushort _vertexCountSalt;
+
+        private ushort _productSalt;
+        private byte _salt;
+
+        public EncryptedVertexDecoder(
+            uint productId,
+            byte version,
+            byte options,
+            uint vertexCount)
+        {
+            _hasProductId =
+                productId != 0x0000FFFFu;
+
+            _productId =
+                _hasProductId
+                    ? productId
+                    : 0u;
+
+            _alternateSeed =
+                (options & 0x02) != 0;
+
+            _vertexCountSalt =
+                unchecked(
+                    (ushort)(
+                        vertexCount %
+                        65000u));
+
+            if (!_hasProductId)
+            {
+                _productSalt = 0;
+                return;
+            }
+
+            var initial =
+                unchecked(
+                    (ushort)(
+                        productId +
+                        version -
+                        4u));
+
+            _productSalt =
+                unchecked(
+                    (ushort)(
+                        (initial +
+                         (_alternateSeed
+                             ? 381u
+                             : 0u)) %
+                        65000u));
+        }
+
+        public void Decode(
+            ref float x,
+            ref float y,
+            ref float z,
+            ref float normalX,
+            ref float normalY,
+            ref float normalZ,
+            ref float u,
+            ref float v)
+        {
+            if (!_hasProductId)
+            {
+                return;
+            }
+
+            if (_productId == 0)
+            {
+                _productSalt =
+                    (ushort)(
+                        _alternateSeed
+                            ? 304
+                            : 0);
+            }
+
+            MixSalt();
+
+            var fractionalX =
+                x - MathF.Truncate(x);
+            var fractionalY =
+                y - MathF.Truncate(y);
+            var fractionalZ =
+                z - MathF.Truncate(z);
+
+            var nextSalt =
+                (int)(
+                    MathF.Abs(
+                        fractionalX *
+                        fractionalY *
+                        fractionalZ) *
+                    600.0f);
+
+            _salt =
+                unchecked(
+                    (byte)(
+                        nextSalt &
+                        0xFF));
+
+            if (_productSalt >= 1000)
+            {
+                if (_productSalt >= 3000)
+                {
+                    if (_productSalt > 7000)
+                    {
+                        (y, z) =
+                            (z, y);
+                    }
+                }
+                else
+                {
+                    (x, z) =
+                        (z, x);
+                }
+            }
+            else
+            {
+                (x, y) =
+                    (y, x);
+            }
+
+            if ((_productSalt & 3) == 0)
+            {
+                normalX =
+                    -normalX;
+            }
+
+            if (_productSalt % 6 == 0)
+            {
+                normalY =
+                    -normalY;
+            }
+
+            if (_productSalt % 7 == 0)
+            {
+                normalZ =
+                    -normalZ;
+            }
+
+            if (_productSalt >= 600)
+            {
+                if (_productSalt > 4500)
+                {
+                    (normalX, normalY) =
+                        (normalY, normalX);
+                }
+            }
+            else
+            {
+                (normalY, normalZ) =
+                    (normalZ, normalY);
+            }
+
+            if (_productSalt % 5 == 0)
+            {
+                var uvSalt =
+                    _productSalt %
+                    100u;
+
+                u -=
+                    uvSalt *
+                    uvSalt /
+                    10000.0f;
+            }
+
+            if (_productSalt % 3 == 0)
+            {
+                var uvSalt =
+                    _productSalt %
+                    50u;
+
+                v -=
+                    uvSalt *
+                    uvSalt /
+                    2500.0f;
+            }
+        }
+
+        private void MixSalt()
+        {
+            var mixed =
+                ((int)_salt *
+                 _vertexCountSalt +
+                 _vertexCountSalt *
+                 _productSalt) %
+                8000;
+
+            _productSalt =
+                unchecked(
+                    (ushort)mixed);
+
+            _salt =
+                unchecked(
+                    (byte)(
+                        mixed /
+                        8000));
         }
     }
 
