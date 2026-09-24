@@ -246,7 +246,8 @@ public sealed record RuntimeObjectMeshInfo(
     int SectionIndex = 0,
     int ModelOrdinal = -1,
     float[]? SkinWeights = null,
-    IReadOnlyList<int>? SkinBoneMeshOrdinals = null);
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
+    string? MouseEventTrigger = null);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
