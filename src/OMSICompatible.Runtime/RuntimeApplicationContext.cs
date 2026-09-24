@@ -1196,7 +1196,8 @@ internal sealed class RuntimeApplicationContext :
                                                 light.Enhanced))
                                     .ToArray(),
                                 mesh.MeshIdentifier,
-                                mesh.AnimationParent))
+                                mesh.AnimationParent,
+                                mesh.SectionIndex))
                     .ToArray(),
                 vehicle.Bus.DriverCameras
                     .Select(
@@ -1290,6 +1291,19 @@ internal sealed class RuntimeApplicationContext :
                                 texture.Blue,
                                 texture.Alignment,
                                 texture.GridAligned))
+                    .ToArray(),
+                vehicle.Sections?
+                    .Select(
+                        static section =>
+                            new RuntimeVehicleSectionInfo(
+                                section.Index,
+                                section.ParentIndex,
+                                -section.JointX,
+                                section.JointZ,
+                                section.JointY,
+                                section.FollowerLengthMeters,
+                                section.MaximumYawDegrees,
+                                section.Reverse))
                     .ToArray());
 
         var runtimeSpawn =
