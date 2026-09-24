@@ -714,8 +714,11 @@ public sealed class OmsiDirectXTextGeometryReader
                     ReadFloat(
                         "legacyDirectXInvalidTextureCoordinates");
 
+                // DirectX .x texture coordinates already use the
+                // native Direct3D top-left texture convention expected by
+                // the runtime sampler. Flipping V here turned legacy OMSI
+                // scenery such as forest_backdrop01.x upside down.
                 result[offset + 1] =
-                    1 -
                     ReadFloat(
                         "legacyDirectXInvalidTextureCoordinates");
             }
