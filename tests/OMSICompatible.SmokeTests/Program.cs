@@ -37,6 +37,32 @@ try
     Directory.CreateDirectory(vehicleModelDirectory);
     Directory.CreateDirectory(programDirectory);
 
+    var legacyDirectXPath =
+        Path.Combine(
+            sceneryDirectory,
+            "legacy-uv.x");
+
+    WriteSyntheticDirectX(
+        legacyDirectXPath);
+
+    var legacyDirectXGeometry =
+        new OmsiDirectXTextGeometryReader()
+            .Read(
+                legacyDirectXPath);
+
+    Require(
+        legacyDirectXGeometry.IsLoaded &&
+        legacyDirectXGeometry.ErrorCode is null &&
+        legacyDirectXGeometry.Uvs.Length == 6 &&
+        Math.Abs(
+            legacyDirectXGeometry.Uvs[1]) <
+            0.0001f &&
+        Math.Abs(
+            legacyDirectXGeometry.Uvs[5] -
+            1.0f) <
+            0.0001f,
+        "Legacy DirectX .x V texture coordinates must remain in native Direct3D orientation.");
+
     File.WriteAllText(
         Path.Combine(mapDirectory, "global.cfg"),
         Lines(
@@ -1414,6 +1440,44 @@ static void WriteSyntheticO3d(
         writer.Write(
             value);
     }
+}
+
+static void WriteSyntheticDirectX(string path)
+{
+    File.WriteAllText(
+        path,
+        string.Join(
+            Environment.NewLine,
+            [
+                "xof 0303txt 0032",
+                "Mesh {",
+                "3;",
+                "-1.0;0.0;0.0;,",
+                "1.0;0.0;0.0;,",
+                "0.0;1.0;0.0;;",
+                "1;",
+                "3;0,1,2;;",
+                "MeshTextureCoords {",
+                "3;",
+                "0.0;0.0;,",
+                "1.0;0.0;,",
+                "0.5;1.0;;",
+                "}",
+                "MeshMaterialList {",
+                "1;",
+                "1;",
+                "0;;",
+                "Material {",
+                "1.0;1.0;1.0;1.0;;",
+                "0.0;",
+                "0.0;0.0;0.0;;",
+                "0.0;0.0;0.0;;",
+                "}",
+                "}",
+                "}"
+            ]) +
+        Environment.NewLine,
+        Encoding.Latin1);
 }
 
 static void WriteTerrain(string path)
