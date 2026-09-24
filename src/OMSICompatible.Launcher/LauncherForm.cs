@@ -2,6 +2,7 @@ using System.Diagnostics;
 using OMSICompatible.Renderer.D3D11;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Scripting;
 using OmsiCompat.Vehicles;
 
 namespace OMSICompatible.Launcher;
@@ -1735,17 +1736,28 @@ internal sealed class LauncherForm : Form
                     contentRoot.RootPath,
                     asset);
 
+            var scriptCatalog =
+                OmsiScriptCatalogLoader.Load(
+                    contentRoot,
+                    bus.ScriptManifest);
+
+            var previewScriptRuntime =
+                new OmsiScriptRuntime(
+                    scriptCatalog);
+
             var preview =
                 new D3D11RenderWindow(
                     runtimeInfo,
                     scriptRuntime:
-                        null,
+                        previewScriptRuntime,
                     targetFps:
                         30,
                     vsync:
                         true,
                     vehiclePreviewMode:
-                        true)
+                        true,
+                    initialVehicleVariables:
+                        repaint?.SetVariables)
                 {
                     TopLevel =
                         false,
