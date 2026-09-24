@@ -446,6 +446,10 @@ try
             "triangle.o3d",
             "[mesh_ident]",
             "steering_parent",
+            "[smoothskin]",
+            "[setbone]",
+            "SyntheticBone",
+            "0",
             "[viewpoint]",
             "3",
             "[visible]",
@@ -584,7 +588,9 @@ try
     WriteSyntheticO3d(
         Path.Combine(
             vehicleModelDirectory,
-            "triangle.o3d"));
+            "triangle.o3d"),
+        includeBones:
+            true);
 
     var zeroKeyO3dPath =
         Path.Combine(
@@ -1159,6 +1165,18 @@ try
         Math.Abs(
             vehicleAsset.Meshes[0].SourceTransform.M43 -
             3.75f) < 0.0001 &&
+        vehicleAsset.Meshes[0].ModelOrdinal == 0 &&
+        vehicleAsset.Meshes[0].SkinBoneMeshOrdinals is
+            { Count: 1 } &&
+        vehicleAsset.Meshes[0].SkinBoneMeshOrdinals![0] == 0 &&
+        vehicleAsset.Meshes[0].SkinWeights is
+            { Length: 12 } &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].SkinWeights![0] -
+            0.5f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].SkinWeights![4] -
+            0.75f) < 0.0001 &&
         vehicleAsset.ProtectedMeshCount == 0 &&
         vehicleAsset.FailedMeshCount == 0,
         "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
@@ -1809,7 +1827,8 @@ static string Lines(params string[] values)
 static void WriteSyntheticO3d(
     string path,
     bool extendedHeader = false,
-    uint protectionKey = uint.MaxValue)
+    uint protectionKey = uint.MaxValue,
+    bool includeBones = false)
 {
     using var stream =
         File.Create(path);
@@ -1929,6 +1948,36 @@ static void WriteSyntheticO3d(
         (byte)textureName.Length);
     writer.Write(
         textureName);
+
+    if (includeBones)
+    {
+        writer.Write(
+            (byte)0x54);
+        writer.Write(
+            (ushort)1);
+
+        var boneName =
+            Encoding.Latin1.GetBytes(
+                "SyntheticBone");
+
+        writer.Write(
+            (byte)boneName.Length);
+        writer.Write(
+            boneName);
+
+        writer.Write(
+            (ushort)2);
+
+        writer.Write(
+            (ushort)0);
+        writer.Write(
+            0.5f);
+
+        writer.Write(
+            (ushort)1);
+        writer.Write(
+            0.75f);
+    }
 
     writer.Write((byte)0x79);
 
