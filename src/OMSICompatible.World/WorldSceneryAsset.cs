@@ -71,7 +71,7 @@ public sealed record WorldSceneryAsset(
             static mesh =>
                 string.Equals(
                     mesh.ErrorCode,
-                    "protectedO3dUnsupported",
+                    "encryptedO3dUnsupported",
                     StringComparison.OrdinalIgnoreCase));
 
     public bool IsRenderable =>
