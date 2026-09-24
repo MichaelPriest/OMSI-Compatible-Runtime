@@ -162,6 +162,7 @@ public sealed class D3D11RenderWindow : Form
     private float _mouseDriveBrake;
     private float _mouseDriveSteering;
     private bool _simulationPaused;
+    private bool _vehiclePanelAuditWritten;
     private int _statusInfoLevel = 1;
     private bool _specialViewActive;
     private bool _specialPreviousDriveMode;
@@ -6356,6 +6357,122 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private void WriteVehiclePanelDiagnostics()
+    {
+        if (_scriptRuntime is null ||
+            _windowInfo.Vehicle is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var panelMeshes =
+                _windowInfo.Vehicle.Meshes
+                    .Where(
+                        mesh =>
+                            mesh.DeclaredPath.Contains(
+                                "painel",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            mesh.DeclaredPath.Contains(
+                                "cockpit",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            mesh.DeclaredPath.Contains(
+                                "dashboard",
+                                StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+            var animationVariables =
+                panelMeshes
+                    .SelectMany(
+                        static mesh =>
+                            mesh.Animations ??
+                            Array.Empty<RuntimeVehicleAnimationInfo>())
+                    .Select(
+                        static animation =>
+                            animation.VariableName)
+                    .Where(
+                        static variable =>
+                            !string.IsNullOrWhiteSpace(
+                                variable))
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(
+                        static variable =>
+                            variable,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            var materialVariables =
+                panelMeshes
+                    .SelectMany(
+                        static mesh =>
+                            mesh.Materials)
+                    .SelectMany(
+                        static material =>
+                            new[]
+                            {
+                                material.AlphaScaleVariable,
+                                material.LightMapVariable,
+                                material.MaterialChangeVariable
+                            })
+                    .Where(
+                        static variable =>
+                            !string.IsNullOrWhiteSpace(
+                                variable))
+                    .Select(
+                        static variable =>
+                            variable!)
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(
+                        static variable =>
+                            variable,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"vehicle={_windowInfo.Vehicle.DisplayName}",
+                    $"panelMeshes={panelMeshes.Length}",
+                    "",
+                    "animationVariables:"
+                };
+
+            foreach (var variable in
+                     animationVariables)
+            {
+                lines.Add(
+                    $"{variable}={_scriptRuntime.GetLocal(variable).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)}");
+            }
+
+            lines.Add(
+                "");
+            lines.Add(
+                "materialVariables:");
+
+            foreach (var variable in
+                     materialVariables)
+            {
+                lines.Add(
+                    $"{variable}={_scriptRuntime.GetLocal(variable).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)}");
+            }
+
+            File.WriteAllLines(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-panel-state.log"),
+                lines);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[vehicle-panel] diagnostics unavailable: {exception.Message}");
+        }
+    }
+
     private void UpdateVehicleScripts(
         double deltaSeconds,
         double absoluteSeconds)
@@ -6384,6 +6501,14 @@ public sealed class D3D11RenderWindow : Form
 
         _scriptRuntime.ExecuteFrame();
         SynchronizeHostVehicleStateFromScripts();
+
+        if (!_vehiclePanelAuditWritten &&
+            absoluteSeconds >= 1.0)
+        {
+            WriteVehiclePanelDiagnostics();
+            _vehiclePanelAuditWritten =
+                true;
+        }
     }
 
     private void WriteVehicleControlStateToScripts()
@@ -6431,6 +6556,22 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime.SetSystem(
             "GetTime",
             absoluteSeconds);
+
+        var now =
+            DateTime.Now;
+
+        _scriptRuntime.SetSystem(
+            "Time",
+            now.TimeOfDay.TotalSeconds);
+        _scriptRuntime.SetSystem(
+            "Year",
+            now.Year);
+        _scriptRuntime.SetSystem(
+            "Month",
+            now.Month);
+        _scriptRuntime.SetSystem(
+            "Day",
+            now.Day);
 
         // The current bootstrap renderer is daylight-only. OMSI vehicle
         // materials use Envir_Brightness as an alpha scale for exterior
