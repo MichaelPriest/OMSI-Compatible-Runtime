@@ -232,16 +232,18 @@ internal static class RuntimeOmsiKeyboardBindings
             if (character is >= 'a' and <= 'z')
             {
                 key =
-                    Keys.A +
-                    (character - 'a');
+                    (Keys)(
+                        (int)Keys.A +
+                        (character - 'a'));
                 return true;
             }
 
             if (character is >= '0' and <= '9')
             {
                 key =
-                    Keys.D0 +
-                    (character - '0');
+                    (Keys)(
+                        (int)Keys.D0 +
+                        (character - '0'));
                 return true;
             }
         }
@@ -255,8 +257,9 @@ internal static class RuntimeOmsiKeyboardBindings
             functionKey is >= 1 and <= 24)
         {
             key =
-                Keys.F1 +
-                (functionKey - 1);
+                (Keys)(
+                    (int)Keys.F1 +
+                    (functionKey - 1));
             return true;
         }
 
@@ -274,8 +277,9 @@ internal static class RuntimeOmsiKeyboardBindings
                      $"numeric{number}"))
             {
                 key =
-                    Keys.NumPad0 +
-                    number;
+                    (Keys)(
+                        (int)Keys.NumPad0 +
+                        number);
                 return true;
             }
         }
