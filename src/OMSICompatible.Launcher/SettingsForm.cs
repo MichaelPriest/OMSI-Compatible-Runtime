@@ -20,7 +20,19 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _presetBox = new();
     private readonly RichTextBox _keyboardEditor = new();
     private readonly RichTextBox _controllerEditor = new();
+    private readonly DataGridView _keyboardGrid = new();
+    private readonly DataGridView _controllerAxisGrid = new();
+    private readonly DataGridView _controllerButtonGrid = new();
+    private readonly ComboBox _controllerBox = new();
+    private readonly CheckBox _controllerActive = new();
+    private readonly NumericUpDown _controllerFfCenter = new();
+    private readonly NumericUpDown _controllerFfEffects = new();
     private readonly Label _status = new();
+    private IReadOnlyList<OmsiKeyboardKeyDefinition> _keyboardKeys =
+        Array.Empty<OmsiKeyboardKeyDefinition>();
+    private OmsiControllerBinding? _currentController;
+    private int _keyboardCaptureRow = -1;
+    private bool _updatingControllerUi;
 
     public SettingsForm(
         string contentRoot)
@@ -60,6 +72,12 @@ internal sealed class SettingsForm : Form
             new Font(
                 "Segoe UI",
                 10.0f);
+
+        KeyPreview =
+            true;
+
+        KeyDown +=
+            OnSettingsKeyDown;
 
         BuildInterface();
         LoadPresetList();
@@ -408,23 +426,9 @@ internal sealed class SettingsForm : Form
             "Tráfego IA",
             TrafficOptions());
 
-        AddTextEditorTab(
-            "Teclado",
-            _keyboardEditor,
-            Path.Combine(
-                _contentRoot,
-                "Inputs",
-                "keyboard.cfg"),
-            includeResetButton: true);
+        AddKeyboardTab();
 
-        AddTextEditorTab(
-            "Game Controller",
-            _controllerEditor,
-            Path.Combine(
-                _contentRoot,
-                "Inputs",
-                "gamectrler.cfg"),
-            includeResetButton: false);
+        AddGameControllerTab();
 
         AddOptionsTab(
             "Runtime x64",
@@ -544,6 +548,1687 @@ internal sealed class SettingsForm : Form
 
         _tabs.TabPages.Add(
             tab);
+    }
+
+    private void AddKeyboardTab()
+    {
+        var tab =
+            CreateDarkTab(
+                "Teclado");
+
+        var modes =
+            new TabControl
+            {
+                Dock =
+                    DockStyle.Fill
+            };
+
+        var visual =
+            new TabPage(
+                "Visual")
+            {
+                BackColor =
+                    Color.FromArgb(
+                        17,
+                        23,
+                        32),
+                ForeColor =
+                    Color.White
+            };
+
+        var visualLayout =
+            new TableLayoutPanel
+            {
+                Dock =
+                    DockStyle.Fill,
+                ColumnCount =
+                    1,
+                RowCount =
+                    3,
+                Padding =
+                    new Padding(
+                        10)
+            };
+
+        visualLayout.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+        visualLayout.RowStyles.Add(
+            new RowStyle(
+                SizeType.Percent,
+                100));
+        visualLayout.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+
+        visualLayout.Controls.Add(
+            new Label
+            {
+                AutoSize =
+                    true,
+                Text =
+                    "Comandos reais de Inputs\\keyboard.cfg. A tecla vem do arquivo .kyb do OMSI; Contínuo=1, Shift=2 e Ctrl=4.",
+                ForeColor =
+                    Color.FromArgb(
+                        190,
+                        203,
+                        218),
+                Padding =
+                    new Padding(
+                        0,
+                        0,
+                        0,
+                        8)
+            },
+            0,
+            0);
+
+        ConfigureKeyboardGrid();
+
+        visualLayout.Controls.Add(
+            _keyboardGrid,
+            0,
+            1);
+
+        var toolbar =
+            new FlowLayoutPanel
+            {
+                Dock =
+                    DockStyle.Fill,
+                AutoSize =
+                    true,
+                FlowDirection =
+                    FlowDirection.LeftToRight,
+                Padding =
+                    new Padding(
+                        0,
+                        8,
+                        0,
+                        0)
+            };
+
+        var capture =
+            CreateButton(
+                "Capturar tecla");
+
+        capture.AutoSize =
+            true;
+
+        capture.Click +=
+            (_, _) =>
+                BeginKeyboardCapture();
+
+        var apply =
+            CreateButton(
+                "Aplicar ao arquivo");
+
+        apply.AutoSize =
+            true;
+
+        apply.Click +=
+            (_, _) =>
+            {
+                ApplyKeyboardVisualEdits();
+                SetStatus(
+                    "Alterações visuais aplicadas ao keyboard.cfg em memória.");
+            };
+
+        var reload =
+            CreateButton(
+                "Recarregar");
+
+        reload.AutoSize =
+            true;
+
+        reload.Click +=
+            (_, _) =>
+            {
+                LoadEditor(
+                    _keyboardEditor,
+                    Path.Combine(
+                        _contentRoot,
+                        "Inputs",
+                        "keyboard.cfg"));
+
+                RefreshKeyboardVisual();
+            };
+
+        toolbar.Controls.Add(
+            capture);
+        toolbar.Controls.Add(
+            apply);
+        toolbar.Controls.Add(
+            reload);
+
+        visualLayout.Controls.Add(
+            toolbar,
+            0,
+            2);
+
+        visual.Controls.Add(
+            visualLayout);
+
+        var advanced =
+            BuildRawInputPage(
+                "Teclado — modo avançado",
+                _keyboardEditor,
+                Path.Combine(
+                    _contentRoot,
+                    "Inputs",
+                    "keyboard.cfg"),
+                includeResetButton:
+                    true,
+                afterReload:
+                    RefreshKeyboardVisual);
+
+        modes.TabPages.Add(
+            visual);
+        modes.TabPages.Add(
+            advanced);
+
+        tab.Controls.Add(
+            modes);
+        _tabs.TabPages.Add(
+            tab);
+
+        RefreshKeyboardVisual();
+    }
+
+    private void ConfigureKeyboardGrid()
+    {
+        ConfigureInputGrid(
+            _keyboardGrid);
+
+        _keyboardGrid.Columns.Clear();
+
+        _keyboardGrid.Columns.Add(
+            new DataGridViewTextBoxColumn
+            {
+                HeaderText =
+                    "Comando / trigger",
+                ReadOnly =
+                    true,
+                AutoSizeMode =
+                    DataGridViewAutoSizeColumnMode.Fill,
+                FillWeight =
+                    48
+            });
+
+        _keyboardGrid.Columns.Add(
+            new DataGridViewComboBoxColumn
+            {
+                HeaderText =
+                    "Tecla",
+                Width =
+                    230,
+                FlatStyle =
+                    FlatStyle.Flat
+            });
+
+        _keyboardGrid.Columns.Add(
+            new DataGridViewCheckBoxColumn
+            {
+                HeaderText =
+                    "Contínuo",
+                Width =
+                    78
+            });
+
+        _keyboardGrid.Columns.Add(
+            new DataGridViewCheckBoxColumn
+            {
+                HeaderText =
+                    "Shift",
+                Width =
+                    62
+            });
+
+        _keyboardGrid.Columns.Add(
+            new DataGridViewCheckBoxColumn
+            {
+                HeaderText =
+                    "Ctrl",
+                Width =
+                    62
+            });
+    }
+
+    private void RefreshKeyboardVisual()
+    {
+        _keyboardCaptureRow =
+            -1;
+
+        var entries =
+            OmsiInputConfiguration.ParseKeyboard(
+                _keyboardEditor.Text);
+
+        var keys =
+            OmsiInputConfiguration.ReadKeyboardKeys(
+                _contentRoot,
+                _options.Language)
+                .ToList();
+
+        foreach (var entry in
+                 entries)
+        {
+            if (keys.All(
+                    key =>
+                        key.Index !=
+                        entry.KeyIndex))
+            {
+                keys.Add(
+                    new OmsiKeyboardKeyDefinition(
+                        entry.KeyIndex,
+                        $"Tecla OMSI {entry.KeyIndex}"));
+            }
+        }
+
+        _keyboardKeys =
+            keys
+                .OrderBy(
+                    static key =>
+                        key.Index)
+                .ToArray();
+
+        _keyboardGrid.Rows.Clear();
+
+        foreach (var entry in
+                 entries)
+        {
+            var row =
+                _keyboardGrid.Rows[
+                    _keyboardGrid.Rows.Add()];
+
+            row.Tag =
+                entry;
+
+            row.Cells[0].Value =
+                entry.Trigger;
+
+            var combo =
+                (DataGridViewComboBoxCell)
+                    row.Cells[1];
+
+            combo.DisplayMember =
+                nameof(
+                    OmsiKeyboardKeyDefinition.Name);
+            combo.ValueMember =
+                nameof(
+                    OmsiKeyboardKeyDefinition.Index);
+            combo.DataSource =
+                _keyboardKeys
+                    .ToList();
+            combo.Value =
+                entry.KeyIndex;
+
+            row.Cells[2].Value =
+                (entry.Flags &
+                 1) !=
+                0;
+            row.Cells[3].Value =
+                (entry.Flags &
+                 2) !=
+                0;
+            row.Cells[4].Value =
+                (entry.Flags &
+                 4) !=
+                0;
+        }
+
+        SetStatus(
+            $"{entries.Count:N0} comando(s) de teclado carregado(s).");
+    }
+
+    private void BeginKeyboardCapture()
+    {
+        if (_keyboardGrid.CurrentCell is null)
+        {
+            SetStatus(
+                "Selecione primeiro um comando do teclado.");
+            return;
+        }
+
+        _keyboardCaptureRow =
+            _keyboardGrid.CurrentCell
+                .RowIndex;
+
+        SetStatus(
+            "Pressione agora a tecla desejada. Shift e Ctrl também serão capturados.");
+
+        Focus();
+    }
+
+    private void OnSettingsKeyDown(
+        object? sender,
+        KeyEventArgs e)
+    {
+        if (_keyboardCaptureRow < 0 ||
+            _keyboardCaptureRow >=
+                _keyboardGrid.Rows.Count)
+        {
+            return;
+        }
+
+        var key =
+            FindOmsiKey(
+                e.KeyCode);
+
+        if (key is null)
+        {
+            SetStatus(
+                $"A tecla {e.KeyCode} não foi encontrada no arquivo .kyb selecionado.");
+            e.SuppressKeyPress =
+                true;
+            return;
+        }
+
+        var row =
+            _keyboardGrid.Rows[
+                _keyboardCaptureRow];
+
+        row.Cells[1].Value =
+            key.Index;
+        row.Cells[3].Value =
+            e.Shift;
+        row.Cells[4].Value =
+            e.Control;
+
+        _keyboardCaptureRow =
+            -1;
+
+        SetStatus(
+            $"Tecla capturada: {key.Name}");
+
+        e.SuppressKeyPress =
+            true;
+        e.Handled =
+            true;
+    }
+
+    private OmsiKeyboardKeyDefinition? FindOmsiKey(
+        Keys keyCode)
+    {
+        var aliases =
+            KeyAliases(
+                keyCode)
+                .Select(
+                    NormalizeKeyLabel)
+                .Where(
+                    static value =>
+                        value.Length > 0)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        foreach (var key in
+                 _keyboardKeys)
+        {
+            var normalized =
+                NormalizeKeyLabel(
+                    key.Name);
+
+            if (aliases.Any(
+                    alias =>
+                        string.Equals(
+                            normalized,
+                            alias,
+                            StringComparison.OrdinalIgnoreCase)))
+            {
+                return key;
+            }
+        }
+
+        foreach (var key in
+                 _keyboardKeys)
+        {
+            var normalized =
+                NormalizeKeyLabel(
+                    key.Name);
+
+            if (aliases.Any(
+                    alias =>
+                        normalized.Contains(
+                            alias,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        alias.Contains(
+                            normalized,
+                            StringComparison.OrdinalIgnoreCase)))
+            {
+                return key;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> KeyAliases(
+        Keys key)
+    {
+        if (key is >= Keys.A and <= Keys.Z)
+        {
+            yield return
+                key.ToString();
+            yield break;
+        }
+
+        if (key is >= Keys.D0 and <= Keys.D9)
+        {
+            yield return
+                ((int)key -
+                 (int)Keys.D0)
+                .ToString();
+        }
+
+        if (key is >= Keys.NumPad0 and <= Keys.NumPad9)
+        {
+            var number =
+                ((int)key -
+                 (int)Keys.NumPad0)
+                .ToString();
+
+            yield return
+                "Num " +
+                number;
+            yield return
+                "Numpad " +
+                number;
+            yield return
+                "NumPad" +
+                number;
+        }
+
+        var aliases =
+            key switch
+            {
+                Keys.Add =>
+                    ["Num +", "Numpad +", "+"],
+                Keys.Subtract =>
+                    ["Num -", "Numpad -"],
+                Keys.Multiply =>
+                    ["Num *", "Numpad *"],
+                Keys.Divide =>
+                    ["Num /", "Numpad /"],
+                Keys.Decimal =>
+                    ["Num .", "Numpad .", "Decimal"],
+                Keys.Enter =>
+                    ["Enter", "Return"],
+                Keys.Space =>
+                    ["Space", "Spacebar"],
+                Keys.Escape =>
+                    ["Esc", "Escape"],
+                Keys.Left =>
+                    ["Left", "Arrow Left"],
+                Keys.Right =>
+                    ["Right", "Arrow Right"],
+                Keys.Up =>
+                    ["Up", "Arrow Up"],
+                Keys.Down =>
+                    ["Down", "Arrow Down"],
+                Keys.PageUp =>
+                    ["Page Up", "PgUp"],
+                Keys.PageDown =>
+                    ["Page Down", "PgDn"],
+                _ =>
+                    [key.ToString()]
+            };
+
+        foreach (var alias in
+                 aliases)
+        {
+            yield return alias;
+        }
+    }
+
+    private static string NormalizeKeyLabel(
+        string value) =>
+        new string(
+            value
+                .Where(
+                    static character =>
+                        char.IsLetterOrDigit(
+                            character) ||
+                        character is
+                            '+' or '-' or
+                            '*' or '/' or '.')
+                .Select(
+                    char.ToLowerInvariant)
+                .ToArray());
+
+    private void ApplyKeyboardVisualEdits()
+    {
+        if (_keyboardGrid.Rows.Count == 0)
+        {
+            return;
+        }
+
+        _keyboardGrid.EndEdit();
+
+        var changes =
+            new Dictionary<int, string>();
+
+        foreach (DataGridViewRow row in
+                 _keyboardGrid.Rows)
+        {
+            if (row.Tag is not
+                OmsiKeyboardEntryBinding entry)
+            {
+                continue;
+            }
+
+            var keyIndex =
+                row.Cells[1].Value is
+                    int parsedKey
+                    ? parsedKey
+                    : int.TryParse(
+                        row.Cells[1].Value
+                            ?.ToString(),
+                        out var converted)
+                        ? converted
+                        : entry.KeyIndex;
+
+            var flags =
+                (Convert.ToBoolean(
+                     row.Cells[2].Value ??
+                     false)
+                    ? 1
+                    : 0) +
+                (Convert.ToBoolean(
+                     row.Cells[3].Value ??
+                     false)
+                    ? 2
+                    : 0) +
+                (Convert.ToBoolean(
+                     row.Cells[4].Value ??
+                     false)
+                    ? 4
+                    : 0);
+
+            changes[
+                entry.KeyLine] =
+                keyIndex.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+
+            changes[
+                entry.FlagsLine] =
+                flags.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        _keyboardEditor.Text =
+            OmsiInputConfiguration.ApplyLineChanges(
+                _keyboardEditor.Text,
+                changes);
+    }
+
+    private void AddGameControllerTab()
+    {
+        var tab =
+            CreateDarkTab(
+                "Game Controller");
+
+        var modes =
+            new TabControl
+            {
+                Dock =
+                    DockStyle.Fill
+            };
+
+        var visual =
+            new TabPage(
+                "Visual")
+            {
+                BackColor =
+                    Color.FromArgb(
+                        17,
+                        23,
+                        32),
+                ForeColor =
+                    Color.White
+            };
+
+        var layout =
+            new TableLayoutPanel
+            {
+                Dock =
+                    DockStyle.Fill,
+                ColumnCount =
+                    1,
+                RowCount =
+                    4,
+                Padding =
+                    new Padding(
+                        10)
+            };
+
+        layout.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+        layout.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+        layout.RowStyles.Add(
+            new RowStyle(
+                SizeType.Percent,
+                100));
+        layout.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+
+        layout.Controls.Add(
+            new Label
+            {
+                AutoSize =
+                    true,
+                Text =
+                    "Configuração real de Inputs\\gamectrler.cfg: controlador, eixos, botões, curva, inversão, faixa e Force Feedback.",
+                ForeColor =
+                    Color.FromArgb(
+                        190,
+                        203,
+                        218),
+                Padding =
+                    new Padding(
+                        0,
+                        0,
+                        0,
+                        8)
+            },
+            0,
+            0);
+
+        var header =
+            new FlowLayoutPanel
+            {
+                Dock =
+                    DockStyle.Fill,
+                AutoSize =
+                    true,
+                FlowDirection =
+                    FlowDirection.LeftToRight
+            };
+
+        _controllerBox.DropDownStyle =
+            ComboBoxStyle.DropDownList;
+        _controllerBox.Width =
+            330;
+
+        _controllerBox.SelectedIndexChanged +=
+            (_, _) =>
+            {
+                if (_updatingControllerUi)
+                {
+                    return;
+                }
+
+                ApplyControllerVisualEdits();
+
+                PopulateControllerVisual(
+                    _controllerBox.SelectedItem
+                        ?.ToString());
+            };
+
+        _controllerActive.Text =
+            "Ativo";
+        _controllerActive.AutoSize =
+            true;
+        _controllerActive.ForeColor =
+            Color.White;
+        _controllerActive.Padding =
+            new Padding(
+                8,
+                6,
+                8,
+                0);
+
+        ConfigureFfNumeric(
+            _controllerFfCenter);
+        ConfigureFfNumeric(
+            _controllerFfEffects);
+
+        header.Controls.Add(
+            new Label
+            {
+                Text =
+                    "Controlador:",
+                AutoSize =
+                    true,
+                ForeColor =
+                    Color.White,
+                Padding =
+                    new Padding(
+                        0,
+                        7,
+                        4,
+                        0)
+            });
+        header.Controls.Add(
+            _controllerBox);
+        header.Controls.Add(
+            _controllerActive);
+        header.Controls.Add(
+            new Label
+            {
+                Text =
+                    "FF retorno:",
+                AutoSize =
+                    true,
+                ForeColor =
+                    Color.White,
+                Padding =
+                    new Padding(
+                        12,
+                        7,
+                        4,
+                        0)
+            });
+        header.Controls.Add(
+            _controllerFfCenter);
+        header.Controls.Add(
+            new Label
+            {
+                Text =
+                    "FF efeitos:",
+                AutoSize =
+                    true,
+                ForeColor =
+                    Color.White,
+                Padding =
+                    new Padding(
+                        12,
+                        7,
+                        4,
+                        0)
+            });
+        header.Controls.Add(
+            _controllerFfEffects);
+
+        layout.Controls.Add(
+            header,
+            0,
+            1);
+
+        var controllerTabs =
+            new TabControl
+            {
+                Dock =
+                    DockStyle.Fill
+            };
+
+        ConfigureControllerAxisGrid();
+        ConfigureControllerButtonGrid();
+
+        var axesPage =
+            new TabPage(
+                "Eixos")
+            {
+                BackColor =
+                    Color.FromArgb(
+                        17,
+                        23,
+                        32)
+            };
+
+        axesPage.Controls.Add(
+            _controllerAxisGrid);
+
+        var buttonsPage =
+            new TabPage(
+                "Botões")
+            {
+                BackColor =
+                    Color.FromArgb(
+                        17,
+                        23,
+                        32)
+            };
+
+        buttonsPage.Controls.Add(
+            _controllerButtonGrid);
+
+        controllerTabs.TabPages.Add(
+            axesPage);
+        controllerTabs.TabPages.Add(
+            buttonsPage);
+
+        layout.Controls.Add(
+            controllerTabs,
+            0,
+            2);
+
+        var toolbar =
+            new FlowLayoutPanel
+            {
+                Dock =
+                    DockStyle.Fill,
+                AutoSize =
+                    true,
+                FlowDirection =
+                    FlowDirection.LeftToRight,
+                Padding =
+                    new Padding(
+                        0,
+                        8,
+                        0,
+                        0)
+            };
+
+        var apply =
+            CreateButton(
+                "Aplicar ao arquivo");
+
+        apply.AutoSize =
+            true;
+        apply.Click +=
+            (_, _) =>
+            {
+                ApplyControllerVisualEdits();
+                SetStatus(
+                    "Alterações do Game Controller aplicadas ao arquivo em memória.");
+            };
+
+        var reload =
+            CreateButton(
+                "Recarregar");
+
+        reload.AutoSize =
+            true;
+        reload.Click +=
+            (_, _) =>
+            {
+                LoadEditor(
+                    _controllerEditor,
+                    Path.Combine(
+                        _contentRoot,
+                        "Inputs",
+                        "gamectrler.cfg"));
+
+                RefreshControllerCatalog();
+            };
+
+        toolbar.Controls.Add(
+            apply);
+        toolbar.Controls.Add(
+            reload);
+
+        layout.Controls.Add(
+            toolbar,
+            0,
+            3);
+
+        visual.Controls.Add(
+            layout);
+
+        var advanced =
+            BuildRawInputPage(
+                "Game Controller — modo avançado",
+                _controllerEditor,
+                Path.Combine(
+                    _contentRoot,
+                    "Inputs",
+                    "gamectrler.cfg"),
+                includeResetButton:
+                    false,
+                afterReload:
+                    RefreshControllerCatalog);
+
+        modes.TabPages.Add(
+            visual);
+        modes.TabPages.Add(
+            advanced);
+
+        tab.Controls.Add(
+            modes);
+        _tabs.TabPages.Add(
+            tab);
+
+        RefreshControllerCatalog();
+    }
+
+    private static void ConfigureFfNumeric(
+        NumericUpDown control)
+    {
+        control.DecimalPlaces =
+            3;
+        control.Increment =
+            0.050m;
+        control.Minimum =
+            0.000m;
+        control.Maximum =
+            5.000m;
+        control.Width =
+            85;
+    }
+
+    private void ConfigureControllerAxisGrid()
+    {
+        ConfigureInputGrid(
+            _controllerAxisGrid);
+
+        _controllerAxisGrid.Columns.Clear();
+
+        _controllerAxisGrid.Columns.Add(
+            new DataGridViewTextBoxColumn
+            {
+                HeaderText =
+                    "Eixo",
+                ReadOnly =
+                    true,
+                Width =
+                    100
+            });
+
+        var function =
+            new DataGridViewComboBoxColumn
+            {
+                HeaderText =
+                    "Função",
+                Width =
+                    180,
+                FlatStyle =
+                    FlatStyle.Flat
+            };
+
+        function.Items.AddRange(
+            "<nenhuma>",
+            "Direção",
+            "Freio",
+            "Acelerador",
+            "Embreagem",
+            "Função 4");
+
+        _controllerAxisGrid.Columns.Add(
+            function);
+
+        _controllerAxisGrid.Columns.Add(
+            new DataGridViewCheckBoxColumn
+            {
+                HeaderText =
+                    "Inverter",
+                Width =
+                    70
+            });
+
+        _controllerAxisGrid.Columns.Add(
+            new DataGridViewCheckBoxColumn
+            {
+                HeaderText =
+                    "Faixa estreita",
+                Width =
+                    100
+            });
+
+        var curve =
+            new DataGridViewComboBoxColumn
+            {
+                HeaderText =
+                    "Curva",
+                AutoSizeMode =
+                    DataGridViewAutoSizeColumnMode.Fill,
+                FlatStyle =
+                    FlatStyle.Flat
+            };
+
+        curve.Items.AddRange(
+            "Linear",
+            "Degressiva",
+            "Progressiva",
+            "Bi-degressiva",
+            "Bi-progressiva");
+
+        _controllerAxisGrid.Columns.Add(
+            curve);
+    }
+
+    private void ConfigureControllerButtonGrid()
+    {
+        ConfigureInputGrid(
+            _controllerButtonGrid);
+
+        _controllerButtonGrid.Columns.Clear();
+
+        _controllerButtonGrid.Columns.Add(
+            new DataGridViewTextBoxColumn
+            {
+                HeaderText =
+                    "Botão",
+                ReadOnly =
+                    true,
+                Width =
+                    80
+            });
+
+        _controllerButtonGrid.Columns.Add(
+            new DataGridViewTextBoxColumn
+            {
+                HeaderText =
+                    "Comando / trigger",
+                AutoSizeMode =
+                    DataGridViewAutoSizeColumnMode.Fill
+            });
+
+        _controllerButtonGrid.Columns.Add(
+            new DataGridViewCheckBoxColumn
+            {
+                HeaderText =
+                    "Contínuo",
+                Width =
+                    90
+            });
+    }
+
+    private void RefreshControllerCatalog()
+    {
+        _updatingControllerUi =
+            true;
+
+        try
+        {
+            var controllers =
+                OmsiInputConfiguration.ParseControllers(
+                    _controllerEditor.Text);
+
+            var previousName =
+                _currentController?.Name ??
+                _controllerBox.SelectedItem
+                    ?.ToString();
+
+            _controllerBox.Items.Clear();
+
+            foreach (var controller in
+                     controllers)
+            {
+                _controllerBox.Items.Add(
+                    controller.Name);
+            }
+
+            var target =
+                controllers.FirstOrDefault(
+                    controller =>
+                        string.Equals(
+                            controller.Name,
+                            previousName,
+                            StringComparison.OrdinalIgnoreCase))
+                ?? controllers.FirstOrDefault();
+
+            _controllerBox.SelectedItem =
+                target?.Name;
+
+            PopulateControllerVisual(
+                target?.Name,
+                controllers);
+        }
+        finally
+        {
+            _updatingControllerUi =
+                false;
+        }
+    }
+
+    private void PopulateControllerVisual(
+        string? controllerName,
+        IReadOnlyList<OmsiControllerBinding>? parsed = null)
+    {
+        parsed ??=
+            OmsiInputConfiguration.ParseControllers(
+                _controllerEditor.Text);
+
+        _currentController =
+            parsed.FirstOrDefault(
+                controller =>
+                    string.Equals(
+                        controller.Name,
+                        controllerName,
+                        StringComparison.OrdinalIgnoreCase));
+
+        _controllerAxisGrid.Rows.Clear();
+        _controllerButtonGrid.Rows.Clear();
+
+        if (_currentController is null)
+        {
+            _controllerActive.Checked =
+                false;
+            _controllerFfCenter.Value =
+                0;
+            _controllerFfEffects.Value =
+                0;
+            return;
+        }
+
+        _controllerActive.Checked =
+            _currentController.Active;
+
+        _controllerFfCenter.Value =
+            ClampDecimal(
+                _currentController
+                    .ForceFeedbackCentering);
+
+        _controllerFfEffects.Value =
+            ClampDecimal(
+                _currentController
+                    .ForceFeedbackEffects);
+
+        string[] axisNames =
+        [
+            "X",
+            "Y",
+            "Z",
+            "Rx",
+            "Ry",
+            "Rz",
+            "Slider 1",
+            "Slider 2"
+        ];
+
+        foreach (var axis in
+                 _currentController.Axes)
+        {
+            var row =
+                _controllerAxisGrid.Rows[
+                    _controllerAxisGrid.Rows.Add()];
+
+            row.Tag =
+                axis;
+
+            row.Cells[0].Value =
+                axis.AxisIndex <
+                axisNames.Length
+                    ? axisNames[
+                        axis.AxisIndex]
+                    : $"Axis {axis.AxisIndex}";
+
+            row.Cells[1].Value =
+                AxisFunctionLabel(
+                    axis.Function);
+
+            row.Cells[2].Value =
+                (axis.Flags &
+                 1) !=
+                0;
+
+            row.Cells[3].Value =
+                (axis.Flags &
+                 2) !=
+                0;
+
+            row.Cells[4].Value =
+                AxisCurveLabel(
+                    axis.Flags);
+        }
+
+        foreach (var button in
+                 _currentController.Buttons)
+        {
+            var row =
+                _controllerButtonGrid.Rows[
+                    _controllerButtonGrid.Rows.Add()];
+
+            row.Tag =
+                button;
+
+            row.Cells[0].Value =
+                button.ButtonIndex;
+
+            row.Cells[1].Value =
+                button.Trigger;
+
+            row.Cells[2].Value =
+                button.Continuous;
+        }
+
+        SetStatus(
+            $"{_currentController.Name}: {_currentController.Axes.Count} eixo(s), {_currentController.Buttons.Count} botão(ões).");
+    }
+
+    private void ApplyControllerVisualEdits()
+    {
+        var controller =
+            _currentController;
+
+        if (controller is null)
+        {
+            return;
+        }
+
+        _controllerAxisGrid.EndEdit();
+        _controllerButtonGrid.EndEdit();
+
+        var changes =
+            new Dictionary<int, string>
+            {
+                [controller.ActiveLine] =
+                    _controllerActive.Checked
+                        ? "1"
+                        : "0"
+            };
+
+        if (controller.ForceFeedbackCenteringLine
+            is int centerLine)
+        {
+            changes[
+                centerLine] =
+                _controllerFfCenter.Value
+                    .ToString(
+                        "0.000",
+                        System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (controller.ForceFeedbackEffectsLine
+            is int effectsLine)
+        {
+            changes[
+                effectsLine] =
+                _controllerFfEffects.Value
+                    .ToString(
+                        "0.000",
+                        System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        foreach (DataGridViewRow row in
+                 _controllerAxisGrid.Rows)
+        {
+            if (row.Tag is not
+                OmsiControllerAxisBinding axis)
+            {
+                continue;
+            }
+
+            changes[
+                axis.FunctionLine] =
+                AxisFunctionValue(
+                    row.Cells[1].Value
+                        ?.ToString())
+                    .ToString(
+                        System.Globalization.CultureInfo.InvariantCulture);
+
+            var flags =
+                (Convert.ToBoolean(
+                     row.Cells[2].Value ??
+                     false)
+                    ? 1
+                    : 0) +
+                (Convert.ToBoolean(
+                     row.Cells[3].Value ??
+                     false)
+                    ? 2
+                    : 0) +
+                AxisCurveValue(
+                    row.Cells[4].Value
+                        ?.ToString());
+
+            changes[
+                axis.FlagsLine] =
+                flags.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        foreach (DataGridViewRow row in
+                 _controllerButtonGrid.Rows)
+        {
+            if (row.Tag is not
+                OmsiControllerButtonBinding button)
+            {
+                continue;
+            }
+
+            changes[
+                button.TriggerLine] =
+                row.Cells[1].Value
+                    ?.ToString() ??
+                button.Trigger;
+
+            changes[
+                button.ContinuousLine] =
+                Convert.ToBoolean(
+                    row.Cells[2].Value ??
+                    false)
+                    ? "1"
+                    : "0";
+        }
+
+        _controllerEditor.Text =
+            OmsiInputConfiguration.ApplyLineChanges(
+                _controllerEditor.Text,
+                changes);
+    }
+
+    private static decimal ClampDecimal(
+        double value) =>
+        Math.Clamp(
+            (decimal)(
+                double.IsFinite(
+                    value)
+                    ? value
+                    : 0.0),
+            0.000m,
+            5.000m);
+
+    private static string AxisFunctionLabel(
+        int value) =>
+        value switch
+        {
+            -1 =>
+                "<nenhuma>",
+            0 =>
+                "Direção",
+            1 =>
+                "Freio",
+            2 =>
+                "Acelerador",
+            3 =>
+                "Embreagem",
+            4 =>
+                "Função 4",
+            _ =>
+                "<nenhuma>"
+        };
+
+    private static int AxisFunctionValue(
+        string? value) =>
+        value switch
+        {
+            "Direção" =>
+                0,
+            "Freio" =>
+                1,
+            "Acelerador" =>
+                2,
+            "Embreagem" =>
+                3,
+            "Função 4" =>
+                4,
+            _ =>
+                -1
+        };
+
+    private static string AxisCurveLabel(
+        int flags) =>
+        (flags &
+         ~3) switch
+        {
+            4 =>
+                "Degressiva",
+            8 =>
+                "Progressiva",
+            20 =>
+                "Bi-degressiva",
+            24 =>
+                "Bi-progressiva",
+            _ =>
+                "Linear"
+        };
+
+    private static int AxisCurveValue(
+        string? value) =>
+        value switch
+        {
+            "Degressiva" =>
+                4,
+            "Progressiva" =>
+                8,
+            "Bi-degressiva" =>
+                20,
+            "Bi-progressiva" =>
+                24,
+            _ =>
+                0
+        };
+
+    private static void ConfigureInputGrid(
+        DataGridView grid)
+    {
+        grid.Dock =
+            DockStyle.Fill;
+        grid.AllowUserToAddRows =
+            false;
+        grid.AllowUserToDeleteRows =
+            false;
+        grid.AllowUserToResizeRows =
+            false;
+        grid.RowHeadersVisible =
+            false;
+        grid.AutoGenerateColumns =
+            false;
+        grid.SelectionMode =
+            DataGridViewSelectionMode.CellSelect;
+        grid.MultiSelect =
+            false;
+        grid.BackgroundColor =
+            Color.FromArgb(
+                17,
+                23,
+                32);
+        grid.BorderStyle =
+            BorderStyle.None;
+        grid.GridColor =
+            Color.FromArgb(
+                45,
+                56,
+                70);
+        grid.EnableHeadersVisualStyles =
+            false;
+        grid.ColumnHeadersDefaultCellStyle.BackColor =
+            Color.FromArgb(
+                27,
+                34,
+                44);
+        grid.ColumnHeadersDefaultCellStyle.ForeColor =
+            Color.White;
+        grid.DefaultCellStyle.BackColor =
+            Color.FromArgb(
+                20,
+                27,
+                37);
+        grid.DefaultCellStyle.ForeColor =
+            Color.White;
+        grid.DefaultCellStyle.SelectionBackColor =
+            Color.FromArgb(
+                45,
+                77,
+                105);
+        grid.DefaultCellStyle.SelectionForeColor =
+            Color.White;
+    }
+
+    private TabPage CreateDarkTab(
+        string title) =>
+        new(
+            title)
+        {
+            BackColor =
+                Color.FromArgb(
+                    17,
+                    23,
+                    32),
+            ForeColor =
+                Color.White,
+            Padding =
+                new Padding(
+                    10)
+        };
+
+    private TabPage BuildRawInputPage(
+        string title,
+        RichTextBox editor,
+        string path,
+        bool includeResetButton,
+        Action afterReload)
+    {
+        var page =
+            new TabPage(
+                "Avançado")
+            {
+                BackColor =
+                    Color.FromArgb(
+                        17,
+                        23,
+                        32),
+                ForeColor =
+                    Color.White,
+                Padding =
+                    new Padding(
+                        10)
+            };
+
+        var layout =
+            new TableLayoutPanel
+            {
+                Dock =
+                    DockStyle.Fill,
+                ColumnCount =
+                    1,
+                RowCount =
+                    3
+            };
+
+        layout.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+        layout.RowStyles.Add(
+            new RowStyle(
+                SizeType.Percent,
+                100));
+        layout.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
+
+        layout.Controls.Add(
+            new Label
+            {
+                AutoSize =
+                    true,
+                Text =
+                    title +
+                    " — edição direta preservada para add-ons e formatos não reconhecidos.",
+                ForeColor =
+                    Color.FromArgb(
+                        190,
+                        203,
+                        218),
+                Padding =
+                    new Padding(
+                        0,
+                        0,
+                        0,
+                        8)
+            },
+            0,
+            0);
+
+        editor.Dock =
+            DockStyle.Fill;
+        editor.BorderStyle =
+            BorderStyle.FixedSingle;
+        editor.BackColor =
+            Color.FromArgb(
+                10,
+                14,
+                20);
+        editor.ForeColor =
+            Color.FromArgb(
+                224,
+                231,
+                239);
+        editor.Font =
+            new Font(
+                "Cascadia Mono",
+                9.5f);
+        editor.WordWrap =
+            false;
+        editor.AcceptsTab =
+            true;
+
+        layout.Controls.Add(
+            editor,
+            0,
+            1);
+
+        var buttons =
+            new FlowLayoutPanel
+            {
+                Dock =
+                    DockStyle.Fill,
+                AutoSize =
+                    true,
+                FlowDirection =
+                    FlowDirection.LeftToRight,
+                Padding =
+                    new Padding(
+                        0,
+                        8,
+                        0,
+                        0)
+            };
+
+        var reload =
+            CreateButton(
+                "Recarregar arquivo");
+
+        reload.AutoSize =
+            true;
+
+        reload.Click +=
+            (_, _) =>
+            {
+                LoadEditor(
+                    editor,
+                    path);
+                afterReload();
+            };
+
+        buttons.Controls.Add(
+            reload);
+
+        if (includeResetButton)
+        {
+            var reset =
+                CreateButton(
+                    "Restaurar keyboard_reset.cfg");
+
+            reset.AutoSize =
+                true;
+
+            reset.Click +=
+                (_, _) =>
+                {
+                    LoadEditor(
+                        editor,
+                        Path.Combine(
+                            _contentRoot,
+                            "Inputs",
+                            "keyboard_reset.cfg"));
+                    afterReload();
+                };
+
+            buttons.Controls.Add(
+                reset);
+        }
+
+        var openInputs =
+            CreateButton(
+                "Abrir pasta Inputs");
+
+        openInputs.AutoSize =
+            true;
+
+        openInputs.Click +=
+            (_, _) =>
+                OpenPath(
+                    Path.Combine(
+                        _contentRoot,
+                        "Inputs"));
+
+        buttons.Controls.Add(
+            openInputs);
+
+        layout.Controls.Add(
+            buttons,
+            0,
+            2);
+
+        page.Controls.Add(
+            layout);
+
+        return page;
     }
 
     private void AddTextEditorTab(
@@ -1253,6 +2938,9 @@ internal sealed class SettingsForm : Form
 
     private void SaveInputFiles()
     {
+        ApplyKeyboardVisualEdits();
+        ApplyControllerVisualEdits();
+
         var inputs =
             Path.Combine(
                 _contentRoot,
