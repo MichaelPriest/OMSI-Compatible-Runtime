@@ -242,7 +242,8 @@ public sealed record RuntimeObjectMeshInfo(
     Matrix4x4? SourceTransform = null,
     IReadOnlyList<RuntimeVehicleLightEffectInfo>? LightEffects = null,
     string? MeshIdentifier = null,
-    string? AnimationParent = null);
+    string? AnimationParent = null,
+    int SectionIndex = 0);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
@@ -347,6 +348,16 @@ public sealed record RuntimeDriverPositionInfo(
     double SeatHeight,
     double RotationDegrees);
 
+public sealed record RuntimeVehicleSectionInfo(
+    int Index,
+    int ParentIndex,
+    double JointX,
+    double JointY,
+    double JointZ,
+    double FollowerLengthMeters,
+    double MaximumYawDegrees,
+    bool Reverse);
+
 public sealed record RuntimeVehicleInfo(
     string DisplayName,
     string RelativePath,
@@ -362,7 +373,8 @@ public sealed record RuntimeVehicleInfo(
     RuntimeVehiclePhysicsInfo Physics,
     RuntimeDriverPositionInfo? DriverPosition,
     int ProtectedMeshCount,
-    IReadOnlyList<RuntimeVehicleTextTextureInfo> TextTextures);
+    IReadOnlyList<RuntimeVehicleTextTextureInfo> TextTextures,
+    IReadOnlyList<RuntimeVehicleSectionInfo>? Sections = null);
 
 public sealed record RuntimeWindowInfo(
     string WorldName,
