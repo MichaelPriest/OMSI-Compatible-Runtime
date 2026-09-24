@@ -272,6 +272,11 @@ public sealed partial class MainWindow :
         object sender,
         SelectionChangedEventArgs e)
     {
+        if (_refreshing)
+        {
+            return;
+        }
+
         PopulateModels(
             CarroceriaBox.SelectedItem
                 as string,
@@ -282,6 +287,11 @@ public sealed partial class MainWindow :
         object sender,
         SelectionChangedEventArgs e)
     {
+        if (_refreshing)
+        {
+            return;
+        }
+
         PopulateSkins(
             CarroceriaBox.SelectedItem
                 as string,
