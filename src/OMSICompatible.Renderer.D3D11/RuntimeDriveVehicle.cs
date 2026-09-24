@@ -12,12 +12,32 @@ internal enum RuntimeDriveGear
 internal sealed class RuntimeDriveVehicle
 {
     private const float RideHeight = 0.45f;
+    private const float Gravity = 9.80665f;
     private const float DefaultWheelBaseMeters = 5.8f;
     private const float DefaultMaximumSteeringDegrees = 32.0f;
+    private const float DefaultMassKilograms = 11_000.0f;
+    private const float DefaultCenterOfGravityHeightMeters = 1.2f;
+    private const float DefaultTrackWidthMeters = 2.4f;
+    private const float DefaultRollingResistanceNewtons = 1_000.0f;
+    private const float DefaultSpringKilonewtonsPerMeter = 240.0f;
+    private const float DefaultDamperKilonewtonSecondsPerMeter = 20.0f;
+    private const float DefaultYawInertiaKilogramSquareMeters = 300_000.0f;
 
     private RuntimeTerrainSampler _terrain;
     private readonly float _wheelBaseMeters;
     private readonly float _maximumSteeringRadians;
+    private readonly float _massKilograms;
+    private readonly float _centerOfGravityHeightMeters;
+    private readonly float _trackWidthMeters;
+    private readonly float _rollingResistanceNewtons;
+    private readonly float _suspensionResponse;
+    private readonly float _yawResponse;
+    private float _yawRateRadiansPerSecond;
+    private float _groundPitchRadians;
+    private float _groundRollRadians;
+    private float _bodyPitchRadians;
+    private float _bodyRollRadians;
+    private float _longitudinalAccelerationMetersPerSecondSquared;
 
     public RuntimeDriveVehicle(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -44,6 +64,77 @@ internal sealed class RuntimeDriveVehicle
             steeringDegrees *
             MathF.PI /
             180.0f;
+
+        _massKilograms =
+            Math.Clamp(
+                (float)(physics?.MassTonnes ??
+                    (DefaultMassKilograms /
+                     1000.0f)) *
+                1000.0f,
+                2_000.0f,
+                45_000.0f);
+
+        _centerOfGravityHeightMeters =
+            Math.Clamp(
+                (float)(physics?.CenterOfGravityHeightMeters ??
+                    DefaultCenterOfGravityHeightMeters),
+                0.35f,
+                3.5f);
+
+        _trackWidthMeters =
+            Math.Clamp(
+                (float)(physics?.TrackWidthMeters ??
+                    DefaultTrackWidthMeters),
+                1.2f,
+                3.5f);
+
+        _rollingResistanceNewtons =
+            Math.Clamp(
+                (float)(physics?.RollingResistanceNewtons ??
+                    DefaultRollingResistanceNewtons),
+                0.0f,
+                15_000.0f);
+
+        var springRate =
+            Math.Clamp(
+                (float)(physics?.SuspensionSpringKilonewtonsPerMeter ??
+                    DefaultSpringKilonewtonsPerMeter),
+                25.0f,
+                1_500.0f);
+
+        var damperRate =
+            Math.Clamp(
+                (float)(physics?.SuspensionDamperKilonewtonSecondsPerMeter ??
+                    DefaultDamperKilonewtonSecondsPerMeter),
+                2.0f,
+                150.0f);
+
+        _suspensionResponse =
+            Math.Clamp(
+                MathF.Sqrt(
+                    springRate /
+                    DefaultSpringKilonewtonsPerMeter) *
+                MathF.Sqrt(
+                    DefaultDamperKilonewtonSecondsPerMeter /
+                    damperRate),
+                0.45f,
+                2.5f);
+
+        var yawInertia =
+            Math.Clamp(
+                (float)(physics?.MomentOfInertiaYawTonneSquareMeters ??
+                    (DefaultYawInertiaKilogramSquareMeters /
+                     1000.0f)) *
+                1000.0f,
+                20_000.0f,
+                5_000_000.0f);
+
+        _yawResponse =
+            Math.Clamp(
+                DefaultYawInertiaKilogramSquareMeters /
+                yawInertia,
+                0.25f,
+                3.0f);
     }
 
     public void ReplaceTerrainTiles(
@@ -95,6 +186,20 @@ internal sealed class RuntimeDriveVehicle
 
     public float SpeedKph =>
         SpeedMetersPerSecond * 3.6f;
+
+    public float LongitudinalAccelerationMetersPerSecondSquared =>
+        _longitudinalAccelerationMetersPerSecondSquared;
+
+    public float BodyPitchRadians =>
+        _groundPitchRadians +
+        _bodyPitchRadians;
+
+    public float BodyRollRadians =>
+        _groundRollRadians +
+        _bodyRollRadians;
+
+    public float YawRateRadiansPerSecond =>
+        _yawRateRadiansPerSecond;
 
     public void Reset(
         IReadOnlyList<RuntimeSplineInfo> splines,
@@ -188,6 +293,12 @@ internal sealed class RuntimeDriveVehicle
         SteeringInput = 0.0f;
         BrakeLevel = 0.0f;
         AcceleratorLevel = 0.0f;
+        _yawRateRadiansPerSecond = 0.0f;
+        _groundPitchRadians = 0.0f;
+        _groundRollRadians = 0.0f;
+        _bodyPitchRadians = 0.0f;
+        _bodyRollRadians = 0.0f;
+        _longitudinalAccelerationMetersPerSecondSquared = 0.0f;
 
         ElectricalSystemEnabled = false;
         EngineRunning = false;
@@ -485,69 +596,187 @@ internal sealed class RuntimeDriveVehicle
 
     private void ApplyDynamics(float deltaSeconds)
     {
+        deltaSeconds =
+            Math.Clamp(
+                deltaSeconds,
+                0.0f,
+                0.1f);
+
+        if (deltaSeconds <=
+            0.0f)
+        {
+            return;
+        }
+
+        var previousSpeed =
+            SpeedMetersPerSecond;
+
+        UpdateGroundAttitude();
+
         var requestedDirection =
             (int)Gear;
 
-        var propulsion =
-            requestedDirection *
-            AcceleratorLevel *
-            (requestedDirection < 0
-                ? 2.0f
-                : 3.1f);
+        var absoluteSpeed =
+            Math.Abs(
+                SpeedMetersPerSecond);
+
+        var driveForceNewtons =
+            requestedDirection == 0
+                ? 0.0f
+                : AcceleratorLevel *
+                  (requestedDirection < 0
+                      ? 10_000.0f
+                      : 18_000.0f);
+
+        // A simple power fade prevents the placeholder host drivetrain
+        // from applying the same tractive force at every road speed.
+        var forceFade =
+            Math.Clamp(
+                1.0f -
+                absoluteSpeed /
+                34.0f,
+                0.18f,
+                1.0f);
+
+        driveForceNewtons *=
+            forceFade *
+            requestedDirection;
+
+        var driveAcceleration =
+            driveForceNewtons /
+            _massKilograms;
+
+        var gradeAcceleration =
+            -MathF.Sin(
+                _groundPitchRadians) *
+            Gravity;
 
         SpeedMetersPerSecond +=
-            propulsion *
+            (driveAcceleration +
+             gradeAcceleration) *
             deltaSeconds;
 
         var effectiveBrake =
             Math.Clamp(
                 BrakeLevel +
-                (StopBrakeEngaged ? 0.55f : 0.0f) +
-                (ParkingBrakeEngaged ? 1.0f : 0.0f),
+                (StopBrakeEngaged
+                    ? 0.55f
+                    : 0.0f) +
+                (ParkingBrakeEngaged
+                    ? 1.0f
+                    : 0.0f),
                 0.0f,
                 1.0f);
 
-        SpeedMetersPerSecond =
-            MoveTowards(
-                SpeedMetersPerSecond,
-                0.0f,
-                effectiveBrake *
-                8.5f *
-                deltaSeconds);
+        var rollingAcceleration =
+            _rollingResistanceNewtons /
+            _massKilograms;
 
-        if (AcceleratorLevel <= 0.001f)
+        var aerodynamicAcceleration =
+            0.0022f *
+            SpeedMetersPerSecond *
+            SpeedMetersPerSecond;
+
+        var serviceBrakeAcceleration =
+            effectiveBrake *
+            7.2f;
+
+        var passiveDeceleration =
+            rollingAcceleration +
+            aerodynamicAcceleration +
+            serviceBrakeAcceleration;
+
+        if (Math.Abs(
+                SpeedMetersPerSecond) >
+            0.01f)
         {
             SpeedMetersPerSecond =
                 MoveTowards(
                     SpeedMetersPerSecond,
                     0.0f,
-                    0.22f *
+                    passiveDeceleration *
                     deltaSeconds);
         }
+        else if (effectiveBrake >
+                 0.05f)
+        {
+            SpeedMetersPerSecond =
+                0.0f;
+        }
 
-        SpeedMetersPerSecond = Math.Clamp(
-            SpeedMetersPerSecond,
-            -7.0f,
-            22.5f);
+        SpeedMetersPerSecond =
+            Math.Clamp(
+                SpeedMetersPerSecond,
+                -9.0f,
+                28.0f);
+
+        _longitudinalAccelerationMetersPerSecondSquared =
+            (SpeedMetersPerSecond -
+             previousSpeed) /
+            deltaSeconds;
 
         var steeringAngle =
             SteeringInput *
             _maximumSteeringRadians;
 
-        if (Math.Abs(SpeedMetersPerSecond) > 0.02f)
+        var targetYawRate =
+            Math.Abs(
+                SpeedMetersPerSecond) >
+            0.02f
+                ? MathF.Tan(
+                      steeringAngle) *
+                  SpeedMetersPerSecond /
+                  _wheelBaseMeters
+                : 0.0f;
+
+        var lateralGripLimit =
+            0.62f *
+            Gravity;
+
+        var maximumYawRate =
+            lateralGripLimit /
+            Math.Max(
+                absoluteSpeed,
+                1.0f);
+
+        targetYawRate =
+            Math.Clamp(
+                targetYawRate,
+                -maximumYawRate,
+                maximumYawRate);
+
+        _yawRateRadiansPerSecond =
+            MoveTowards(
+                _yawRateRadiansPerSecond,
+                targetYawRate,
+                (2.6f +
+                 3.8f *
+                 _yawResponse) *
+                deltaSeconds);
+
+        if (Math.Abs(
+                SpeedMetersPerSecond) <
+            0.02f)
         {
-            HeadingRadians +=
-                MathF.Tan(steeringAngle) *
-                SpeedMetersPerSecond /
-                _wheelBaseMeters *
-                deltaSeconds;
+            _yawRateRadiansPerSecond =
+                MoveTowards(
+                    _yawRateRadiansPerSecond,
+                    0.0f,
+                    5.0f *
+                    deltaSeconds);
         }
+
+        HeadingRadians +=
+            _yawRateRadiansPerSecond *
+            deltaSeconds;
 
         var forward =
             new Vector3(
-                MathF.Sin(HeadingRadians),
+                MathF.Sin(
+                    HeadingRadians),
                 0.0f,
-                MathF.Cos(HeadingRadians));
+                MathF.Cos(
+                    HeadingRadians));
 
         Position +=
             forward *
@@ -562,9 +791,146 @@ internal sealed class RuntimeDriveVehicle
             Position =
                 new Vector3(
                     Position.X,
-                    groundHeight + RideHeight,
+                    groundHeight +
+                    RideHeight,
                     Position.Z);
         }
+
+        UpdateGroundAttitude();
+        UpdateBodyDynamics(
+            deltaSeconds);
+    }
+
+    private void UpdateGroundAttitude()
+    {
+        var forward =
+            new Vector3(
+                MathF.Sin(
+                    HeadingRadians),
+                0.0f,
+                MathF.Cos(
+                    HeadingRadians));
+
+        var right =
+            new Vector3(
+                forward.Z,
+                0.0f,
+                -forward.X);
+
+        var halfWheelBase =
+            _wheelBaseMeters *
+            0.5f;
+
+        var halfTrack =
+            _trackWidthMeters *
+            0.5f;
+
+        var front =
+            Position +
+            forward *
+            halfWheelBase;
+
+        var rear =
+            Position -
+            forward *
+            halfWheelBase;
+
+        if (_terrain.TrySample(
+                front.X,
+                front.Z,
+                out var frontHeight) &&
+            _terrain.TrySample(
+                rear.X,
+                rear.Z,
+                out var rearHeight))
+        {
+            _groundPitchRadians =
+                MathF.Atan2(
+                    frontHeight -
+                    rearHeight,
+                    _wheelBaseMeters);
+        }
+
+        var rightPoint =
+            Position +
+            right *
+            halfTrack;
+
+        var leftPoint =
+            Position -
+            right *
+            halfTrack;
+
+        if (_terrain.TrySample(
+                rightPoint.X,
+                rightPoint.Z,
+                out var rightHeight) &&
+            _terrain.TrySample(
+                leftPoint.X,
+                leftPoint.Z,
+                out var leftHeight))
+        {
+            _groundRollRadians =
+                MathF.Atan2(
+                    leftHeight -
+                    rightHeight,
+                    _trackWidthMeters);
+        }
+    }
+
+    private void UpdateBodyDynamics(
+        float deltaSeconds)
+    {
+        var lateralAcceleration =
+            SpeedMetersPerSecond *
+            _yawRateRadiansPerSecond;
+
+        var rollTarget =
+            Math.Clamp(
+                -lateralAcceleration /
+                Gravity *
+                (_centerOfGravityHeightMeters /
+                 Math.Max(
+                     _trackWidthMeters,
+                     0.5f)) *
+                0.55f,
+                DegreesToRadians(
+                    -8.0),
+                DegreesToRadians(
+                    8.0));
+
+        var pitchTarget =
+            Math.Clamp(
+                -_longitudinalAccelerationMetersPerSecondSquared /
+                Gravity *
+                (_centerOfGravityHeightMeters /
+                 Math.Max(
+                     _wheelBaseMeters,
+                     1.0f)) *
+                0.85f,
+                DegreesToRadians(
+                    -5.0),
+                DegreesToRadians(
+                    5.0));
+
+        var response =
+            (2.0f +
+             3.5f *
+             _suspensionResponse) *
+            deltaSeconds;
+
+        _bodyRollRadians =
+            MoveTowards(
+                _bodyRollRadians,
+                rollTarget,
+                response);
+
+        _bodyPitchRadians =
+            MoveTowards(
+                _bodyPitchRadians,
+                pitchTarget,
+                response *
+                0.75f);
     }
 
     public Vector3 GetDriverCameraPosition(
@@ -817,6 +1183,10 @@ internal sealed class RuntimeDriveVehicle
     public Matrix4x4 CreateWorldMatrix()
     {
         return
+            Matrix4x4.CreateRotationZ(
+                BodyRollRadians) *
+            Matrix4x4.CreateRotationX(
+                BodyPitchRadians) *
             Matrix4x4.CreateRotationY(
                 HeadingRadians) *
             Matrix4x4.CreateTranslation(
