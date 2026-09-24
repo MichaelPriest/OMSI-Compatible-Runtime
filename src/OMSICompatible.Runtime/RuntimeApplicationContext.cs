@@ -240,7 +240,7 @@ internal sealed class RuntimeApplicationContext :
                     : Task.Run(
                         () =>
                             (OmsiVehicleAsset?)
-                            OmsiVehicleAssetLoader.Load(
+                            OmsiArticulatedVehicleAssetLoader.Load(
                                 _contentRoot,
                                 selectedBus,
                                 vehicleProgress,
@@ -607,6 +607,7 @@ internal sealed class RuntimeApplicationContext :
                     $"busFile={vehicle.Bus.FilePath}",
                     $"modelCfg={vehicle.Bus.ModelConfigPath ?? "<null>"}",
                     $"modelCfgExists={vehicle.Bus.ModelConfigPath is not null && File.Exists(vehicle.Bus.ModelConfigPath)}",
+                    $"sections={vehicle.SectionCount}",
                     $"meshTotal={vehicle.Meshes.Count}",
                     $"meshRenderable={vehicle.RenderableMeshCount}",
                     $"meshEncrypted={vehicle.ProtectedMeshCount}",
