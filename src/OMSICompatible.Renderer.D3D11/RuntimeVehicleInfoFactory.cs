@@ -176,7 +176,8 @@ public static class RuntimeVehicleInfoFactory
                             mesh.SectionIndex,
                             mesh.ModelOrdinal,
                             mesh.SkinWeights,
-                            mesh.SkinBoneMeshOrdinals))
+                            mesh.SkinBoneMeshOrdinals,
+                            mesh.MouseEventTrigger))
                 .ToArray(),
             vehicle.Bus.DriverCameras
                 .Select(
