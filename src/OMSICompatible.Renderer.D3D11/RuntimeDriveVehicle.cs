@@ -11,7 +11,10 @@ internal enum RuntimeDriveGear
 
 internal sealed class RuntimeDriveVehicle
 {
-    private const float RideHeight = 0.45f;
+    // OMSI vehicle meshes are authored against a ground plane: axle/wheel
+    // placement already carries the wheel-centre height and tyre radius.
+    // Adding a generic ride-height offset lifts every bus above the road.
+    private const float ModelGroundPlaneOffsetMeters = 0.0f;
     private const float Gravity = 9.80665f;
     private const float DefaultWheelBaseMeters = 5.8f;
     private const float DefaultMaximumSteeringDegrees = 32.0f;
@@ -209,7 +212,7 @@ internal sealed class RuntimeDriveVehicle
             Position =
                 new Vector3(
                     Position.X,
-                    groundHeight + RideHeight,
+                    groundHeight + ModelGroundPlaneOffsetMeters,
                     Position.Z);
         }
     }
@@ -310,9 +313,9 @@ internal sealed class RuntimeDriveVehicle
                     selectedSpawn.X,
                     selectedSpawn.Z,
                     out var sampled)
-                    ? sampled + RideHeight
+                    ? sampled + ModelGroundPlaneOffsetMeters
                     : (float)selectedSpawn.Y +
-                      RideHeight;
+                      ModelGroundPlaneOffsetMeters;
 
             Position =
                 new Vector3(
@@ -347,9 +350,9 @@ internal sealed class RuntimeDriveVehicle
                         x,
                         z,
                         out var sampled)
-                        ? sampled + RideHeight
+                        ? sampled + ModelGroundPlaneOffsetMeters
                         : (float)spawn.Y +
-                          RideHeight;
+                          ModelGroundPlaneOffsetMeters;
 
                 Position =
                     new Vector3(
@@ -373,8 +376,8 @@ internal sealed class RuntimeDriveVehicle
                     center.X,
                     center.Z,
                     out var sampled)
-                    ? sampled + RideHeight
-                    : center.Y + RideHeight;
+                    ? sampled + ModelGroundPlaneOffsetMeters
+                    : center.Y + ModelGroundPlaneOffsetMeters;
 
             Position =
                 new Vector3(
@@ -960,7 +963,7 @@ internal sealed class RuntimeDriveVehicle
                 new Vector3(
                     Position.X,
                     groundHeight +
-                    RideHeight,
+                    ModelGroundPlaneOffsetMeters,
                     Position.Z);
         }
 
