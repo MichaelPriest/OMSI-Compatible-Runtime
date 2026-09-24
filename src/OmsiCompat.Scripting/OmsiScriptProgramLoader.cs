@@ -16,12 +16,16 @@ public static class OmsiScriptProgramLoader
             new List<OmsiScriptBlock>();
         var frameAi =
             new List<OmsiScriptBlock>();
+        // Original OMSI vehicle scripts freely mix the casing of
+        // macro/trigger declarations and calls (for example engine_Init
+        // calling a block declared as engine_init). OMSI resolves these
+        // identifiers case-insensitively.
         var macros =
             new Dictionary<string, OmsiScriptBlock>(
-                StringComparer.Ordinal);
+                StringComparer.OrdinalIgnoreCase);
         var triggers =
             new Dictionary<string, OmsiScriptBlock>(
-                StringComparer.Ordinal);
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var file in files)
         {
