@@ -881,6 +881,9 @@ internal sealed class RuntimeApplicationContext :
                                 RuntimeSplinePathInfo>();
 
                         return new RuntimeSplineInfo(
+                            spline.Id,
+                            spline.PreviousId,
+                            spline.NextId,
                             spline.Tile.X,
                             spline.Tile.Y,
                             spline.Position.X,
