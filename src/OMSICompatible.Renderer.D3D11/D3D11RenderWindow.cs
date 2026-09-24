@@ -79,6 +79,12 @@ public sealed class D3D11RenderWindow : Form
     private readonly HashSet<RuntimeOmsiKeyboardBinding>
         _activeOmsiContinuousBindings =
             [];
+    private readonly HashSet<RuntimeOmsiKeyboardBinding>
+        _activeOmsiPressedBindings =
+            [];
+    private readonly bool _gameControllerEnabled;
+    private RuntimeOmsiGameControllerHost? _omsiGameController;
+    private float _controllerClutchInput;
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
     private readonly Dictionary<RuntimeVehicleAnimationInfo, double>
         _vehicleAnimationValues =
@@ -233,7 +239,8 @@ public sealed class D3D11RenderWindow : Form
         bool vsync = true,
         bool vehiclePreviewMode = false,
         IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
-        string? inputLanguage = null)
+        string? inputLanguage = null,
+        bool gameControllerEnabled = true)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
@@ -246,6 +253,8 @@ public sealed class D3D11RenderWindow : Form
         _vsync = vsync;
         _vehiclePreviewMode =
             vehiclePreviewMode;
+        _gameControllerEnabled =
+            gameControllerEnabled;
         _omsiKeyboardBindings =
             _vehiclePreviewMode
                 ? Array.Empty<
@@ -620,10 +629,32 @@ public sealed class D3D11RenderWindow : Form
 
         InitializeGraphics();
         InitializeVehicleScripts();
+        InitializeOmsiGameControllers();
         UpdateCaption();
 
         _graphicsPrepared =
             true;
+    }
+
+    private void InitializeOmsiGameControllers()
+    {
+        if (_vehiclePreviewMode ||
+            !_gameControllerEnabled ||
+            _omsiGameController is not null)
+        {
+            return;
+        }
+
+        _omsiGameController =
+            RuntimeOmsiGameControllerHost.TryCreate(
+                _windowInfo.ContentRoot,
+                Handle);
+
+        if (_omsiGameController is not null)
+        {
+            Console.WriteLine(
+                $"[input] {_omsiGameController.ConnectedDeviceCount} OMSI game controller(s) connected through DirectInput.");
+        }
     }
 
     private void OnWindowShown(object? sender, EventArgs e)
@@ -4435,6 +4466,28 @@ public sealed class D3D11RenderWindow : Form
                 0.0,
                 0.1);
 
+        var controllerFrame =
+            _omsiGameController?.Poll() ??
+            RuntimeOmsiControllerFrame.Empty;
+
+        foreach (var trigger in
+                 controllerFrame.Triggered)
+        {
+            DispatchOmsiTrigger(
+                trigger);
+        }
+
+        foreach (var trigger in
+                 controllerFrame.Released)
+        {
+            DispatchOmsiTrigger(
+                trigger);
+        }
+
+        _controllerClutchInput =
+            controllerFrame.Clutch ??
+            0.0f;
+
         if (_driveMode)
         {
             if (_mouseDriveMode)
@@ -4444,6 +4497,24 @@ public sealed class D3D11RenderWindow : Form
                     _mouseDriveBrake,
                     _mouseDriveSteering,
                     deltaSeconds);
+            }
+            else if (controllerFrame.HasDrivingAxis)
+            {
+                _vehicle.UpdateOmsiControllerControls(
+                    accelerator:
+                        controllerFrame.Accelerator ??
+                        (_pressedKeys.Contains(
+                            Keys.NumPad8)
+                            ? 1.0f
+                            : 0.0f),
+                    brake:
+                        controllerFrame.Brake ??
+                        _vehicle.BrakeLevel,
+                    steering:
+                        controllerFrame.Steering ??
+                        _vehicle.SteeringInput,
+                    deltaSeconds:
+                        deltaSeconds);
             }
             else
             {
@@ -5065,11 +5136,12 @@ public sealed class D3D11RenderWindow : Form
         foreach (var binding in
                  _activeOmsiContinuousBindings)
         {
-            _scriptRuntime.ExecuteTrigger(
+            DispatchOmsiTrigger(
                 binding.Trigger);
         }
 
         _scriptRuntime.ExecuteFrame();
+        SynchronizeHostVehicleStateFromScripts();
     }
 
     private void UpdateScriptHostVariables(
@@ -5102,6 +5174,9 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime.SetLocal(
             "Brake",
             _vehicle.BrakeLevel);
+        _scriptRuntime.SetLocal(
+            "Clutch",
+            _controllerClutchInput);
         _scriptRuntime.SetLocal(
             "Velocity",
             _vehicle.SpeedKph);
@@ -5398,13 +5473,26 @@ public sealed class D3D11RenderWindow : Form
         _pressedKeys.Remove(
             e.KeyCode);
 
-        if (_activeOmsiContinuousBindings.Count >
-            0)
+        var released =
+            _activeOmsiPressedBindings
+                .Where(
+                    binding =>
+                        binding.Key ==
+                        e.KeyCode)
+                .ToArray();
+
+        foreach (var binding in
+                 released)
         {
-            _activeOmsiContinuousBindings.RemoveWhere(
-                binding =>
-                    binding.Key ==
-                    e.KeyCode);
+            DispatchOmsiTrigger(
+                ReleaseTriggerName(
+                    binding.Trigger));
+
+            _activeOmsiPressedBindings.Remove(
+                binding);
+
+            _activeOmsiContinuousBindings.Remove(
+                binding);
         }
     }
 
@@ -5430,8 +5518,11 @@ public sealed class D3D11RenderWindow : Form
                 continue;
             }
 
-            _scriptRuntime.ExecuteTrigger(
+            DispatchOmsiTrigger(
                 binding.Trigger);
+
+            _activeOmsiPressedBindings.Add(
+                binding);
 
             if (binding.Continuous)
             {
@@ -5440,6 +5531,133 @@ public sealed class D3D11RenderWindow : Form
             }
         }
     }
+
+    private void DispatchOmsiTrigger(
+        string trigger)
+    {
+        if (string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return;
+        }
+
+        _scriptRuntime?.ExecuteTrigger(
+            trigger);
+
+        switch (trigger)
+        {
+            case "automatic_D":
+                _vehicle.SelectGear(
+                    RuntimeDriveGear.Drive);
+                break;
+
+            case "automatic_N":
+                _vehicle.SelectGear(
+                    RuntimeDriveGear.Neutral);
+                break;
+
+            case "automatic_R":
+                _vehicle.SelectGear(
+                    RuntimeDriveGear.Reverse);
+                break;
+
+            case "parking_brake_toggle":
+                _vehicle.ToggleParkingBrake();
+                break;
+
+            case "parking_brake_set":
+                _vehicle.SetParkingBrake(
+                    true);
+                break;
+
+            case "parking_brake_release":
+                _vehicle.SetParkingBrake(
+                    false);
+                break;
+
+            case "kw_m_enginestart":
+                _vehicle.ToggleEngine();
+                break;
+
+            case "kw_m_engineshutdown":
+                _vehicle.SetEngineRunning(
+                    false);
+                break;
+
+            case "cp_batterietrennschalter_toggle":
+                _vehicle.ToggleElectricalSystem();
+                break;
+
+            case "view_interiorcam_plus":
+                CycleInteriorCamera(
+                    1);
+                break;
+
+            case "view_interiorcam_minus":
+                CycleInteriorCamera(
+                    -1);
+                break;
+
+            case "view_reset_direction":
+            case "view_reset_all_directions":
+                ActivateSpecialDriverCamera(
+                    _windowInfo.Vehicle?
+                        .StandardDriverCameraIndex);
+                break;
+        }
+    }
+
+    private void SynchronizeHostVehicleStateFromScripts()
+    {
+        if (_scriptRuntime is null)
+        {
+            return;
+        }
+
+        if (_scriptRuntime.HasLocalVariable(
+                "elec_busbar_main"))
+        {
+            _vehicle.SetElectricalSystemEnabled(
+                _scriptRuntime.GetLocal(
+                    "elec_busbar_main") >
+                0.01);
+        }
+        else if (_scriptRuntime.HasLocalVariable(
+                     "elec_busbar_main_sw"))
+        {
+            _vehicle.SetElectricalSystemEnabled(
+                _scriptRuntime.GetLocal(
+                    "elec_busbar_main_sw") >
+                0.5);
+        }
+
+        if (_scriptRuntime.HasLocalVariable(
+                "engine_on"))
+        {
+            _vehicle.SetEngineRunning(
+                _scriptRuntime.GetLocal(
+                    "engine_on") >
+                0.5);
+        }
+
+        if (_scriptRuntime.HasLocalVariable(
+                "bremse_feststell"))
+        {
+            _vehicle.SetParkingBrake(
+                _scriptRuntime.GetLocal(
+                    "bremse_feststell") >
+                0.5);
+        }
+    }
+
+    private static string ReleaseTriggerName(
+        string trigger) =>
+        trigger.EndsWith(
+            "_off",
+            StringComparison.OrdinalIgnoreCase)
+            ? trigger
+            : trigger +
+              "_off";
 
     private void OnRuntimeMouseDown(
         object? sender,
@@ -5918,7 +6136,10 @@ public sealed class D3D11RenderWindow : Form
         var driveInputMode =
             _mouseDriveMode
                 ? "MOUSE: ←/→ steer · ↑ throttle · ↓ brake · RMB exit"
-                : "KEYBOARD: Num8 throttle · Num2 brake · Num+ release · Num4/6 steer · Num5 center · O mouse";
+                : _omsiGameController is
+                    { ConnectedDeviceCount: > 0 }
+                    ? $"GAME CONTROLLER: {_omsiGameController.ConnectedDeviceCount} ativo(s) · Inputs/gamectrler.cfg"
+                    : "KEYBOARD: Inputs/keyboard.cfg · Num8 throttle · Num2 brake · Num4/6 steer · O mouse";
 
         var vehicleView =
             _vehicleViewMode switch
@@ -5966,6 +6187,10 @@ public sealed class D3D11RenderWindow : Form
             {
                 DisableMouseDriveMode();
             }
+
+            _omsiGameController?.Dispose();
+            _omsiGameController =
+                null;
 
             _renderTimer.Stop();
             _renderTimer.Tick -=
