@@ -74,6 +74,12 @@ public static class OmsiArticulatedVehicleAssetLoader
                 0.0);
 
         var sectionCount = 1;
+        var combinedMassTonnes =
+            bus.Physics.MassTonnes;
+        var combinedRollingResistanceNewtons =
+            bus.Physics.RollingResistanceNewtons;
+        var combinedYawInertia =
+            bus.Physics.MomentOfInertiaZ;
 
         while (sectionCount <
                MaximumSectionCount &&
@@ -202,7 +208,25 @@ public static class OmsiArticulatedVehicleAssetLoader
                         55.0,
                         5.0,
                         89.0),
-                    coupledBack.Reverse));
+                    coupledBack.Reverse,
+                    childBus.Physics.MassTonnes,
+                    childBus.Physics.MomentOfInertiaZ,
+                    childBus.Physics.RotationPointLongitudinalMeters,
+                    childBus.Physics.WheelBaseMeters,
+                    childBus.Physics.RollingResistanceNewtons));
+
+            combinedMassTonnes =
+                SumOptional(
+                    combinedMassTonnes,
+                    childBus.Physics.MassTonnes);
+            combinedRollingResistanceNewtons =
+                SumOptional(
+                    combinedRollingResistanceNewtons,
+                    childBus.Physics.RollingResistanceNewtons);
+            combinedYawInertia =
+                SumOptional(
+                    combinedYawInertia,
+                    childBus.Physics.MomentOfInertiaZ);
 
             sectionCount++;
 
@@ -238,8 +262,29 @@ public static class OmsiArticulatedVehicleAssetLoader
                 100,
                 $"Veículo carregado com {sectionCount} seção(ões) e {meshes.Count} mesh(es)."));
 
+        var combinedPhysics =
+            leading.Bus.Physics with
+            {
+                // Steering geometry remains that of the leading section,
+                // but longitudinal inertia/resistance must include every
+                // coupled body so an articulated bus does not accelerate
+                // like the rigid front section alone.
+                MassTonnes =
+                    combinedMassTonnes,
+                RollingResistanceNewtons =
+                    combinedRollingResistanceNewtons,
+                MomentOfInertiaZ =
+                    combinedYawInertia
+            };
+
         return leading with
         {
+            Bus =
+                leading.Bus with
+                {
+                    Physics =
+                        combinedPhysics
+                },
             Meshes =
                 meshes.ToArray(),
             TextTextures =
@@ -367,6 +412,24 @@ public static class OmsiArticulatedVehicleAssetLoader
             MaterialChangeSets =
                 changeSets
         };
+    }
+
+    private static double? SumOptional(
+        double? left,
+        double? right)
+    {
+        if (!left.HasValue)
+        {
+            return right;
+        }
+
+        if (!right.HasValue)
+        {
+            return left;
+        }
+
+        return left.Value +
+               right.Value;
     }
 
     private static double ResolveFollowerLength(
