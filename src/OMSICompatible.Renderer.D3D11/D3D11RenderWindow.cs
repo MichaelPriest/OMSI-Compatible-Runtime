@@ -3277,19 +3277,39 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
-        foreach (var batch in
-            geometry.Batches)
-        {
-            if (!IsVehicleBatchVisible(
-                    batch) ||
-                batch.VertexCount == 0)
-            {
-                continue;
-            }
+        var drawBatches =
+            geometry.Batches
+                .Where(
+                    batch =>
+                        IsVehicleBatchVisible(
+                            batch) &&
+                        batch.VertexCount >
+                            0)
+                .Select(
+                    batch =>
+                        (
+                            Batch: batch,
+                            Material:
+                                ResolveVehicleMaterialState(
+                                    batch)))
+                // OMSI relies heavily on model.cfg ordering, but transparent
+                // glass/overlays must never be allowed to reveal through an
+                // opaque body that has not written depth yet. Stable OrderBy
+                // preserves original order inside each pass.
+                .OrderBy(
+                    item =>
+                        item.Material.AlphaBlend
+                            ? 1
+                            : 0)
+                .ToArray();
 
+        foreach (var draw in
+                 drawBatches)
+        {
+            var batch =
+                draw.Batch;
             var materialState =
-                ResolveVehicleMaterialState(
-                    batch);
+                draw.Material;
 
             model[0] =
                 new RuntimeModelConstants
@@ -3372,11 +3392,13 @@ public sealed class D3D11RenderWindow : Form
                     : null);
 
             _deviceContext.OMSetDepthStencilState(
-                materialState.NoZCheck
-                    ? _vehicleDepthDisabledState
-                    : materialState.NoZWrite
-                        ? _vehicleDepthReadState
-                        : null);
+                materialState.AlphaBlend
+                    ? _vehicleDepthReadState
+                    : materialState.NoZCheck
+                        ? _vehicleDepthDisabledState
+                        : materialState.NoZWrite
+                            ? _vehicleDepthReadState
+                            : null);
 
             _deviceContext.PSUnsetShaderResource(
                 0);
