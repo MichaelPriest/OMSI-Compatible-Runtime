@@ -149,6 +149,7 @@ public sealed class D3D11RenderWindow : Form
         MouseButtons.None;
     private bool _mouseDriveMode;
     private string? _activeVehicleMouseTrigger;
+    private bool _fallbackEngineKeyActive;
     private bool _driveMode = true;
     private RuntimeVehicleViewMode _vehicleViewMode =
         RuntimeVehicleViewMode.Driver;
@@ -6834,6 +6835,40 @@ public sealed class D3D11RenderWindow : Form
                 UpdateCaption();
                 e.SuppressKeyPress =
                     true;
+                return;
+            }
+
+            // Some OMSI installations/custom keyboard.cfg files do not
+            // contain the default engine key although M remains the native
+            // OMSI engine-start control. Preserve that default without
+            // replacing any explicit user binding.
+            if (_driveMode &&
+                e.KeyCode ==
+                    Keys.M)
+            {
+                DispatchOmsiScriptTrigger(
+                    "kw_m_enginestart");
+
+                _fallbackEngineKeyActive =
+                    true;
+
+                if (_scriptRuntime?.HasLocalVariable(
+                        "engine_on") ==
+                    true)
+                {
+                    _vehicle.SetEngineRunning(
+                        _scriptRuntime.GetLocal(
+                            "engine_on") >
+                        0.5);
+                }
+                else
+                {
+                    _vehicle.ToggleEngine();
+                }
+
+                UpdateCaption();
+                e.SuppressKeyPress =
+                    true;
             }
 
             return;
@@ -7291,6 +7326,17 @@ public sealed class D3D11RenderWindow : Form
                         binding.Key ==
                         e.KeyCode)
                 .ToArray();
+
+        if (_fallbackEngineKeyActive &&
+            e.KeyCode ==
+                Keys.M)
+        {
+            DispatchOmsiScriptTrigger(
+                "kw_m_enginestart_off");
+
+            _fallbackEngineKeyActive =
+                false;
+        }
 
         foreach (var binding in
                  released)
