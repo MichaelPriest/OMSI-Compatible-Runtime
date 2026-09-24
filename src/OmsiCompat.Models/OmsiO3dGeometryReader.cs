@@ -246,7 +246,6 @@ public static class OmsiO3dGeometryReader
                         if (!SkipBones(
                                 reader,
                                 stream,
-                                longHeader,
                                 longTriangleIndices))
                         {
                             return OmsiO3dGeometry.Error(
@@ -633,14 +632,19 @@ public static class OmsiO3dGeometryReader
     private static bool SkipBones(
         BinaryReader reader,
         Stream stream,
-        bool longHeader,
         bool longTriangleIndices)
     {
-        if (!TryReadCount(
-                reader,
-                longHeader,
-                out var boneCount) ||
-            boneCount > MaxBones)
+        if (!HasRemaining(
+                stream,
+                2))
+        {
+            return false;
+        }
+
+        var boneCount =
+            (uint)reader.ReadUInt16();
+
+        if (boneCount > MaxBones)
         {
             return false;
         }
