@@ -240,7 +240,9 @@ public sealed record RuntimeObjectMeshInfo(
     IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? VisibilityConditions = null,
     IReadOnlyList<RuntimeVehicleAnimationInfo>? Animations = null,
     Matrix4x4? SourceTransform = null,
-    IReadOnlyList<RuntimeVehicleLightEffectInfo>? LightEffects = null);
+    IReadOnlyList<RuntimeVehicleLightEffectInfo>? LightEffects = null,
+    string? MeshIdentifier = null,
+    string? AnimationParent = null);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
