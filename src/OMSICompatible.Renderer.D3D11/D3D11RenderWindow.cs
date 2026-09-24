@@ -347,6 +347,10 @@ public sealed class D3D11RenderWindow : Form
                 OnUnhandledSystemMacro;
             _scriptRuntime.DebugMessageRequested +=
                 OnScriptDebugMessage;
+            _scriptRuntime.SoundTriggerRequested +=
+                OnScriptSoundTriggerRequested;
+            _scriptRuntime.FileSoundTriggerRequested +=
+                OnScriptFileSoundTriggerRequested;
         }
 
         _vehicle = new RuntimeDriveVehicle(
@@ -6364,6 +6368,12 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds,
             absoluteSeconds);
 
+        // Host controls are inputs to the OMSI VM. Write them before the
+        // frame, then let cockpit/engine/electrical scripts derive the
+        // actual animation variables instead of overwriting their outputs
+        // after the frame has run.
+        WriteVehicleControlStateToScripts();
+
         foreach (var binding in
                  _activeOmsiContinuousBindings)
         {
@@ -6372,7 +6382,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _scriptRuntime.ExecuteFrame();
-        WriteVehicleControlStateToScripts();
+        SynchronizeHostVehicleStateFromScripts();
     }
 
     private void WriteVehicleControlStateToScripts()
@@ -7167,6 +7177,39 @@ public sealed class D3D11RenderWindow : Form
 
         _scriptRuntime?.ExecuteTrigger(
             trigger);
+
+        TriggerOmsiAudio(
+            trigger);
+    }
+
+    private void OnScriptSoundTriggerRequested(
+        string trigger)
+    {
+        TriggerOmsiAudio(
+            trigger);
+    }
+
+    private void OnScriptFileSoundTriggerRequested(
+        string trigger,
+        string declaredFile)
+    {
+        // T.F is emitted by the lead vehicle VM (announcements, dynamic
+        // files, etc.). Play it through that bus's sound directory; coupled
+        // sections have their own sound.cfg loops/triggers.
+        _omsiAudio?.TriggerFile(
+            trigger,
+            declaredFile,
+            IsInteriorSoundView());
+    }
+
+    private void TriggerOmsiAudio(
+        string trigger)
+    {
+        if (string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return;
+        }
 
         var listenerPosition =
             ResolveActiveCameraPosition();
@@ -8404,6 +8447,10 @@ public sealed class D3D11RenderWindow : Form
                     OnUnhandledSystemMacro;
                 _scriptRuntime.DebugMessageRequested -=
                     OnScriptDebugMessage;
+                _scriptRuntime.SoundTriggerRequested -=
+                    OnScriptSoundTriggerRequested;
+                _scriptRuntime.FileSoundTriggerRequested -=
+                    OnScriptFileSoundTriggerRequested;
             }
 
             if (_mouseDriveMode)
