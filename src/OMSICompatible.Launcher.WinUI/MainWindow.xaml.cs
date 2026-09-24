@@ -65,6 +65,9 @@ public sealed partial class MainWindow :
         Activated -=
             OnFirstActivated;
 
+        NoBusCheckBox.IsChecked =
+            _settings.StartWithoutBus;
+
         var initial =
             _settings.ContentPath;
 
@@ -171,9 +174,6 @@ public sealed partial class MainWindow :
             MapBox.ItemsSource =
                 _maps;
 
-            BusBox.ItemsSource =
-                _buses;
-
             MapCountText.Text =
                 _maps.Count.ToString(
                     "N0");
@@ -203,8 +203,10 @@ public sealed partial class MainWindow :
                             StringComparison.OrdinalIgnoreCase))
                 ?? _buses.FirstOrDefault();
 
-            BusBox.SelectedItem =
-                bus;
+            SelectBus(
+                bus);
+
+            ApplyNoBusMode();
 
             if (map is not null)
             {
@@ -266,6 +268,269 @@ public sealed partial class MainWindow :
         SaveSettings();
     }
 
+    private void CarroceriaBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        PopulateModels(
+            CarroceriaBox.SelectedItem
+                as string,
+            preferredBus: null);
+    }
+
+    private void ModeloBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        PopulateSkins(
+            CarroceriaBox.SelectedItem
+                as string,
+            ModeloBox.SelectedItem
+                as string,
+            preferredBus: null);
+    }
+
+    private void SkinBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        UpdateBusPreview();
+
+        if (_refreshing)
+        {
+            return;
+        }
+
+        UpdatePlayAvailability();
+        SaveSettings();
+    }
+
+    private void NoBusModeChanged(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ApplyNoBusMode();
+
+        if (_refreshing)
+        {
+            return;
+        }
+
+        UpdatePlayAvailability();
+        SaveSettings();
+    }
+
+    private void SelectBus(
+        OmsiBusInfo? bus)
+    {
+        var previousRefreshing =
+            _refreshing;
+
+        _refreshing = true;
+
+        try
+        {
+            var carrocerias =
+                _buses
+                    .Select(
+                        static item =>
+                            item.Carroceria)
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(
+                        static value =>
+                            value,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            CarroceriaBox.ItemsSource =
+                carrocerias;
+
+            var carroceria =
+                bus?.Carroceria ??
+                carrocerias.FirstOrDefault();
+
+            CarroceriaBox.SelectedItem =
+                carrocerias.FirstOrDefault(
+                    value =>
+                        string.Equals(
+                            value,
+                            carroceria,
+                            StringComparison.OrdinalIgnoreCase));
+
+            PopulateModels(
+                carroceria,
+                bus);
+        }
+        finally
+        {
+            _refreshing =
+                previousRefreshing;
+        }
+
+        UpdateBusPreview();
+    }
+
+    private void PopulateModels(
+        string? carroceria,
+        OmsiBusInfo? preferredBus)
+    {
+        var modelos =
+            string.IsNullOrWhiteSpace(
+                carroceria)
+                ? Array.Empty<string>()
+                : _buses
+                    .Where(
+                        bus =>
+                            string.Equals(
+                                bus.Carroceria,
+                                carroceria,
+                                StringComparison.OrdinalIgnoreCase))
+                    .Select(
+                        static bus =>
+                            bus.Modelo)
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(
+                        static value =>
+                            value,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+        ModeloBox.ItemsSource =
+            modelos;
+
+        var model =
+            preferredBus?.Modelo ??
+            modelos.FirstOrDefault();
+
+        ModeloBox.SelectedItem =
+            modelos.FirstOrDefault(
+                value =>
+                    string.Equals(
+                        value,
+                        model,
+                        StringComparison.OrdinalIgnoreCase));
+
+        PopulateSkins(
+            carroceria,
+            model,
+            preferredBus);
+    }
+
+    private void PopulateSkins(
+        string? carroceria,
+        string? modelo,
+        OmsiBusInfo? preferredBus)
+    {
+        var skins =
+            string.IsNullOrWhiteSpace(
+                carroceria) ||
+            string.IsNullOrWhiteSpace(
+                modelo)
+                ? Array.Empty<OmsiBusInfo>()
+                : _buses
+                    .Where(
+                        bus =>
+                            string.Equals(
+                                bus.Carroceria,
+                                carroceria,
+                                StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(
+                                bus.Modelo,
+                                modelo,
+                                StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(
+                        static bus =>
+                            bus.Skin,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(
+                        static bus =>
+                            bus.RelativePath,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+        SkinBox.ItemsSource =
+            skins;
+
+        SkinBox.SelectedItem =
+            preferredBus is not null &&
+            skins.Contains(
+                preferredBus)
+                ? preferredBus
+                : skins.FirstOrDefault();
+
+        UpdateBusPreview();
+    }
+
+    private void ApplyNoBusMode()
+    {
+        var noBus =
+            NoBusCheckBox.IsChecked ==
+            true;
+
+        CarroceriaBox.IsEnabled =
+            !noBus;
+
+        ModeloBox.IsEnabled =
+            !noBus;
+
+        SkinBox.IsEnabled =
+            !noBus;
+
+        UpdateBusPreview();
+    }
+
+    private void UpdateBusPreview()
+    {
+        if (NoBusCheckBox.IsChecked ==
+            true)
+        {
+            BusPreviewTitle.Text =
+                "Iniciar sem ônibus";
+            BusPreviewSubtitle.Text =
+                "O mapa será aberto em câmera livre";
+            BusPreviewSkin.Text =
+                "Nenhum veículo será carregado";
+            BusPreviewImage.Source =
+                null;
+            BusPreviewEmptyText.Text =
+                "Modo mapa";
+            BusPreviewEmptyText.Visibility =
+                Visibility.Visible;
+            return;
+        }
+
+        var bus =
+            SelectedBus();
+
+        BusPreviewTitle.Text =
+            bus?.Modelo ??
+            "Nenhum ônibus selecionado";
+
+        BusPreviewSubtitle.Text =
+            bus?.Carroceria ??
+            "Escolha carroceria e modelo";
+
+        BusPreviewSkin.Text =
+            bus is null
+                ? string.Empty
+                : $"Skin: {bus.Skin}";
+
+        ApplyImage(
+            BusPreviewImage,
+            bus?.PreviewImagePath);
+
+        BusPreviewEmptyText.Text =
+            "Sem imagem de prévia";
+
+        BusPreviewEmptyText.Visibility =
+            string.IsNullOrWhiteSpace(
+                bus?.PreviewImagePath)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+    }
+
     private async Task LoadEntryPointsAsync(
         OmsiMapInfo map)
     {
@@ -310,6 +575,10 @@ public sealed partial class MainWindow :
         var map =
             SelectedMap();
 
+        var noBus =
+            NoBusCheckBox.IsChecked ==
+            true;
+
         var bus =
             SelectedBus();
 
@@ -317,11 +586,13 @@ public sealed partial class MainWindow :
             SelectedSpawn();
 
         if (map is null ||
-            bus is null ||
-            spawn is null)
+            spawn is null ||
+            (!noBus && bus is null))
         {
             SetStatus(
-                "Selecione mapa, ônibus e ponto inicial.");
+                noBus
+                    ? "Selecione mapa e ponto inicial."
+                    : "Selecione mapa, ônibus e ponto inicial.");
             return;
         }
 
@@ -331,7 +602,9 @@ public sealed partial class MainWindow :
 
             ShowLoading(
                 map,
-                bus);
+                noBus
+                    ? null
+                    : bus);
 
             SetRuntimeProgress(
                 new RuntimeProgress(
@@ -342,7 +615,9 @@ public sealed partial class MainWindow :
             if (!_runtime.Start(
                     ContentPathBox.Text,
                     map.FolderName,
-                    bus.RelativePath,
+                    noBus
+                        ? null
+                        : bus?.RelativePath,
                     spawn.Name))
             {
                 throw new InvalidOperationException(
@@ -414,13 +689,14 @@ public sealed partial class MainWindow :
 
     private void ShowLoading(
         OmsiMapInfo map,
-        OmsiBusInfo bus)
+        OmsiBusInfo? bus)
     {
         LoadingMapText.Text =
             map.FolderName;
 
         LoadingBusText.Text =
-            bus.DisplayName;
+            bus?.SelectionLabel ??
+            "Sem ônibus · modo mapa";
 
         var image =
             ResolveMapImage(
@@ -531,11 +807,16 @@ public sealed partial class MainWindow :
 
     private void UpdatePlayAvailability()
     {
+        var noBus =
+            NoBusCheckBox.IsChecked ==
+            true;
+
         PlayButton.IsEnabled =
             !_runtime.IsRunning &&
             SelectedMap() is not null &&
-            SelectedBus() is not null &&
-            SelectedSpawn() is not null;
+            SelectedSpawn() is not null &&
+            (noBus ||
+             SelectedBus() is not null);
     }
 
     private OmsiMapInfo? SelectedMap() =>
@@ -543,7 +824,7 @@ public sealed partial class MainWindow :
             as OmsiMapInfo;
 
     private OmsiBusInfo? SelectedBus() =>
-        BusBox.SelectedItem
+        SkinBox.SelectedItem
             as OmsiBusInfo;
 
     private OmsiMapEntryPointGroup? SelectedSpawn() =>
@@ -562,8 +843,12 @@ public sealed partial class MainWindow :
             Array.Empty<OmsiMapEntryPointGroup>();
 
         MapBox.ItemsSource = null;
-        BusBox.ItemsSource = null;
+        CarroceriaBox.ItemsSource = null;
+        ModeloBox.ItemsSource = null;
+        SkinBox.ItemsSource = null;
         SpawnBox.ItemsSource = null;
+
+        UpdateBusPreview();
 
         MapCountText.Text = "0";
         BusCountText.Text = "0";
@@ -577,7 +862,9 @@ public sealed partial class MainWindow :
             ContentPathBox.Text,
             SelectedMap()?.FolderName,
             SelectedBus()?.RelativePath,
-            SelectedSpawn()?.Name)
+            SelectedSpawn()?.Name,
+            NoBusCheckBox.IsChecked ==
+                true)
             .Save();
     }
 
