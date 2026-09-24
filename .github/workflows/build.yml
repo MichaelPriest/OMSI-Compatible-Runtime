@@ -75,9 +75,13 @@ jobs:
              Exemplo: G:\Games\OMSI 2 Steam Edition
           3. Escolha o mapa e o ponto inicial.
           4. Escolha o ônibus por Carroceria > Modelo > Skin.
-             Os três níveis vêm do [friendlyname] do arquivo .bus.
-          5. Quando houver Preview.png/preview.jpg na pasta do veículo,
-             a imagem é mostrada na seleção.
+             Carroceria/modelo vêm do [friendlyname]; Skin inclui a base
+             do .bus e os repaints reais encontrados nos arquivos .cti.
+          5. A seleção mostra o ônibus real em 3D pelo renderer D3D11.
+             Arraste para girar e use a roda do mouse para zoom.
+             Ao trocar Skin, as texturas e [setvar] do repaint são
+             reaplicadas imediatamente na prévia 3D.
+             Preview.png/preview.jpg é usado somente como fallback.
           6. Para explorar somente o mapa, marque "Iniciar sem ônibus".
           7. Clique em JOGAR.
 
@@ -103,7 +107,12 @@ jobs:
 
           É possível importar o options.cfg da instalação e os perfis .oop
           encontrados em option_presets sem sobrescrever o arquivo original.
-          Teclado e Game Controller leem os arquivos da pasta Inputs.
+          Teclado possui edição visual, captura de tecla, Ctrl, Shift
+          e modo contínuo, mantendo compatibilidade com keyboard.cfg/.kyb.
+          Game Controller possui edição visual de eixos, função, inversão,
+          faixa reduzida, curvas Linear/Progressiva/Degressiva/Bi-*, botões
+          e os dois valores [FFScale], mantendo gamectrler.cfg compatível.
+          O modo avançado continua disponível para editar o arquivo bruto.
           Ao salvar Inputs, o launcher pede confirmação e cria backup.
 
           CONTROLES OMSI - MODO DIRIGIR
