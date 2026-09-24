@@ -9,7 +9,8 @@ public static class OmsiVehicleAssetLoader
     public static OmsiVehicleAsset Load(
         OmsiContentRoot contentRoot,
         OmsiBusInfo bus,
-        IProgress<OmsiVehicleLoadProgress>? progress = null)
+        IProgress<OmsiVehicleLoadProgress>? progress = null,
+        OmsiVehicleRepaint? repaint = null)
     {
         ArgumentNullException.ThrowIfNull(contentRoot);
         ArgumentNullException.ThrowIfNull(bus);
@@ -40,7 +41,9 @@ public static class OmsiVehicleAssetLoader
         progress?.Report(
             new OmsiVehicleLoadProgress(
                 8,
-                $"Modelo encontrado · {model.Meshes.Count:N0} mesh(es)."));
+                repaint is null
+                    ? $"Modelo encontrado · {model.Meshes.Count:N0} mesh(es)."
+                    : $"Modelo encontrado · {model.Meshes.Count:N0} mesh(es) · repaint {repaint.Name}."));
 
         for (var meshIndex = 0;
              meshIndex < model.Meshes.Count;
@@ -181,6 +184,16 @@ public static class OmsiVehicleAssetLoader
                                 meshPath,
                                 material.TextureName,
                                 out texturePath);
+
+                            if (repaint is not null &&
+                                repaint.TryResolveTexture(
+                                    material.TextureName,
+                                    texturePath,
+                                    out var repaintTexturePath))
+                            {
+                                texturePath =
+                                    repaintTexturePath;
+                            }
                         }
                     }
 
