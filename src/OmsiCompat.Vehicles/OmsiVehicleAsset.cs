@@ -73,7 +73,10 @@ public sealed record OmsiVehicleMeshAsset(
     IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
     string? MeshIdentifier = null,
     string? AnimationParent = null,
-    int SectionIndex = 0)
+    int SectionIndex = 0,
+    int ModelOrdinal = -1,
+    float[]? SkinWeights = null,
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null)
 {
     public bool IsRenderable =>
         ErrorCode is null &&
