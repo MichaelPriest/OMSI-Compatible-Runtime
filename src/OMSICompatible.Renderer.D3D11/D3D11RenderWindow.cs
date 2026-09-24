@@ -7155,47 +7155,12 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case Keys.E:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.ElectricalToggle);
-                break;
-
             case Keys.M:
-                if (_scriptRuntime is not null)
-                {
-                    DispatchOmsiScriptTrigger(
-                        "kw_m_enginestart");
-
-                    _fallbackEngineKeyActive =
-                        true;
-
-                    if (_scriptRuntime.HasLocalVariable(
-                            "engine_on"))
-                    {
-                        _vehicle.SetEngineRunning(
-                            _scriptRuntime.GetLocal(
-                                "engine_on") >
-                            0.5);
-                    }
-                }
-                else
-                {
-                    _vehicle.ToggleEngine();
-                }
-                break;
-
             case Keys.D:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearDrive);
-                break;
-
             case Keys.N:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearNeutral);
-                break;
-
             case Keys.R:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearReverse);
+                TryApplyOmsiDefaultDriveKeyFallback(
+                    e.KeyCode);
                 break;
 
             case Keys.Decimal:
@@ -7873,8 +7838,6 @@ public sealed class D3D11RenderWindow : Form
                     RuntimeOmsiHostInputAction.EngineStart,
                 "kw_m_engineshutdown" =>
                     RuntimeOmsiHostInputAction.EngineOff,
-                "cp_batterietrennschalter_toggle" =>
-                    RuntimeOmsiHostInputAction.ElectricalToggle,
                 "view_interiorcam_plus" =>
                     RuntimeOmsiHostInputAction.InteriorViewNext,
                 "view_interiorcam_minus" =>
