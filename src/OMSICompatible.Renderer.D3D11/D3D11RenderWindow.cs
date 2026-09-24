@@ -3442,6 +3442,8 @@ public sealed class D3D11RenderWindow : Form
             var parentTransform =
                 staticTransform *
                 animationTransform *
+                CreateArticulatedSectionMatrix(
+                    mesh.SectionIndex) *
                 vehicleWorld;
 
             foreach (var light in
