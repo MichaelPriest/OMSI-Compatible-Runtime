@@ -243,7 +243,10 @@ public sealed record RuntimeObjectMeshInfo(
     IReadOnlyList<RuntimeVehicleLightEffectInfo>? LightEffects = null,
     string? MeshIdentifier = null,
     string? AnimationParent = null,
-    int SectionIndex = 0);
+    int SectionIndex = 0,
+    int ModelOrdinal = -1,
+    float[]? SkinWeights = null,
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
