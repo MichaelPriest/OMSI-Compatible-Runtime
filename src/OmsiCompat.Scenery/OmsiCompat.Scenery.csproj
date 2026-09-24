@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../OmsiCompat.Map/OmsiCompat.Map.csproj" />
+    <ProjectReference Include="../OmsiCompat.Models/OmsiCompat.Models.csproj" />
+  </ItemGroup>
+</Project>

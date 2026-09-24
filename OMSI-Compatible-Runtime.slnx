@@ -1,0 +1,15 @@
+<Solution>
+  <Project Path="src/OmsiCompat.Core/OmsiCompat.Core.csproj" />
+  <Project Path="src/OmsiCompat.Map/OmsiCompat.Map.csproj" />
+  <Project Path="src/OmsiCompat.Models/OmsiCompat.Models.csproj" />
+  <Project Path="src/OmsiCompat.Scenery/OmsiCompat.Scenery.csproj" />
+  <Project Path="src/OmsiCompat.Splines/OmsiCompat.Splines.csproj" />
+  <Project Path="src/OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
+  <Project Path="src/OmsiCompat.Scripting/OmsiCompat.Scripting.csproj" />
+  <Project Path="src/OMSICompatible.World/OMSICompatible.World.csproj" />
+  <Project Path="src/OMSICompatible.Renderer.D3D11/OMSICompatible.Renderer.D3D11.csproj" />
+  <Project Path="src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj" />
+  <Project Path="src/OMSICompatible.Launcher/OMSICompatible.Launcher.csproj" />
+  <Project Path="src/OMSICompatible.Launcher.WinUI/OMSICompatible.Launcher.WinUI.csproj" />
+  <Project Path="tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj" />
+</Solution>

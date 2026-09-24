@@ -1,0 +1,244 @@
+name: build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-x64:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify preinstalled .NET
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore OMSI-Compatible-Runtime.slnx
+
+      - name: Build x64
+        run: dotnet build OMSI-Compatible-Runtime.slnx -c Release --no-restore
+
+      - name: Run synthetic world smoke test
+        run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
+
+      - name: Publish Launcher x64
+        run: >
+          dotnet publish src/OMSICompatible.Launcher/OMSICompatible.Launcher.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=false
+          -p:UseAppHost=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
+
+      - name: Publish Runtime x64
+        run: >
+          dotnet publish src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=false
+          -p:UseAppHost=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime
+
+      - name: Add test instructions
+        shell: pwsh
+        run: |
+          @'
+          OMSI Compatible Runtime x64 - PRE-ALPHA UI (PORTABLE SELF-CONTAINED)
+
+          INÍCIO
+          ======
+          IMPORTANTE:
+          Extraia TODO o conteúdo do ZIP antes de executar.
+          Não execute o EXE de dentro do ZIP.
+
+          Abra:
+            OMSICompatible.Launcher.exe
+
+          No launcher:
+          1. Clique em Procurar.
+          2. Selecione a pasta raiz do conteúdo OMSI.
+             Exemplo: G:\Games\OMSI 2 Steam Edition
+          3. Escolha o mapa e o ponto inicial.
+          4. Escolha o ônibus por Carroceria > Modelo > Skin.
+             Carroceria/modelo vêm do [friendlyname]; Skin inclui a base
+             do .bus e os repaints reais encontrados nos arquivos .cti.
+          5. A seleção mostra o ônibus real em 3D pelo renderer D3D11.
+             Arraste para girar e use a roda do mouse para zoom.
+             Ao trocar Skin, as texturas e [setvar] do repaint são
+             reaplicadas imediatamente na prévia 3D.
+             Preview.png/preview.jpg é usado somente como fallback.
+          6. Para explorar somente o mapa, marque "Iniciar sem ônibus".
+          7. Clique em JOGAR.
+
+          O launcher usa picture.jpg/preview do mapa quando disponível.
+          O loading mostra etapas reais do carregamento.
+          O modo "Iniciar sem ônibus" abre o mapa em câmera livre e não
+          carrega meshes, scripts ou materiais de veículo.
+          O jogo não inicia Omsi.exe.
+
+          CONFIGURAÇÕES
+          =============
+          Use o atalho "Configurações" na tela principal.
+          A tela preserva as áreas do OMSI:
+          - Geral
+          - Avançado
+          - Gráficos
+          - Gráficos avançados
+          - Som
+          - Tráfego IA
+          - Teclado
+          - Game Controller
+          - Runtime x64
+
+          É possível importar o options.cfg da instalação e os perfis .oop
+          encontrados em option_presets sem sobrescrever o arquivo original.
+          Teclado possui edição visual, captura de tecla, Ctrl, Shift
+          e modo contínuo, mantendo compatibilidade com keyboard.cfg/.kyb.
+          O Runtime também lê keyboard.cfg/.kyb diretamente: ao pressionar
+          uma tecla ele dispara o trigger OMSI configurado; ao soltar,
+          tenta o trigger correspondente com sufixo _off. Entradas marcadas
+          como contínuas são executadas enquanto a tecla permanecer pressionada.
+
+          Game Controller possui edição visual de eixos, função, inversão,
+          faixa reduzida, curvas Linear/Progressiva/Degressiva/Bi-*, botões
+          e os dois valores [FFScale], mantendo gamectrler.cfg compatível.
+          No Runtime, controladores ativos do gamectrler.cfg são abertos por
+          DirectInput. São lidos X/Y/Z/Rx/Ry/Rz, Slider 1/2 e até 128 botões.
+          Eixos podem controlar direção, freio, acelerador, embreagem ou o
+          eixo combinado acelerador+freio; botões disparam triggers dos scripts
+          do ônibus, inclusive comandos específicos de addons.
+
+          O modo avançado continua disponível para editar o arquivo bruto.
+          Ao salvar Inputs, o launcher pede confirmação e cria backup.
+
+          CONTROLES OMSI - MODO DIRIGIR
+          =============================
+          A prioridade agora é a configuração real em Inputs/keyboard.cfg
+          e Inputs/gamectrler.cfg. O Runtime usa keyboard_reset.cfg para
+          reconhecer a função nativa de cada trigger padrão e aplica a
+          tecla atualmente escolhida pelo usuário em keyboard.cfg. Assim,
+          remapear um comando não executa mais o antigo atalho em paralelo.
+
+          Se os arquivos Inputs não existirem, permanece este fallback:
+          Num 8       Acelerador
+          Num 2       Aumentar freio de serviço
+          Num +       Liberar freio
+          Num 4 / 6   Direção esquerda/direita
+          Num 5       Centralizar direção
+          Tab         Embreagem
+          D / N / R   Marcha
+          E           Sistema elétrico
+          M           Motor
+          Num .       Freio de estacionamento
+          Num -       Freio de parada
+          O           Direção pelo mouse
+          F1/F2/F3    Motorista/passageiro/exterior
+          F4          Câmera livre/mapa
+
+          MODO MOUSE (O)
+          ==============
+          Mouse esquerda/direita  Direção
+          Mouse para cima         Acelerador
+          Mouse para baixo        Freio
+          Cursor                  Cruz (+) enquanto o modo mouse estiver ativo
+          Botão direito           Sair do modo mouse
+          O                       Alternar mouse steering on/off
+
+          Ao sair do modo mouse, o Runtime volta ao steering normal do OMSI
+          (teclado e/ou controlador configurado), sem trocar para câmera livre.
+          O carregamento por streaming permanece ativo. Em F4/câmera livre,
+          o centro do streaming passa a seguir a câmera, como no mapa do OMSI.
+
+          DESENVOLVIMENTO / CÂMERA LIVRE
+          ==============================
+          F4 / ação OMSI de mapa   Entrar na câmera livre
+          WASD                     Movimento da câmera
+          Q / E                    Descer/subir
+          RMB + mouse              Olhar
+          Shift                    Mais rápido
+          Ctrl                     Mais lento
+          Ctrl+Shift+R             Reenquadrar câmera livre
+          Ctrl+Shift+F5            Resetar veículo
+          Ctrl+Shift+F9            Alternar reflexões de diagnóstico
+
+          F5/F6/F7 e demais teclas configuradas no OMSI ficam livres para
+          seus triggers normais; não são mais capturadas pelos atalhos de
+          desenvolvimento do Runtime.
+
+          ATALHOS DO LAUNCHER
+          ===================
+          Pasta OMSI
+          Mapas
+          Veículos
+          Logs
+          Criar atalho na Área de Trabalho
+
+          NORMALIZAÇÃO DE EIXOS OMSI
+          ==========================
+          Esta build corrige meshes O3D/X para:
+          X = lateral
+          Y = frente/trás
+          Z = altura
+          convertidos corretamente para o renderer X/Y-up/Z.
+
+          ESCOPO ATUAL
+          ============
+          - Runtime Windows x64 independente
+          - Launcher gráfico
+          - Loading screen moderno
+          - Leitura de mapas/tiles
+          - Terreno 3D real
+          - Splines/ruas em desenvolvimento
+          - Ônibus OMSI real carregado por .bus/model.cfg
+          - Câmeras F1/F2/F3/F4, horário e bilhetagem
+          - Espelhos/reflexões D3D11 iniciais
+          - Física baseada em eixos/raio de giro do .bus
+          - Manifesto de scripts OMSI
+          - VM RPN inicial em desenvolvimento
+          - keyboard.cfg/.kyb executando triggers de veículo
+          - keyboard_reset.cfg usado para preservar a semântica dos comandos
+            padrão mesmo depois de remapeados pelo usuário
+          - gamectrler.cfg via DirectInput com eixos e botões
+          - sincronização inicial de marcha, elétrica, motor e freio de mão
+            entre eventos/scripts OMSI e o estado físico do Runtime
+          - dinâmica veicular usa massa, centro de gravidade, resistência ao
+            rolamento, entre-eixos, bitola, inércia, molas e amortecedores do .bus
+          - inclinação da carroceria em curvas/aceleração/frenagem e terreno
+          - animações model.cfg [newanim] com anim_rot/anim_trans, origin,
+            origin_rot_x/y/z, offset, delay e maxspeed
+          - variáveis nativas de roda/esterçamento/suspensão alimentadas pelo
+            Runtime (Wheel_Rotation_*, Axle_Steering_*, Axle_Suspension_*)
+          - esterçamento visual com geometria Ackermann esquerda/direita
+
+          Ainda em desenvolvimento:
+          - cobertura total de todas as variáveis/eventos de animação de addons
+          - sons/IBIS/tráfego/passageiros
+          - veículos articulados/acoplados completos
+          - Force Feedback físico no volante: [FFScale] já é lido/editável,
+            mas esta alpha ainda não cria efeitos DirectInput no hardware
+          - alguns eventos globais do OMSI fora dos scripts de veículo ainda
+            precisam de equivalentes próprios no Runtime x64
+          '@ | Set-Content -Encoding UTF8 artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/README-TEST.txt
+
+      - name: Upload x64 UI alpha
+        uses: actions/upload-artifact@v4
+        with:
+          name: OMSI-Compatible-Runtime-alpha-ui-win-x64-portable
+          path: artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
+          if-no-files-found: error
+          compression-level: 6
