@@ -138,8 +138,7 @@ public static class OmsiO3dGeometryReader
 
                             var t = checked((int)index * 2);
                             uvs[t] = reader.ReadSingle();
-                            uvs[t + 1] =
-                                1.0f - reader.ReadSingle();
+                            uvs[t + 1] = reader.ReadSingle();
                         }
 
                         break;
