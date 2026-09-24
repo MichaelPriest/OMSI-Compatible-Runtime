@@ -109,10 +109,11 @@ internal sealed class LauncherForm : Form
 
         BuildInterface();
 
+        _updatingBusSelection = true;
         _noBusCheckBox.Checked =
             _settings.StartWithoutBus;
-
         ApplyNoBusMode();
+        _updatingBusSelection = false;
 
         _runtime.OutputReceived +=
             line =>
@@ -457,6 +458,12 @@ internal sealed class LauncherForm : Form
             (_, _) =>
             {
                 ApplyNoBusMode();
+
+                if (_updatingBusSelection)
+                {
+                    return;
+                }
+
                 UpdatePlayAvailability();
                 SaveSettings();
             };
