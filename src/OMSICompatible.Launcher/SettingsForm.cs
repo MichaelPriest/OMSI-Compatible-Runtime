@@ -1193,7 +1193,7 @@ internal sealed class SettingsForm : Form
                 number;
         }
 
-        var aliases =
+        string[] aliases =
             key switch
             {
                 Keys.Add =>
