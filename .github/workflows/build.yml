@@ -87,6 +87,25 @@ jobs:
           carrega meshes, scripts ou materiais de veículo.
           O jogo não inicia Omsi.exe.
 
+          CONFIGURAÇÕES
+          =============
+          Use o atalho "Configurações" na tela principal.
+          A tela preserva as áreas do OMSI:
+          - Geral
+          - Avançado
+          - Gráficos
+          - Gráficos avançados
+          - Som
+          - Tráfego IA
+          - Teclado
+          - Game Controller
+          - Runtime x64
+
+          É possível importar o options.cfg da instalação e os perfis .oop
+          encontrados em option_presets sem sobrescrever o arquivo original.
+          Teclado e Game Controller leem os arquivos da pasta Inputs.
+          Ao salvar Inputs, o launcher pede confirmação e cria backup.
+
           CONTROLES OMSI - MODO DIRIGIR
           =============================
           Num 8       Acelerador
