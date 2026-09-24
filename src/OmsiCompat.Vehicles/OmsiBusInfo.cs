@@ -173,5 +173,70 @@ public sealed record OmsiBusInfo(
     IReadOnlyList<OmsiReflectionCamera> ReflectionCameras,
     OmsiVehiclePhysics Physics)
 {
-    public override string ToString() => DisplayName;
+    public string Carroceria =>
+        FriendlyNameLines.Count > 0 &&
+        !string.IsNullOrWhiteSpace(
+            FriendlyNameLines[0])
+            ? FriendlyNameLines[0].Trim()
+            : Path.GetFileName(
+                DirectoryPath.TrimEnd(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar));
+
+    public string Modelo =>
+        FriendlyNameLines.Count > 1 &&
+        !string.IsNullOrWhiteSpace(
+            FriendlyNameLines[1])
+            ? FriendlyNameLines[1].Trim()
+            : DisplayName;
+
+    public string Skin =>
+        FriendlyNameLines.Count > 2 &&
+        !string.IsNullOrWhiteSpace(
+            FriendlyNameLines[2])
+            ? FriendlyNameLines[2].Trim()
+            : Path.GetFileNameWithoutExtension(
+                FilePath);
+
+    public string SelectionLabel =>
+        $"{Carroceria} — {Modelo} — {Skin}";
+
+    public string? PreviewImagePath =>
+        ResolvePreviewImagePath();
+
+    public override string ToString() => SelectionLabel;
+
+    private string? ResolvePreviewImagePath()
+    {
+        string[] preferredNames =
+        [
+            "Preview.png",
+            "preview.png",
+            "Preview.jpg",
+            "preview.jpg",
+            "Preview.jpeg",
+            "preview.jpeg",
+            "Preview.bmp",
+            "preview.bmp",
+            $"{Path.GetFileNameWithoutExtension(FilePath)}.png",
+            $"{Path.GetFileNameWithoutExtension(FilePath)}.jpg",
+            $"{Path.GetFileNameWithoutExtension(FilePath)}.jpeg",
+            $"{Path.GetFileNameWithoutExtension(FilePath)}.bmp"
+        ];
+
+        foreach (var name in preferredNames)
+        {
+            var candidate =
+                Path.Combine(
+                    DirectoryPath,
+                    name);
+
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
 }
