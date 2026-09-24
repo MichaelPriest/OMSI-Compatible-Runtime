@@ -371,8 +371,20 @@ internal sealed class RuntimeDriveVehicle
                 -1.0f,
                 1.0f);
 
+        if (Math.Abs(
+                steering) <
+            0.018f)
+        {
+            steering =
+                0.0f;
+        }
+
         SteeringInput =
-            steering;
+            MoveTowards(
+                SteeringInput,
+                steering,
+                7.0f *
+                deltaSeconds);
 
         var canApplyPower =
             ElectricalSystemEnabled &&
@@ -437,7 +449,7 @@ internal sealed class RuntimeDriveVehicle
         SteeringInput = MoveTowards(
             SteeringInput,
             steeringTarget,
-            5.0f * deltaSeconds);
+            2.8f * deltaSeconds);
 
         var canApplyPower =
             ElectricalSystemEnabled &&
