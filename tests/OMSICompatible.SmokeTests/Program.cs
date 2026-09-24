@@ -1,6 +1,7 @@
 using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Models;
 using OmsiCompat.Vehicles;
 using OmsiCompat.Scripting;
 using OMSICompatible.World;
