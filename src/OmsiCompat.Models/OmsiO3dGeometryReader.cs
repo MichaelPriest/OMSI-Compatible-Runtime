@@ -69,15 +69,15 @@ public static class OmsiO3dGeometryReader
                     (options & 0x01) != 0;
             }
 
-            // OMSI v5+ files in the wild also use a zero key while
-            // keeping the section payload fully readable. Treat both zero
-            // and 0xFFFFFFFF as plain O3D containers. Any other non-default
-            // key remains unsupported and is not decrypted here.
-            if (protectionKey != 0 &&
-                protectionKey != uint.MaxValue)
+            // Extended O3D headers use 0xFFFFFFFF for plain vertex
+            // payloads. Any other key value, including zero, marks the
+            // vertex stream as encrypted. Do not interpret encrypted bytes
+            // as floats: doing so can produce plausible counts while
+            // rendering badly deformed geometry.
+            if (protectionKey != uint.MaxValue)
             {
                 return OmsiO3dGeometry.Error(
-                    "protectedO3dUnsupported");
+                    "encryptedO3dUnsupported");
             }
 
             float[]? positions = null;
