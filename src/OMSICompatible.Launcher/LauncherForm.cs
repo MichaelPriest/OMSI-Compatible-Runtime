@@ -703,6 +703,11 @@ internal sealed class LauncherForm : Form
 
         AddShortcut(
             shortcuts,
+            "Configurações",
+            OpenSettings);
+
+        AddShortcut(
+            shortcuts,
             "Pasta OMSI",
             () =>
                 OpenFolder(
@@ -1640,6 +1645,28 @@ internal sealed class LauncherForm : Form
 
         AppendRuntimeLog(
             $"Runtime encerrado com código {exitCode}.");
+    }
+
+    private void OpenSettings()
+    {
+        if (!Directory.Exists(
+                _contentPathBox.Text))
+        {
+            ShowError(
+                "Selecione primeiro a pasta raiz do conteúdo OMSI.");
+            return;
+        }
+
+        using var settings =
+            new SettingsForm(
+                _contentPathBox.Text);
+
+        if (settings.ShowDialog(this) ==
+            DialogResult.OK)
+        {
+            AppendRuntimeLog(
+                "Configurações atualizadas.");
+        }
     }
 
     private void CreateDesktopShortcut()
