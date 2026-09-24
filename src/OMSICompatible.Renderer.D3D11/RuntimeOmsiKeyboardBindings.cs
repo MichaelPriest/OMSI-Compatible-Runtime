@@ -34,8 +34,10 @@ internal enum RuntimeOmsiHostInputAction
     ResetDriverView,
     ControllerToggle,
     PauseToggle,
+    ResetCurrentView,
     ResetAllViews,
-    ScrollViews
+    ScrollViews,
+    StatusInfoCycle
 }
 
 internal sealed record RuntimeOmsiKeyboardBinding(
@@ -81,7 +83,8 @@ internal static class RuntimeOmsiKeyboardBindings
         var keyIndexToWindowsKey =
             LoadKeyTable(
                 inputs,
-                preferredLanguage);
+                preferredLanguage,
+                out var keyTablePath);
 
         if (keyIndexToWindowsKey.Count == 0)
         {
@@ -94,24 +97,37 @@ internal static class RuntimeOmsiKeyboardBindings
                 inputs,
                 keyIndexToWindowsKey);
 
-        return ParseBindings(
+        var parsed =
+            ParseBindings(
                 keyboardPath,
-                keyIndexToWindowsKey)
-            .Select(
-                binding =>
-                    new RuntimeOmsiKeyboardBinding(
-                        binding.Key,
-                        binding.Trigger,
-                        binding.Continuous,
-                        binding.Shift,
-                        binding.Control,
-                        hostActions.TryGetValue(
+                keyIndexToWindowsKey);
+
+        var bindings =
+            parsed
+                .Select(
+                    binding =>
+                        new RuntimeOmsiKeyboardBinding(
+                            binding.Key,
                             binding.Trigger,
-                            out var hostAction)
-                            ? hostAction
-                            : null))
-            .Distinct()
-            .ToArray();
+                            binding.Continuous,
+                            binding.Shift,
+                            binding.Control,
+                            hostActions.TryGetValue(
+                                binding.Trigger,
+                                out var hostAction)
+                                ? hostAction
+                                : null))
+                .Distinct()
+                .ToArray();
+
+        WriteKeyboardAudit(
+            keyboardPath,
+            keyTablePath,
+            CountEntries(
+                keyboardPath),
+            bindings);
+
+        return bindings;
     }
 
     public static IReadOnlyDictionary<
@@ -138,7 +154,8 @@ internal static class RuntimeOmsiKeyboardBindings
         var keyIndexToWindowsKey =
             LoadKeyTable(
                 inputs,
-                preferredLanguage);
+                preferredLanguage,
+                out _);
 
         return LoadHostActions(
             inputs,
@@ -195,6 +212,15 @@ internal static class RuntimeOmsiKeyboardBindings
     {
         action =
             default;
+
+        if (binding.Shift &&
+            !binding.Control &&
+            binding.Key == Keys.Z)
+        {
+            action =
+                RuntimeOmsiHostInputAction.StatusInfoCycle;
+            return true;
+        }
 
         if (binding.Shift ||
             binding.Control)
@@ -258,7 +284,8 @@ internal static class RuntimeOmsiKeyboardBindings
                     RuntimeOmsiHostInputAction.PauseToggle,
                 Keys.S =>
                     RuntimeOmsiHostInputAction.ScrollViews,
-                Keys.C or
+                Keys.C =>
+                    RuntimeOmsiHostInputAction.ResetCurrentView,
                 Keys.Space =>
                     RuntimeOmsiHostInputAction.ResetAllViews,
                 _ =>
@@ -382,7 +409,8 @@ internal static class RuntimeOmsiKeyboardBindings
 
     private static Dictionary<int, Keys> LoadKeyTable(
         string inputs,
-        string? preferredLanguage)
+        string? preferredLanguage,
+        out string? selectedPath)
     {
         var candidates =
             new List<string>();
@@ -422,6 +450,9 @@ internal static class RuntimeOmsiKeyboardBindings
                     "*.kyb",
                     SearchOption.TopDirectoryOnly)
                 .FirstOrDefault();
+
+        selectedPath =
+            path;
 
         var result =
             new Dictionary<int, Keys>();
@@ -553,17 +584,25 @@ internal static class RuntimeOmsiKeyboardBindings
                 ["spacebar"] = Keys.Space,
                 ["enter"] = Keys.Enter,
                 ["return"] = Keys.Enter,
+                ["numenter"] = Keys.Enter,
+                ["numpadenter"] = Keys.Enter,
                 ["tab"] = Keys.Tab,
                 ["backspace"] = Keys.Back,
                 ["back"] = Keys.Back,
                 ["insert"] = Keys.Insert,
+                ["einfg"] = Keys.Insert,
                 ["delete"] = Keys.Delete,
+                ["del"] = Keys.Delete,
+                ["entf"] = Keys.Delete,
                 ["home"] = Keys.Home,
+                ["pos1"] = Keys.Home,
                 ["end"] = Keys.End,
                 ["pageup"] = Keys.PageUp,
                 ["pgup"] = Keys.PageUp,
+                ["bildauf"] = Keys.PageUp,
                 ["pagedown"] = Keys.PageDown,
                 ["pgdn"] = Keys.PageDown,
+                ["bildab"] = Keys.PageDown,
                 ["left"] = Keys.Left,
                 ["arrowleft"] = Keys.Left,
                 ["right"] = Keys.Right,
@@ -589,6 +628,7 @@ internal static class RuntimeOmsiKeyboardBindings
                 ["alt"] = Keys.Menu,
                 ["capslock"] = Keys.CapsLock,
                 ["scrolllock"] = Keys.Scroll,
+                ["rollen"] = Keys.Scroll,
                 ["pause"] = Keys.Pause
             };
 
@@ -607,6 +647,97 @@ internal static class RuntimeOmsiKeyboardBindings
             ignoreCase:
                 true,
             out key);
+    }
+
+    private static int CountEntries(
+        string path)
+    {
+        try
+        {
+            return File.ReadLines(
+                    path)
+                .Count(
+                    line =>
+                        string.Equals(
+                            line.Trim(),
+                            "[entry]",
+                            StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static void WriteKeyboardAudit(
+        string keyboardPath,
+        string? keyTablePath,
+        int entryCount,
+        IReadOnlyList<RuntimeOmsiKeyboardBinding> bindings)
+    {
+        try
+        {
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"keyboard={keyboardPath}",
+                    $"keyTable={keyTablePath ?? "<none>"}",
+                    $"entries={entryCount}",
+                    $"resolvedBindings={bindings.Count}",
+                    $"unresolvedEntries={Math.Max(entryCount - bindings.Count, 0)}",
+                    $"hostMapped={bindings.Count(binding => binding.HostAction.HasValue)}",
+                    "",
+                    "bindings:"
+                };
+
+            foreach (var binding in
+                     bindings.OrderBy(
+                         static item =>
+                             item.Key)
+                     .ThenBy(
+                         static item =>
+                             item.Trigger,
+                         StringComparer.OrdinalIgnoreCase))
+            {
+                var modifiers =
+                    string.Join(
+                        "+",
+                        new[]
+                        {
+                            binding.Control
+                                ? "Ctrl"
+                                : null,
+                            binding.Shift
+                                ? "Shift"
+                                : null
+                        }.Where(
+                            static item =>
+                                item is not null));
+
+                var key =
+                    string.IsNullOrWhiteSpace(
+                        modifiers)
+                        ? binding.Key.ToString()
+                        : modifiers +
+                          "+" +
+                          binding.Key;
+
+                lines.Add(
+                    $"{key} | trigger={binding.Trigger} | continuous={binding.Continuous} | host={binding.HostAction?.ToString() ?? "<script>"}");
+            }
+
+            File.WriteAllLines(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "keyboard-runtime-audit.log"),
+                lines);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[input-keyboard] audit unavailable: {exception.Message}");
+        }
     }
 
     private static string Normalize(
