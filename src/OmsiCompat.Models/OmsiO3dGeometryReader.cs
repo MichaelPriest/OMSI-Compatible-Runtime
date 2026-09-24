@@ -287,15 +287,6 @@ public static class OmsiO3dGeometryReader
                 }
             }
 
-            if (!ApplySourceTransform(
-                    positions,
-                    normals,
-                    sourceTransform))
-            {
-                return OmsiO3dGeometry.Error(
-                    "invalidTransformSection");
-            }
-
             return new OmsiO3dGeometry(
                 true,
                 null,
@@ -327,96 +318,6 @@ public static class OmsiO3dGeometryReader
             return OmsiO3dGeometry.Error(
                 "accessDenied");
         }
-    }
-
-    private static bool ApplySourceTransform(
-        float[] positions,
-        float[] normals,
-        Matrix4x4 sourceTransform)
-    {
-        if (sourceTransform == Matrix4x4.Identity)
-        {
-            return true;
-        }
-
-        // O3D section 0x79 stores the mesh source transform. OMSI-compatible
-        // O3D tooling applies the inverse transform to the actual mesh
-        // geometry. System.Numerics uses the same row-vector convention as
-        // the row-major matrix stored by O3D, so no transpose is needed for
-        // the position transform itself.
-        if (!Matrix4x4.Invert(
-                sourceTransform,
-                out var geometryTransform))
-        {
-            return false;
-        }
-
-        // Normals use the inverse-transpose of the position transform.
-        // Since geometryTransform is inverse(sourceTransform), this reduces
-        // to transpose(sourceTransform).
-        var normalTransform =
-            Matrix4x4.Transpose(
-                sourceTransform);
-
-        for (var offset = 0;
-             offset + 2 < positions.Length;
-             offset += 3)
-        {
-            var position =
-                Vector3.Transform(
-                    new Vector3(
-                        positions[offset],
-                        positions[offset + 1],
-                        positions[offset + 2]),
-                    geometryTransform);
-
-            if (!float.IsFinite(position.X) ||
-                !float.IsFinite(position.Y) ||
-                !float.IsFinite(position.Z))
-            {
-                return false;
-            }
-
-            positions[offset] =
-                position.X;
-            positions[offset + 1] =
-                position.Y;
-            positions[offset + 2] =
-                position.Z;
-
-            if (offset + 2 >= normals.Length)
-            {
-                continue;
-            }
-
-            var normal =
-                Vector3.TransformNormal(
-                    new Vector3(
-                        normals[offset],
-                        normals[offset + 1],
-                        normals[offset + 2]),
-                    normalTransform);
-
-            if (normal.LengthSquared() >
-                    0.000001f &&
-                float.IsFinite(normal.X) &&
-                float.IsFinite(normal.Y) &&
-                float.IsFinite(normal.Z))
-            {
-                normal =
-                    Vector3.Normalize(
-                        normal);
-
-                normals[offset] =
-                    normal.X;
-                normals[offset + 1] =
-                    normal.Y;
-                normals[offset + 2] =
-                    normal.Z;
-            }
-        }
-
-        return true;
     }
 
     private static bool TryReadMaterials(
