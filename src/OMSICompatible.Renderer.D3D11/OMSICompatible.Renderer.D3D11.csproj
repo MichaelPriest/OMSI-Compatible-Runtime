@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../OmsiCompat.Scripting/OmsiCompat.Scripting.csproj" />
+    <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
