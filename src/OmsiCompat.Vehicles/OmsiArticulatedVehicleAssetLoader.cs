@@ -292,24 +292,6 @@ public static class OmsiArticulatedVehicleAssetLoader
                             })
                 .ToArray();
 
-        var lights =
-            mesh.LightEffects?
-                .Select(
-                    light =>
-                        light with
-                        {
-                            PositionX =
-                                light.PositionX +
-                                offset.X,
-                            PositionY =
-                                light.PositionY +
-                                offset.Y,
-                            PositionZ =
-                                light.PositionZ +
-                                offset.Z
-                        })
-                .ToArray();
-
         var materials =
             mesh.Materials
                 .Select(
@@ -325,8 +307,6 @@ public static class OmsiArticulatedVehicleAssetLoader
                 transform,
             Animations =
                 animations,
-            LightEffects =
-                lights,
             Materials =
                 materials,
             MeshIdentifier =
