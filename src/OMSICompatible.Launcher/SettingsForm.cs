@@ -880,7 +880,7 @@ internal sealed class SettingsForm : Form
     [
         Choice("Idioma", "Idioma dos diálogos, avisos e interface.", () => _options.Language, v => _options.Language = v, DiscoverLanguages()),
         Choice("Venda de passagens", "0=desativada, 1=simples, 2=avançada.", () => _options.TicketSalesMode.ToString(), v => _options.TicketSalesMode = int.Parse(v), ["0", "1", "2"]),
-        Text("Rádio via internet", "URL usada por veículos equipados com rádio.", () => _options.InternetRadioUrl, v => _options.InternetRadioUrl = v),
+        StringOption("Rádio via internet", "URL usada por veículos equipados com rádio.", () => _options.InternetRadioUrl, v => _options.InternetRadioUrl = v),
         Bool("Transição suave da câmera", "Transições suaves entre câmeras de motorista/passageiro.", () => _options.SmoothDriverViewTransitions, v => _options.SmoothDriverViewTransitions = v),
         Bool("Movimento da cabeça do motorista", "Movimento relativo da cabeça durante aceleração e frenagem.", () => _options.DriverHeadMovement, v => _options.DriverHeadMovement = v),
         Bool("Colisão veículo/paisagem", "Ativa a detecção de colisão com o cenário.", () => _options.VehicleLandscapeCollisions, v => _options.VehicleLandscapeCollisions = v),
@@ -899,7 +899,7 @@ internal sealed class SettingsForm : Form
         Bool("Vista alternativa", "Compatibilidade com a opção altView.", () => _options.AlternativeView, v => _options.AlternativeView = v),
         Bool("Velocidade de direção reduzida", "Compatibilidade com redSteerSpd.", () => _options.ReducedSteeringSpeed, v => _options.ReducedSteeringSpeed = v),
         Bool("Prévia de veículo", "Mostra a prévia do veículo quando disponível.", () => _options.ShowVehiclePreview, v => _options.ShowVehiclePreview = v),
-        Text("Fonte typewriter", "Fonte usada por elementos do OMSI que dependem de font_typewriter.", () => _options.TypewriterFont, v => _options.TypewriterFont = v),
+        StringOption("Fonte typewriter", "Fonte usada por elementos do OMSI que dependem de font_typewriter.", () => _options.TypewriterFont, v => _options.TypewriterFont = v),
         Bool("Game Controller ativo", "Ativa o uso dos controladores configurados em Inputs\\gamectrler.cfg.", () => _options.GameControllerEnabled, v => _options.GameControllerEnabled = v)
     ];
 
@@ -1032,7 +1032,7 @@ internal sealed class SettingsForm : Form
                     Convert.ToDouble(
                         value)));
 
-    private OptionDescriptor Text(
+    private OptionDescriptor StringOption(
         string label,
         string description,
         Func<string> read,
