@@ -841,6 +841,13 @@ try
         "Synthetic OMSI vehicle geometry counts are incorrect.");
 
     Require(
+        vehicleAsset.Meshes[0].Uvs.Length == 6 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].Uvs[5] -
+            1.0f) < 0.0001,
+        "OMSI O3D V texture coordinates must remain in native Direct3D orientation.");
+
+    Require(
         Math.Abs(
             vehicleAsset.Meshes[0].Positions[0] -
             -1.0f) < 0.0001 &&
