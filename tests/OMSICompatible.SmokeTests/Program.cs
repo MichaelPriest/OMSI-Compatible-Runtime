@@ -843,23 +843,19 @@ try
     Require(
         Math.Abs(
             vehicleAsset.Meshes[0].Positions[0] -
-            -2.25f) < 0.0001 &&
+            -1.0f) < 0.0001 &&
         Math.Abs(
-            vehicleAsset.Meshes[0].Positions[1] -
-            -2.5f) < 0.0001 &&
+            vehicleAsset.Meshes[0].Positions[1]) < 0.0001 &&
         Math.Abs(
-            vehicleAsset.Meshes[0].Positions[2] -
-            -3.75f) < 0.0001 &&
+            vehicleAsset.Meshes[0].Positions[2]) < 0.0001 &&
         Math.Abs(
             vehicleAsset.Meshes[0].Positions[3] -
-            -0.25f) < 0.0001 &&
+            1.0f) < 0.0001 &&
         Math.Abs(
-            vehicleAsset.Meshes[0].Positions[4] -
-            -2.5f) < 0.0001 &&
+            vehicleAsset.Meshes[0].Positions[4]) < 0.0001 &&
         Math.Abs(
-            vehicleAsset.Meshes[0].Positions[5] -
-            -3.75f) < 0.0001,
-        "OMSI O3D 0x79 inverse source transform was not applied to mesh vertices.");
+            vehicleAsset.Meshes[0].Positions[5]) < 0.0001,
+        "OMSI O3D 0x79 must not bake the animation/source transform into static mesh vertices.");
 
     Require(
         bus.ScriptManifest.ScriptFiles.Count == 1 &&
