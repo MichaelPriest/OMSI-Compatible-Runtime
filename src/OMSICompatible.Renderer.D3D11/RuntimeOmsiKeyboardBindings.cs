@@ -34,7 +34,8 @@ internal enum RuntimeOmsiHostInputAction
     ResetDriverView,
     ControllerToggle,
     PauseToggle,
-    ResetAllViews
+    ResetAllViews,
+    ScrollViews
 }
 
 internal sealed record RuntimeOmsiKeyboardBinding(
@@ -255,6 +256,8 @@ internal static class RuntimeOmsiKeyboardBindings
                     RuntimeOmsiHostInputAction.ControllerToggle,
                 Keys.P =>
                     RuntimeOmsiHostInputAction.PauseToggle,
+                Keys.S =>
+                    RuntimeOmsiHostInputAction.ScrollViews,
                 Keys.C or
                 Keys.Space =>
                     RuntimeOmsiHostInputAction.ResetAllViews,
@@ -289,6 +292,7 @@ internal static class RuntimeOmsiKeyboardBindings
             Keys.Left or
             Keys.K or
             Keys.P or
+            Keys.S or
             Keys.C or
             Keys.Space;
     }
