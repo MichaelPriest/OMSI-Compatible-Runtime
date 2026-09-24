@@ -73,6 +73,48 @@ internal sealed class RuntimeFreeCamera
             500.0f);
     }
 
+    public void SetLookAt(
+        Vector3 position,
+        Vector3 target,
+        float? moveSpeed = null)
+    {
+        Position =
+            position;
+
+        var delta =
+            target -
+            position;
+
+        if (delta.LengthSquared() >
+            0.000001f)
+        {
+            var direction =
+                Vector3.Normalize(
+                    delta);
+
+            Pitch =
+                MathF.Asin(
+                    Math.Clamp(
+                        direction.Y,
+                        -1.0f,
+                        1.0f));
+
+            Yaw =
+                MathF.Atan2(
+                    direction.X,
+                    direction.Z);
+        }
+
+        if (moveSpeed.HasValue)
+        {
+            MoveSpeed =
+                Math.Clamp(
+                    moveSpeed.Value,
+                    1.0f,
+                    2_000.0f);
+        }
+    }
+
     public void Rotate(
         float deltaX,
         float deltaY)
