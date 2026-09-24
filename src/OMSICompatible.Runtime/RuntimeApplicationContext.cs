@@ -15,6 +15,7 @@ internal sealed class RuntimeApplicationContext :
     private readonly OmsiBusInfo? _bus;
     private readonly OmsiMapEntryPoint _entryPoint;
     private readonly bool _externalLoading;
+    private readonly string? _repaintName;
     private readonly OmsiRuntimeOptions _options;
     private readonly LoadingForm _loading;
     private readonly SemaphoreSlim _streamingGate =
@@ -35,7 +36,8 @@ internal sealed class RuntimeApplicationContext :
         OmsiMapInfo map,
         OmsiBusInfo? bus,
         OmsiMapEntryPoint entryPoint,
-        bool externalLoading)
+        bool externalLoading,
+        string? repaintName = null)
     {
         _contentRoot = contentRoot;
         _map = map;
@@ -43,6 +45,11 @@ internal sealed class RuntimeApplicationContext :
         _entryPoint = entryPoint;
         _externalLoading =
             externalLoading;
+        _repaintName =
+            string.IsNullOrWhiteSpace(
+                repaintName)
+                ? null
+                : repaintName.Trim();
         _options =
             OmsiRuntimeOptions.Load();
         _loadedCenterX =
@@ -198,6 +205,21 @@ internal sealed class RuntimeApplicationContext :
             var selectedBus =
                 _bus;
 
+            var selectedRepaint =
+                selectedBus is null ||
+                string.IsNullOrWhiteSpace(
+                    _repaintName)
+                    ? null
+                    : OmsiVehicleRepaintCatalog
+                        .Discover(
+                            selectedBus)
+                        .FirstOrDefault(
+                            repaint =>
+                                string.Equals(
+                                    repaint.Name,
+                                    _repaintName,
+                                    StringComparison.OrdinalIgnoreCase));
+
             Task<OmsiVehicleAsset?> vehicleTask =
                 selectedBus is null
                     ? Task.FromResult<OmsiVehicleAsset?>(
@@ -208,7 +230,8 @@ internal sealed class RuntimeApplicationContext :
                             OmsiVehicleAssetLoader.Load(
                                 _contentRoot,
                                 selectedBus,
-                                vehicleProgress));
+                                vehicleProgress,
+                                selectedRepaint));
 
             await Task.WhenAll(
                 worldTask,
@@ -266,6 +289,17 @@ internal sealed class RuntimeApplicationContext :
                 scriptRuntime =
                     new OmsiScriptRuntime(
                         scriptCatalog);
+
+                if (selectedRepaint is not null)
+                {
+                    foreach (var pair in
+                             selectedRepaint.SetVariables)
+                    {
+                        scriptRuntime.SetLocal(
+                            pair.Key,
+                            pair.Value);
+                    }
+                }
             }
 
             ReportProgress(
