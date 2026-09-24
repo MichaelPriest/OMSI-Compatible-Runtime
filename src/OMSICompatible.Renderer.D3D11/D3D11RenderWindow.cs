@@ -6051,6 +6051,17 @@ public sealed class D3D11RenderWindow : Form
 
         switch (e.KeyCode)
         {
+            case Keys.P:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.PauseToggle);
+                break;
+
+            case Keys.C:
+            case Keys.Space:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ResetAllViews);
+                break;
+
             case Keys.Left:
                 ApplyOmsiHostActionPress(
                     RuntimeOmsiHostInputAction.InteriorViewNext);
@@ -6363,10 +6374,16 @@ public sealed class D3D11RenderWindow : Form
                 "view_reset_direction" or
                 "view_reset_all_directions" =>
                     RuntimeOmsiHostInputAction.ResetDriverView,
-                "view_schedule" =>
+                "view_schedule" or
+                "view_set_schedule" =>
                     RuntimeOmsiHostInputAction.ScheduleView,
-                "view_ticketselling" =>
+                "view_ticketselling" or
+                "view_set_ticketselling" =>
                     RuntimeOmsiHostInputAction.TicketSellingView,
+                "view_reset_all_directions" =>
+                    RuntimeOmsiHostInputAction.ResetAllViews,
+                "pause" =>
+                    RuntimeOmsiHostInputAction.PauseToggle,
                 _ =>
                     default
             };
@@ -6388,7 +6405,11 @@ public sealed class D3D11RenderWindow : Form
                 "view_reset_direction" or
                 "view_reset_all_directions" or
                 "view_schedule" or
-                "view_ticketselling";
+                "view_set_schedule" or
+                "view_ticketselling" or
+                "view_set_ticketselling" or
+                "view_reset_all_directions" or
+                "pause";
     }
 
     private void ApplyOmsiHostActionPress(
@@ -6572,6 +6593,33 @@ public sealed class D3D11RenderWindow : Form
                 ActivateSpecialDriverCamera(
                     _windowInfo.Vehicle?
                         .StandardDriverCameraIndex);
+                break;
+
+            case RuntimeOmsiHostInputAction.PauseToggle:
+                _simulationPaused =
+                    !_simulationPaused;
+                break;
+
+            case RuntimeOmsiHostInputAction.ResetAllViews:
+                if (_windowInfo.Vehicle is not null)
+                {
+                    _driveMode =
+                        true;
+                    _vehicleViewMode =
+                        RuntimeVehicleViewMode.Driver;
+                    _driverCameraIndex =
+                        Math.Max(
+                            _windowInfo.Vehicle
+                                .StandardDriverCameraIndex,
+                            0);
+                }
+                else if (_terrainGeometry.Vertices.Length >
+                         0)
+                {
+                    _camera.Reset(
+                        _terrainGeometry);
+                }
+
                 break;
 
             case RuntimeOmsiHostInputAction.ControllerToggle:
