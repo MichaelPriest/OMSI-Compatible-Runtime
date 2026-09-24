@@ -462,8 +462,37 @@ public static class OmsiBusReader
                         "achse_raddurchmesser"),
                     ReadNamedDouble(
                         values,
-                        "achse_antrieb")));
+                        "achse_antrieb"),
+                    ReadNamedDouble(
+                        values,
+                        "achse_maxwidth"),
+                    ReadNamedDouble(
+                        values,
+                        "achse_minwidth"),
+                    ReadNamedDouble(
+                        values,
+                        "achse_feder"),
+                    ReadNamedDouble(
+                        values,
+                        "achse_maxforce"),
+                    ReadNamedDouble(
+                        values,
+                        "achse_daempfer")));
         }
+
+        var inertia =
+            Values(
+                document,
+                "momentofintertia")
+                .Take(3)
+                .Select(
+                    value =>
+                        TryDouble(
+                            value,
+                            out var parsed)
+                            ? (double?)parsed
+                            : null)
+                .ToArray();
 
         return new OmsiVehiclePhysics(
             axles,
@@ -472,7 +501,28 @@ public static class OmsiBusReader
                 "rot_pnt_long"),
             ReadSectionDouble(
                 document,
-                "inv_min_turnradius"));
+                "inv_min_turnradius"),
+            ReadSectionDouble(
+                document,
+                "mass"),
+            inertia.Length > 0
+                ? inertia[0]
+                : null,
+            inertia.Length > 1
+                ? inertia[1]
+                : null,
+            inertia.Length > 2
+                ? inertia[2]
+                : null,
+            ReadSectionDouble(
+                document,
+                "schwerpunkt"),
+            ReadSectionDouble(
+                document,
+                "rollwiderstand"),
+            ReadSectionDouble(
+                document,
+                "ai_deltaheight"));
     }
 
     private static double?
