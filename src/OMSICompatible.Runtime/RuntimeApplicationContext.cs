@@ -1197,7 +1197,10 @@ internal sealed class RuntimeApplicationContext :
                                     .ToArray(),
                                 mesh.MeshIdentifier,
                                 mesh.AnimationParent,
-                                mesh.SectionIndex))
+                                mesh.SectionIndex,
+                                mesh.ModelOrdinal,
+                                mesh.SkinWeights,
+                                mesh.SkinBoneMeshOrdinals))
                     .ToArray(),
                 vehicle.Bus.DriverCameras
                     .Select(
