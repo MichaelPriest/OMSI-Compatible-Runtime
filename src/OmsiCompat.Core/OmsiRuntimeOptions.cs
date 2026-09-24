@@ -13,6 +13,8 @@ public sealed class OmsiRuntimeOptions
     public bool VehicleLandscapeCollisions { get; set; } = true;
     public bool TerrainCollisions { get; set; } = true;
     public bool VehicleToVehicleCollisions { get; set; } = true;
+    public bool UserVehiclePedestrianCollisions { get; set; } = true;
+    public bool AutomaticSteeringCenter { get; set; }
     public bool SeeOwnDriver { get; set; } = true;
     public bool ShowTicketPassengerInfo { get; set; } = true;
     public bool UseCurrentTime { get; set; }
@@ -23,6 +25,9 @@ public sealed class OmsiRuntimeOptions
     public bool ScheduleAnalysisPopup { get; set; } = true;
     public bool AlternativeView { get; set; }
     public bool ReducedSteeringSpeed { get; set; }
+    public bool ShowVehiclePreview { get; set; } = true;
+    public string TypewriterFont { get; set; } = "Courier New";
+    public bool GameControllerEnabled { get; set; }
 
     public bool ReducedMultithreading { get; set; }
     public bool LoadWholeMapAtStart { get; set; }
@@ -181,6 +186,10 @@ public sealed class OmsiRuntimeOptions
             !Present(cfg, "no_collision_terrain");
         options.VehicleToVehicleCollisions =
             !Present(cfg, "no_collision_vehToVeh");
+        options.UserVehiclePedestrianCollisions =
+            !Present(cfg, "no_collision_pedastrians");
+        options.AutomaticSteeringCenter =
+            Present(cfg, "autoCenter");
         options.SeeOwnDriver =
             Present(cfg, "see_own_driver");
         options.ShowTicketPassengerInfo =
@@ -202,8 +211,17 @@ public sealed class OmsiRuntimeOptions
             Present(cfg, "altView");
         options.ReducedSteeringSpeed =
             Present(cfg, "redSteerSpd");
+        options.ShowVehiclePreview =
+            !Present(cfg, "nopreview");
+        options.TypewriterFont =
+            Text(cfg, "font_typewriter") ??
+            options.TypewriterFont;
+        options.GameControllerEnabled =
+            Present(cfg, "gamectrleron");
 
         options.ReducedMultithreading =
+            Present(cfg, "no_multithreading_calculate") ||
+            Present(cfg, "no_multithreading_texload") ||
             Present(cfg, "reducedMultithreading") ||
             Present(cfg, "reduceMultithreading");
         options.LoadWholeMapAtStart =
@@ -336,20 +354,23 @@ public sealed class OmsiRuntimeOptions
                     ParseInt(texFilter[1]));
         }
 
-        var texture =
-            Values(cfg, "texture");
+        options.OnlyLowResolutionTextures =
+            Present(cfg, "texture_uselow");
+        options.LimitTexturesTo256 =
+            Present(cfg, "texmax256");
+        options.LowResolutionTexturesAtDistance =
+            !Present(cfg, "no_tex_low_high_switch");
 
-        if (texture.Count > 0)
-        {
-            options.OnlyLowResolutionTextures =
-                ParseInt(texture[0]) != 0;
-        }
-
-        if (texture.Count > 1)
-        {
-            options.LowResolutionTexturesAtDistance =
-                ParseInt(texture[1]) != 0;
-        }
+        options.MaterialNightMap =
+            !Present(cfg, "no_nightmap");
+        options.MaterialLightMap =
+            !Present(cfg, "no_lightmap");
+        options.MaterialTerrainLightMap =
+            !Present(cfg, "no_lightmap_terr");
+        options.MaterialReflectionMap =
+            !Present(cfg, "no_reflmap");
+        options.MaterialBumpMap =
+            !Present(cfg, "no_bumpmap");
 
         options.MaximumSoundCount =
             Integer(cfg, "sound_maxcount") ??
@@ -381,6 +402,12 @@ public sealed class OmsiRuntimeOptions
         {
             options.MaximumUnscheduledTraffic =
                 ParseInt(random[0]);
+        }
+
+        if (random.Count > 1)
+        {
+            options.MaximumPeople =
+                ParseInt(random[1]);
         }
 
         options.RoadTrafficFactorPercent =
