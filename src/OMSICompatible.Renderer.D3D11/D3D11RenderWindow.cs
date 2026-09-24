@@ -7007,6 +7007,9 @@ public sealed class D3D11RenderWindow : Form
                     DispatchOmsiScriptTrigger(
                         "kw_m_enginestart");
 
+                    _fallbackEngineKeyActive =
+                        true;
+
                     if (_scriptRuntime.HasLocalVariable(
                             "engine_on"))
                     {
@@ -8031,7 +8034,6 @@ public sealed class D3D11RenderWindow : Form
             !_driveMode ||
             _vehicleViewMode !=
                 RuntimeVehicleViewMode.Driver ||
-            _mouseDriveMode ||
             ClientSize.Width <= 0 ||
             ClientSize.Height <= 0)
         {
