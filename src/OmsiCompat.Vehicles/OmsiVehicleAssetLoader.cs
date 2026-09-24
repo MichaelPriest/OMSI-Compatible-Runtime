@@ -302,11 +302,13 @@ public static class OmsiVehicleAssetLoader
                             out bumpMapPath);
                     }
 
+                    // OMSI only enables transparency through explicit
+                    // model.cfg material directives. O3D diffuse alpha is often
+                    // used as material metadata and must not make the complete
+                    // body/interior translucent on its own.
                     var alphaMode =
                         materialOverride?.AlphaMode ??
-                        (material.DiffuseA < 0.999f
-                            ? 2
-                            : 0);
+                        0;
 
                     if (materialOverride?.HasTransMapDirective == true &&
                         string.IsNullOrWhiteSpace(
