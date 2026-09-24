@@ -225,6 +225,13 @@ internal sealed class RuntimeDriveVehicle
     public float WheelRotationRadians =>
         _wheelRotationRadians;
 
+    public float WheelRotationSpeedRpm =>
+        SpeedMetersPerSecond /
+        (2.0f *
+         MathF.PI *
+         _wheelRadiusMeters) *
+        60.0f;
+
     public float FrontLeftSuspensionMeters =>
         ResolveSuspensionOffset(
             front: true,
@@ -535,12 +542,12 @@ internal sealed class RuntimeDriveVehicle
                 0.0f;
         }
 
+        // OMSI maps a configured game-controller steering axis
+        // directly to the in-game steering position. Do not add a
+        // speed/turn-rate limiter here; the gamectrler.cfg characteristic
+        // and Rev. flag are the authority for the physical wheel.
         SteeringInput =
-            MoveTowards(
-                SteeringInput,
-                steering,
-                7.0f *
-                deltaSeconds);
+            steering;
 
         var canApplyPower =
             ElectricalSystemEnabled &&
