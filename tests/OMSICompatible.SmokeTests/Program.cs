@@ -568,6 +568,18 @@ try
             "[friendlyname]",
             "Synthetic Object",
             "[onlyeditor]",
+            "[traffic_lights_group]",
+            "8",
+            "[traffic_light]",
+            "Main",
+            "[phase]",
+            "0",
+            "2",
+            "[phase]",
+            "6",
+            "6",
+            "[approachdist]",
+            "12",
             "[path]",
             "1.5",
             "0",
@@ -580,7 +592,9 @@ try
             "0",
             "2.5",
             "0",
-            "1"),
+            "1",
+            "[use_traffic_light]",
+            "0"),
         Encoding.Unicode);
 
     Directory.CreateDirectory(
@@ -3393,6 +3407,114 @@ try
             5,
         "Crossing reservation did not release the lower-priority AI only after the higher-priority agent left.");
 
+    var signalProgram =
+        new WorldTrafficSignalProgram(
+            "Main",
+            8.0,
+            [
+                new WorldTrafficSignalPhase(
+                    0,
+                    2.0),
+                new WorldTrafficSignalPhase(
+                    6,
+                    6.0)
+            ],
+            12.0);
+
+    var signalNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8300,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        1
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            15.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        8301,
+                    TrafficSignal:
+                        signalProgram)
+            ],
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            0);
+
+    var signalSimulation =
+        new WorldTrafficSimulation(
+            signalNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    signalSimulation.Step(
+        1.0);
+
+    var redSignalAgent =
+        signalSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        redSignalAgent.SegmentIndex ==
+            0 &&
+        redSignalAgent.SpeedMetersPerSecond <
+            0.0001,
+        "Traffic agent did not stop before a red OMSI traffic-light path.");
+
+    signalSimulation.Step(
+        2.0);
+
+    var greenSignalAgent =
+        signalSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        greenSignalAgent.SegmentIndex ==
+            1 &&
+        greenSignalAgent.Position.Z >
+            redSignalAgent.Position.Z,
+        "Traffic agent did not enter the OMSI traffic-light path during the green phase.");
+
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
             [
@@ -3684,8 +3806,36 @@ try
         Math.Abs(crossingPath.WidthMeters - 2.5) < 0.0001 &&
         crossingPath.Direction == 0 &&
         crossingPath.ExtraValues.Count == 1 &&
-        crossingPath.ExtraValues[0] == "1",
+        crossingPath.ExtraValues[0] == "1" &&
+        crossingPath.TrafficLightIndex ==
+            0,
         "Crossing/scenery [path] field mapping is incorrect.");
+
+    Require(
+        Math.Abs(
+            (verifiedEditorOnlyAsset.TrafficLightCycleSeconds ??
+             0.0) -
+            8.0) <
+            0.0001 &&
+        verifiedEditorOnlyAsset.TrafficLights is
+            { Count: 1 } &&
+        verifiedEditorOnlyAsset.TrafficLights[0].Name ==
+            "Main" &&
+        verifiedEditorOnlyAsset.TrafficLights[0].Phases.Count ==
+            2 &&
+        verifiedEditorOnlyAsset.TrafficLights[0].Phases[0].Phase ==
+            0 &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.TrafficLights[0].Phases[0].DurationSeconds -
+            2.0) <
+            0.0001 &&
+        verifiedEditorOnlyAsset.TrafficLights[0].Phases[1].Phase ==
+            6 &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.TrafficLights[0].ApproachDistanceMeters -
+            12.0) <
+            0.0001,
+        "Crossing traffic-light cycle/phases were not preserved.");
 
     Require(
         world.SceneryAssets.TryGetValue(

@@ -231,6 +231,14 @@ public static class OmsiSceneryObjectReader
                     .FirstOrDefault()
                     ?.Value;
 
+        var trafficLightCycleSeconds =
+            ReadTrafficLightCycleSeconds(
+                document);
+
+        var trafficLights =
+            ReadTrafficLights(
+                document);
+
         return new OmsiSceneryDefinition(
             true,
             document.Sections.Any(
@@ -250,7 +258,9 @@ public static class OmsiSceneryObjectReader
             meshes.ToArray(),
             ReadMaterialOverrides(document),
             ReadTree(document),
-            ReadPaths(document));
+            ReadPaths(document),
+            trafficLightCycleSeconds,
+            trafficLights);
     }
 
     private static IReadOnlyList<OmsiSceneryMaterialOverride>
@@ -435,9 +445,15 @@ public static class OmsiSceneryObjectReader
         var result =
             new List<OmsiSceneryPathDefinition>();
 
-        foreach (var section in
-                 document.Sections)
+        for (var sectionIndex = 0;
+             sectionIndex <
+                 document.Sections.Count;
+             sectionIndex++)
         {
+            var section =
+                document.Sections[
+                    sectionIndex];
+
             if (!section.Name.Equals(
                     "path",
                     StringComparison.OrdinalIgnoreCase))
@@ -499,10 +515,226 @@ public static class OmsiSceneryObjectReader
                     direction,
                     values
                         .Skip(11)
-                        .ToArray()));
+                        .ToArray(),
+                    ReadPathTrafficLightIndex(
+                        document,
+                        sectionIndex)));
         }
 
         return result;
+    }
+
+    private static int? ReadPathTrafficLightIndex(
+        OmsiSectionDocument document,
+        int pathSectionIndex)
+    {
+        for (var index =
+                 pathSectionIndex + 1;
+             index <
+                 document.Sections.Count;
+             index++)
+        {
+            var section =
+                document.Sections[index];
+
+            if (section.Name.Equals(
+                    "path",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (!section.Name.Equals(
+                    "use_traffic_light",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value =
+                Data(section)
+                    .FirstOrDefault()
+                    ?.Value;
+
+            return int.TryParse(
+                       value,
+                       NumberStyles.Integer,
+                       CultureInfo.InvariantCulture,
+                       out var trafficLightIndex) &&
+                   trafficLightIndex >=
+                       0
+                ? trafficLightIndex
+                : null;
+        }
+
+        return null;
+    }
+
+    private static double? ReadTrafficLightCycleSeconds(
+        OmsiSectionDocument document)
+    {
+        var section =
+            document.Sections
+                .FirstOrDefault(
+                    static item =>
+                        item.Name.Equals(
+                            "traffic_lights_group",
+                            StringComparison.OrdinalIgnoreCase));
+
+        if (section is null ||
+            !TryDouble(
+                Data(section)
+                    .FirstOrDefault()
+                    ?.Value,
+                out var cycleSeconds) ||
+            cycleSeconds <=
+                0.0)
+        {
+            return null;
+        }
+
+        return cycleSeconds;
+    }
+
+    private static IReadOnlyList<OmsiSceneryTrafficLightProgram>
+        ReadTrafficLights(
+            OmsiSectionDocument document)
+    {
+        var result =
+            new List<OmsiSceneryTrafficLightProgram>();
+
+        var inGroup =
+            false;
+
+        TrafficLightBuilder? current =
+            null;
+
+        foreach (var section in
+                 document.Sections)
+        {
+            if (section.Name.Equals(
+                    "traffic_lights_group",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (inGroup)
+                {
+                    FinalizeTrafficLight(
+                        current,
+                        result);
+                    break;
+                }
+
+                inGroup =
+                    true;
+                continue;
+            }
+
+            if (!inGroup)
+            {
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "traffic_light",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                FinalizeTrafficLight(
+                    current,
+                    result);
+
+                var name =
+                    Data(section)
+                        .FirstOrDefault()
+                        ?.Value
+                        .Trim();
+
+                current =
+                    string.IsNullOrWhiteSpace(
+                        name)
+                        ? null
+                        : new TrafficLightBuilder(
+                            name);
+
+                continue;
+            }
+
+            if (current is null)
+            {
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "phase",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Data(section)
+                        .Select(
+                            static line =>
+                                line.Value)
+                        .ToArray();
+
+                if (values.Length >=
+                        2 &&
+                    int.TryParse(
+                        values[0],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var phase) &&
+                    TryDouble(
+                        values[1],
+                        out var durationSeconds) &&
+                    durationSeconds >
+                        0.0)
+                {
+                    current.Phases.Add(
+                        new OmsiSceneryTrafficLightPhase(
+                            phase,
+                            durationSeconds));
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "approachdist",
+                    StringComparison.OrdinalIgnoreCase) &&
+                TryDouble(
+                    Data(section)
+                        .FirstOrDefault()
+                        ?.Value,
+                    out var approachDistance) &&
+                approachDistance >=
+                    0.0)
+            {
+                current.ApproachDistanceMeters =
+                    approachDistance;
+            }
+        }
+
+        FinalizeTrafficLight(
+            current,
+            result);
+
+        return result;
+    }
+
+    private static void FinalizeTrafficLight(
+        TrafficLightBuilder? builder,
+        ICollection<OmsiSceneryTrafficLightProgram> target)
+    {
+        if (builder is null ||
+            builder.Phases.Count ==
+                0)
+        {
+            return;
+        }
+
+        target.Add(
+            new OmsiSceneryTrafficLightProgram(
+                builder.Name,
+                builder.Phases.ToArray(),
+                builder.ApproachDistanceMeters));
     }
 
     private static OmsiSceneryTreeDefinition? ReadTree(
@@ -545,6 +777,22 @@ public static class OmsiSceneryObjectReader
             maximumHeight,
             minimumAspect,
             maximumAspect);
+    }
+
+    private sealed class TrafficLightBuilder(
+        string name)
+    {
+        public string Name { get; } =
+            name;
+
+        public List<OmsiSceneryTrafficLightPhase> Phases { get; } =
+            [];
+
+        public double ApproachDistanceMeters
+        {
+            get;
+            set;
+        }
     }
 
     private static IReadOnlyList<OmsiSectionLine> Data(

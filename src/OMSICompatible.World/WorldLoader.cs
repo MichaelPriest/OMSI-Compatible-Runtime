@@ -762,7 +762,24 @@ public static class WorldLoader
                                         path.Type,
                                         path.WidthMeters,
                                         path.Direction,
-                                        path.ExtraValues))
+                                        path.ExtraValues,
+                                        path.TrafficLightIndex))
+                            .ToArray(),
+                        definition.TrafficLightCycleSeconds,
+                        (definition.TrafficLights ??
+                         Array.Empty<OmsiSceneryTrafficLightProgram>())
+                            .Select(
+                                static trafficLight =>
+                                    new WorldTrafficLightProgram(
+                                        trafficLight.Name,
+                                        trafficLight.Phases
+                                            .Select(
+                                                static phase =>
+                                                    new WorldTrafficLightPhase(
+                                                        phase.Phase,
+                                                        phase.DurationSeconds))
+                                            .ToArray(),
+                                        trafficLight.ApproachDistanceMeters))
                             .ToArray());
             }
             catch (Exception ex) when (

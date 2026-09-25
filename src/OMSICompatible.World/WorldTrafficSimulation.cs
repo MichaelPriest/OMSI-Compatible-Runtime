@@ -32,6 +32,7 @@ public sealed class WorldTrafficSimulation
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
     private readonly HashSet<long> _crossingSceneryObjectIds;
     private readonly List<Agent> _agents;
+    private double _simulationElapsedSeconds;
 
     public WorldTrafficSimulation(
         WorldTrafficPathNetwork network,
@@ -385,6 +386,9 @@ public sealed class WorldTrafficSimulation
                 }
             }
 
+            _simulationElapsedSeconds +=
+                step;
+
             simulationSeconds -=
                 step;
         }
@@ -438,6 +442,13 @@ public sealed class WorldTrafficSimulation
         WorldTrafficPathSegment currentSegment,
         WorldTrafficPathSegment nextSegment)
     {
+        if (!IsTrafficSignalGreen(
+                nextSegment.TrafficSignal,
+                _simulationElapsedSeconds))
+        {
+            return false;
+        }
+
         if (!nextSegment.SceneryObjectId.HasValue ||
             !_crossingSceneryObjectIds.Contains(
                 nextSegment.SceneryObjectId.Value))
@@ -505,6 +516,95 @@ public sealed class WorldTrafficSimulation
         }
 
         return true;
+    }
+
+    private static bool IsTrafficSignalGreen(
+        WorldTrafficSignalProgram? signal,
+        double elapsedSeconds)
+    {
+        if (signal is null ||
+            signal.Phases.Count ==
+                0 ||
+            !double.IsFinite(
+                elapsedSeconds))
+        {
+            return true;
+        }
+
+        var phaseDuration =
+            signal.Phases
+                .Where(
+                    static phase =>
+                        phase.DurationSeconds >
+                            0.0 &&
+                        double.IsFinite(
+                            phase.DurationSeconds))
+                .Sum(
+                    static phase =>
+                        phase.DurationSeconds);
+
+        var cycleSeconds =
+            signal.CycleSeconds;
+
+        if (!double.IsFinite(
+                cycleSeconds) ||
+            cycleSeconds <=
+                0.0)
+        {
+            cycleSeconds =
+                phaseDuration;
+        }
+
+        if (cycleSeconds <=
+                0.0 ||
+            phaseDuration <=
+                0.0)
+        {
+            return true;
+        }
+
+        var position =
+            elapsedSeconds %
+            cycleSeconds;
+
+        if (position <
+            0.0)
+        {
+            position +=
+                cycleSeconds;
+        }
+
+        WorldTrafficSignalPhase? lastPhase =
+            null;
+
+        foreach (var phase in
+                 signal.Phases)
+        {
+            if (phase.DurationSeconds <=
+                    0.0 ||
+                !double.IsFinite(
+                    phase.DurationSeconds))
+            {
+                continue;
+            }
+
+            lastPhase =
+                phase;
+
+            if (position <
+                phase.DurationSeconds)
+            {
+                return phase.Phase is
+                    >= 6 and <= 8;
+            }
+
+            position -=
+                phase.DurationSeconds;
+        }
+
+        return lastPhase is not null &&
+               lastPhase.Phase is
+                   >= 6 and <= 8;
     }
 
     private int? ResolveNextSegmentIndex(

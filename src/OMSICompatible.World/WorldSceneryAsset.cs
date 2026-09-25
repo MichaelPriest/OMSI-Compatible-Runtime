@@ -51,6 +51,15 @@ public sealed record WorldSceneryTreeDefinition(
     double MinimumAspect,
     double MaximumAspect);
 
+public sealed record WorldTrafficLightPhase(
+    int Phase,
+    double DurationSeconds);
+
+public sealed record WorldTrafficLightProgram(
+    string Name,
+    IReadOnlyList<WorldTrafficLightPhase> Phases,
+    double ApproachDistanceMeters);
+
 public sealed record WorldSceneryPath(
     double X,
     double Y,
@@ -63,7 +72,8 @@ public sealed record WorldSceneryPath(
     int Type,
     double WidthMeters,
     int Direction,
-    IReadOnlyList<string> ExtraValues);
+    IReadOnlyList<string> ExtraValues,
+    int? TrafficLightIndex = null);
 
 public sealed record WorldSceneryAsset(
     string DeclaredPath,
@@ -74,7 +84,9 @@ public sealed record WorldSceneryAsset(
     string? RenderType,
     IReadOnlyList<WorldSceneryMeshAsset> Meshes,
     WorldSceneryTreeDefinition? Tree,
-    IReadOnlyList<WorldSceneryPath> Paths)
+    IReadOnlyList<WorldSceneryPath> Paths,
+    double? TrafficLightCycleSeconds = null,
+    IReadOnlyList<WorldTrafficLightProgram>? TrafficLights = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(

@@ -2,6 +2,16 @@ using System.Numerics;
 
 namespace OMSICompatible.World;
 
+public sealed record WorldTrafficSignalPhase(
+    int Phase,
+    double DurationSeconds);
+
+public sealed record WorldTrafficSignalProgram(
+    string Name,
+    double CycleSeconds,
+    IReadOnlyList<WorldTrafficSignalPhase> Phases,
+    double ApproachDistanceMeters);
+
 public sealed record WorldTrafficPathSegment(
     int Index,
     long SplineId,
@@ -16,7 +26,8 @@ public sealed record WorldTrafficPathSegment(
     double? SpeedLimitKilometersPerHour = null,
     IReadOnlyDictionary<int, double>? TrafficDensityWeights = null,
     IReadOnlySet<int>? BlockedUnscheduledGroupIndices = null,
-    int TrafficPriority = 128)
+    int TrafficPriority = 128,
+    WorldTrafficSignalProgram? TrafficSignal = null)
 {
     public bool AllowsForward =>
         Direction is 0 or 2;
@@ -150,7 +161,8 @@ public static class WorldTrafficPathNetworkBuilder
                             pathIndex),
                         ResolveTrafficPriority(
                             spline.TrafficRules,
-                            pathIndex)));
+                            pathIndex),
+                        null));
             }
         }
 
@@ -215,7 +227,10 @@ public static class WorldTrafficPathNetworkBuilder
                             pathIndex),
                         ResolveTrafficPriority(
                             instance.TrafficRules,
-                            pathIndex)));
+                            pathIndex),
+                        ResolveTrafficSignal(
+                            asset,
+                            path.TrafficLightIndex)));
             }
         }
 
@@ -364,7 +379,8 @@ public static class WorldTrafficPathNetworkBuilder
                             builder.SpeedLimitKilometersPerHour,
                             builder.TrafficDensityWeights,
                             builder.BlockedUnscheduledGroupIndices,
-                            builder.TrafficPriority))
+                            builder.TrafficPriority,
+                            builder.TrafficSignal))
                 .ToArray();
 
         return new WorldTrafficPathNetwork(
@@ -1096,6 +1112,77 @@ public static class WorldTrafficPathNetworkBuilder
             byte.MaxValue);
     }
 
+    private static WorldTrafficSignalProgram?
+        ResolveTrafficSignal(
+            WorldSceneryAsset asset,
+            int? trafficLightIndex)
+    {
+        if (!trafficLightIndex.HasValue ||
+            trafficLightIndex.Value <
+                0 ||
+            asset.TrafficLights is null ||
+            trafficLightIndex.Value >=
+                asset.TrafficLights.Count)
+        {
+            return null;
+        }
+
+        var source =
+            asset.TrafficLights[
+                trafficLightIndex.Value];
+
+        var phases =
+            source.Phases
+                .Where(
+                    static phase =>
+                        phase.DurationSeconds >
+                            0.0 &&
+                        double.IsFinite(
+                            phase.DurationSeconds))
+                .Select(
+                    static phase =>
+                        new WorldTrafficSignalPhase(
+                            phase.Phase,
+                            phase.DurationSeconds))
+                .ToArray();
+
+        if (phases.Length ==
+            0)
+        {
+            return null;
+        }
+
+        var phaseDuration =
+            phases.Sum(
+                static phase =>
+                    phase.DurationSeconds);
+
+        var cycleSeconds =
+            asset.TrafficLightCycleSeconds ??
+            phaseDuration;
+
+        if (!double.IsFinite(
+                cycleSeconds) ||
+            cycleSeconds <=
+                0.0)
+        {
+            cycleSeconds =
+                phaseDuration;
+        }
+
+        if (cycleSeconds <=
+            0.0)
+        {
+            return null;
+        }
+
+        return new WorldTrafficSignalProgram(
+            source.Name,
+            cycleSeconds,
+            phases,
+            source.ApproachDistanceMeters);
+    }
+
     private static double ConnectionTolerance(
         SegmentBuilder source,
         SegmentBuilder candidate) =>
@@ -1351,7 +1438,8 @@ public static class WorldTrafficPathNetworkBuilder
         double? speedLimitKilometersPerHour,
         IReadOnlyDictionary<int, double>? trafficDensityWeights,
         IReadOnlySet<int>? blockedUnscheduledGroupIndices,
-        int trafficPriority)
+        int trafficPriority,
+        WorldTrafficSignalProgram? trafficSignal)
     {
         public int Index { get; } =
             index;
@@ -1385,6 +1473,9 @@ public static class WorldTrafficPathNetworkBuilder
 
         public int TrafficPriority { get; } =
             trafficPriority;
+
+        public WorldTrafficSignalProgram? TrafficSignal { get; } =
+            trafficSignal;
 
         public WorldVector3[] Points { get; } =
             points;

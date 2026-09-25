@@ -45,6 +45,15 @@ public sealed record OmsiSceneryMaterialOverride(
     bool NoZWrite,
     bool NoZCheck);
 
+public sealed record OmsiSceneryTrafficLightPhase(
+    int Phase,
+    double DurationSeconds);
+
+public sealed record OmsiSceneryTrafficLightProgram(
+    string Name,
+    IReadOnlyList<OmsiSceneryTrafficLightPhase> Phases,
+    double ApproachDistanceMeters);
+
 public sealed record OmsiSceneryPathDefinition(
     double X,
     double Y,
@@ -57,7 +66,8 @@ public sealed record OmsiSceneryPathDefinition(
     int Type,
     double WidthMeters,
     int Direction,
-    IReadOnlyList<string> ExtraValues);
+    IReadOnlyList<string> ExtraValues,
+    int? TrafficLightIndex = null);
 
 public sealed record OmsiSceneryDefinition(
     bool Exists,
@@ -67,7 +77,9 @@ public sealed record OmsiSceneryDefinition(
     IReadOnlyList<OmsiSceneryMeshReference> Meshes,
     IReadOnlyList<OmsiSceneryMaterialOverride> MaterialOverrides,
     OmsiSceneryTreeDefinition? Tree,
-    IReadOnlyList<OmsiSceneryPathDefinition> Paths)
+    IReadOnlyList<OmsiSceneryPathDefinition> Paths,
+    double? TrafficLightCycleSeconds = null,
+    IReadOnlyList<OmsiSceneryTrafficLightProgram>? TrafficLights = null)
 {
     public static OmsiSceneryDefinition Missing { get; } =
         new(
