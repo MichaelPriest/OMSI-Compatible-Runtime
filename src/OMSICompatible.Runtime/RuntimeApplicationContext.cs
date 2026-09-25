@@ -25,6 +25,15 @@ internal sealed class RuntimeApplicationContext :
     private D3D11RenderWindow? _runtimeWindow;
     private OmsiVehicleAsset? _vehicleAsset;
     private WorldTrafficSimulation? _trafficSimulation;
+    private WorldRailTrafficSimulation? _railTrafficSimulation;
+    private readonly Dictionary<string, OmsiTrainConsist>
+        _railTrainConsists =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, RailRuntimeConsist>
+        _railRuntimeConsists =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, OmsiVehicleAsset>
         _trafficVehicleAssets =
             new(
@@ -275,14 +284,25 @@ internal sealed class RuntimeApplicationContext :
                 CreateTrafficSimulation(
                     world);
 
+            _railTrafficSimulation =
+                CreateRailTrafficSimulation(
+                    world);
+
             _trafficScriptRuntimes.Clear();
 
             await EnsureTrafficVehicleAssetsAsync(
                 _trafficSimulation);
 
+            await EnsureRailTrafficAssetsAsync(
+                _railTrafficSimulation);
+
             WriteTrafficDiagnostics(
                 world,
                 _trafficSimulation);
+
+            WriteRailTrafficDiagnostics(
+                world,
+                _railTrafficSimulation);
 
             if (vehicle is not null)
             {
@@ -936,14 +956,25 @@ internal sealed class RuntimeApplicationContext :
                     CreateTrafficSimulation(
                         streamedWorld);
 
+                _railTrafficSimulation =
+                    CreateRailTrafficSimulation(
+                        streamedWorld);
+
                 _trafficScriptRuntimes.Clear();
 
                 await EnsureTrafficVehicleAssetsAsync(
                     _trafficSimulation);
 
+                await EnsureRailTrafficAssetsAsync(
+                    _railTrafficSimulation);
+
                 WriteTrafficDiagnostics(
                     streamedWorld,
                     _trafficSimulation);
+
+                WriteRailTrafficDiagnostics(
+                    streamedWorld,
+                    _railTrafficSimulation);
 
                 var runtimeInfo =
                     BuildRuntimeInfo(
@@ -1066,31 +1097,301 @@ internal sealed class RuntimeApplicationContext :
                 pair.Key] =
                 pair.Value;
 
-            if (_trafficScriptCatalogs.ContainsKey(
-                    pair.Key) ||
-                pair.Value.Bus.ScriptManifest.RegisteredFileCount <=
-                    0)
+            CacheTrafficScriptCatalog(
+                pair.Key,
+                pair.Value);
+        }
+
+        Console.WriteLine(
+            $"[traffic-ai] cached={_trafficVehicleAssets.Count}; requested={requestedPaths.Length}; loaded={loaded.Count}");
+    }
+
+    private async Task EnsureRailTrafficAssetsAsync(
+        WorldRailTrafficSimulation simulation)
+    {
+        var trainPaths =
+            simulation
+                .Snapshot()
+                .Select(
+                    static agent =>
+                        agent.TrainConsistPath)
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        foreach (var trainPath in
+                 trainPaths)
+        {
+            if (_railTrainConsists.ContainsKey(
+                    trainPath))
             {
                 continue;
             }
 
             try
             {
-                _trafficScriptCatalogs[
-                    pair.Key] =
-                    OmsiScriptCatalogLoader.Load(
-                        _contentRoot,
-                        pair.Value.Bus.ScriptManifest);
+                _railTrainConsists[
+                    trainPath] =
+                    OmsiTrainConsistReader.ReadFile(
+                        _contentRoot.RootPath,
+                        trainPath);
             }
             catch (Exception exception)
             {
                 Console.WriteLine(
-                    $"[traffic-ai] Script catalog unavailable for {Path.GetFileName(pair.Key)}: {exception.Message}");
+                    $"[rail-ai] Failed to parse {trainPath}: {exception.Message}");
+            }
+        }
+
+        var requestedVehiclePaths =
+            trainPaths
+                .Where(
+                    path =>
+                        _railTrainConsists.ContainsKey(
+                            path))
+                .SelectMany(
+                    path =>
+                        _railTrainConsists[
+                            path]
+                            .Vehicles)
+                .Where(
+                    static vehicle =>
+                        vehicle.Exists)
+                .Select(
+                    static vehicle =>
+                        vehicle.ResolvedPath!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Where(
+                    path =>
+                        !_trafficVehicleAssets.ContainsKey(
+                            path))
+                .ToArray();
+
+        if (requestedVehiclePaths.Length >
+            0)
+        {
+            var loaded =
+                await Task.Run(
+                    () =>
+                    {
+                        var result =
+                            new List<KeyValuePair<
+                                string,
+                                OmsiVehicleAsset>>();
+
+                        foreach (var vehiclePath in
+                                 requestedVehiclePaths)
+                        {
+                            try
+                            {
+                                var vehicleInfo =
+                                    OmsiBusReader.ReadFile(
+                                        _contentRoot.RootPath,
+                                        vehiclePath);
+
+                                var asset =
+                                    OmsiVehicleAssetLoader.Load(
+                                        _contentRoot,
+                                        vehicleInfo);
+
+                                if (asset.RenderableMeshCount <=
+                                    0)
+                                {
+                                    Console.WriteLine(
+                                        $"[rail-ai] Vehicle has no renderable meshes: {vehiclePath}");
+                                    continue;
+                                }
+
+                                result.Add(
+                                    new KeyValuePair<
+                                        string,
+                                        OmsiVehicleAsset>(
+                                        vehiclePath,
+                                        asset));
+                            }
+                            catch (Exception exception)
+                            {
+                                Console.WriteLine(
+                                    $"[rail-ai] Failed to load {vehiclePath}: {exception.Message}");
+                            }
+                        }
+
+                        return result;
+                    });
+
+            foreach (var pair in
+                     loaded)
+            {
+                _trafficVehicleAssets[
+                    pair.Key] =
+                    pair.Value;
+
+                CacheTrafficScriptCatalog(
+                    pair.Key,
+                    pair.Value);
+            }
+        }
+
+        foreach (var trainPath in
+                 trainPaths)
+        {
+            if (!_railTrainConsists.TryGetValue(
+                    trainPath,
+                    out var consist))
+            {
+                continue;
+            }
+
+            var runtimeConsist =
+                BuildRailRuntimeConsist(
+                    consist);
+
+            if (runtimeConsist.Cars.Count >
+                0)
+            {
+                _railRuntimeConsists[
+                    trainPath] =
+                    runtimeConsist;
             }
         }
 
         Console.WriteLine(
-            $"[traffic-ai] cached={_trafficVehicleAssets.Count}; requested={requestedPaths.Length}; loaded={loaded.Count}");
+            $"[rail-ai] consists={_railRuntimeConsists.Count}; requested={trainPaths.Length}; vehicles={requestedVehiclePaths.Length}");
+    }
+
+    private void CacheTrafficScriptCatalog(
+        string vehiclePath,
+        OmsiVehicleAsset asset)
+    {
+        if (_trafficScriptCatalogs.ContainsKey(
+                vehiclePath) ||
+            asset.Bus.ScriptManifest.RegisteredFileCount <=
+                0)
+        {
+            return;
+        }
+
+        try
+        {
+            _trafficScriptCatalogs[
+                vehiclePath] =
+                OmsiScriptCatalogLoader.Load(
+                    _contentRoot,
+                    asset.Bus.ScriptManifest);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[traffic-ai] Script catalog unavailable for {Path.GetFileName(vehiclePath)}: {exception.Message}");
+        }
+    }
+
+    private RailRuntimeConsist BuildRailRuntimeConsist(
+        OmsiTrainConsist consist)
+    {
+        var cars =
+            new List<RailRuntimeCar>();
+        OmsiVehicleAsset? previousAsset =
+            null;
+        var previousReverse =
+            false;
+        var trailingDistance =
+            0.0;
+
+        foreach (var vehicle in
+                 consist.Vehicles)
+        {
+            if (!vehicle.Exists ||
+                !_trafficVehicleAssets.TryGetValue(
+                    vehicle.ResolvedPath!,
+                    out var asset))
+            {
+                Console.WriteLine(
+                    $"[rail-ai] Missing consist vehicle: {vehicle.DeclaredPath}");
+                break;
+            }
+
+            if (previousAsset is not null)
+            {
+                var spacing =
+                    ResolveRailCarSpacing(
+                        previousAsset,
+                        previousReverse,
+                        asset,
+                        vehicle.Reverse);
+
+                if (!spacing.HasValue)
+                {
+                    Console.WriteLine(
+                        $"[rail-ai] Missing/invalid coupling geometry between {Path.GetFileName(previousAsset.Bus.FilePath)} and {Path.GetFileName(asset.Bus.FilePath)}; remaining consist cars are not placed.");
+                    break;
+                }
+
+                trailingDistance +=
+                    spacing.Value;
+            }
+
+            cars.Add(
+                new RailRuntimeCar(
+                    vehicle.ResolvedPath!,
+                    vehicle.Reverse,
+                    trailingDistance));
+
+            previousAsset =
+                asset;
+            previousReverse =
+                vehicle.Reverse;
+        }
+
+        return new RailRuntimeConsist(
+            consist.SourcePath,
+            cars);
+    }
+
+    private static double? ResolveRailCarSpacing(
+        OmsiVehicleAsset previous,
+        bool previousReverse,
+        OmsiVehicleAsset current,
+        bool currentReverse)
+    {
+        var previousRear =
+            previousReverse
+                ? previous.Bus.FrontCoupling is
+                    { } previousFront
+                    ? -previousFront.Y
+                    : (double?)null
+                : previous.Bus.BackCoupling?.Y;
+
+        var currentFront =
+            currentReverse
+                ? current.Bus.BackCoupling is
+                    { } currentBack
+                    ? -currentBack.Y
+                    : (double?)null
+                : current.Bus.FrontCoupling?.Y;
+
+        if (!previousRear.HasValue ||
+            !currentFront.HasValue)
+        {
+            return null;
+        }
+
+        var spacing =
+            Math.Abs(
+                previousRear.Value -
+                currentFront.Value);
+
+        return double.IsFinite(
+                   spacing) &&
+               spacing >
+                   0.5
+            ? spacing
+            : null;
     }
 
     private static WorldTrafficSimulation
@@ -1102,31 +1403,137 @@ internal sealed class RuntimeApplicationContext :
             maximumAgents:
                 12);
 
+    private static WorldRailTrafficSimulation
+        CreateRailTrafficSimulation(
+            WorldDefinition world) =>
+        new(
+            world.TrafficPaths,
+            world.AiCatalog,
+            maximumAgents:
+                4);
+
     private IReadOnlyList<RuntimeTrafficAgentInfo>
         StepTrafficSimulation(
             double deltaSeconds)
     {
-        var simulation =
-            _trafficSimulation;
+        var agents =
+            new List<WorldTrafficAgentState>();
 
-        if (simulation is null)
+        if (_trafficSimulation is
+            { } roadSimulation)
         {
+            if (double.IsFinite(
+                    deltaSeconds) &&
+                deltaSeconds >
+                    0.0)
+            {
+                roadSimulation.Step(
+                    deltaSeconds);
+            }
+
+            agents.AddRange(
+                roadSimulation.Snapshot());
+        }
+
+        if (_railTrafficSimulation is
+            { } railSimulation)
+        {
+            if (double.IsFinite(
+                    deltaSeconds) &&
+                deltaSeconds >
+                    0.0)
+            {
+                railSimulation.Step(
+                    deltaSeconds);
+            }
+
+            foreach (var train in
+                     railSimulation.Snapshot())
+            {
+                if (!_railRuntimeConsists.TryGetValue(
+                        train.TrainConsistPath,
+                        out var consist))
+                {
+                    continue;
+                }
+
+                for (var carIndex = 0;
+                     carIndex <
+                         consist.Cars.Count;
+                     carIndex++)
+                {
+                    var car =
+                        consist.Cars[
+                            carIndex];
+
+                    int segmentIndex;
+                    double segmentDistanceMeters;
+                    WorldVector3 position;
+                    double headingRadians;
+
+                    if (car.TrailingDistanceMeters <=
+                            0.000001)
+                    {
+                        segmentIndex =
+                            train.SegmentIndex;
+                        segmentDistanceMeters =
+                            train.DistanceMeters;
+                        position =
+                            train.Position;
+                        headingRadians =
+                            train.HeadingRadians;
+                    }
+                    else if (!railSimulation.TrySampleBehind(
+                                 train.AgentIndex,
+                                 car.TrailingDistanceMeters,
+                                 out segmentIndex,
+                                 out segmentDistanceMeters,
+                                 out position,
+                                 out headingRadians))
+                    {
+                        continue;
+                    }
+
+                    if (car.Reverse)
+                    {
+                        headingRadians =
+                            Math.Atan2(
+                                -Math.Sin(
+                                    headingRadians),
+                                -Math.Cos(
+                                    headingRadians));
+                    }
+
+                    agents.Add(
+                        new WorldTrafficAgentState(
+                            2_000_000 +
+                            train.AgentIndex *
+                            1_000 +
+                            carIndex,
+                            segmentIndex,
+                            segmentDistanceMeters,
+                            train.SpeedMetersPerSecond,
+                            car.VehiclePath,
+                            position,
+                            headingRadians,
+                            train.GroupIndex,
+                            train.GroupName,
+                            false,
+                            false,
+                            false,
+                            train.TraveledDistanceMeters,
+                            0.0));
+                }
+            }
+        }
+
+        if (agents.Count ==
+            0)
+        {
+            _trafficScriptRuntimes.Clear();
             return Array.Empty<
                 RuntimeTrafficAgentInfo>();
         }
-
-        if (double.IsFinite(
-                deltaSeconds) &&
-            deltaSeconds >
-                0.0)
-        {
-            simulation.Step(
-                deltaSeconds);
-        }
-
-        var agents =
-            simulation
-                .Snapshot();
 
         UpdateTrafficScriptRuntimes(
             agents,
@@ -1346,6 +1753,28 @@ internal sealed class RuntimeApplicationContext :
             $"boundary={world.TrafficPaths.BoundaryEndpointCount}; " +
             $"unmatched={world.TrafficPaths.UnmatchedEndpointCount}");
     }
+
+    private static void WriteRailTrafficDiagnostics(
+        WorldDefinition world,
+        WorldRailTrafficSimulation simulation)
+    {
+        var agents =
+            simulation.Snapshot();
+
+        Console.WriteLine(
+            $"[rail-ai] agents={agents.Count}; " +
+            $"railPaths={world.TrafficPaths.RailSegmentCount}; " +
+            $"consists={agents.Select(static agent => agent.TrainConsistPath).Distinct(StringComparer.OrdinalIgnoreCase).Count()}");
+    }
+
+    private sealed record RailRuntimeCar(
+        string VehiclePath,
+        bool Reverse,
+        double TrailingDistanceMeters);
+
+    private sealed record RailRuntimeConsist(
+        string TrainConsistPath,
+        IReadOnlyList<RailRuntimeCar> Cars);
 
     private sealed record TrafficScriptRuntimeState(
         string VehiclePath,
