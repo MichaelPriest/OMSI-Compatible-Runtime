@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="src/OmsiCompat.Core/OmsiCompat.Core.csproj" />
   <Project Path="src/OmsiCompat.Map/OmsiCompat.Map.csproj" />
+  <Project Path="src/OmsiCompat.Physics.Ode/OmsiCompat.Physics.Ode.csproj" />
   <Project Path="src/OmsiCompat.Models/OmsiCompat.Models.csproj" />
   <Project Path="src/OmsiCompat.Scenery/OmsiCompat.Scenery.csproj" />
   <Project Path="src/OmsiCompat.Splines/OmsiCompat.Splines.csproj" />
