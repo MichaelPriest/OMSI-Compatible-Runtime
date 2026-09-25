@@ -143,10 +143,39 @@ public sealed class WorldRailTrafficSimulation
                     consists,
                     index);
 
+            var groupDefinition =
+                groupDefinitions.TryGetValue(
+                    consist.GroupName,
+                    out var resolvedGroupDefinition)
+                    ? resolvedGroupDefinition
+                    : null;
+
+            var groupIndex =
+                groupDefinition?.Index;
+
+            var defaultDensityClassIndex =
+                groupDefinition?.DefaultDensityClassIndex;
+
+            var allowedSegments =
+                railSegments
+                    .Where(
+                        segment =>
+                            IsTrafficGroupAllowed(
+                                segment,
+                                groupIndex,
+                                defaultDensityClassIndex))
+                    .ToArray();
+
+            if (allowedSegments.Length ==
+                0)
+            {
+                continue;
+            }
+
             var segment =
-                railSegments[
+                allowedSegments[
                     index %
-                    railSegments.Length];
+                    allowedSegments.Length];
 
             var travelForward =
                 segment.Direction switch
@@ -165,13 +194,6 @@ public sealed class WorldRailTrafficSimulation
                     ? 0.0
                     : length;
 
-            var groupIndex =
-                groupDefinitions.TryGetValue(
-                    consist.GroupName,
-                    out var groupDefinition)
-                    ? groupDefinition.Index
-                    : (int?)null;
-
             _agents.Add(
                 new Agent(
                     index,
@@ -182,6 +204,7 @@ public sealed class WorldRailTrafficSimulation
                         segment),
                     consist.ResolvedPath!,
                     groupIndex,
+                    defaultDensityClassIndex,
                     consist.GroupName));
         }
     }
@@ -480,7 +503,7 @@ public sealed class WorldRailTrafficSimulation
                 ? segment.ForwardConnections
                 : segment.ReverseConnections;
 
-        var next =
+        var candidates =
             connections
                 .Select(
                     index =>
@@ -492,19 +515,81 @@ public sealed class WorldRailTrafficSimulation
                 .Where(
                     candidate =>
                         candidate is not null &&
+                        IsTrafficGroupAllowed(
+                            candidate,
+                            agent.GroupIndex,
+                            agent.DefaultDensityClassIndex) &&
                         (agent.TravelForward
                             ? candidate.AllowsForward
                             : candidate.AllowsReverse))
+                .Select(
+                    candidate =>
+                        new
+                        {
+                            Segment =
+                                candidate!,
+                            Weight =
+                                ResolveTrafficDensityWeight(
+                                    candidate!,
+                                    agent.GroupIndex,
+                                    agent.DefaultDensityClassIndex)
+                        })
+                .Where(
+                    static candidate =>
+                        candidate.Weight >
+                            0.0)
                 .OrderBy(
                     static candidate =>
-                        candidate!.Index)
-                .FirstOrDefault();
+                        candidate.Segment.Index)
+                .ToArray();
 
-        if (next is null)
+        if (candidates.Length ==
+            0)
         {
             agent.SpeedMetersPerSecond =
                 0.0;
             return false;
+        }
+
+        var totalWeight =
+            candidates.Sum(
+                static candidate =>
+                    candidate.Weight);
+
+        if (!double.IsFinite(
+                totalWeight) ||
+            totalWeight <=
+                0.0)
+        {
+            agent.SpeedMetersPerSecond =
+                0.0;
+            return false;
+        }
+
+        var selector =
+            ((agent.AgentIndex +
+              1) *
+             0.6180339887498949 %
+             1.0) *
+            totalWeight;
+
+        var next =
+            candidates[^1]
+                .Segment;
+
+        foreach (var candidate in
+                 candidates)
+        {
+            selector -=
+                candidate.Weight;
+
+            if (selector <=
+                0.0)
+            {
+                next =
+                    candidate.Segment;
+                break;
+            }
         }
 
         agent.SegmentIndex =
@@ -602,6 +687,66 @@ public sealed class WorldRailTrafficSimulation
                     agent.SpeedMetersPerSecond -
                         maximumChange);
         }
+    }
+
+    private static bool IsTrafficGroupAllowed(
+        WorldTrafficPathSegment segment,
+        int? groupIndex,
+        int? defaultDensityClassIndex)
+    {
+        if (!groupIndex.HasValue)
+        {
+            return true;
+        }
+
+        if (segment.BlockedUnscheduledGroupIndices is not null &&
+            segment.BlockedUnscheduledGroupIndices.Contains(
+                groupIndex.Value))
+        {
+            return false;
+        }
+
+        if (segment.TrafficDensityWeights is not null &&
+            segment.TrafficDensityWeights.TryGetValue(
+                groupIndex.Value,
+                out var explicitWeight) &&
+            double.IsFinite(
+                explicitWeight))
+        {
+            return explicitWeight >
+                   0.0;
+        }
+
+        return defaultDensityClassIndex !=
+               0;
+    }
+
+    private static double ResolveTrafficDensityWeight(
+        WorldTrafficPathSegment segment,
+        int? groupIndex,
+        int? defaultDensityClassIndex)
+    {
+        if (!groupIndex.HasValue)
+        {
+            return 1.0;
+        }
+
+        if (segment.TrafficDensityWeights is not null &&
+            segment.TrafficDensityWeights.TryGetValue(
+                groupIndex.Value,
+                out var value) &&
+            double.IsFinite(
+                value))
+        {
+            return Math.Max(
+                value,
+                0.0);
+        }
+
+        return defaultDensityClassIndex ==
+               0
+            ? 0.0
+            : 1.0;
     }
 
     private static double ResolveSegmentMaximumSpeed(
@@ -824,6 +969,7 @@ public sealed class WorldRailTrafficSimulation
         double initialSpeedMetersPerSecond,
         string trainConsistPath,
         int? groupIndex,
+        int? defaultDensityClassIndex,
         string groupName)
     {
         public int AgentIndex { get; } =
@@ -858,6 +1004,9 @@ public sealed class WorldRailTrafficSimulation
 
         public int? GroupIndex { get; } =
             groupIndex;
+
+        public int? DefaultDensityClassIndex { get; } =
+            defaultDensityClassIndex;
 
         public string GroupName { get; } =
             groupName;
