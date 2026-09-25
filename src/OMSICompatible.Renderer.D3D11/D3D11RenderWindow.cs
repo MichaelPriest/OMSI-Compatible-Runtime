@@ -324,6 +324,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly bool _materialLightMapEnabled;
     private readonly bool _materialReflectionMapEnabled;
     private readonly bool _materialBumpMapEnabled;
+    private readonly bool _materialNightMapEnabled;
 
     public D3D11RenderWindow(
         RuntimeWindowInfo windowInfo,
@@ -340,7 +341,8 @@ public sealed class D3D11RenderWindow : Form
         int maximumSoundCount = 400,
         bool materialLightMapEnabled = true,
         bool materialReflectionMapEnabled = true,
-        bool materialBumpMapEnabled = true)
+        bool materialBumpMapEnabled = true,
+        bool materialNightMapEnabled = true)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
@@ -378,6 +380,8 @@ public sealed class D3D11RenderWindow : Form
             materialReflectionMapEnabled;
         _materialBumpMapEnabled =
             materialBumpMapEnabled;
+        _materialNightMapEnabled =
+            materialNightMapEnabled;
         _vehiclePreviewMode =
             vehiclePreviewMode;
         _gameControllerEnabled =
@@ -4355,6 +4359,19 @@ public sealed class D3D11RenderWindow : Form
                 : legacyActive
                     ? batch.MaterialChangeTexturePath
                     : null;
+
+        var changeTextureIsNightMap =
+            hasNativeItem
+                ? selectedItem!.MaterialChangeIsNightMap
+                : legacyActive &&
+                  batch.MaterialChangeIsNightMap;
+
+        if (changeTextureIsNightMap &&
+            !_materialNightMapEnabled)
+        {
+            changeTexture =
+                null;
+        }
 
         var changeColor =
             hasNativeItem
