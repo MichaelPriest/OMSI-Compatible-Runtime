@@ -2620,6 +2620,115 @@ try
             0.001,
         "Reverse-only OMSI traffic path did not move End -> Start through ReverseConnections.");
 
+    var followingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    7002,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            40.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    7001,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [
+                        0
+                    ],
+                    Array.Empty<int>())
+            ],
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            0);
+
+    var followingSimulation =
+        new WorldTrafficSimulation(
+            followingNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                2);
+
+    var followingInitial =
+        followingSimulation.Snapshot();
+
+    followingSimulation.Step(
+        8.0);
+
+    var followingMoved =
+        followingSimulation.Snapshot();
+
+    var frontAgent =
+        followingMoved.Single(
+            static agent =>
+                agent.AgentIndex ==
+                    0);
+
+    var rearAgent =
+        followingMoved.Single(
+            static agent =>
+                agent.AgentIndex ==
+                    1);
+
+    var centerSeparation =
+        frontAgent.Position.Z -
+        rearAgent.Position.Z;
+
+    Require(
+        followingInitial.Count ==
+            2 &&
+        followingMoved.Count ==
+            2 &&
+        rearAgent.Position.Z <
+            frontAgent.Position.Z &&
+        centerSeparation >=
+            5.9 &&
+        rearAgent.SpeedMetersPerSecond <
+            30.0 /
+            3.6,
+        "Traffic following control did not preserve separation or slow the faster rear agent.");
+
     var firstRoadStart =
         firstRoadPath.Points[0];
 

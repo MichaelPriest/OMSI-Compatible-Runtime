@@ -13,6 +13,19 @@ public sealed record WorldTrafficAgentState(
 
 public sealed class WorldTrafficSimulation
 {
+    private const double MinimumTrafficSeparationMeters =
+        6.0;
+    private const double FollowingTimeHeadwaySeconds =
+        1.25;
+    private const double TrafficAccelerationMetersPerSecondSquared =
+        1.5;
+    private const double TrafficBrakingMetersPerSecondSquared =
+        4.0;
+    private const double TrafficLookAheadMeters =
+        120.0;
+    private const int MaximumTrafficLookAheadSegments =
+        32;
+
     private readonly WorldTrafficPathNetwork _network;
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
     private readonly List<Agent> _agents;
@@ -187,9 +200,34 @@ public sealed class WorldTrafficSimulation
             foreach (var agent in
                      _agents)
             {
+                var leadingDistance =
+                    FindLeadingDistance(
+                        agent);
+
+                var targetSpeed =
+                    ResolveTargetSpeed(
+                        agent,
+                        leadingDistance);
+
+                UpdateAgentSpeed(
+                    agent,
+                    targetSpeed,
+                    step);
+
                 var remaining =
                     agent.SpeedMetersPerSecond *
                     step;
+
+                if (leadingDistance.HasValue)
+                {
+                    remaining =
+                        Math.Min(
+                            remaining,
+                            Math.Max(
+                                leadingDistance.Value -
+                                    MinimumTrafficSeparationMeters,
+                                0.0));
+                }
 
                 var guard =
                     0;
@@ -276,6 +314,38 @@ public sealed class WorldTrafficSimulation
         Agent agent,
         WorldTrafficPathSegment segment)
     {
+        var next =
+            ResolveNextSegmentIndex(
+                agent,
+                segment);
+
+        if (!next.HasValue ||
+            !_segmentsByIndex.TryGetValue(
+                next.Value,
+                out var nextSegment))
+        {
+            agent.SpeedMetersPerSecond =
+                0.0;
+
+            return false;
+        }
+
+        agent.SegmentIndex =
+            next.Value;
+
+        agent.DistanceMeters =
+            agent.TravelForward
+                ? 0.0
+                : SegmentLength(
+                    nextSegment);
+
+        return true;
+    }
+
+    private int? ResolveNextSegmentIndex(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
         var connections =
             agent.TravelForward
                 ? segment.ForwardConnections
@@ -297,37 +367,224 @@ public sealed class WorldTrafficSimulation
         if (candidates.Length ==
             0)
         {
-            agent.SpeedMetersPerSecond =
-                0.0;
-
-            return false;
+            return null;
         }
 
-        var next =
-            candidates[
-                agent.AgentIndex %
-                candidates.Length];
+        return candidates[
+            agent.AgentIndex %
+            candidates.Length];
+    }
 
-        if (!_segmentsByIndex.TryGetValue(
-                next,
-                out var nextSegment))
+    private double? FindLeadingDistance(
+        Agent agent)
+    {
+        var nearest =
+            double.PositiveInfinity;
+
+        foreach (var candidate in
+                 _agents)
         {
-            agent.SpeedMetersPerSecond =
-                0.0;
+            if (ReferenceEquals(
+                    candidate,
+                    agent) ||
+                candidate.TravelForward !=
+                    agent.TravelForward)
+            {
+                continue;
+            }
 
-            return false;
+            var distance =
+                DistanceAlongRoute(
+                    agent,
+                    candidate);
+
+            if (distance.HasValue &&
+                distance.Value >
+                    0.0001 &&
+                distance.Value <
+                    nearest)
+            {
+                nearest =
+                    distance.Value;
+            }
         }
 
-        agent.SegmentIndex =
-            next;
+        return double.IsPositiveInfinity(
+                   nearest)
+            ? null
+            : nearest;
+    }
 
-        agent.DistanceMeters =
-            agent.TravelForward
-                ? 0.0
-                : SegmentLength(
+    private double? DistanceAlongRoute(
+        Agent source,
+        Agent target)
+    {
+        if (!_segmentsByIndex.TryGetValue(
+                source.SegmentIndex,
+                out var sourceSegment) ||
+            !_segmentsByIndex.TryGetValue(
+                target.SegmentIndex,
+                out _))
+        {
+            return null;
+        }
+
+        if (source.SegmentIndex ==
+            target.SegmentIndex)
+        {
+            var sameSegmentDistance =
+                source.TravelForward
+                    ? target.DistanceMeters -
+                      source.DistanceMeters
+                    : source.DistanceMeters -
+                      target.DistanceMeters;
+
+            return sameSegmentDistance >
+                   0.0001
+                ? sameSegmentDistance
+                : null;
+        }
+
+        var sourceLength =
+            SegmentLength(
+                sourceSegment);
+
+        var accumulated =
+            source.TravelForward
+                ? Math.Max(
+                    sourceLength -
+                        source.DistanceMeters,
+                    0.0)
+                : Math.Max(
+                    source.DistanceMeters,
+                    0.0);
+
+        var current =
+            sourceSegment;
+
+        var visited =
+            new HashSet<int>
+            {
+                sourceSegment.Index
+            };
+
+        for (var hop = 0;
+             hop <
+                 MaximumTrafficLookAheadSegments &&
+             accumulated <=
+                 TrafficLookAheadMeters;
+             hop++)
+        {
+            var nextIndex =
+                ResolveNextSegmentIndex(
+                    source,
+                    current);
+
+            if (!nextIndex.HasValue ||
+                !visited.Add(
+                    nextIndex.Value) ||
+                !_segmentsByIndex.TryGetValue(
+                    nextIndex.Value,
+                    out var nextSegment))
+            {
+                return null;
+            }
+
+            var nextLength =
+                SegmentLength(
                     nextSegment);
 
-        return true;
+            if (nextSegment.Index ==
+                target.SegmentIndex)
+            {
+                var targetDistanceFromEntry =
+                    source.TravelForward
+                        ? Math.Clamp(
+                            target.DistanceMeters,
+                            0.0,
+                            nextLength)
+                        : Math.Clamp(
+                            nextLength -
+                                target.DistanceMeters,
+                            0.0,
+                            nextLength);
+
+                return accumulated +
+                       targetDistanceFromEntry;
+            }
+
+            accumulated +=
+                nextLength;
+
+            current =
+                nextSegment;
+        }
+
+        return null;
+    }
+
+    private static double ResolveTargetSpeed(
+        Agent agent,
+        double? leadingDistance)
+    {
+        if (!leadingDistance.HasValue)
+        {
+            return agent.CruiseSpeedMetersPerSecond;
+        }
+
+        var usableDistance =
+            Math.Max(
+                leadingDistance.Value -
+                    MinimumTrafficSeparationMeters,
+                0.0);
+
+        var followingSpeed =
+            usableDistance /
+            FollowingTimeHeadwaySeconds;
+
+        return Math.Min(
+            agent.CruiseSpeedMetersPerSecond,
+            followingSpeed);
+    }
+
+    private static void UpdateAgentSpeed(
+        Agent agent,
+        double targetSpeed,
+        double stepSeconds)
+    {
+        var clampedTarget =
+            Math.Clamp(
+                targetSpeed,
+                0.0,
+                agent.CruiseSpeedMetersPerSecond);
+
+        var rate =
+            clampedTarget <
+                agent.SpeedMetersPerSecond
+                ? TrafficBrakingMetersPerSecondSquared
+                : TrafficAccelerationMetersPerSecondSquared;
+
+        var maximumChange =
+            rate *
+            stepSeconds;
+
+        if (agent.SpeedMetersPerSecond <
+            clampedTarget)
+        {
+            agent.SpeedMetersPerSecond =
+                Math.Min(
+                    clampedTarget,
+                    agent.SpeedMetersPerSecond +
+                        maximumChange);
+        }
+        else
+        {
+            agent.SpeedMetersPerSecond =
+                Math.Max(
+                    clampedTarget,
+                    agent.SpeedMetersPerSecond -
+                        maximumChange);
+        }
     }
 
     private WorldTrafficAgentState CreateState(
@@ -635,6 +892,9 @@ public sealed class WorldTrafficSimulation
 
         public bool TravelForward { get; } =
             travelForward;
+
+        public double CruiseSpeedMetersPerSecond { get; } =
+            speedMetersPerSecond;
 
         public double SpeedMetersPerSecond
         {
