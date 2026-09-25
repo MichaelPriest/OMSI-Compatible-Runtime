@@ -1627,13 +1627,17 @@ try
     Require(
         Math.Abs(
             scriptRuntime.GetSystem(
-                "getTime") -
+                "GetTime") -
             10.0) < 0.0001 &&
         Math.Abs(
+            scriptRuntime.GetSystem(
+                "getTime")) <
+            0.0001 &&
+        Math.Abs(
             scriptRuntime.GetLocal(
-                "ENGINE_SPEED") -
-            660.0) < 0.0001,
-        "OMSI variable names must be case-insensitive.");
+                "ENGINE_SPEED")) <
+            0.0001,
+        "OMSI variable and system-variable names must preserve casing.");
 
     Require(
         scriptRuntime.HasTrigger(
