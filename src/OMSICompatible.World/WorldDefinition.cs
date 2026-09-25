@@ -125,4 +125,5 @@ public sealed record WorldDefinition(
     WorldDependencyReport Dependencies,
     int PlacementParseIssueCount,
     int TerrainParseIssueCount,
-    WorldBounds? Bounds);
+    WorldBounds? Bounds,
+    OmsiCompat.Map.OmsiSignalRoutesFile? SignalRoutes = null);
