@@ -2223,6 +2223,67 @@ try
             firstPedestrianPath.Index),
         "Bidirectional pedestrian paths did not connect in both travel directions.");
 
+    var syntheticAiVehiclePath =
+        Path.Combine(
+            contentRoot.RootPath,
+            "Vehicles",
+            "Synthetic",
+            "traffic.bus");
+
+    Directory.CreateDirectory(
+        Path.GetDirectoryName(
+            syntheticAiVehiclePath)!);
+
+    File.WriteAllText(
+        syntheticAiVehiclePath,
+        string.Empty);
+
+    var trafficSimulation =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    var initialTraffic =
+        trafficSimulation.Snapshot();
+
+    Require(
+        initialTraffic.Count ==
+            1 &&
+        initialTraffic[0].SegmentIndex ==
+            firstRoadPath.Index &&
+        initialTraffic[0].SpeedMetersPerSecond >
+            0.0,
+        "Traffic simulation did not spawn on the first resolved road path.");
+
+    trafficSimulation.Step(
+        20.0);
+
+    var movedTraffic =
+        trafficSimulation.Snapshot();
+
+    Require(
+        movedTraffic.Count ==
+            1 &&
+        movedTraffic[0].SegmentIndex ==
+            secondRoadPath.Index &&
+        movedTraffic[0].Position.Z >
+            initialTraffic[0].Position.Z &&
+        double.IsFinite(
+            movedTraffic[0].HeadingRadians),
+        "Traffic simulation did not advance through the connected road path graph.");
+
     var firstRoadStart =
         firstRoadPath.Points[0];
 
