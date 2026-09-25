@@ -4691,23 +4691,13 @@ public sealed class D3D11RenderWindow : Form
                         axisZ)
                     : Vector3.UnitZ;
 
-            // A negative determinant is a reflected O3D object origin.
-            // OMSI still evaluates anim_rot in a right-handed animation
-            // frame. Keeping the reflected X axis reverses steering-wheel
-            // rotation on add-ons such as the MEP Quadbus II, while stock
-            // MAN steering origins are positive-handed. Correct only the
-            // animation X axis; explicit origin_trans wheel pivots are not
-            // affected by this path.
-            if (Vector3.Dot(
-                    Vector3.Cross(
-                        axisX,
-                        axisY),
-                    axisZ) <
-                0.0f)
-            {
-                axisX =
-                    -axisX;
-            }
+            // Preserve the authored handedness of origin_from_mesh.
+            // OMSI add-ons can intentionally use a reflected O3D source
+            // transform for the steering wheel. Forcing that basis back to
+            // right-handed space reverses anim_rot while the front-wheel
+            // steering variables themselves remain correct. Keeping the
+            // original basis fixes the visual wheel direction without
+            // changing SteeringInput/Ackermann physics.
 
             orientation =
                 new Matrix4x4(
