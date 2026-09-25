@@ -239,6 +239,14 @@ public static class OmsiSceneryObjectReader
             ReadTrafficLights(
                 document);
 
+        var scriptManifest =
+            ReadScriptManifest(
+                document,
+                Path.GetDirectoryName(
+                    Path.GetFullPath(
+                        path)) ??
+                string.Empty);
+
         return new OmsiSceneryDefinition(
             true,
             document.Sections.Any(
@@ -260,7 +268,8 @@ public static class OmsiSceneryObjectReader
             ReadTree(document),
             ReadPaths(document),
             trafficLightCycleSeconds,
-            trafficLights);
+            trafficLights,
+            scriptManifest);
     }
 
     private static IReadOnlyList<OmsiSceneryMaterialOverride>
@@ -792,6 +801,160 @@ public static class OmsiSceneryObjectReader
         {
             get;
             set;
+        }
+    }
+
+    private static OmsiSceneryScriptManifest
+        ReadScriptManifest(
+        OmsiSectionDocument document,
+        string baseDirectory) =>
+        new(
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "script"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "varnamelist"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "stringvarnamelist"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "constfile"));
+
+    private static IReadOnlyList<OmsiSceneryFileReference>
+        ReadRegisteredFiles(
+        OmsiSectionDocument document,
+        string baseDirectory,
+        string sectionName)
+    {
+        var result =
+            new List<OmsiSceneryFileReference>();
+
+        foreach (var section in
+                 document.Sections.Where(
+                     section =>
+                         section.Name.Equals(
+                             sectionName,
+                             StringComparison.OrdinalIgnoreCase)))
+        {
+            var values =
+                Data(section)
+                    .Select(
+                        static line =>
+                            line.Value
+                                .Trim()
+                                .Trim('"'))
+                    .Where(
+                        static value =>
+                            value.Length >
+                            0)
+                    .ToArray();
+
+            if (values.Length ==
+                0)
+            {
+                continue;
+            }
+
+            var firstPathIndex =
+                0;
+
+            var declaredCount =
+                values.Length;
+
+            if (int.TryParse(
+                    values[0],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var parsedCount) &&
+                parsedCount >=
+                    0)
+            {
+                firstPathIndex =
+                    1;
+
+                declaredCount =
+                    Math.Min(
+                        parsedCount,
+                        Math.Max(
+                            values.Length -
+                                1,
+                            0));
+            }
+
+            for (var index = 0;
+                 index <
+                     declaredCount;
+                 index++)
+            {
+                var declaredPath =
+                    values[
+                        firstPathIndex +
+                        index];
+
+                result.Add(
+                    new OmsiSceneryFileReference(
+                        declaredPath,
+                        ResolveRelativeFile(
+                            baseDirectory,
+                            declaredPath)));
+            }
+        }
+
+        return result;
+    }
+
+    private static string? ResolveRelativeFile(
+        string baseDirectory,
+        string declaredPath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                baseDirectory) ||
+            string.IsNullOrWhiteSpace(
+                declaredPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var normalized =
+                declaredPath
+                    .Trim()
+                    .Trim('"')
+                    .Replace(
+                        '/',
+                        Path.DirectorySeparatorChar)
+                    .Replace(
+                        '\\',
+                        Path.DirectorySeparatorChar);
+
+            var fullPath =
+                Path.IsPathRooted(
+                    normalized)
+                    ? Path.GetFullPath(
+                        normalized)
+                    : Path.GetFullPath(
+                        Path.Combine(
+                            baseDirectory,
+                            normalized));
+
+            return File.Exists(
+                       fullPath)
+                ? fullPath
+                : null;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or
+            NotSupportedException or
+            PathTooLongException)
+        {
+            return null;
         }
     }
 
