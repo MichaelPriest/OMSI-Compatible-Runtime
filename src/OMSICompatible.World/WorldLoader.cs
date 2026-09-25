@@ -221,6 +221,10 @@ public static class WorldLoader
                 contentRoot,
                 map);
 
+        var signalRoutes =
+            OmsiSignalRoutesReader.ReadMap(
+                map);
+
         progress?.Report(
             new WorldLoadProgress(
                 90,
@@ -246,7 +250,8 @@ public static class WorldLoader
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
-            bounds);
+            bounds,
+            signalRoutes);
     }
 
     private static IReadOnlyList<OmsiMapTileInfo>
