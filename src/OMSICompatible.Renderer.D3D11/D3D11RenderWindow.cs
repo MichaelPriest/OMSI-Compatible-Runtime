@@ -9060,14 +9060,37 @@ public sealed class D3D11RenderWindow : Form
                         System.Globalization.CultureInfo.InvariantCulture)
                 : "<missing>";
 
-        return
-            $"main={Value(_scriptRuntime, "elec_busbar_main")};" +
+        var lead =
+            $"lead[main={Value(_scriptRuntime, "elec_busbar_main")};" +
             $"main_sw={Value(_scriptRuntime, "elec_busbar_main_sw")};" +
             $"gear={Value(_scriptRuntime, "antrieb_getr_gangwahl")};" +
             $"pregear={Value(_scriptRuntime, "antrieb_getr_gangvorwahl")};" +
             $"engine_on={Value(_scriptRuntime, "engine_on")};" +
             $"injection={Value(_scriptRuntime, "engine_injection_on")};" +
-            $"engine_n={Value(_scriptRuntime, "engine_n")}";
+            $"engine_n={Value(_scriptRuntime, "engine_n")};" +
+            $"M_Wheel={Value(_scriptRuntime, "M_Wheel")}]";
+
+        if (_sectionScriptRuntimes.Count == 0)
+        {
+            return lead;
+        }
+
+        var sectionStates =
+            _sectionScriptRuntimes
+                .OrderBy(static pair => pair.Key)
+                .Select(pair =>
+                    $"section{pair.Key}[main={Value(pair.Value, "elec_busbar_main")};" +
+                    $"main_sw={Value(pair.Value, "elec_busbar_main_sw")};" +
+                    $"gear={Value(pair.Value, "antrieb_getr_gangwahl")};" +
+                    $"pregear={Value(pair.Value, "antrieb_getr_gangvorwahl")};" +
+                    $"engine_on={Value(pair.Value, "engine_on")};" +
+                    $"injection={Value(pair.Value, "engine_injection_on")};" +
+                    $"engine_n={Value(pair.Value, "engine_n")};" +
+                    $"M_Wheel={Value(pair.Value, "M_Wheel")};" +
+                    $"writesM_Wheel={pair.Value.WritesLocalVariable("M_Wheel")}]");
+
+        return lead + "|" +
+               string.Join("|", sectionStates);
     }
 
     private static void AppendVehicleStartupTrace(
