@@ -3779,53 +3779,13 @@ internal sealed class RuntimeDriveVehicle :
                     -lateralForceLimit,
                     lateralForceLimit));
 
-            var sectionHeading =
-                ResolveOdeHeading(
-                    body.Orientation,
-                    state.AbsoluteHeadingRadians);
+            var physicalYaw =
+                state.Articulation
+                    .YawAngleRadians;
 
-            var parentHeading =
-                state.ParentBody ==
-                    _odeBody
-                    ? HeadingRadians
-                    : ResolveOdeHeading(
-                        state.ParentBody.Orientation,
-                        sectionHeading);
-
-            var relativeYaw =
-                NormalizeRadians(
-                    sectionHeading -
-                    parentHeading);
-
-            var sectionPitch =
-                ResolveOdePitch(
-                    body.Orientation);
-
-            var parentPitch =
-                state.ParentBody ==
-                    _odeBody
-                    ? BodyPitchRadians
-                    : ResolveOdePitch(
-                        state.ParentBody.Orientation);
-
-            var relativePitch =
-                sectionPitch -
-                parentPitch;
-
-            var relativeYawRate =
-                NormalizeRadians(
-                    relativeYaw -
-                    state.RelativeYawRadians) /
-                Math.Max(
-                    deltaSeconds,
-                    0.0001f);
-
-            var relativePitchRate =
-                (relativePitch -
-                 state.RelativePitchRadians) /
-                Math.Max(
-                    deltaSeconds,
-                    0.0001f);
+            var physicalYawRate =
+                state.Articulation
+                    .YawRateRadiansPerSecond;
 
             var maximumYaw =
                 DegreesToRadians(
@@ -3834,51 +3794,41 @@ internal sealed class RuntimeDriveVehicle :
                         5.0,
                         89.0));
 
-            var softLimit =
+            var yawSoftLimit =
                 maximumYaw *
-                0.82f;
+                0.86f;
 
-            var approach =
-                Math.Max(
-                    Math.Abs(
-                        relativeYaw) -
-                    softLimit,
-                    0.0f);
+            var yawLimitError =
+                Math.Abs(
+                    physicalYaw) >
+                    yawSoftLimit
+                    ? Math.Sign(
+                        physicalYaw) *
+                      (Math.Abs(
+                           physicalYaw) -
+                       yawSoftLimit)
+                    : 0.0f;
 
-            var desiredRelativeAcceleration =
-                -relativeYawRate *
-                1.15f;
-
-            if (approach >
-                0.0f)
-            {
-                desiredRelativeAcceleration +=
-                    -Math.Sign(
-                        relativeYaw) *
-                    approach *
-                    12.0f;
-            }
-
-            var correctiveTorque =
+            var yawTorque =
                 Math.Clamp(
-                    -desiredRelativeAcceleration *
-                    state.YawInertiaKilogramSquareMeters,
+                    -physicalYawRate *
+                        state.YawInertiaKilogramSquareMeters *
+                        0.55f -
+                    yawLimitError *
+                        state.YawInertiaKilogramSquareMeters *
+                        8.0f,
                     -state.YawInertiaKilogramSquareMeters *
-                        20.0f,
+                        10.0f,
                     state.YawInertiaKilogramSquareMeters *
-                        20.0f);
+                        10.0f);
 
-            body.AddWorldTorque(
-                new Vector3(
-                    0.0f,
-                    0.0f,
-                    correctiveTorque));
+            var physicalPitch =
+                state.Articulation
+                    .PitchAngleRadians;
 
-            state.ParentBody.AddWorldTorque(
-                new Vector3(
-                    0.0f,
-                    0.0f,
-                    -correctiveTorque));
+            var physicalPitchRate =
+                state.Articulation
+                    .PitchRateRadiansPerSecond;
 
             var minimumPitch =
                 DegreesToRadians(
@@ -3896,58 +3846,39 @@ internal sealed class RuntimeDriveVehicle :
 
             var pitchSoftMinimum =
                 minimumPitch *
-                0.82f;
+                0.86f;
 
             var pitchSoftMaximum =
                 maximumPitch *
-                0.82f;
+                0.86f;
 
-            var pitchError =
-                relativePitch <
+            var pitchLimitError =
+                physicalPitch <
                     pitchSoftMinimum
-                    ? relativePitch -
+                    ? physicalPitch -
                       pitchSoftMinimum
-                    : relativePitch >
+                    : physicalPitch >
                         pitchSoftMaximum
-                        ? relativePitch -
+                        ? physicalPitch -
                           pitchSoftMaximum
                         : 0.0f;
 
-            var desiredPitchAcceleration =
-                -relativePitchRate *
-                1.10f -
-                pitchError *
-                10.0f;
-
-            var correctivePitchTorque =
+            var pitchTorque =
                 Math.Clamp(
-                    -desiredPitchAcceleration *
-                    state.PitchInertiaKilogramSquareMeters,
+                    -physicalPitchRate *
+                        state.PitchInertiaKilogramSquareMeters *
+                        0.50f -
+                    pitchLimitError *
+                        state.PitchInertiaKilogramSquareMeters *
+                        7.0f,
                     -state.PitchInertiaKilogramSquareMeters *
-                        15.0f,
+                        8.0f,
                     state.PitchInertiaKilogramSquareMeters *
-                        15.0f);
+                        8.0f);
 
-            var worldPitchAxis =
-                Vector3.Transform(
-                    Vector3.UnitX,
-                    state.ParentBody.Orientation);
-
-            if (worldPitchAxis.LengthSquared() >
-                0.000001f)
-            {
-                worldPitchAxis =
-                    Vector3.Normalize(
-                        worldPitchAxis);
-
-                state.Body.AddWorldTorque(
-                    worldPitchAxis *
-                    correctivePitchTorque);
-
-                state.ParentBody.AddWorldTorque(
-                    worldPitchAxis *
-                    -correctivePitchTorque);
-            }
+            state.Articulation.AddTorques(
+                yawTorque,
+                pitchTorque);
         }
     }
 
