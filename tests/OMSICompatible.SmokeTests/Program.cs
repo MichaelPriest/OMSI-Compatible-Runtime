@@ -396,6 +396,82 @@ try
         trainConsist.Vehicles[1].Exists,
         "OMSI .zug consist parsing did not preserve .ovh order/orientation or resolve vehicle files.");
 
+    var signalRoutesPath =
+        Path.Combine(
+            mapDirectory,
+            "signalroutes.cfg");
+
+    File.WriteAllText(
+        signalRoutesPath,
+        Lines(
+            "-----------------------",
+            "Signal Routes File",
+            "-----------------------",
+            "0:",
+            "[signalroute]",
+            "",
+            "[signal]",
+            "0",
+            "0",
+            "[entry]",
+            "17",
+            "3",
+            "4711",
+            "1:",
+            "[signalroute]",
+            "",
+            "[future_extension]",
+            "preserve-this-value"),
+        Encoding.Unicode);
+
+    var signalRoutes =
+        OmsiSignalRoutesReader.ReadFile(
+            signalRoutesPath);
+
+    Require(
+        signalRoutes.Sections.Count ==
+            5 &&
+        signalRoutes.Sections[0].RouteIndex ==
+            0 &&
+        signalRoutes.Sections[0].Name.Equals(
+            "signalroute",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[1].RouteIndex ==
+            0 &&
+        signalRoutes.Sections[1].Name.Equals(
+            "signal",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[1].Lines
+            .Where(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line))
+            .SequenceEqual(
+                ["0", "0"]) &&
+        signalRoutes.Sections[2].RouteIndex ==
+            0 &&
+        signalRoutes.Sections[2].Name.Equals(
+            "entry",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[2].Lines
+            .Where(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line))
+            .SequenceEqual(
+                ["17", "3", "4711"]) &&
+        signalRoutes.Sections[3].RouteIndex ==
+            1 &&
+        signalRoutes.Sections[4].RouteIndex ==
+            1 &&
+        signalRoutes.Sections[4].Name.Equals(
+            "future_extension",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[4].Lines
+            .Single() ==
+            "preserve-this-value",
+        "OMSI signalroutes.cfg parser did not preserve route indices, known sections and unknown future data.");
+
     var railNetwork =
         new WorldTrafficPathNetwork(
             [
