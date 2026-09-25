@@ -4843,16 +4843,24 @@ public sealed class D3D11RenderWindow : Form
         double yDegrees,
         double zDegrees)
     {
+        // OMSI animation origins use intrinsic X/Y/Z orientation.
+        // System.Numerics applies row-vector matrices left-to-right, so the
+        // equivalent composition is Z * Y * X. The previous X * Y * Z order
+        // made a stock MAN steering-wheel origin such as X=-10, Y=90 lose
+        // the X tilt entirely, leaving the steering axis vertical.
+        //
+        // Single-axis animations are unchanged; only compound origins are
+        // corrected.
         var sourceRotation =
-            Matrix4x4.CreateRotationX(
+            Matrix4x4.CreateRotationZ(
                 DegreesToRadians(
-                    xDegrees)) *
+                    zDegrees)) *
             Matrix4x4.CreateRotationY(
                 DegreesToRadians(
                     yDegrees)) *
-            Matrix4x4.CreateRotationZ(
+            Matrix4x4.CreateRotationX(
                 DegreesToRadians(
-                    zDegrees));
+                    xDegrees));
 
         var basis =
             new Matrix4x4(
