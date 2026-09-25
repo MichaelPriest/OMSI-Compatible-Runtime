@@ -1410,7 +1410,9 @@ internal sealed class RuntimeApplicationContext :
             world.TrafficPaths,
             world.AiCatalog,
             maximumAgents:
-                4);
+                4,
+            signalRoutes:
+                world.SignalRoutes);
 
     private IReadOnlyList<RuntimeTrafficAgentInfo>
         StepTrafficSimulation(
