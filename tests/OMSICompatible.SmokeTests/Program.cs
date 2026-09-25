@@ -68,6 +68,26 @@ try
             odeBody.LinearVelocity.Z <
                 0.0f,
             "ODE rigid body did not respond to gravity with OMSI Z-up coordinates.");
+
+        var frontSuspension =
+            OdeSuspensionTuning.FromSpringDamper(
+                springNewtonsPerMeter:
+                    240_000.0f,
+                damperNewtonSecondsPerMeter:
+                    20_000.0f,
+                timeStepSeconds:
+                    1.0f / 120.0f);
+
+        Require(
+            Math.Abs(
+                frontSuspension.ErrorReductionParameter -
+                0.09090909f) <
+                0.0001f &&
+            Math.Abs(
+                frontSuspension.ConstraintForceMixing -
+                0.0000454545f) <
+                0.000001f,
+            "OMSI axle spring/damper values were not converted to ODE ERP/CFM correctly.");
     }
 
     var mapDirectory = Path.Combine(root, "maps", "SyntheticMap");
