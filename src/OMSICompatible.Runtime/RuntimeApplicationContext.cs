@@ -262,7 +262,8 @@ internal sealed class RuntimeApplicationContext :
             if (vehicle is not null)
             {
                 WriteVehicleLoadDiagnostics(
-                    vehicle);
+                    vehicle,
+                    _contentRoot);
             }
 
             WriteWorldLoadDiagnostics(
@@ -547,7 +548,8 @@ internal sealed class RuntimeApplicationContext :
     }
 
     private static void WriteVehicleLoadDiagnostics(
-        OmsiVehicleAsset vehicle)
+        OmsiVehicleAsset vehicle,
+        OmsiContentRoot contentRoot)
     {
         try
         {
@@ -654,7 +656,7 @@ internal sealed class RuntimeApplicationContext :
                 {
                     var catalog =
                         OmsiScriptCatalogLoader.Load(
-                            _contentRoot,
+                            contentRoot,
                             manifest);
 
                     var keyVariables =
