@@ -8263,14 +8263,13 @@ public sealed class D3D11RenderWindow : Form
             _scriptRuntime.GetLocal(
                 "M_Wheel");
 
-        var brakeForce =
+        var perWheelBrakeForce =
             0.0;
-        var hasPerWheelBrake =
-            false;
 
         // OMSI counts axles continuously across articulated sections.
-        // Supporting eight axles here is intentionally above the common
-        // 2-4 axle bus case and costs practically nothing.
+        // Axle_Brakeforce is Newton per wheel. Predefined variables may
+        // exist even on buses that still use legacy Brakeforce, so do not
+        // select the interface merely because the variable exists.
         for (var axle = 0;
              axle < 8;
              axle++)
@@ -8287,10 +8286,7 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
-                hasPerWheelBrake =
-                    true;
-
-                brakeForce +=
+                perWheelBrakeForce +=
                     Math.Max(
                         0.0,
                         _scriptRuntime.GetLocal(
@@ -8298,16 +8294,20 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
-        if (!hasPerWheelBrake &&
+        var legacyBrakeForce =
             _scriptRuntime.HasLocalVariable(
-                "Brakeforce"))
-        {
-            brakeForce =
-                Math.Max(
+                "Brakeforce")
+                ? Math.Max(
                     0.0,
                     _scriptRuntime.GetLocal(
-                        "Brakeforce"));
-        }
+                        "Brakeforce"))
+                : 0.0;
+
+        var brakeForce =
+            perWheelBrakeForce >
+                0.001
+                ? perWheelBrakeForce
+                : legacyBrakeForce;
 
         _vehicle.SetOmsiScriptDynamics(
             true,
