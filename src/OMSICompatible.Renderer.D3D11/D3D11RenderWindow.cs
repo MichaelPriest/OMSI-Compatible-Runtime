@@ -9531,6 +9531,8 @@ public sealed class D3D11RenderWindow : Form
 
             _articulatedOmsiAudio.Clear();
 
+            _vehicle.Dispose();
+
             _renderTimer.Stop();
             _renderTimer.Tick -=
                 RenderTimerOnTick;

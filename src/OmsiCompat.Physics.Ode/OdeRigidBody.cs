@@ -74,6 +74,58 @@ public sealed class OdeRigidBody :
             OdeNative.dBodyGetLinearVel(
                 RequireHandle()));
 
+    public Vector3 AngularVelocity =>
+        ReadVector3(
+            OdeNative.dBodyGetAngularVel(
+                RequireHandle()));
+
+    public Quaternion Orientation
+    {
+        get
+        {
+            var pointer =
+                OdeNative.dBodyGetQuaternion(
+                    RequireHandle());
+
+            if (pointer ==
+                nint.Zero)
+            {
+                return Quaternion.Identity;
+            }
+
+            var w =
+                Marshal.PtrToStructure<float>(
+                    pointer);
+            var x =
+                Marshal.PtrToStructure<float>(
+                    pointer +
+                    sizeof(float));
+            var y =
+                Marshal.PtrToStructure<float>(
+                    pointer +
+                    2 *
+                    sizeof(float));
+            var z =
+                Marshal.PtrToStructure<float>(
+                    pointer +
+                    3 *
+                    sizeof(float));
+
+            var value =
+                new Quaternion(
+                    x,
+                    y,
+                    z,
+                    w);
+
+            return value.LengthSquared() >
+                    0.000001f
+                ? Quaternion.Normalize(
+                    value)
+                : Quaternion.Identity;
+        }
+    }
+
     public void SetPosition(
         Vector3 position)
     {
@@ -94,6 +146,54 @@ public sealed class OdeRigidBody :
             velocity.Z);
     }
 
+    public void SetAngularVelocity(
+        Vector3 velocity)
+    {
+        OdeNative.dBodySetAngularVel(
+            RequireHandle(),
+            velocity.X,
+            velocity.Y,
+            velocity.Z);
+    }
+
+    public void SetOrientation(
+        Quaternion orientation)
+    {
+        var normalized =
+            orientation.LengthSquared() >
+                0.000001f
+                ? Quaternion.Normalize(
+                    orientation)
+                : Quaternion.Identity;
+
+        var native =
+            new OdeQuaternion
+            {
+                W =
+                    normalized.W,
+                X =
+                    normalized.X,
+                Y =
+                    normalized.Y,
+                Z =
+                    normalized.Z
+            };
+
+        OdeNative.dBodySetQuaternion(
+            RequireHandle(),
+            ref native);
+    }
+
+    public void SetGravityEnabled(
+        bool enabled)
+    {
+        OdeNative.dBodySetGravityMode(
+            RequireHandle(),
+            enabled
+                ? 1
+                : 0);
+    }
+
     public void AddWorldForce(
         Vector3 forceNewtons)
     {
@@ -112,6 +212,16 @@ public sealed class OdeRigidBody :
             forceNewtons.X,
             forceNewtons.Y,
             forceNewtons.Z);
+    }
+
+    public void AddWorldTorque(
+        Vector3 torqueNewtonMeters)
+    {
+        OdeNative.dBodyAddTorque(
+            RequireHandle(),
+            torqueNewtonMeters.X,
+            torqueNewtonMeters.Y,
+            torqueNewtonMeters.Z);
     }
 
     public void Dispose()

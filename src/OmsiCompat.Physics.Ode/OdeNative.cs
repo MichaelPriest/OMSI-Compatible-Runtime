@@ -2,6 +2,15 @@ using System.Runtime.InteropServices;
 
 namespace OmsiCompat.Physics.Ode;
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct OdeQuaternion
+{
+    public float W;
+    public float X;
+    public float Y;
+    public float Z;
+}
+
 internal static class OdeNative
 {
     internal const string LibraryName =
@@ -69,7 +78,7 @@ internal static class OdeNative
     [DllImport(
         LibraryName,
         CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int dWorldQuickStep(
+    internal static extern void dWorldQuickStep(
         nint world,
         float stepSize);
 
@@ -113,6 +122,29 @@ internal static class OdeNative
     [DllImport(
         LibraryName,
         CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodySetAngularVel(
+        nint body,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodySetQuaternion(
+        nint body,
+        ref OdeQuaternion quaternion);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodySetGravityMode(
+        nint body,
+        int mode);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
     internal static extern nint dBodyGetPosition(
         nint body);
 
@@ -120,6 +152,18 @@ internal static class OdeNative
         LibraryName,
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern nint dBodyGetLinearVel(
+        nint body);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nint dBodyGetAngularVel(
+        nint body);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nint dBodyGetQuaternion(
         nint body);
 
     [DllImport(
@@ -135,6 +179,15 @@ internal static class OdeNative
         LibraryName,
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern void dBodyAddRelForce(
+        nint body,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodyAddTorque(
         nint body,
         float x,
         float y,

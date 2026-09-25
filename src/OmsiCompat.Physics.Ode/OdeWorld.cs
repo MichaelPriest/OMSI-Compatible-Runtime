@@ -65,10 +65,11 @@ public sealed class OdeWorld :
                 1.0f / 1_000.0f,
                 1.0f / 20.0f);
 
-        return OdeNative.dWorldQuickStep(
-                   _world,
-                   step) !=
-               0;
+        OdeNative.dWorldQuickStep(
+            _world,
+            step);
+
+        return true;
     }
 
     public void Dispose()

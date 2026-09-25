@@ -69,6 +69,44 @@ try
                 0.0f,
             "ODE rigid body did not respond to gravity with OMSI Z-up coordinates.");
 
+        odeBody.SetGravityEnabled(
+            false);
+        odeBody.SetPosition(
+            Vector3.Zero);
+        odeBody.SetLinearVelocity(
+            Vector3.Zero);
+        odeBody.SetAngularVelocity(
+            Vector3.Zero);
+        odeBody.SetOrientation(
+            Quaternion.CreateFromAxisAngle(
+                Vector3.UnitZ,
+                0.25f));
+        odeBody.AddWorldForce(
+            new Vector3(
+                8_000.0f,
+                0.0f,
+                0.0f));
+        odeBody.AddWorldTorque(
+            new Vector3(
+                0.0f,
+                0.0f,
+                55_000.0f));
+
+        Require(
+            odeWorld.Step(
+                1.0f / 120.0f),
+            "ODE x64 force/torque QuickStep smoke test failed.");
+
+        Require(
+            odeBody.LinearVelocity.X >
+                0.0f &&
+            odeBody.AngularVelocity.Z >
+                0.0f &&
+            Math.Abs(
+                odeBody.Orientation.Z) >
+                0.01f,
+            "ODE rigid body force, torque or quaternion bridge is invalid.");
+
         var frontSuspension =
             OdeSuspensionTuning.FromSpringDamper(
                 springNewtonsPerMeter:
