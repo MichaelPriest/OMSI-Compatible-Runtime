@@ -411,7 +411,7 @@ try
             "[signalroute]",
             "",
             "[signal]",
-            "0",
+            "195662",
             "0",
             "[entry]",
             "3001",
@@ -453,7 +453,7 @@ try
                     !string.IsNullOrWhiteSpace(
                         line))
             .SequenceEqual(
-                ["0", "0"]) &&
+                ["195662", "0"]) &&
         signalRoutes.Sections[2].RouteIndex ==
             0 &&
         signalRoutes.Sections[2].Name.Equals(
@@ -581,6 +581,11 @@ try
         resolvedSignalRoutes[0].SegmentIndices
             .SequenceEqual(
                 [0, 1]) &&
+        resolvedSignalRoutes[0].Signal is
+            {
+                ObjectId: 195662,
+                ElementIndex: 0
+            } &&
         resolvedSignalRoutes[1].RouteIndex ==
             1 &&
         resolvedSignalRoutes[1].ParsedEntryCount ==
