@@ -57,6 +57,9 @@ internal sealed class RuntimeDriveVehicle
     private float _bodyRollRadians;
     private float _longitudinalAccelerationMetersPerSecondSquared;
     private float _wheelRotationRadians;
+    private bool _omsiScriptDynamicsEnabled;
+    private float _omsiWheelTorqueKiloNewtonMeters;
+    private float _omsiBrakeForceNewtons;
 
     public RuntimeDriveVehicle(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -371,6 +374,10 @@ internal sealed class RuntimeDriveVehicle
     public float LongitudinalAccelerationMetersPerSecondSquared =>
         _longitudinalAccelerationMetersPerSecondSquared;
 
+    public float LateralAccelerationMetersPerSecondSquared =>
+        SpeedMetersPerSecond *
+        _yawRateRadiansPerSecond;
+
     public float BodyPitchRadians =>
         _groundPitchRadians +
         _bodyPitchRadians;
@@ -512,6 +519,9 @@ internal sealed class RuntimeDriveVehicle
         _bodyRollRadians = 0.0f;
         _longitudinalAccelerationMetersPerSecondSquared = 0.0f;
         _wheelRotationRadians = 0.0f;
+        _omsiScriptDynamicsEnabled = false;
+        _omsiWheelTorqueKiloNewtonMeters = 0.0f;
+        _omsiBrakeForceNewtons = 0.0f;
 
         ElectricalSystemEnabled = false;
         EngineRunning = false;
@@ -590,6 +600,36 @@ internal sealed class RuntimeDriveVehicle
             engaged;
     }
 
+    public void SetOmsiScriptDynamics(
+        bool enabled,
+        double wheelTorqueKiloNewtonMeters,
+        double brakeForceNewtons)
+    {
+        _omsiScriptDynamicsEnabled =
+            enabled;
+
+        _omsiWheelTorqueKiloNewtonMeters =
+            enabled &&
+            double.IsFinite(
+                wheelTorqueKiloNewtonMeters)
+                ? Math.Clamp(
+                    (float)wheelTorqueKiloNewtonMeters,
+                    -250.0f,
+                    250.0f)
+                : 0.0f;
+
+        _omsiBrakeForceNewtons =
+            enabled &&
+            double.IsFinite(
+                brakeForceNewtons)
+                ? Math.Clamp(
+                    Math.Abs(
+                        (float)brakeForceNewtons),
+                    0.0f,
+                    1_000_000.0f)
+                : 0.0f;
+    }
+
     public void UpdateOmsiControls(
         bool acceleratorHeld,
         bool brakeIncreaseHeld,
@@ -630,17 +670,9 @@ internal sealed class RuntimeDriveVehicle
                 3.0f * deltaSeconds);
         }
 
-        var canApplyPower =
-            ElectricalSystemEnabled &&
-            EngineRunning &&
-            Gear != RuntimeDriveGear.Neutral &&
-            !ParkingBrakeEngaged &&
-            !StopBrakeEngaged;
-
         AcceleratorLevel = MoveTowards(
             AcceleratorLevel,
-            acceleratorHeld &&
-            canApplyPower
+            acceleratorHeld
                 ? 1.0f
                 : 0.0f,
             2.8f * deltaSeconds);
@@ -711,18 +743,8 @@ internal sealed class RuntimeDriveVehicle
         SteeringInput =
             steering;
 
-        var canApplyPower =
-            ElectricalSystemEnabled &&
-            EngineRunning &&
-            Gear !=
-                RuntimeDriveGear.Neutral &&
-            !ParkingBrakeEngaged &&
-            !StopBrakeEngaged;
-
         AcceleratorLevel =
-            canApplyPower
-                ? accelerator
-                : 0.0f;
+            accelerator;
 
         BrakeLevel =
             brake;
@@ -776,18 +798,9 @@ internal sealed class RuntimeDriveVehicle
             steeringTarget,
             2.8f * deltaSeconds);
 
-        var canApplyPower =
-            ElectricalSystemEnabled &&
-            EngineRunning &&
-            Gear != RuntimeDriveGear.Neutral &&
-            !ParkingBrakeEngaged &&
-            !StopBrakeEngaged;
-
         AcceleratorLevel = MoveTowards(
             AcceleratorLevel,
-            canApplyPower
-                ? accelerator
-                : 0.0f,
+            accelerator,
             4.0f * deltaSeconds);
 
         if (accelerator > 0.02f)
@@ -834,41 +847,67 @@ internal sealed class RuntimeDriveVehicle
             Math.Abs(
                 SpeedMetersPerSecond);
 
-        var maximumForwardForceNewtons =
-            Math.Clamp(
-                _massKilograms *
-                    2.55f,
-                18_000.0f,
-                48_000.0f);
+        float driveForceNewtons;
 
-        var nominalEnginePowerWatts =
-            Math.Clamp(
-                180_000.0f *
-                    (_massKilograms /
-                     DefaultMassKilograms),
-                120_000.0f,
-                300_000.0f);
+        if (_omsiScriptDynamicsEnabled)
+        {
+            // OMSI's predefined M_Wheel variable is the sum of wheel torque
+            // applied to all driven axles, in kNm. The executable converts
+            // that torque through the driven wheel radius; engine, gearbox,
+            // converter, retarder and reverse behaviour are script-owned.
+            driveForceNewtons =
+                _omsiWheelTorqueKiloNewtonMeters *
+                1_000.0f /
+                Math.Max(
+                    _wheelRadiusMeters,
+                    0.05f);
+        }
+        else
+        {
+            // Compatibility fallback only for vehicles whose scripts do not
+            // expose OMSI's M_Wheel/Brakeforce physics interface.
+            var maximumForwardForceNewtons =
+                Math.Clamp(
+                    _massKilograms *
+                        2.55f,
+                    18_000.0f,
+                    48_000.0f);
 
-        var powerLimitedForceNewtons =
-            nominalEnginePowerWatts /
-            Math.Max(
-                absoluteSpeed,
-                3.0f);
+            var nominalEnginePowerWatts =
+                Math.Clamp(
+                    180_000.0f *
+                        (_massKilograms /
+                         DefaultMassKilograms),
+                    120_000.0f,
+                    300_000.0f);
 
-        var availableForwardForceNewtons =
-            Math.Min(
-                maximumForwardForceNewtons,
-                powerLimitedForceNewtons);
+            var powerLimitedForceNewtons =
+                nominalEnginePowerWatts /
+                Math.Max(
+                    absoluteSpeed,
+                    3.0f);
 
-        var driveForceNewtons =
-            requestedDirection == 0
-                ? 0.0f
-                : AcceleratorLevel *
-                  availableForwardForceNewtons *
-                  (requestedDirection < 0
-                      ? 0.48f
-                      : 1.0f) *
-                  requestedDirection;
+            var availableForwardForceNewtons =
+                Math.Min(
+                    maximumForwardForceNewtons,
+                    powerLimitedForceNewtons);
+
+            var canApplyFallbackPower =
+                ElectricalSystemEnabled &&
+                EngineRunning &&
+                requestedDirection != 0 &&
+                !ParkingBrakeEngaged &&
+                !StopBrakeEngaged;
+
+            driveForceNewtons =
+                canApplyFallbackPower
+                    ? AcceleratorLevel *
+                      availableForwardForceNewtons *
+                      (requestedDirection < 0
+                          ? -0.48f
+                          : 1.0f)
+                    : 0.0f;
+        }
 
         var driveAcceleration =
             driveForceNewtons /
@@ -893,22 +932,41 @@ internal sealed class RuntimeDriveVehicle
             SpeedMetersPerSecond *
             SpeedMetersPerSecond;
 
-        // Service braking on a city bus is deliberately below the tyre
-        // friction ceiling; stop/parking brakes add their own demand rather
-        // than being folded into an exaggerated generic 7.2 m/s² scale.
-        var serviceBrakeAcceleration =
-            BrakeLevel *
-            5.4f;
+        float serviceBrakeAcceleration;
+        float stopBrakeAcceleration;
+        float parkingBrakeAcceleration;
 
-        var stopBrakeAcceleration =
-            StopBrakeEngaged
-                ? 3.2f
-                : 0.0f;
+        if (_omsiScriptDynamicsEnabled)
+        {
+            serviceBrakeAcceleration =
+                _omsiBrakeForceNewtons /
+                _massKilograms;
 
-        var parkingBrakeAcceleration =
-            ParkingBrakeEngaged
-                ? 7.0f
-                : 0.0f;
+            // Parking/station brake forces should normally already be part of
+            // Brakeforce/Axle_Brakeforce. Do not double-apply them here.
+            stopBrakeAcceleration =
+                0.0f;
+            parkingBrakeAcceleration =
+                0.0f;
+        }
+        else
+        {
+            // Compatibility fallback for vehicles without script-driven
+            // brake force outputs.
+            serviceBrakeAcceleration =
+                BrakeLevel *
+                5.4f;
+
+            stopBrakeAcceleration =
+                StopBrakeEngaged
+                    ? 3.2f
+                    : 0.0f;
+
+            parkingBrakeAcceleration =
+                ParkingBrakeEngaged
+                    ? 7.0f
+                    : 0.0f;
+        }
 
         var passiveDeceleration =
             rollingAcceleration +
@@ -929,10 +987,14 @@ internal sealed class RuntimeDriveVehicle
                     passiveDeceleration *
                     deltaSeconds);
         }
-        else if (BrakeLevel >
-                     0.05f ||
-                 StopBrakeEngaged ||
-                 ParkingBrakeEngaged)
+        else if ((_omsiScriptDynamicsEnabled &&
+                  _omsiBrakeForceNewtons >
+                      1.0f) ||
+                 (!_omsiScriptDynamicsEnabled &&
+                  (BrakeLevel >
+                       0.05f ||
+                   StopBrakeEngaged ||
+                   ParkingBrakeEngaged)))
         {
             SpeedMetersPerSecond =
                 0.0f;
