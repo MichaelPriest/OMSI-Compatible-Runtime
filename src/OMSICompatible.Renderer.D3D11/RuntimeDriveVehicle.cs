@@ -618,6 +618,78 @@ internal sealed class RuntimeDriveVehicle :
             front: false,
             left: false);
 
+    public bool TryGetOmsiAxleSuspension(
+        int axleIndex,
+        out float leftMeters,
+        out float rightMeters)
+    {
+        if (axleIndex < 0)
+        {
+            leftMeters =
+                0.0f;
+            rightMeters =
+                0.0f;
+            return false;
+        }
+
+        var leadingAxleCount =
+            Math.Max(
+                _axles.Length,
+                2);
+
+        if (axleIndex <
+            leadingAxleCount)
+        {
+            if (axleIndex == 0)
+            {
+                leftMeters =
+                    FrontLeftSuspensionMeters;
+                rightMeters =
+                    FrontRightSuspensionMeters;
+            }
+            else
+            {
+                leftMeters =
+                    RearLeftSuspensionMeters;
+                rightMeters =
+                    RearRightSuspensionMeters;
+            }
+
+            return true;
+        }
+
+        foreach (var state in
+                 _odeArticulatedSections.Values)
+        {
+            var localAxleIndex =
+                axleIndex -
+                state.OmsiAxleStartIndex;
+
+            if (localAxleIndex < 0 ||
+                localAxleIndex >=
+                    state.Axles.Length)
+            {
+                continue;
+            }
+
+            leftMeters =
+                state.SuspensionLeftMeters[
+                    localAxleIndex];
+
+            rightMeters =
+                state.SuspensionRightMeters[
+                    localAxleIndex];
+
+            return true;
+        }
+
+        leftMeters =
+            0.0f;
+        rightMeters =
+            0.0f;
+        return false;
+    }
+
     public bool TryGetOdeArticulatedSectionState(
         int sectionIndex,
         out float absoluteHeadingRadians,
@@ -704,7 +776,7 @@ internal sealed class RuntimeDriveVehicle :
                 state.Body.Position;
 
             lines.Add(
-                $"section#{section.Index}|ode=True|parent={section.ParentIndex}|type={section.CouplingType}|driven={section.Index == _primaryDrivenSectionIndex}|massKg={F(state.MassKilograms)}|axles={state.Axles.Length}|axleStart={state.OmsiAxleStartIndex}|alphaDeg={F(state.RelativeYawRadians * 180.0f / MathF.PI)}|alphaRateDegPerSec={F(state.RelativeYawRateRadiansPerSecond * 180.0f / MathF.PI)}|betaDeg={F(state.RelativePitchRadians * 180.0f / MathF.PI)}|betaRateDegPerSec={F(state.RelativePitchRateRadiansPerSecond * 180.0f / MathF.PI)}|maxYawDeg={F((float)section.MaximumYawDegrees)}|pitchDeg={F((float)section.MinimumPitchDegrees)}..{F((float)section.MaximumPitchDegrees)}|position={F(bodyPosition.X)},{F(bodyPosition.Z)},{F(bodyPosition.Y)}");
+                $"section#{section.Index}|ode=True|parent={section.ParentIndex}|type={section.CouplingType}|driven={section.Index == _primaryDrivenSectionIndex}|massKg={F(state.MassKilograms)}|axles={state.Axles.Length}|axleStart={state.OmsiAxleStartIndex}|alphaDeg={F(state.RelativeYawRadians * 180.0f / MathF.PI)}|alphaRateDegPerSec={F(state.RelativeYawRateRadiansPerSecond * 180.0f / MathF.PI)}|betaDeg={F(state.RelativePitchRadians * 180.0f / MathF.PI)}|betaRateDegPerSec={F(state.RelativePitchRateRadiansPerSecond * 180.0f / MathF.PI)}|maxYawDeg={F((float)section.MaximumYawDegrees)}|pitchDeg={F((float)section.MinimumPitchDegrees)}..{F((float)section.MaximumPitchDegrees)}|suspensionL={string.Join(",", state.SuspensionLeftMeters.Select(F))}|suspensionR={string.Join(",", state.SuspensionRightMeters.Select(F))}|position={F(bodyPosition.X)},{F(bodyPosition.Z)},{F(bodyPosition.Y)}");
         }
 
         return lines;
@@ -4091,6 +4163,25 @@ internal sealed class RuntimeDriveVehicle :
                         0.0f,
                         maximumForce);
 
+                var suspensionMeters =
+                    -Math.Clamp(
+                        compression,
+                        0.0f,
+                        maximumCompression);
+
+                if (side == 0)
+                {
+                    state.SuspensionLeftMeters[
+                        axleIndex] =
+                        suspensionMeters;
+                }
+                else
+                {
+                    state.SuspensionRightMeters[
+                        axleIndex] =
+                        suspensionMeters;
+                }
+
                 body.AddWorldForceAtLocalPosition(
                     new Vector3(
                         0.0f,
@@ -4530,6 +4621,35 @@ internal sealed class RuntimeDriveVehicle :
                 axles;
             StaticCompressionMeters =
                 staticCompressionMeters;
+
+            SuspensionLeftMeters =
+                new float[
+                    axles.Length];
+
+            SuspensionRightMeters =
+                new float[
+                    axles.Length];
+
+            for (var axle = 0;
+                 axle < axles.Length;
+                 axle++)
+            {
+                var initialSuspension =
+                    axle <
+                        staticCompressionMeters.Length
+                        ? -staticCompressionMeters[
+                            axle]
+                        : 0.0f;
+
+                SuspensionLeftMeters[
+                    axle] =
+                    initialSuspension;
+
+                SuspensionRightMeters[
+                    axle] =
+                    initialSuspension;
+            }
+
             FallbackSpringNewtonsPerMeter =
                 fallbackSpringNewtonsPerMeter;
             FallbackDamperNewtonSecondsPerMeter =
@@ -4559,6 +4679,10 @@ internal sealed class RuntimeDriveVehicle :
         public RuntimeVehicleAxleInfo[] Axles { get; }
 
         public float[] StaticCompressionMeters { get; }
+
+        public float[] SuspensionLeftMeters { get; }
+
+        public float[] SuspensionRightMeters { get; }
 
         public float FallbackSpringNewtonsPerMeter { get; }
 
