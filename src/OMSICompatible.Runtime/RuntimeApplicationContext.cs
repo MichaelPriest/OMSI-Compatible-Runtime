@@ -1251,35 +1251,8 @@ internal sealed class RuntimeApplicationContext :
                                 camera.RuntimeTextureName,
                                 camera.RuntimeTextureKey))
                     .ToArray(),
-                new RuntimeVehiclePhysicsInfo(
-                    vehicle.Bus.Physics.WheelBaseMeters,
-                    vehicle.Bus.Physics.MaximumSteeringAngleDegrees,
-                    vehicle.Bus.Physics.MassTonnes,
-                    vehicle.Bus.Physics.CenterOfGravityHeightMeters,
-                    vehicle.Bus.Physics.RollingResistanceNewtons,
-                    vehicle.Bus.Physics.TrackWidthMeters,
-                    vehicle.Bus.Physics.AverageWheelDiameterMeters,
-                    AverageAxleValue(
-                        vehicle.Bus.Physics.Axles,
-                        static axle =>
-                            axle.SpringRateKilonewtonsPerMeter),
-                    AverageAxleValue(
-                        vehicle.Bus.Physics.Axles,
-                        static axle =>
-                            axle.DamperRateKilonewtonSecondsPerMeter),
-                    vehicle.Bus.Physics.MomentOfInertiaZ,
-                    vehicle.Bus.Physics.RotationPointLongitudinalMeters,
-                    vehicle.Bus.Physics.InverseMinimumTurnRadius,
-                    vehicle.Bus.Physics.Axles.Count > 0
-                        ? vehicle.Bus.Physics.Axles.Max(
-                            static axle =>
-                                axle.LongitudinalPositionMeters)
-                        : null,
-                    vehicle.Bus.Physics.Axles.Count > 0
-                        ? vehicle.Bus.Physics.Axles.Min(
-                            static axle =>
-                                axle.LongitudinalPositionMeters)
-                        : null),
+                ConvertVehiclePhysics(
+                    vehicle.Bus.Physics),
                 vehicle.DriverPosition is null
                     ? null
                     : new RuntimeDriverPositionInfo(
@@ -1319,6 +1292,9 @@ internal sealed class RuntimeApplicationContext :
                                 section.OriginY,
                                 section.FollowerLengthMeters,
                                 section.MaximumYawDegrees,
+                                section.MinimumPitchDegrees,
+                                section.MaximumPitchDegrees,
+                                section.CouplingType,
                                 section.Reverse,
                                 section.SoundConfigPath,
                                 section.OpenForSound,
@@ -1327,7 +1303,11 @@ internal sealed class RuntimeApplicationContext :
                                 section.RotationPointLongitudinalMeters,
                                 section.WheelBaseMeters,
                                 section.RollingResistanceNewtons,
-                                section.AverageWheelDiameterMeters))
+                                section.AverageWheelDiameterMeters,
+                                section.Physics is null
+                                    ? null
+                                    : ConvertVehiclePhysics(
+                                        section.Physics)))
                     .ToArray());
 
         var runtimeSpawn =
@@ -1387,6 +1367,98 @@ internal sealed class RuntimeApplicationContext :
             runtimeAiCatalog,
             runtimeVehicle,
             runtimeSpawn);
+    }
+
+    private static RuntimeVehiclePhysicsInfo ConvertVehiclePhysics(
+        OmsiVehiclePhysics physics) =>
+        new RuntimeVehiclePhysicsInfo(
+            physics.WheelBaseMeters,
+            physics.MaximumSteeringAngleDegrees,
+            physics.MassTonnes,
+            physics.CenterOfGravityHeightMeters,
+            physics.RollingResistanceNewtons,
+            physics.TrackWidthMeters,
+            physics.AverageWheelDiameterMeters,
+            AverageAxleValue(
+                physics.Axles,
+                static axle =>
+                    axle.SpringRateKilonewtonsPerMeter),
+            AverageAxleValue(
+                physics.Axles,
+                static axle =>
+                    axle.DamperRateKilonewtonSecondsPerMeter),
+            physics.MomentOfInertiaZ,
+            physics.RotationPointLongitudinalMeters,
+            physics.InverseMinimumTurnRadius,
+            physics.Axles.Count > 0
+                ? physics.Axles.Max(
+                    static axle =>
+                        axle.LongitudinalPositionMeters)
+                : null,
+            physics.Axles.Count > 0
+                ? physics.Axles.Min(
+                    static axle =>
+                        axle.LongitudinalPositionMeters)
+                : null,
+            AxleValueByPosition(
+                physics.Axles,
+                front: true,
+                static axle =>
+                    axle.SpringRateKilonewtonsPerMeter),
+            AxleValueByPosition(
+                physics.Axles,
+                front: false,
+                static axle =>
+                    axle.SpringRateKilonewtonsPerMeter),
+            AxleValueByPosition(
+                physics.Axles,
+                front: true,
+                static axle =>
+                    axle.DamperRateKilonewtonSecondsPerMeter),
+            AxleValueByPosition(
+                physics.Axles,
+                front: false,
+                static axle =>
+                    axle.DamperRateKilonewtonSecondsPerMeter),
+            physics.MomentOfInertiaX,
+            physics.MomentOfInertiaY,
+            physics.MomentOfInertiaZ,
+            physics.Axles
+                .Select(
+                    static axle =>
+                        new RuntimeVehicleAxleInfo(
+                            axle.LongitudinalPositionMeters,
+                            axle.WheelDiameterMeters,
+                            axle.DriveFactor,
+                            axle.MaximumWidthMeters,
+                            axle.MinimumWidthMeters,
+                            axle.SpringRateKilonewtonsPerMeter,
+                            axle.MaximumForceKilonewtons,
+                            axle.DamperRateKilonewtonSecondsPerMeter))
+                .ToArray());
+
+    private static double? AxleValueByPosition(
+        IReadOnlyList<OmsiVehicleAxle> axles,
+        bool front,
+        Func<OmsiVehicleAxle, double?> selector)
+    {
+        var axle =
+            axles
+                .Where(
+                    static item =>
+                        double.IsFinite(
+                            item.LongitudinalPositionMeters))
+                .OrderBy(
+                    item =>
+                        front
+                            ? -item.LongitudinalPositionMeters
+                            : item.LongitudinalPositionMeters)
+                .FirstOrDefault();
+
+        return axle is null
+            ? null
+            : selector(
+                axle);
     }
 
     private static double? AverageAxleValue(
