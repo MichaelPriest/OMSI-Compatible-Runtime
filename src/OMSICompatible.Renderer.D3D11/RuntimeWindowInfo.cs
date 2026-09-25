@@ -331,6 +331,16 @@ public sealed record RuntimeReflectionCameraInfo(
     string RuntimeTextureName,
     string RuntimeTextureKey);
 
+public sealed record RuntimeVehicleAxleInfo(
+    double LongitudinalPositionMeters,
+    double? WheelDiameterMeters,
+    double? DriveFactor,
+    double? MaximumWidthMeters,
+    double? MinimumWidthMeters,
+    double? SpringRateKilonewtonsPerMeter,
+    double? MaximumForceKilonewtons,
+    double? DamperRateKilonewtonSecondsPerMeter);
+
 public sealed record RuntimeVehiclePhysicsInfo(
     double? WheelBaseMeters,
     double? MaximumSteeringAngleDegrees,
@@ -349,7 +359,11 @@ public sealed record RuntimeVehiclePhysicsInfo(
     double? FrontSuspensionSpringKilonewtonsPerMeter = null,
     double? RearSuspensionSpringKilonewtonsPerMeter = null,
     double? FrontSuspensionDamperKilonewtonSecondsPerMeter = null,
-    double? RearSuspensionDamperKilonewtonSecondsPerMeter = null);
+    double? RearSuspensionDamperKilonewtonSecondsPerMeter = null,
+    double? MomentOfInertiaX = null,
+    double? MomentOfInertiaY = null,
+    double? MomentOfInertiaZ = null,
+    IReadOnlyList<RuntimeVehicleAxleInfo>? Axles = null);
 
 public sealed record RuntimeDriverPositionInfo(
     double X,
