@@ -26,12 +26,19 @@ public sealed class WorldRailTrafficSimulation
 
     private readonly Dictionary<int, WorldTrafficPathSegment>
         _segmentsByIndex;
+    private readonly IReadOnlyDictionary<int, WorldRailSignalRoute>
+        _signalRoutesByIndex;
+    private readonly IReadOnlyDictionary<int, WorldRailSignalRoute[]>
+        _signalRoutesByFirstSegment;
+    private readonly WorldRailSignalRouteInterlocking?
+        _interlocking;
     private readonly List<Agent> _agents;
 
     public WorldRailTrafficSimulation(
         WorldTrafficPathNetwork network,
         OmsiMapAiCatalog aiCatalog,
-        int maximumAgents = 4)
+        int maximumAgents = 4,
+        OmsiSignalRoutesFile? signalRoutes = null)
     {
         ArgumentNullException.ThrowIfNull(
             network);
@@ -47,6 +54,46 @@ public sealed class WorldRailTrafficSimulation
                 .ToDictionary(
                     static segment =>
                         segment.Index);
+
+        var resolvedSignalRoutes =
+            WorldRailSignalRouteResolver.Resolve(
+                    network,
+                    signalRoutes)
+                .Where(
+                    static route =>
+                        route.SegmentIndices.Count >
+                            0 &&
+                        route.UnresolvedEntryCount ==
+                            0)
+                .OrderBy(
+                    static route =>
+                        route.RouteIndex)
+                .ToArray();
+
+        _signalRoutesByIndex =
+            resolvedSignalRoutes
+                .ToDictionary(
+                    static route =>
+                        route.RouteIndex);
+
+        _signalRoutesByFirstSegment =
+            resolvedSignalRoutes
+                .GroupBy(
+                    static route =>
+                        route.SegmentIndices[0])
+                .ToDictionary(
+                    static group =>
+                        group.Key,
+                    static group =>
+                        group.ToArray());
+
+        _interlocking =
+            resolvedSignalRoutes.Length >
+                    0
+                ? new WorldRailSignalRouteInterlocking(
+                    network,
+                    resolvedSignalRoutes)
+                : null;
 
         if (_segmentsByIndex.Count ==
                 0 ||
@@ -503,6 +550,63 @@ public sealed class WorldRailTrafficSimulation
                 ? segment.ForwardConnections
                 : segment.ReverseConnections;
 
+        var activeSignalRoute =
+            ResolveActiveSignalRoute(
+                agent);
+
+        if (activeSignalRoute is not null)
+        {
+            var routePosition =
+                IndexOfSegment(
+                    activeSignalRoute,
+                    segment.Index);
+
+            if (routePosition >=
+                    0 &&
+                routePosition <
+                    activeSignalRoute.SegmentIndices.Count -
+                    1)
+            {
+                var expectedSegmentIndex =
+                    activeSignalRoute.SegmentIndices[
+                        routePosition +
+                        1];
+
+                if (!connections.Contains(
+                        expectedSegmentIndex) ||
+                    !_segmentsByIndex.TryGetValue(
+                        expectedSegmentIndex,
+                        out var expectedSegment) ||
+                    !IsTrafficGroupAllowed(
+                        expectedSegment,
+                        agent.GroupIndex,
+                        agent.DefaultDensityClassIndex) ||
+                    !(agent.TravelForward
+                        ? expectedSegment.AllowsForward
+                        : expectedSegment.AllowsReverse))
+                {
+                    agent.SpeedMetersPerSecond =
+                        0.0;
+                    return false;
+                }
+
+                MoveAgentToSegment(
+                    agent,
+                    expectedSegment);
+
+                return true;
+            }
+
+            if (routePosition <
+                0)
+            {
+                ReleaseSignalRoute(
+                    agent);
+                activeSignalRoute =
+                    null;
+            }
+        }
+
         var candidates =
             connections
                 .Select(
@@ -592,16 +696,209 @@ public sealed class WorldRailTrafficSimulation
             }
         }
 
+        WorldRailSignalRoute? nextSignalRoute =
+            null;
+
+        if (_signalRoutesByFirstSegment.TryGetValue(
+                next.Index,
+                out var candidateSignalRoutes))
+        {
+            nextSignalRoute =
+                candidateSignalRoutes
+                    .Where(
+                        route =>
+                            IsSignalRouteTraversable(
+                                agent,
+                                route))
+                    .OrderBy(
+                        static route =>
+                            route.RouteIndex)
+                    .FirstOrDefault();
+
+            if (nextSignalRoute is null ||
+                _interlocking is null ||
+                !_interlocking.TryReserve(
+                    nextSignalRoute.RouteIndex,
+                    agent.AgentIndex,
+                    BuildOccupiedSegments(
+                        agent.AgentIndex)))
+            {
+                agent.SpeedMetersPerSecond =
+                    0.0;
+                return false;
+            }
+        }
+
+        var previousSignalRouteIndex =
+            agent.ReservedSignalRouteIndex;
+
+        MoveAgentToSegment(
+            agent,
+            next);
+
+        if (activeSignalRoute is not null &&
+            IndexOfSegment(
+                activeSignalRoute,
+                next.Index) <
+                0)
+        {
+            _interlocking?.Release(
+                activeSignalRoute.RouteIndex,
+                agent.AgentIndex);
+
+            if (previousSignalRouteIndex ==
+                activeSignalRoute.RouteIndex)
+            {
+                agent.ReservedSignalRouteIndex =
+                    null;
+            }
+        }
+
+        if (nextSignalRoute is not null)
+        {
+            agent.ReservedSignalRouteIndex =
+                nextSignalRoute.RouteIndex;
+        }
+
+        return true;
+    }
+
+    private WorldRailSignalRoute? ResolveActiveSignalRoute(
+        Agent agent)
+    {
+        if (!agent.ReservedSignalRouteIndex.HasValue)
+        {
+            return null;
+        }
+
+        return _signalRoutesByIndex.TryGetValue(
+                   agent.ReservedSignalRouteIndex.Value,
+                   out var route)
+            ? route
+            : null;
+    }
+
+    private static int IndexOfSegment(
+        WorldRailSignalRoute route,
+        int segmentIndex)
+    {
+        for (var index = 0;
+             index <
+                 route.SegmentIndices.Count;
+             index++)
+        {
+            if (route.SegmentIndices[
+                    index] ==
+                segmentIndex)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private bool IsSignalRouteTraversable(
+        Agent agent,
+        WorldRailSignalRoute route)
+    {
+        for (var index = 0;
+             index <
+                 route.SegmentIndices.Count;
+             index++)
+        {
+            if (!_segmentsByIndex.TryGetValue(
+                    route.SegmentIndices[
+                        index],
+                    out var segment) ||
+                !IsTrafficGroupAllowed(
+                    segment,
+                    agent.GroupIndex,
+                    agent.DefaultDensityClassIndex) ||
+                !(agent.TravelForward
+                    ? segment.AllowsForward
+                    : segment.AllowsReverse))
+            {
+                return false;
+            }
+
+            if (index ==
+                route.SegmentIndices.Count -
+                    1)
+            {
+                continue;
+            }
+
+            var nextSegmentIndex =
+                route.SegmentIndices[
+                    index +
+                    1];
+
+            var connections =
+                agent.TravelForward
+                    ? segment.ForwardConnections
+                    : segment.ReverseConnections;
+
+            if (!connections.Contains(
+                    nextSegmentIndex))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private IReadOnlyDictionary<int, int>
+        BuildOccupiedSegments(
+            int excludedAgentIndex) =>
+        _agents
+            .Where(
+                agent =>
+                    agent.AgentIndex !=
+                    excludedAgentIndex)
+            .GroupBy(
+                static agent =>
+                    agent.SegmentIndex)
+            .ToDictionary(
+                static group =>
+                    group.Key,
+                static group =>
+                    group
+                        .OrderBy(
+                            static agent =>
+                                agent.AgentIndex)
+                        .First()
+                        .AgentIndex);
+
+    private void ReleaseSignalRoute(
+        Agent agent)
+    {
+        if (!agent.ReservedSignalRouteIndex.HasValue)
+        {
+            return;
+        }
+
+        _interlocking?.Release(
+            agent.ReservedSignalRouteIndex.Value,
+            agent.AgentIndex);
+
+        agent.ReservedSignalRouteIndex =
+            null;
+    }
+
+    private static void MoveAgentToSegment(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
         agent.SegmentIndex =
-            next.Index;
+            segment.Index;
 
         agent.DistanceMeters =
             agent.TravelForward
                 ? 0.0
                 : SegmentLength(
-                    next);
-
-        return true;
+                    segment);
     }
 
     private WorldRailTrafficAgentState CreateState(
@@ -1010,6 +1307,12 @@ public sealed class WorldRailTrafficSimulation
 
         public string GroupName { get; } =
             groupName;
+
+        public int? ReservedSignalRouteIndex
+        {
+            get;
+            set;
+        }
 
         public double TraveledDistanceMeters
         {
