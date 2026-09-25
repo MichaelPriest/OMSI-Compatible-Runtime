@@ -115,7 +115,8 @@ public sealed record RuntimeObjectInfo(
     double HeadingDegrees,
     double PitchDegrees,
     double BankDegrees,
-    IReadOnlyList<string> ExtraValues);
+    IReadOnlyList<string> ExtraValues,
+    long ObjectId = -1);
 
 public sealed record RuntimeObjectMeshTransformInfo(
     double PositionX,
