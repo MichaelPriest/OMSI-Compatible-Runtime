@@ -5527,36 +5527,37 @@ public sealed class D3D11RenderWindow : Form
                 _vehicle.HeadingRadians);
         }
 
-        foreach (var pair in
-                 _vehicleRemoved
-                     ? Array.Empty<KeyValuePair<int, RuntimeOmsiAudioHost>>()
-                     : _articulatedOmsiAudio)
+        if (!_vehicleRemoved)
         {
-            var section =
-                _windowInfo.Vehicle?.Sections?
-                    .FirstOrDefault(
-                        item =>
-                            item.Index ==
-                            pair.Key);
-
-            if (section is null)
+            foreach (var pair in
+                     _articulatedOmsiAudio)
             {
-                continue;
+                var section =
+                    _windowInfo.Vehicle?.Sections?
+                        .FirstOrDefault(
+                            item =>
+                                item.Index ==
+                                pair.Key);
+
+                if (section is null)
+                {
+                    continue;
+                }
+
+                ResolveArticulatedSectionAudioPose(
+                    section,
+                    out var sectionPosition,
+                    out var sectionHeading);
+
+                pair.Value.Update(
+                    _scriptRuntime,
+                    IsInteriorSoundView() &&
+                        section.OpenForSound,
+                    _vehicle.EngineRunning,
+                    listenerPosition,
+                    sectionPosition,
+                    sectionHeading);
             }
-
-            ResolveArticulatedSectionAudioPose(
-                section,
-                out var sectionPosition,
-                out var sectionHeading);
-
-            pair.Value.Update(
-                _scriptRuntime,
-                IsInteriorSoundView() &&
-                    section.OpenForSound,
-                _vehicle.EngineRunning,
-                listenerPosition,
-                sectionPosition,
-                sectionHeading);
         }
 
         UpdateVehicleAnimationStates(
@@ -8060,7 +8061,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.MouseDriveToggle:
-                if (_windowInfo.Vehicle is not null)
+                if (!_vehicleRemoved &&
+                    _windowInfo.Vehicle is not null)
                 {
                     ToggleMouseDriveMode();
                 }
