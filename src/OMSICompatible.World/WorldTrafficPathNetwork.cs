@@ -1104,12 +1104,19 @@ public static class WorldTrafficPathNetworkBuilder
             return 128;
         }
 
-        return Math.Clamp(
+        var encoded =
             (int)Math.Round(
                 value.Value,
-                MidpointRounding.AwayFromZero),
-            byte.MinValue,
-            byte.MaxValue);
+                MidpointRounding.AwayFromZero);
+
+        // OMSI exposes only three road-priority levels:
+        // lower (64), normal/default (128) and higher (192).
+        // Preserve only those encodings instead of inventing
+        // intermediate priority semantics.
+        return encoded is
+            64 or 128 or 192
+                ? encoded
+                : 128;
     }
 
     private static WorldTrafficSignalProgram?
