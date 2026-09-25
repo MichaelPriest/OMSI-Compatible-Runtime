@@ -208,6 +208,21 @@ public static class OmsiArticulatedVehicleAssetLoader
                         55.0,
                         5.0,
                         89.0),
+                    Math.Clamp(
+                        childBus.FrontCouplingCharacter?
+                            .MinimumPitchDegrees ??
+                        -20.0,
+                        -45.0,
+                        0.0),
+                    Math.Clamp(
+                        childBus.FrontCouplingCharacter?
+                            .MaximumPitchDegrees ??
+                        20.0,
+                        0.0,
+                        45.0),
+                    childBus.FrontCouplingCharacter?
+                        .Type ??
+                    1,
                     coupledBack.Reverse,
                     childBus.SoundConfigPath,
                     childBus.FrontCouplingOpenForSound,

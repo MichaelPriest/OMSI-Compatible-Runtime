@@ -263,4 +263,70 @@ internal static class OdeNative
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern float dJointGetHingeAngleRate(
         nint joint);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nint dJointCreateUniversal(
+        nint world,
+        nint jointGroup);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointSetUniversalAnchor(
+        nint joint,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointSetUniversalAxis1(
+        nint joint,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointSetUniversalAxis2(
+        nint joint,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointSetUniversalParam(
+        nint joint,
+        int parameter,
+        float value);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern float dJointGetUniversalAngle1(
+        nint joint);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern float dJointGetUniversalAngle2(
+        nint joint);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern float dJointGetUniversalAngle1Rate(
+        nint joint);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern float dJointGetUniversalAngle2Rate(
+        nint joint);
 }
