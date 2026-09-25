@@ -6454,6 +6454,9 @@ public sealed class D3D11RenderWindow : Form
 
         if (name.Equals(
                 "GetHumanCountOnPathLink",
+                StringComparison.Ordinal) ||
+            name.Equals(
+                "GetHumanCountOnSeat",
                 StringComparison.Ordinal))
         {
             _ =
@@ -6461,9 +6464,9 @@ public sealed class D3D11RenderWindow : Form
                     context.PopFloat());
 
             // The x64 runtime does not spawn passenger agents yet, so the
-            // exact current passenger count on every path link is zero.
-            // Keeping this macro handled preserves native door/collision
-            // script semantics without inventing phantom occupants.
+            // exact current occupancy of every path link and every seat is
+            // zero. Keeping these callbacks handled preserves native door/
+            // suspension/cabin scripts without inventing phantom occupants.
             context.PushFloat(
                 0.0);
 
