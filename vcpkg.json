@@ -1,8 +1,0 @@
-{
-  "name": "omsi-compatible-runtime-native",
-  "version-string": "0.1.0-alpha",
-  "builtin-baseline": "e143402b5545bab137cc465225a82da63cb2148f",
-  "dependencies": [
-    "ode"
-  ]
-}
