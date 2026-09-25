@@ -3457,7 +3457,8 @@ internal sealed class RuntimeDriveVehicle :
                          item.Index))
         {
             var sectionAxles =
-                section.Physics?.Axles
+                (section.Physics?.Axles ??
+                 Array.Empty<RuntimeVehicleAxleInfo>())
                     .Where(
                         static axle =>
                             double.IsFinite(
@@ -3465,8 +3466,7 @@ internal sealed class RuntimeDriveVehicle :
                     .OrderByDescending(
                         static axle =>
                             axle.LongitudinalPositionMeters)
-                    .ToArray() ??
-                [];
+                    .ToArray();
 
             var sectionAxleCount =
                 Math.Max(
