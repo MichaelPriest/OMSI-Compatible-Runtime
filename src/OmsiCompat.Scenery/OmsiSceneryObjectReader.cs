@@ -249,7 +249,8 @@ public static class OmsiSceneryObjectReader
                 : renderTypeValue.Trim(),
             meshes.ToArray(),
             ReadMaterialOverrides(document),
-            ReadTree(document));
+            ReadTree(document),
+            ReadPaths(document));
     }
 
     private static IReadOnlyList<OmsiSceneryMaterialOverride>
@@ -425,6 +426,83 @@ public static class OmsiSceneryObjectReader
                 TransMapSource,
                 NoZWrite,
                 NoZCheck);
+    }
+
+    private static IReadOnlyList<OmsiSceneryPathDefinition>
+        ReadPaths(
+            OmsiSectionDocument document)
+    {
+        var result =
+            new List<OmsiSceneryPathDefinition>();
+
+        foreach (var section in
+                 document.Sections)
+        {
+            if (!section.Name.Equals(
+                    "path",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                Data(section)
+                    .Select(
+                        static line =>
+                            line.Value)
+                    .ToArray();
+
+            // Crossing-editor paths store their geometric spline followed
+            // by path type/width/direction. Some OMSI versions/tools append
+            // additional numeric flags; keep those raw rather than guessing
+            // their meaning.
+            if (values.Length < 11 ||
+                !TryDouble(values[0], out var x) ||
+                !TryDouble(values[1], out var y) ||
+                !TryDouble(values[2], out var z) ||
+                !TryDouble(values[3], out var heading) ||
+                !TryDouble(values[4], out var radius) ||
+                !TryDouble(values[5], out var length) ||
+                !TryDouble(values[6], out var gradientStart) ||
+                !TryDouble(values[7], out var gradientEnd) ||
+                !int.TryParse(
+                    values[8],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var type) ||
+                !TryDouble(values[9], out var width) ||
+                !int.TryParse(
+                    values[10],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var direction) ||
+                type is < 0 or > 3 ||
+                direction is < 0 or > 2 ||
+                length < 0.0 ||
+                width < 0.0)
+            {
+                continue;
+            }
+
+            result.Add(
+                new OmsiSceneryPathDefinition(
+                    x,
+                    y,
+                    z,
+                    heading,
+                    radius,
+                    length,
+                    gradientStart,
+                    gradientEnd,
+                    type,
+                    width,
+                    direction,
+                    values
+                        .Skip(11)
+                        .ToArray()));
+        }
+
+        return result;
     }
 
     private static OmsiSceneryTreeDefinition? ReadTree(

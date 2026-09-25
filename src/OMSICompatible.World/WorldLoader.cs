@@ -536,7 +536,8 @@ public static class WorldLoader
                         false,
                         null,
                         Array.Empty<WorldSceneryMeshAsset>(),
-                        null);
+                        null,
+                        Array.Empty<WorldSceneryPath>());
 
                 continue;
             }
@@ -732,7 +733,24 @@ public static class WorldLoader
                                 definition.Tree.MinimumHeight,
                                 definition.Tree.MaximumHeight,
                                 definition.Tree.MinimumAspect,
-                                definition.Tree.MaximumAspect));
+                                definition.Tree.MaximumAspect),
+                        definition.Paths
+                            .Select(
+                                static path =>
+                                    new WorldSceneryPath(
+                                        path.X,
+                                        path.Y,
+                                        path.Z,
+                                        path.HeadingDegrees,
+                                        path.RadiusMeters,
+                                        path.LengthMeters,
+                                        path.GradientStart,
+                                        path.GradientEnd,
+                                        path.Type,
+                                        path.WidthMeters,
+                                        path.Direction,
+                                        path.ExtraValues))
+                            .ToArray());
             }
             catch (Exception ex) when (
                 ex is IOException or
@@ -750,7 +768,8 @@ public static class WorldLoader
                         false,
                         null,
                         Array.Empty<WorldSceneryMeshAsset>(),
-                        null);
+                        null,
+                        Array.Empty<WorldSceneryPath>());
             }
         }
 

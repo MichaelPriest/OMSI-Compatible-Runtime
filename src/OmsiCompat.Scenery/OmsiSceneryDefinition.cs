@@ -45,6 +45,20 @@ public sealed record OmsiSceneryMaterialOverride(
     bool NoZWrite,
     bool NoZCheck);
 
+public sealed record OmsiSceneryPathDefinition(
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees,
+    double RadiusMeters,
+    double LengthMeters,
+    double GradientStart,
+    double GradientEnd,
+    int Type,
+    double WidthMeters,
+    int Direction,
+    IReadOnlyList<string> ExtraValues);
+
 public sealed record OmsiSceneryDefinition(
     bool Exists,
     bool UsesAbsoluteHeight,
@@ -52,7 +66,8 @@ public sealed record OmsiSceneryDefinition(
     string? RenderType,
     IReadOnlyList<OmsiSceneryMeshReference> Meshes,
     IReadOnlyList<OmsiSceneryMaterialOverride> MaterialOverrides,
-    OmsiSceneryTreeDefinition? Tree)
+    OmsiSceneryTreeDefinition? Tree,
+    IReadOnlyList<OmsiSceneryPathDefinition> Paths)
 {
     public static OmsiSceneryDefinition Missing { get; } =
         new(
@@ -62,5 +77,6 @@ public sealed record OmsiSceneryDefinition(
             null,
             Array.Empty<OmsiSceneryMeshReference>(),
             Array.Empty<OmsiSceneryMaterialOverride>(),
-            null);
+            null,
+            Array.Empty<OmsiSceneryPathDefinition>());
 }

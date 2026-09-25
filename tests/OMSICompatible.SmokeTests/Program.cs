@@ -547,7 +547,20 @@ try
         Lines(
             "[friendlyname]",
             "Synthetic Object",
-            "[onlyeditor]"),
+            "[onlyeditor]",
+            "[path]",
+            "1.5",
+            "0",
+            "0.1",
+            "-90",
+            "0",
+            "3",
+            "0",
+            "0",
+            "0",
+            "2.5",
+            "0",
+            "1"),
         Encoding.Unicode);
 
     Directory.CreateDirectory(
@@ -2235,6 +2248,25 @@ try
         editorOnlyAsset.OnlyEditor &&
         !editorOnlyAsset.IsRenderable,
         "[onlyeditor] scenery must remain in the world but be hidden in game rendering.");
+
+    Require(
+        editorOnlyAsset.Paths.Count == 1,
+        "Crossing/scenery [path] metadata was not preserved.");
+
+    var crossingPath =
+        editorOnlyAsset.Paths[0];
+
+    Require(
+        Math.Abs(crossingPath.X - 1.5) < 0.0001 &&
+        Math.Abs(crossingPath.Z - 0.1) < 0.0001 &&
+        Math.Abs(crossingPath.HeadingDegrees + 90.0) < 0.0001 &&
+        Math.Abs(crossingPath.LengthMeters - 3.0) < 0.0001 &&
+        crossingPath.Type == 0 &&
+        Math.Abs(crossingPath.WidthMeters - 2.5) < 0.0001 &&
+        crossingPath.Direction == 0 &&
+        crossingPath.ExtraValues.Count == 1 &&
+        crossingPath.ExtraValues[0] == "1",
+        "Crossing/scenery [path] field mapping is incorrect.");
 
     Require(
         world.SceneryAssets.TryGetValue(

@@ -51,6 +51,20 @@ public sealed record WorldSceneryTreeDefinition(
     double MinimumAspect,
     double MaximumAspect);
 
+public sealed record WorldSceneryPath(
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees,
+    double RadiusMeters,
+    double LengthMeters,
+    double GradientStart,
+    double GradientEnd,
+    int Type,
+    double WidthMeters,
+    int Direction,
+    IReadOnlyList<string> ExtraValues);
+
 public sealed record WorldSceneryAsset(
     string DeclaredPath,
     string? ResolvedPath,
@@ -59,7 +73,8 @@ public sealed record WorldSceneryAsset(
     bool OnlyEditor,
     string? RenderType,
     IReadOnlyList<WorldSceneryMeshAsset> Meshes,
-    WorldSceneryTreeDefinition? Tree)
+    WorldSceneryTreeDefinition? Tree,
+    IReadOnlyList<WorldSceneryPath> Paths)
 {
     public int RenderableMeshCount =>
         Meshes.Count(
