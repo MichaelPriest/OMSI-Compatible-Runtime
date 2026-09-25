@@ -400,7 +400,8 @@ public static class OmsiVehicleAssetLoader
                                                             item.BumpMapSource),
                                                         item.BumpMapStrength,
                                                         item.FreeTextures.ToArray(),
-                                                        item.TextTextureIndex))
+                                                        item.TextTextureIndex,
+                                                        item.MaterialChangeMapIsNightMap))
                                             .ToArray();
 
                                     return new OmsiVehicleMaterialChangeSet(
@@ -439,7 +440,10 @@ public static class OmsiVehicleAssetLoader
                             Array.Empty<OmsiVehicleFreeTexture>(),
                         materialOverride?.TextTextureIndex,
                         materialChangeSets,
-                        materialOverride?.HasTransMapDirective ?? false);
+                        materialOverride?.HasTransMapDirective ?? false,
+                        materialChangeOverride?
+                            .MaterialChangeMapIsNightMap ??
+                            false);
                 })
                 .ToArray();
 
