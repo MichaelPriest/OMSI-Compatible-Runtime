@@ -32,9 +32,29 @@ jobs:
           $buildRoot = Join-Path $nativeRoot "ode-build"
           $outputRoot = Join-Path $nativeRoot "win-x64"
           New-Item -ItemType Directory -Force $nativeRoot, $sourceRoot, $outputRoot | Out-Null
-          Invoke-WebRequest -Uri "https://bitbucket.org/odedevs/ode/get/$odeVersion.tar.gz" -OutFile $archive
-          $actualSha512 = (Get-FileHash -Algorithm SHA512 $archive).Hash.ToLowerInvariant()
-          if ($actualSha512 -ne $expectedSha512) { throw "ODE $odeVersion SHA-512 mismatch: $actualSha512" }
+          $odeUri = "https://bitbucket.org/odedevs/ode/get/$odeVersion.tar.gz"
+          $downloadSucceeded = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+              if (Test-Path $archive) { Remove-Item $archive -Force }
+              Write-Host "Downloading ODE $odeVersion (attempt $attempt/5)..."
+              Invoke-WebRequest -Uri $odeUri -OutFile $archive -MaximumRedirection 10
+              if (-not (Test-Path $archive)) { throw "ODE archive was not created." }
+              $archiveLength = (Get-Item $archive).Length
+              if ($archiveLength -lt 1000000) { throw "ODE download is unexpectedly small ($archiveLength bytes)." }
+              $actualSha512 = (Get-FileHash -Algorithm SHA512 $archive).Hash.ToLowerInvariant()
+              if ($actualSha512 -ne $expectedSha512) { throw "ODE $odeVersion SHA-512 mismatch: $actualSha512" }
+              $downloadSucceeded = $true
+              break
+            }
+            catch {
+              Write-Warning "ODE download attempt $attempt failed: $($_.Exception.Message)"
+              if ($attempt -lt 5) {
+                Start-Sleep -Seconds ([Math]::Min(30, 4 * $attempt))
+              }
+            }
+          }
+          if (-not $downloadSucceeded) { throw "Unable to download and verify ODE $odeVersion after 5 attempts." }
           tar -xzf $archive -C $sourceRoot
           if ($LASTEXITCODE -ne 0) { throw "Failed to extract ODE source." }
           $source = Get-ChildItem $sourceRoot -Directory | Select-Object -First 1
