@@ -39,7 +39,8 @@ internal sealed record RuntimeObjectBatch(
     int ModelOrdinal = -1,
     IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
     string? MouseEventTrigger = null,
-    bool MaterialChangeIsNightMap = false);
+    bool MaterialChangeIsNightMap = false,
+    long ObjectId = -1);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -103,13 +104,15 @@ internal static class RuntimeObjectGeometryBuilder
         int ModelOrdinal = -1,
         IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
         string? MouseEventTrigger = null,
-        bool MaterialChangeIsNightMap = false);
+        bool MaterialChangeIsNightMap = false,
+        long ObjectId = -1);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
         IReadOnlyList<RuntimeObjectInfo> objects,
         IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> assets,
-        bool useNativeOmsiModelSpace = false)
+        bool useNativeOmsiModelSpace = false,
+        IReadOnlySet<long>? isolatedObjectIds = null)
     {
         if (objects.Count == 0 ||
             assets.Count == 0)
@@ -222,6 +225,13 @@ internal static class RuntimeObjectGeometryBuilder
 
             var objectContributed = false;
 
+            var batchObjectId =
+                isolatedObjectIds?.Contains(
+                    instance.ObjectId) ==
+                true
+                    ? instance.ObjectId
+                    : -1;
+
             if (!asset.OnlyEditor)
             {
                 foreach (var mesh in asset.Meshes)
@@ -256,6 +266,7 @@ internal static class RuntimeObjectGeometryBuilder
                             mesh,
                             worldTransform,
                             useNativeOmsiModelSpace,
+                            batchObjectId,
                             batches,
                             batchOrder,
                             ref totalVertices);
@@ -288,6 +299,7 @@ internal static class RuntimeObjectGeometryBuilder
                     (float)instance.Y +
                     terrainOffset +
                     renderLift,
+                    batchObjectId,
                     batches,
                     batchOrder,
                     ref totalVertices))
@@ -368,7 +380,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.ModelOrdinal,
                     key.SkinBoneMeshOrdinals,
                     key.MouseEventTrigger,
-                    key.MaterialChangeIsNightMap));
+                    key.MaterialChangeIsNightMap,
+                    key.ObjectId));
         }
 
         return new RuntimeObjectGeometry(
@@ -390,6 +403,7 @@ internal static class RuntimeObjectGeometryBuilder
         RuntimeObjectMeshInfo mesh,
         Matrix4x4 worldTransform,
         bool useNativeOmsiModelSpace,
+        long objectId,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
         ref int totalVertices)
@@ -476,7 +490,8 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.ModelOrdinal,
                     mesh.SkinBoneMeshOrdinals,
                     mesh.MouseEventTrigger,
-                    material?.MaterialChangeIsNightMap ?? false);
+                    material?.MaterialChangeIsNightMap ?? false,
+                    objectId);
 
             var output =
                 GetBatch(
@@ -715,6 +730,7 @@ internal static class RuntimeObjectGeometryBuilder
         double worldX,
         double worldZ,
         float baseY,
+        long objectId,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
         ref int totalVertices)
@@ -783,7 +799,9 @@ internal static class RuntimeObjectGeometryBuilder
         var key =
             new BatchKey(
                 tree.TexturePath,
-                hasTexture);
+                hasTexture,
+                ObjectId:
+                    objectId);
 
         var output =
             GetBatch(
