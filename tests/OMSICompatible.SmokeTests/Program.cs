@@ -2172,16 +2172,16 @@ try
         world.TrafficPaths;
 
     Require(
-        trafficPaths.Segments.Count == 4 &&
-        trafficPaths.RoadVehicleSegmentCount == 2 &&
+        trafficPaths.Segments.Count == 5 &&
+        trafficPaths.RoadVehicleSegmentCount == 3 &&
         trafficPaths.PedestrianSegmentCount == 2 &&
         trafficPaths.RailSegmentCount == 0 &&
         trafficPaths.AircraftSegmentCount == 0,
-        "Synthetic spline [path] lanes were not expanded into the expected world traffic network.");
+        "Synthetic spline/scenery [path] lanes were not expanded into the expected world traffic network.");
 
     Require(
         trafficPaths.ConnectedEndpointCount == 3 &&
-        trafficPaths.TerminalEndpointCount == 3 &&
+        trafficPaths.TerminalEndpointCount == 4 &&
         trafficPaths.BoundaryEndpointCount == 0 &&
         trafficPaths.UnmatchedEndpointCount == 0,
         "Synthetic traffic path endpoint connectivity is incorrect.");
@@ -2283,6 +2283,199 @@ try
         double.IsFinite(
             movedTraffic[0].HeadingRadians),
         "Traffic simulation did not advance through the connected road path graph.");
+
+    var sceneryRoadPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SceneryObjectId ==
+                    1001 &&
+                segment.Type ==
+                    0);
+
+    Require(
+        sceneryRoadPath.SplineId ==
+            -1 &&
+        sceneryRoadPath.Points.Count >=
+            2 &&
+        sceneryRoadPath.ForwardConnections.Count ==
+            0,
+        "Crossing/scenery [path] was not represented as a world traffic segment.");
+
+    var bridgeSplineAsset =
+        new WorldSplineAsset(
+            @"Splines\Synthetic\bridge.sli",
+            null,
+            true,
+            Array.Empty<WorldSplineSurface>(),
+            [
+                new WorldSplinePath(
+                    0,
+                    0.0,
+                    0.0,
+                    2.5,
+                    0)
+            ]);
+
+    var bridgeSplines =
+        new[]
+        {
+            new WorldSplinePlacement(
+                new WorldTileCoordinate(
+                    0,
+                    0),
+                3001,
+                -1,
+                -1,
+                @"Splines\Synthetic\bridge.sli",
+                new WorldVector3(
+                    0.0,
+                    0.0,
+                    0.0),
+                0.0,
+                10.0,
+                0.0,
+                0.0,
+                0.0,
+                false,
+                0),
+            new WorldSplinePlacement(
+                new WorldTileCoordinate(
+                    0,
+                    0),
+                3002,
+                -1,
+                -1,
+                @"Splines\Synthetic\bridge.sli",
+                new WorldVector3(
+                    0.0,
+                    0.0,
+                    15.0),
+                0.0,
+                10.0,
+                0.0,
+                0.0,
+                0.0,
+                false,
+                0)
+        };
+
+    var bridgeObject =
+        new WorldObjectPlacement(
+            new WorldTileCoordinate(
+                0,
+                0),
+            4001,
+            @"Sceneryobjects\Synthetic\bridge.sco",
+            new WorldVector3(
+                0.0,
+                0.0,
+                10.0),
+            0.0,
+            0.0,
+            0.0,
+            Array.Empty<string>(),
+            0);
+
+    var bridgeSceneryAsset =
+        new WorldSceneryAsset(
+            @"Sceneryobjects\Synthetic\bridge.sco",
+            null,
+            true,
+            true,
+            false,
+            null,
+            Array.Empty<WorldSceneryMeshAsset>(),
+            null,
+            [
+                new WorldSceneryPath(
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    5.0,
+                    0.0,
+                    0.0,
+                    0,
+                    2.5,
+                    0,
+                    Array.Empty<string>())
+            ]);
+
+    var bridgeNetwork =
+        WorldTrafficPathNetworkBuilder.Build(
+            bridgeSplines,
+            new Dictionary<string, WorldSplineAsset>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [@"Splines\Synthetic\bridge.sli"] =
+                    bridgeSplineAsset
+            },
+            [
+                bridgeObject
+            ],
+            new Dictionary<string, WorldSceneryAsset>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [@"Sceneryobjects\Synthetic\bridge.sco"] =
+                    bridgeSceneryAsset
+            },
+            Array.Empty<WorldTile>());
+
+    var bridgeFirst =
+        bridgeNetwork.Segments.Single(
+            static segment =>
+                segment.SplineId ==
+                    3001);
+
+    var bridgeCrossing =
+        bridgeNetwork.Segments.Single(
+            static segment =>
+                segment.SceneryObjectId ==
+                    4001);
+
+    var bridgeSecond =
+        bridgeNetwork.Segments.Single(
+            static segment =>
+                segment.SplineId ==
+                    3002);
+
+    Require(
+        bridgeFirst.ForwardConnections.Contains(
+            bridgeCrossing.Index) &&
+        bridgeCrossing.ForwardConnections.Contains(
+            bridgeSecond.Index),
+        "Crossing/scenery traffic path did not bridge adjacent spline endpoints.");
+
+    var bridgeSimulation =
+        new WorldTrafficSimulation(
+            bridgeNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    bridgeSimulation.Step(
+        3.0);
+
+    var bridgedTraffic =
+        bridgeSimulation.Snapshot();
+
+    Require(
+        bridgedTraffic.Count ==
+            1 &&
+        bridgedTraffic[0].SegmentIndex ==
+            bridgeSecond.Index,
+        "Traffic simulation did not traverse spline -> crossing/scenery -> spline.");
 
     var firstRoadStart =
         firstRoadPath.Points[0];

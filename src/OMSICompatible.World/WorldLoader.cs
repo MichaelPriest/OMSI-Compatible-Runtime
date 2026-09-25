@@ -182,11 +182,6 @@ public static class WorldLoader
             allSplines,
             dependencies);
 
-        var trafficPaths =
-            WorldTrafficPathNetworkBuilder.Build(
-                allSplines,
-                splineAssets);
-
         progress?.Report(
             new WorldLoadProgress(
                 82,
@@ -197,6 +192,20 @@ public static class WorldLoader
             contentRoot,
             allObjects,
             dependencies);
+
+        progress?.Report(
+            new WorldLoadProgress(
+                86,
+                "Conectando tráfego",
+                "Integrando paths de splines e crossings/scenery..."));
+
+        var trafficPaths =
+            WorldTrafficPathNetworkBuilder.Build(
+                allSplines,
+                splineAssets,
+                allObjects,
+                sceneryAssets,
+                tiles);
 
         var groundTextures =
             LoadGroundTextures(

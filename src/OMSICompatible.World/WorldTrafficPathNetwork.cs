@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace OMSICompatible.World;
 
 public sealed record WorldTrafficPathSegment(
@@ -9,7 +11,8 @@ public sealed record WorldTrafficPathSegment(
     double WidthMeters,
     IReadOnlyList<WorldVector3> Points,
     IReadOnlyList<int> ForwardConnections,
-    IReadOnlyList<int> ReverseConnections)
+    IReadOnlyList<int> ReverseConnections,
+    long? SceneryObjectId = null)
 {
     public bool AllowsForward =>
         Direction is 0 or 2;
@@ -58,20 +61,36 @@ public static class WorldTrafficPathNetworkBuilder
     private const double SampleLengthMeters = 4.0;
     private const double MinimumConnectionToleranceMeters = 3.0;
     private const double MaximumConnectionToleranceMeters = 8.0;
+    private const double NearBestConnectionSlackMeters = 0.75;
 
     public static WorldTrafficPathNetwork Build(
         IReadOnlyList<WorldSplinePlacement> splines,
-        IReadOnlyDictionary<string, WorldSplineAsset> splineAssets)
+        IReadOnlyDictionary<string, WorldSplineAsset> splineAssets) =>
+        Build(
+            splines,
+            splineAssets,
+            Array.Empty<WorldObjectPlacement>(),
+            new Dictionary<string, WorldSceneryAsset>(
+                StringComparer.OrdinalIgnoreCase),
+            Array.Empty<WorldTile>());
+
+    public static WorldTrafficPathNetwork Build(
+        IReadOnlyList<WorldSplinePlacement> splines,
+        IReadOnlyDictionary<string, WorldSplineAsset> splineAssets,
+        IReadOnlyList<WorldObjectPlacement> objects,
+        IReadOnlyDictionary<string, WorldSceneryAsset> sceneryAssets,
+        IReadOnlyList<WorldTile> tiles)
     {
         ArgumentNullException.ThrowIfNull(
             splines);
         ArgumentNullException.ThrowIfNull(
             splineAssets);
-
-        if (splines.Count == 0)
-        {
-            return WorldTrafficPathNetwork.Empty;
-        }
+        ArgumentNullException.ThrowIfNull(
+            objects);
+        ArgumentNullException.ThrowIfNull(
+            sceneryAssets);
+        ArgumentNullException.ThrowIfNull(
+            tiles);
 
         var builders =
             new List<SegmentBuilder>();
@@ -110,8 +129,64 @@ public static class WorldTrafficPathNetworkBuilder
                     new SegmentBuilder(
                         builders.Count,
                         spline,
+                        null,
                         pathIndex,
+                        path.Type,
+                        path.Direction,
+                        path.Width,
+                        points));
+            }
+        }
+
+        var terrainSampler =
+            new WorldTerrainSampler(
+                tiles);
+
+        foreach (var instance in objects)
+        {
+            if (!sceneryAssets.TryGetValue(
+                    instance.AssetPath,
+                    out var asset) ||
+                !asset.Exists ||
+                asset.Paths.Count == 0)
+            {
+                continue;
+            }
+
+            for (var pathIndex = 0;
+                 pathIndex < asset.Paths.Count;
+                 pathIndex++)
+            {
+                var path =
+                    asset.Paths[pathIndex];
+
+                if (path.LengthMeters <=
+                    0.001)
+                {
+                    continue;
+                }
+
+                var points =
+                    BuildPoints(
+                        instance,
+                        asset,
                         path,
+                        terrainSampler);
+
+                if (points.Length < 2)
+                {
+                    continue;
+                }
+
+                builders.Add(
+                    new SegmentBuilder(
+                        builders.Count,
+                        null,
+                        instance,
+                        pathIndex,
+                        path.Type,
+                        path.Direction,
+                        path.WidthMeters,
                         points));
             }
         }
@@ -123,9 +198,12 @@ public static class WorldTrafficPathNetworkBuilder
 
         var bySplineId =
             builders
+                .Where(
+                    static item =>
+                        item.Spline is not null)
                 .GroupBy(
                     static item =>
-                        item.Spline.Id)
+                        item.Spline!.Id)
                 .ToDictionary(
                     static group =>
                         group.Key,
@@ -138,6 +216,59 @@ public static class WorldTrafficPathNetworkBuilder
                     static spline =>
                         spline.Id)
                 .ToHashSet();
+
+        foreach (var builder in builders)
+        {
+            if (builder.Spline is null)
+            {
+                continue;
+            }
+
+            if (builder.AllowsForward)
+            {
+                TryConnectLinkedSpline(
+                    builder,
+                    forward:
+                        true,
+                    builder.Spline.NextId,
+                    bySplineId);
+            }
+
+            if (builder.AllowsReverse)
+            {
+                TryConnectLinkedSpline(
+                    builder,
+                    forward:
+                        false,
+                    builder.Spline.PreviousId,
+                    bySplineId);
+            }
+        }
+
+        foreach (var builder in builders)
+        {
+            if (builder.AllowsForward &&
+                builder.ForwardConnections.Count ==
+                    0)
+            {
+                ConnectByGeometry(
+                    builder,
+                    forward:
+                        true,
+                    builders);
+            }
+
+            if (builder.AllowsReverse &&
+                builder.ReverseConnections.Count ==
+                    0)
+            {
+                ConnectByGeometry(
+                    builder,
+                    forward:
+                        false,
+                    builders);
+            }
+        }
 
         var connectedEndpoints =
             0;
@@ -153,15 +284,12 @@ public static class WorldTrafficPathNetworkBuilder
 
         foreach (var builder in builders)
         {
-            if (builder.Path.Direction is
-                0 or 2)
+            if (builder.AllowsForward)
             {
-                Connect(
+                ClassifyEndpoint(
                     builder,
                     forward:
                         true,
-                    builder.Spline.NextId,
-                    bySplineId,
                     activeSplineIds,
                     ref connectedEndpoints,
                     ref boundaryEndpoints,
@@ -169,15 +297,12 @@ public static class WorldTrafficPathNetworkBuilder
                     ref unmatchedEndpoints);
             }
 
-            if (builder.Path.Direction is
-                1 or 2)
+            if (builder.AllowsReverse)
             {
-                Connect(
+                ClassifyEndpoint(
                     builder,
                     forward:
                         false,
-                    builder.Spline.PreviousId,
-                    bySplineId,
                     activeSplineIds,
                     ref connectedEndpoints,
                     ref boundaryEndpoints,
@@ -192,11 +317,12 @@ public static class WorldTrafficPathNetworkBuilder
                     static builder =>
                         new WorldTrafficPathSegment(
                             builder.Index,
-                            builder.Spline.Id,
+                            builder.Spline?.Id ??
+                                -1,
                             builder.LocalPathIndex,
-                            builder.Path.Type,
-                            builder.Path.Direction,
-                            builder.Path.Width,
+                            builder.Type,
+                            builder.Direction,
+                            builder.WidthMeters,
                             builder.Points,
                             builder.ForwardConnections
                                 .Distinct()
@@ -205,7 +331,8 @@ public static class WorldTrafficPathNetworkBuilder
                             builder.ReverseConnections
                                 .Distinct()
                                 .Order()
-                                .ToArray()))
+                                .ToArray(),
+                            builder.SceneryObject?.Id))
                 .ToArray();
 
         return new WorldTrafficPathNetwork(
@@ -263,6 +390,92 @@ public static class WorldTrafficPathNetworkBuilder
         return points;
     }
 
+    private static WorldVector3[] BuildPoints(
+        WorldObjectPlacement instance,
+        WorldSceneryAsset asset,
+        WorldSceneryPath path,
+        WorldTerrainSampler terrainSampler)
+    {
+        var segmentCount =
+            Math.Clamp(
+                (int)Math.Ceiling(
+                    path.LengthMeters /
+                    SampleLengthMeters),
+                1,
+                256);
+
+        var worldX =
+            instance.Tile.X *
+                TileSizeMeters +
+            instance.Position.X;
+
+        var worldZ =
+            instance.Tile.Y *
+                TileSizeMeters +
+            instance.Position.Z;
+
+        var terrainOffset =
+            0.0;
+
+        if (!asset.UsesAbsoluteHeight &&
+            terrainSampler.TrySample(
+                worldX,
+                worldZ,
+                out var groundHeight))
+        {
+            terrainOffset =
+                groundHeight;
+        }
+
+        var rotation =
+            Matrix4x4.CreateFromYawPitchRoll(
+                DegreesToRadians(
+                    instance.HeadingDegrees),
+                DegreesToRadians(
+                    instance.PitchDegrees),
+                DegreesToRadians(
+                    instance.BankDegrees));
+
+        var points =
+            new WorldVector3[
+                segmentCount + 1];
+
+        for (var sample = 0;
+             sample <= segmentCount;
+             sample++)
+        {
+            var distance =
+                path.LengthMeters *
+                sample /
+                segmentCount;
+
+            var local =
+                TransformSceneryPathPoint(
+                    path,
+                    distance);
+
+            var rotated =
+                Vector3.Transform(
+                    new Vector3(
+                        (float)local.X,
+                        (float)local.Y,
+                        (float)local.Z),
+                    rotation);
+
+            points[sample] =
+                new WorldVector3(
+                    worldX +
+                        rotated.X,
+                    instance.Position.Y +
+                        terrainOffset +
+                        rotated.Y,
+                    worldZ +
+                        rotated.Z);
+        }
+
+        return points;
+    }
+
     private static WorldVector3 TransformPathPoint(
         WorldSplinePlacement spline,
         WorldSplinePath path,
@@ -275,9 +488,8 @@ public static class WorldTrafficPathNetworkBuilder
                 spline.LengthMeters);
 
         var yaw =
-            spline.HeadingDegrees *
-            Math.PI /
-            180.0;
+            DegreesToRadians(
+                spline.HeadingDegrees);
 
         var hasCurve =
             Math.Abs(
@@ -365,6 +577,76 @@ public static class WorldTrafficPathNetworkBuilder
                 path.X);
     }
 
+    private static WorldVector3 TransformSceneryPathPoint(
+        WorldSceneryPath path,
+        double distance)
+    {
+        var clamped =
+            Math.Clamp(
+                distance,
+                0.0,
+                path.LengthMeters);
+
+        var yaw =
+            DegreesToRadians(
+                path.HeadingDegrees);
+
+        var hasCurve =
+            Math.Abs(
+                path.RadiusMeters) >
+            0.001;
+
+        var curveAngle =
+            hasCurve
+                ? clamped /
+                  path.RadiusMeters
+                : 0.0;
+
+        var curveX =
+            hasCurve
+                ? path.RadiusMeters *
+                  (1.0 -
+                   Math.Cos(
+                       curveAngle))
+                : 0.0;
+
+        var curveY =
+            hasCurve
+                ? path.RadiusMeters *
+                  Math.Sin(
+                      curveAngle)
+                : clamped;
+
+        var cosYaw =
+            Math.Cos(
+                yaw);
+
+        var sinYaw =
+            Math.Sin(
+                yaw);
+
+        // Crossing-editor path coordinates use OMSI's X/Y ground plane
+        // with Z as height. Normalize them to the runtime's X/Z ground
+        // plane and Y-up convention before applying the object placement.
+        return new WorldVector3(
+            path.X +
+                curveX *
+                    cosYaw +
+                curveY *
+                    sinYaw,
+            path.Z +
+                GradientRise(
+                    path.GradientStart,
+                    path.GradientEnd,
+                    path.LengthMeters,
+                    clamped),
+            path.Y -
+                curveX *
+                    sinYaw +
+                curveY *
+                    cosYaw);
+    }
+
     private static double GradientRise(
         double startPercent,
         double endPercent,
@@ -401,36 +683,18 @@ public static class WorldTrafficPathNetworkBuilder
                    lengthMeters;
     }
 
-    private static void Connect(
+    private static void TryConnectLinkedSpline(
         SegmentBuilder source,
         bool forward,
         long neighborSplineId,
-        IReadOnlyDictionary<long, SegmentBuilder[]> bySplineId,
-        IReadOnlySet<long> activeSplineIds,
-        ref int connectedEndpoints,
-        ref int boundaryEndpoints,
-        ref int terminalEndpoints,
-        ref int unmatchedEndpoints)
+        IReadOnlyDictionary<long, SegmentBuilder[]> bySplineId)
     {
         if (neighborSplineId <
-            0)
-        {
-            terminalEndpoints++;
-            return;
-        }
-
-        if (!activeSplineIds.Contains(
-                neighborSplineId))
-        {
-            boundaryEndpoints++;
-            return;
-        }
-
-        if (!bySplineId.TryGetValue(
+                0 ||
+            !bySplineId.TryGetValue(
                 neighborSplineId,
                 out var candidates))
         {
-            unmatchedEndpoints++;
             return;
         }
 
@@ -447,14 +711,12 @@ public static class WorldTrafficPathNetworkBuilder
 
         foreach (var candidate in candidates)
         {
-            if (candidate.Path.Type !=
-                    source.Path.Type ||
+            if (candidate.Type !=
+                    source.Type ||
                 (forward &&
-                 candidate.Path.Direction is
-                     not (0 or 2)) ||
+                 !candidate.AllowsForward) ||
                 (!forward &&
-                 candidate.Path.Direction is
-                     not (1 or 2)))
+                 !candidate.AllowsReverse))
             {
                 continue;
             }
@@ -470,13 +732,9 @@ public static class WorldTrafficPathNetworkBuilder
                     targetPoint);
 
             var tolerance =
-                Math.Clamp(
-                    (source.Path.Width +
-                     candidate.Path.Width) *
-                        0.5 +
-                    1.0,
-                    MinimumConnectionToleranceMeters,
-                    MaximumConnectionToleranceMeters);
+                ConnectionTolerance(
+                    source,
+                    candidate);
 
             if (distance >
                     tolerance ||
@@ -495,23 +753,176 @@ public static class WorldTrafficPathNetworkBuilder
 
         if (best is null)
         {
-            unmatchedEndpoints++;
             return;
         }
 
-        if (forward)
+        AddConnection(
+            source,
+            forward,
+            best.Index);
+    }
+
+    private static void ConnectByGeometry(
+        SegmentBuilder source,
+        bool forward,
+        IReadOnlyList<SegmentBuilder> builders)
+    {
+        var sourcePoint =
+            forward
+                ? source.Points[^1]
+                : source.Points[0];
+
+        var candidates =
+            new List<(
+                SegmentBuilder Segment,
+                double Distance)>();
+
+        foreach (var candidate in builders)
         {
-            source.ForwardConnections.Add(
-                best.Index);
+            if (candidate.Index ==
+                    source.Index ||
+                candidate.Type !=
+                    source.Type ||
+                (forward &&
+                 !candidate.AllowsForward) ||
+                (!forward &&
+                 !candidate.AllowsReverse))
+            {
+                continue;
+            }
+
+            var targetPoint =
+                forward
+                    ? candidate.Points[0]
+                    : candidate.Points[^1];
+
+            var distance =
+                Distance(
+                    sourcePoint,
+                    targetPoint);
+
+            if (distance >
+                ConnectionTolerance(
+                    source,
+                    candidate))
+            {
+                continue;
+            }
+
+            candidates.Add(
+                (candidate, distance));
+        }
+
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        var bestDistance =
+            candidates.Min(
+                static item =>
+                    item.Distance);
+
+        var threshold =
+            Math.Min(
+                MaximumConnectionToleranceMeters,
+                bestDistance +
+                    NearBestConnectionSlackMeters);
+
+        foreach (var candidate in
+                 candidates
+                     .Where(
+                         item =>
+                             item.Distance <=
+                             threshold)
+                     .OrderBy(
+                         static item =>
+                             item.Distance)
+                     .ThenBy(
+                         static item =>
+                             item.Segment.Index))
+        {
+            AddConnection(
+                source,
+                forward,
+                candidate.Segment.Index);
+        }
+    }
+
+    private static void AddConnection(
+        SegmentBuilder source,
+        bool forward,
+        int targetIndex)
+    {
+        var connections =
+            forward
+                ? source.ForwardConnections
+                : source.ReverseConnections;
+
+        if (!connections.Contains(
+                targetIndex))
+        {
+            connections.Add(
+                targetIndex);
+        }
+    }
+
+    private static void ClassifyEndpoint(
+        SegmentBuilder source,
+        bool forward,
+        IReadOnlySet<long> activeSplineIds,
+        ref int connectedEndpoints,
+        ref int boundaryEndpoints,
+        ref int terminalEndpoints,
+        ref int unmatchedEndpoints)
+    {
+        var connections =
+            forward
+                ? source.ForwardConnections
+                : source.ReverseConnections;
+
+        if (connections.Count > 0)
+        {
+            connectedEndpoints++;
+            return;
+        }
+
+        if (source.Spline is null)
+        {
+            terminalEndpoints++;
+            return;
+        }
+
+        var neighborSplineId =
+            forward
+                ? source.Spline.NextId
+                : source.Spline.PreviousId;
+
+        if (neighborSplineId < 0)
+        {
+            terminalEndpoints++;
+        }
+        else if (!activeSplineIds.Contains(
+                     neighborSplineId))
+        {
+            boundaryEndpoints++;
         }
         else
         {
-            source.ReverseConnections.Add(
-                best.Index);
+            unmatchedEndpoints++;
         }
-
-        connectedEndpoints++;
     }
+
+    private static double ConnectionTolerance(
+        SegmentBuilder source,
+        SegmentBuilder candidate) =>
+        Math.Clamp(
+            (source.WidthMeters +
+             candidate.WidthMeters) *
+                0.5 +
+            1.0,
+            MinimumConnectionToleranceMeters,
+            MaximumConnectionToleranceMeters);
 
     private static double Distance(
         WorldVector3 a,
@@ -538,27 +949,254 @@ public static class WorldTrafficPathNetworkBuilder
                 z);
     }
 
+    private static float DegreesToRadians(
+        double degrees) =>
+        (float)(
+            degrees *
+            Math.PI /
+            180.0);
+
+    private sealed class WorldTerrainSampler
+    {
+        private readonly Dictionary<
+            (int X, int Y),
+            WorldTerrainData>
+            _terrainByTile;
+
+        public WorldTerrainSampler(
+            IReadOnlyList<WorldTile> tiles)
+        {
+            _terrainByTile =
+                tiles
+                    .Where(
+                        static tile =>
+                            tile.Terrain is not null)
+                    .ToDictionary(
+                        static tile =>
+                            (
+                                tile.Coordinate.X,
+                                tile.Coordinate.Y),
+                        static tile =>
+                            tile.Terrain!);
+        }
+
+        public bool TrySample(
+            double worldX,
+            double worldZ,
+            out double height)
+        {
+            var tileX =
+                (int)Math.Floor(
+                    worldX /
+                    TileSizeMeters);
+
+            var tileY =
+                (int)Math.Floor(
+                    worldZ /
+                    TileSizeMeters);
+
+            if (!_terrainByTile.TryGetValue(
+                    (tileX, tileY),
+                    out var terrain) ||
+                terrain.CellCount <=
+                    0)
+            {
+                height =
+                    0.0;
+                return false;
+            }
+
+            var localX =
+                worldX -
+                tileX *
+                    TileSizeMeters;
+
+            var localZ =
+                worldZ -
+                tileY *
+                    TileSizeMeters;
+
+            var spacing =
+                TileSizeMeters /
+                terrain.CellCount;
+
+            var gridX =
+                Math.Clamp(
+                    localX /
+                        spacing,
+                    0.0,
+                    terrain.CellCount);
+
+            var gridZ =
+                Math.Clamp(
+                    localZ /
+                        spacing,
+                    0.0,
+                    terrain.CellCount);
+
+            var x0 =
+                Math.Clamp(
+                    (int)Math.Floor(
+                        gridX),
+                    0,
+                    terrain.CellCount);
+
+            var z0 =
+                Math.Clamp(
+                    (int)Math.Floor(
+                        gridZ),
+                    0,
+                    terrain.CellCount);
+
+            var x1 =
+                Math.Min(
+                    x0 +
+                        1,
+                    terrain.CellCount);
+
+            var z1 =
+                Math.Min(
+                    z0 +
+                        1,
+                    terrain.CellCount);
+
+            var tx =
+                gridX -
+                x0;
+
+            var tz =
+                gridZ -
+                z0;
+
+            var sampleCount =
+                terrain.CellCount +
+                1;
+
+            var h00 =
+                Read(
+                    terrain,
+                    sampleCount,
+                    z0,
+                    x0);
+
+            var h10 =
+                Read(
+                    terrain,
+                    sampleCount,
+                    z0,
+                    x1);
+
+            var h01 =
+                Read(
+                    terrain,
+                    sampleCount,
+                    z1,
+                    x0);
+
+            var h11 =
+                Read(
+                    terrain,
+                    sampleCount,
+                    z1,
+                    x1);
+
+            if (!double.IsFinite(
+                    h00) ||
+                !double.IsFinite(
+                    h10) ||
+                !double.IsFinite(
+                    h01) ||
+                !double.IsFinite(
+                    h11))
+            {
+                height =
+                    0.0;
+                return false;
+            }
+
+            var top =
+                h00 +
+                (h10 -
+                 h00) *
+                    tx;
+
+            var bottom =
+                h01 +
+                (h11 -
+                 h01) *
+                    tx;
+
+            height =
+                top +
+                (bottom -
+                 top) *
+                    tz;
+
+            return true;
+        }
+
+        private static double Read(
+            WorldTerrainData terrain,
+            int sampleCount,
+            int row,
+            int column)
+        {
+            var index =
+                row *
+                    sampleCount +
+                column;
+
+            return index >=
+                       0 &&
+                   index <
+                       terrain.Heights.Count
+                ? terrain.Heights[
+                    index]
+                : 0.0;
+        }
+    }
+
     private sealed class SegmentBuilder(
         int index,
-        WorldSplinePlacement spline,
+        WorldSplinePlacement? spline,
+        WorldObjectPlacement? sceneryObject,
         int localPathIndex,
-        WorldSplinePath path,
+        int type,
+        int direction,
+        double widthMeters,
         WorldVector3[] points)
     {
         public int Index { get; } =
             index;
 
-        public WorldSplinePlacement Spline { get; } =
+        public WorldSplinePlacement? Spline { get; } =
             spline;
+
+        public WorldObjectPlacement? SceneryObject { get; } =
+            sceneryObject;
 
         public int LocalPathIndex { get; } =
             localPathIndex;
 
-        public WorldSplinePath Path { get; } =
-            path;
+        public int Type { get; } =
+            type;
+
+        public int Direction { get; } =
+            direction;
+
+        public double WidthMeters { get; } =
+            widthMeters;
 
         public WorldVector3[] Points { get; } =
             points;
+
+        public bool AllowsForward =>
+            Direction is
+                0 or 2;
+
+        public bool AllowsReverse =>
+            Direction is
+                1 or 2;
 
         public List<int> ForwardConnections { get; } =
             [];
