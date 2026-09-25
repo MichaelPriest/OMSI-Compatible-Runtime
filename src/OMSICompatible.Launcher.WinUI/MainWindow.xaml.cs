@@ -650,6 +650,24 @@ public sealed partial class MainWindow :
         DispatcherQueue.TryEnqueue(
             () =>
             {
+                if (string.Equals(
+                        line,
+                        "[runtime-select-bus]",
+                        StringComparison.Ordinal))
+                {
+                    NoBusCheckBox.IsChecked =
+                        false;
+
+                    Activate();
+
+                    CarroceriaBox.Focus(
+                        FocusState.Programmatic);
+
+                    SetStatus(
+                        "Selecione o próximo ônibus e pressione JOGAR.");
+                    return;
+                }
+
                 if (RuntimeProgress.TryParse(
                         line,
                         out var progress) &&
