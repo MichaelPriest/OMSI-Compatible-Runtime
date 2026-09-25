@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
@@ -31,10 +32,42 @@ try
         using var odeWorld =
             new OdeWorld();
 
+        using var odeBody =
+            new OdeRigidBody(
+                odeWorld,
+                new OdeRigidBodyParameters(
+                    MassKilograms:
+                        8_000.0f,
+                    CenterOfMassX:
+                        0.0f,
+                    CenterOfMassY:
+                        0.0f,
+                    CenterOfMassZ:
+                        1.2f,
+                    InertiaXKilogramSquareMeters:
+                        20_000.0f,
+                    InertiaYKilogramSquareMeters:
+                        45_000.0f,
+                    InertiaZKilogramSquareMeters:
+                        55_000.0f));
+
+        odeBody.SetPosition(
+            new Vector3(
+                0.0f,
+                0.0f,
+                10.0f));
+
         Require(
             odeWorld.Step(
                 1.0f / 120.0f),
             "ODE x64 QuickStep smoke test failed.");
+
+        Require(
+            odeBody.Position.Z <
+                10.0f &&
+            odeBody.LinearVelocity.Z <
+                0.0f,
+            "ODE rigid body did not respond to gravity with OMSI Z-up coordinates.");
     }
 
     var mapDirectory = Path.Combine(root, "maps", "SyntheticMap");
