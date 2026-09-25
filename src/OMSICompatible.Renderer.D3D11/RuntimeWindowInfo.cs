@@ -316,7 +316,9 @@ public sealed record RuntimeTrafficAgentInfo(
     double Y,
     double Z,
     double HeadingRadians,
-    bool AiBrakeLight = false);
+    bool AiBrakeLight = false,
+    bool AiBlinkerLeft = false,
+    bool AiBlinkerRight = false);
 
 public sealed record RuntimeAiFileReferenceInfo(
     string DeclaredPath,

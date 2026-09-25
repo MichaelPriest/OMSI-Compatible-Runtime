@@ -1105,7 +1105,9 @@ internal sealed class RuntimeApplicationContext :
                         agent.Position.Y,
                         agent.Position.Z,
                         agent.HeadingRadians,
-                        agent.AiBrakeLight))
+                        agent.AiBrakeLight,
+                        agent.AiBlinkerLeft,
+                        agent.AiBlinkerRight))
             .ToArray();
     }
 

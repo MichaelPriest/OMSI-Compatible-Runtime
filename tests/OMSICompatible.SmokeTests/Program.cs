@@ -2934,6 +2934,16 @@ try
             maximumAgents:
                 1);
 
+    var normalApproachAgent =
+        normalRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        normalApproachAgent.AiBlinkerRight &&
+        !normalApproachAgent.AiBlinkerLeft,
+        "NormalCars AI did not signal right before the +X branch.");
+
     normalRoutingSimulation.Step(
         2.0);
 
@@ -2987,6 +2997,16 @@ try
             taxiGroupCatalog,
             maximumAgents:
                 1);
+
+    var taxiApproachAgent =
+        taxiRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        taxiApproachAgent.AiBlinkerLeft &&
+        !taxiApproachAgent.AiBlinkerRight,
+        "Taxi AI did not signal left before the -X branch.");
 
     taxiRoutingSimulation.Step(
         2.0);

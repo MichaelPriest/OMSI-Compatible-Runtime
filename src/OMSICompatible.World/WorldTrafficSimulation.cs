@@ -12,7 +12,9 @@ public sealed record WorldTrafficAgentState(
     double HeadingRadians,
     int? GroupIndex = null,
     string? GroupName = null,
-    bool AiBrakeLight = false);
+    bool AiBrakeLight = false,
+    bool AiBlinkerLeft = false,
+    bool AiBlinkerRight = false);
 
 public sealed class WorldTrafficSimulation
 {
@@ -1153,7 +1155,9 @@ public sealed class WorldTrafficSimulation
                 0.0,
                 agent.GroupIndex,
                 agent.GroupName,
-                agent.BrakeLight);
+                agent.BrakeLight,
+                false,
+                false);
         }
 
         SampleSegment(
@@ -1169,6 +1173,12 @@ public sealed class WorldTrafficSimulation
                     heading);
         }
 
+        ResolveTurnIndicators(
+            agent,
+            segment,
+            out var blinkerLeft,
+            out var blinkerRight);
+
         return new WorldTrafficAgentState(
             agent.AgentIndex,
             agent.SegmentIndex,
@@ -1179,7 +1189,9 @@ public sealed class WorldTrafficSimulation
             heading,
             agent.GroupIndex,
             agent.GroupName,
-            agent.BrakeLight);
+            agent.BrakeLight,
+            blinkerLeft,
+            blinkerRight);
     }
 
     private static bool IsRoadVehicle(
@@ -1368,6 +1380,116 @@ public sealed class WorldTrafficSimulation
                 last.Z -
                     previous.Z);
     }
+
+    private void ResolveTurnIndicators(
+        Agent agent,
+        WorldTrafficPathSegment segment,
+        out bool left,
+        out bool right)
+    {
+        left =
+            false;
+        right =
+            false;
+
+        var currentLength =
+            SegmentLength(
+                segment);
+
+        var distanceToExit =
+            agent.TravelForward
+                ? Math.Max(
+                    currentLength -
+                        agent.DistanceMeters,
+                    0.0)
+                : Math.Max(
+                    agent.DistanceMeters,
+                    0.0);
+
+        if (distanceToExit >
+            30.0)
+        {
+            return;
+        }
+
+        var nextIndex =
+            ResolveNextSegmentIndex(
+                agent,
+                segment);
+
+        if (!nextIndex.HasValue ||
+            !_segmentsByIndex.TryGetValue(
+                nextIndex.Value,
+                out var nextSegment))
+        {
+            return;
+        }
+
+        var currentSampleDistance =
+            agent.TravelForward
+                ? currentLength
+                : 0.0;
+
+        SampleSegment(
+            segment,
+            currentSampleDistance,
+            out _,
+            out var currentHeading);
+
+        if (!agent.TravelForward)
+        {
+            currentHeading =
+                ReverseHeading(
+                    currentHeading);
+        }
+
+        var nextLength =
+            SegmentLength(
+                nextSegment);
+
+        var nextSampleDistance =
+            agent.TravelForward
+                ? 0.0
+                : nextLength;
+
+        SampleSegment(
+            nextSegment,
+            nextSampleDistance,
+            out _,
+            out var nextHeading);
+
+        if (!agent.TravelForward)
+        {
+            nextHeading =
+                ReverseHeading(
+                    nextHeading);
+        }
+
+        var delta =
+            NormalizeHeadingDelta(
+                nextHeading -
+                currentHeading);
+
+        const double minimumTurnRadians =
+            Math.PI /
+            12.0;
+
+        right =
+            delta >
+            minimumTurnRadians;
+
+        left =
+            delta <
+            -minimumTurnRadians;
+    }
+
+    private static double NormalizeHeadingDelta(
+        double radians) =>
+        Math.Atan2(
+            Math.Sin(
+                radians),
+            Math.Cos(
+                radians));
 
     private static double ReverseHeading(
         double headingRadians) =>

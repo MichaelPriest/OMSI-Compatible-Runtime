@@ -4084,7 +4084,12 @@ public sealed class D3D11RenderWindow : Form
             null);
     }
 
-    private static double ResolveTrafficVehicleLightValue(
+    private bool IsTrafficBlinkPhaseOn() =>
+        _frameClock.Elapsed.TotalSeconds %
+            1.0 <
+        0.5;
+
+    private double ResolveTrafficVehicleLightValue(
         RuntimeTrafficAgentInfo agent,
         RuntimeVehicleLightEffectInfo light)
     {
@@ -4105,6 +4110,24 @@ public sealed class D3D11RenderWindow : Form
                     "lights_brems" or
                     "lights_brakes" =>
                         agent.AiBrakeLight
+                            ? 1.0
+                            : 0.0,
+                    "ai_blinker_l" or
+                    "lights_blinker_l" =>
+                        agent.AiBlinkerLeft &&
+                        IsTrafficBlinkPhaseOn()
+                            ? 1.0
+                            : 0.0,
+                    "ai_blinker_r" or
+                    "lights_blinker_r" =>
+                        agent.AiBlinkerRight &&
+                        IsTrafficBlinkPhaseOn()
+                            ? 1.0
+                            : 0.0,
+                    "lights_blinkgeber" =>
+                        (agent.AiBlinkerLeft ||
+                         agent.AiBlinkerRight) &&
+                        IsTrafficBlinkPhaseOn()
                             ? 1.0
                             : 0.0,
                     _ =>
