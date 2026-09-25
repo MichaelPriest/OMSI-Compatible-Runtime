@@ -1,3 +1,5 @@
+using OmsiCompat.Core;
+
 namespace OmsiCompat.Vehicles;
 
 public sealed record OmsiTrainConsistVehicle(
@@ -46,7 +48,7 @@ public static class OmsiTrainConsistReader
         }
 
         var dataLines =
-            File.ReadAllLines(
+            OmsiText.ReadAllLines(
                     fullTrainPath)
                 .Select(
                     Clean)
