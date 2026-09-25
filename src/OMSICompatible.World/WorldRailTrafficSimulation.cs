@@ -193,6 +193,134 @@ public sealed class WorldRailTrafficSimulation
                 CreateState)
             .ToArray();
 
+    public bool TrySampleBehind(
+        int agentIndex,
+        double trailingDistanceMeters,
+        out int segmentIndex,
+        out double segmentDistanceMeters,
+        out WorldVector3 position,
+        out double headingRadians)
+    {
+        segmentIndex =
+            -1;
+        segmentDistanceMeters =
+            0.0;
+        position =
+            default;
+        headingRadians =
+            0.0;
+
+        if (!double.IsFinite(
+                trailingDistanceMeters) ||
+            trailingDistanceMeters <
+                0.0)
+        {
+            return false;
+        }
+
+        var agent =
+            _agents.FirstOrDefault(
+                candidate =>
+                    candidate.AgentIndex ==
+                    agentIndex);
+
+        if (agent is null ||
+            !_segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var segment))
+        {
+            return false;
+        }
+
+        var remaining =
+            trailingDistanceMeters;
+        var distance =
+            agent.DistanceMeters;
+        var guard =
+            0;
+
+        while (guard++ <
+               128)
+        {
+            var length =
+                SegmentLength(
+                    segment);
+
+            var progressedFromEntry =
+                agent.TravelForward
+                    ? Math.Clamp(
+                        distance,
+                        0.0,
+                        length)
+                    : Math.Clamp(
+                        length -
+                            distance,
+                        0.0,
+                        length);
+
+            if (remaining <=
+                progressedFromEntry +
+                    0.000001)
+            {
+                segmentDistanceMeters =
+                    agent.TravelForward
+                        ? Math.Max(
+                            distance -
+                                remaining,
+                            0.0)
+                        : Math.Min(
+                            distance +
+                                remaining,
+                            length);
+
+                segmentIndex =
+                    segment.Index;
+
+                SampleSegment(
+                    segment,
+                    segmentDistanceMeters,
+                    out position,
+                    out headingRadians);
+
+                if (!agent.TravelForward)
+                {
+                    headingRadians =
+                        ReverseHeading(
+                            headingRadians);
+                }
+
+                return true;
+            }
+
+            remaining -=
+                progressedFromEntry;
+
+            var predecessor =
+                ResolvePredecessorSegment(
+                    segment.Index,
+                    agent.TravelForward);
+
+            if (predecessor is null)
+            {
+                return false;
+            }
+
+            segment =
+                predecessor;
+
+            var predecessorLength =
+                SegmentLength(
+                    segment);
+
+            distance =
+                agent.TravelForward
+                    ? predecessorLength
+                    : 0.0;
+        }
+
+        return false;
+    }
+
     public void Step(
         double deltaSeconds)
     {
@@ -322,6 +450,26 @@ public sealed class WorldRailTrafficSimulation
                 step;
         }
     }
+
+    private WorldTrafficPathSegment? ResolvePredecessorSegment(
+        int segmentIndex,
+        bool travelForward) =>
+        _segmentsByIndex
+            .Values
+            .Where(
+                candidate =>
+                    (travelForward
+                        ? candidate.ForwardConnections
+                        : candidate.ReverseConnections)
+                    .Contains(
+                        segmentIndex) &&
+                    (travelForward
+                        ? candidate.AllowsForward
+                        : candidate.AllowsReverse))
+            .OrderBy(
+                static candidate =>
+                    candidate.Index)
+            .FirstOrDefault();
 
     private bool TryAdvanceSegment(
         Agent agent,
