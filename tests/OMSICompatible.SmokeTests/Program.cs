@@ -3484,6 +3484,258 @@ try
             5,
         "Crossing reservation did not release the lower-priority AI only after the higher-priority agent left.");
 
+    var parallelCrossingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8600,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            0.0)
+                    ],
+                    [
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8601,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        3
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            0.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9002),
+                new WorldTrafficPathSegment(
+                    3,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            5.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9002)
+            ],
+            4,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var parallelCrossingSimulation =
+        new WorldTrafficSimulation(
+            parallelCrossingNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                2);
+
+    parallelCrossingSimulation.Step(
+        1.0);
+
+    var parallelCrossingAgents =
+        parallelCrossingSimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        parallelCrossingAgents.Length ==
+            2 &&
+        parallelCrossingAgents[0].SegmentIndex ==
+            2 &&
+        parallelCrossingAgents[1].SegmentIndex ==
+            3 &&
+        parallelCrossingAgents.All(
+            static agent =>
+                agent.SpeedMetersPerSecond >
+                0.0),
+        "Non-conflicting paths inside the same OMSI crossing were unnecessarily interlocked.");
+
+    var rightBeforeLeftNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8700,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            -5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0)
+                    ],
+                    [
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8701,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0)
+                    ],
+                    [
+                        3
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9003),
+                new WorldTrafficPathSegment(
+                    3,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            0.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9003)
+            ],
+            4,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var rightBeforeLeftSimulation =
+        new WorldTrafficSimulation(
+            rightBeforeLeftNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                2);
+
+    rightBeforeLeftSimulation.Step(
+        1.0);
+
+    var rightBeforeLeftAgents =
+        rightBeforeLeftSimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        rightBeforeLeftAgents.Length ==
+            2 &&
+        rightBeforeLeftAgents[0].SegmentIndex ==
+            0 &&
+        rightBeforeLeftAgents[1].SegmentIndex ==
+            3,
+        "Equal-priority OMSI crossing traffic did not yield to the vehicle approaching from the right.");
+
     var signalProgram =
         new WorldTrafficSignalProgram(
             "Main",
