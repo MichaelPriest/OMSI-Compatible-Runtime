@@ -152,6 +152,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly Dictionary<Keys, string>
         _fallbackOmsiPressTriggers =
             [];
+    private bool _vehicleRemoved;
     private bool _driveMode = true;
     private RuntimeVehicleViewMode _vehicleViewMode =
         RuntimeVehicleViewMode.Driver;
@@ -2534,6 +2535,16 @@ public sealed class D3D11RenderWindow : Form
                 Close();
                 return;
 
+            case RuntimeOmsiMenuCommand.NewBus:
+                Console.WriteLine(
+                    "[runtime-select-bus]");
+                Close();
+                return;
+
+            case RuntimeOmsiMenuCommand.RemoveBus:
+                RemoveCurrentVehicle();
+                break;
+
             case RuntimeOmsiMenuCommand.Schedule:
                 ApplyOmsiHostActionPress(
                     RuntimeOmsiHostInputAction.ScheduleView);
@@ -2578,7 +2589,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiMenuCommand.ResetVehicle:
-                if (_terrainGeometry.Vertices.Length >
+                if (!_vehicleRemoved &&
+                    _terrainGeometry.Vertices.Length >
                     0)
                 {
                     _vehicle.Reset(
@@ -2593,6 +2605,71 @@ public sealed class D3D11RenderWindow : Form
 
         SyncOmsiMenuState();
         UpdateCaption();
+    }
+
+    private void RemoveCurrentVehicle()
+    {
+        if (_vehicleRemoved ||
+            _windowInfo.Vehicle is null)
+        {
+            return;
+        }
+
+        if (_mouseDriveMode)
+        {
+            DisableMouseDriveMode();
+        }
+
+        var freeCameraPosition =
+            _vehicle.GetChaseCameraPosition(
+                _windowInfo.Vehicle
+                    .OutsideCameraCenter,
+                distanceScale:
+                    0.75f);
+
+        var freeCameraTarget =
+            _vehicle.Position +
+            new Vector3(
+                0.0f,
+                1.6f,
+                0.0f);
+
+        _camera.SetLookAt(
+            freeCameraPosition,
+            freeCameraTarget,
+            moveSpeed:
+                Math.Clamp(
+                    14.0f +
+                    Math.Abs(
+                        _vehicle.SpeedMetersPerSecond) *
+                    2.0f,
+                    10.0f,
+                    80.0f));
+
+        _vehicle.SetEngineRunning(
+            false);
+
+        _vehicleRemoved =
+            true;
+        _driveMode =
+            false;
+        _reflectionRenderingEnabled =
+            false;
+
+        _omsiAudio?.Dispose();
+        _omsiAudio =
+            null;
+
+        foreach (var audio in
+                 _articulatedOmsiAudio.Values)
+        {
+            audio.Dispose();
+        }
+
+        _articulatedOmsiAudio.Clear();
+
+        Console.WriteLine(
+            "[vehicle] current bus removed from map");
     }
 
     private void OnClientSizeChanged(
@@ -3214,6 +3291,11 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawVehicle()
     {
+        if (_vehicleRemoved)
+        {
+            return;
+        }
+
         // Geometry selection must follow the camera that is actually in use.
         // If an OMSI .bus has no valid F1/F2 cameras, CreateViewProjection()
         // falls back to the chase camera; drawing the interior geometry in
@@ -3598,6 +3680,11 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawVehicleLights()
     {
+        if (_vehicleRemoved)
+        {
+            return;
+        }
+
         var vehicle =
             _windowInfo.Vehicle;
 
@@ -5429,16 +5516,21 @@ public sealed class D3D11RenderWindow : Form
         var listenerPosition =
             ResolveActiveCameraPosition();
 
-        _omsiAudio?.Update(
-            _scriptRuntime,
-            IsInteriorSoundView(),
-            _vehicle.EngineRunning,
-            listenerPosition,
-            _vehicle.Position,
-            _vehicle.HeadingRadians);
+        if (!_vehicleRemoved)
+        {
+            _omsiAudio?.Update(
+                _scriptRuntime,
+                IsInteriorSoundView(),
+                _vehicle.EngineRunning,
+                listenerPosition,
+                _vehicle.Position,
+                _vehicle.HeadingRadians);
+        }
 
         foreach (var pair in
-                 _articulatedOmsiAudio)
+                 _vehicleRemoved
+                     ? Array.Empty<KeyValuePair<int, RuntimeOmsiAudioHost>>()
+                     : _articulatedOmsiAudio)
         {
             var section =
                 _windowInfo.Vehicle?.Sections?
@@ -7658,7 +7750,8 @@ public sealed class D3D11RenderWindow : Form
     private void TriggerOmsiAudio(
         string trigger)
     {
-        if (string.IsNullOrWhiteSpace(
+        if (_vehicleRemoved ||
+            string.IsNullOrWhiteSpace(
                 trigger))
         {
             return;
@@ -7975,7 +8068,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.DriverView:
-                if (_windowInfo.Vehicle is null)
+                if (_vehicleRemoved ||
+                    _windowInfo.Vehicle is null)
                 {
                     break;
                 }
@@ -7992,7 +8086,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.PassengerView:
-                if (_windowInfo.Vehicle is null)
+                if (_vehicleRemoved ||
+                    _windowInfo.Vehicle is null)
                 {
                     break;
                 }
@@ -8008,7 +8103,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.ExteriorView:
-                if (_windowInfo.Vehicle is null)
+                if (_vehicleRemoved ||
+                    _windowInfo.Vehicle is null)
                 {
                     break;
                 }
@@ -9187,7 +9283,9 @@ public sealed class D3D11RenderWindow : Form
             ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · runtime objects {_objectGeometry.RenderedObjectCount:N0}/{runtimeObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0} loaded · texture failures {_failedObjectTexturePaths.Count:N0} · encrypted {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
-        var gear = _vehicle.Gear switch
+        var gear = _vehicleRemoved
+            ? "—"
+            : _vehicle.Gear switch
         {
             RuntimeDriveGear.Drive => "D",
             RuntimeDriveGear.Reverse => "R",
