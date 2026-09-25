@@ -613,6 +613,9 @@ public sealed class D3D11RenderWindow : Form
             RuntimeSplineGeometryBuilder.Build(
                 _windowInfo.Splines);
 
+        _vehicle.ReplaceSplineSurfaceGeometry(
+            _splineGeometry);
+
         if (_splineGeometry.Vertices.Length > 0)
         {
             _splineVertexBuffer =
@@ -1489,6 +1492,9 @@ public sealed class D3D11RenderWindow : Form
         _splineGeometry =
             RuntimeSplineGeometryBuilder.Build(
                 _windowInfo.Splines);
+
+        _vehicle.ReplaceSplineSurfaceGeometry(
+            _splineGeometry);
 
         if (_splineGeometry.Vertices.Length == 0)
         {

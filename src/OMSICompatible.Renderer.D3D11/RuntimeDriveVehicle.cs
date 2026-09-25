@@ -30,6 +30,8 @@ internal sealed class RuntimeDriveVehicle :
     private const float DefaultYawInertiaKilogramSquareMeters = 300_000.0f;
 
     private RuntimeTerrainSampler _terrain;
+    private RuntimeSplineSurfaceSampler _splineSurfaces =
+        RuntimeSplineSurfaceSampler.Empty;
     private readonly RuntimeVehicleSectionInfo[] _sections;
     private readonly float _wheelBaseMeters;
     private readonly float _frontAxleLongitudinalMeters;
@@ -559,19 +561,85 @@ internal sealed class RuntimeDriveVehicle :
             new RuntimeTerrainSampler(
                 tiles);
 
-        if (_terrain.TrySample(
+        SnapRuntimePositionToDrivingSurface();
+        SynchronizeOdeBodyFromRuntime();
+    }
+
+    public void ReplaceSplineSurfaceGeometry(
+        RuntimeSplineGeometry geometry)
+    {
+        ArgumentNullException.ThrowIfNull(
+            geometry);
+
+        _splineSurfaces =
+            RuntimeSplineSurfaceSampler.Create(
+                geometry);
+
+        SnapRuntimePositionToDrivingSurface();
+        SynchronizeOdeBodyFromRuntime();
+    }
+
+    private void SnapRuntimePositionToDrivingSurface()
+    {
+        if (!TrySampleDrivingSurface(
                 Position.X,
                 Position.Z,
+                Position.Y + 1.5f,
                 out var groundHeight))
         {
-            Position =
-                new Vector3(
-                    Position.X,
-                    groundHeight + ModelGroundPlaneOffsetMeters,
-                    Position.Z);
+            return;
         }
 
-        SynchronizeOdeBodyFromRuntime();
+        Position =
+            new Vector3(
+                Position.X,
+                groundHeight +
+                    ModelGroundPlaneOffsetMeters,
+                Position.Z);
+    }
+
+    private bool TrySampleDrivingSurface(
+        double worldX,
+        double worldZ,
+        float maximumSurfaceHeight,
+        out float height)
+    {
+        var found =
+            false;
+
+        height =
+            float.NegativeInfinity;
+
+        if (_splineSurfaces.TrySampleBelow(
+                worldX,
+                worldZ,
+                maximumSurfaceHeight,
+                out var splineHeight))
+        {
+            height =
+                splineHeight;
+            found =
+                true;
+        }
+
+        if (_terrain.TrySample(
+                worldX,
+                worldZ,
+                out var terrainHeight) &&
+            terrainHeight <=
+                maximumSurfaceHeight +
+                0.05f &&
+            (!found ||
+             terrainHeight >
+                 height))
+        {
+            height =
+                terrainHeight;
+            found =
+                true;
+        }
+
+        return found;
     }
 
     public Vector3 Position { get; private set; }
@@ -830,6 +898,7 @@ internal sealed class RuntimeDriveVehicle :
             {
                 $"odeActive={_odeWorld is not null && _odeBody is not null}",
                 $"scriptDynamics={_omsiScriptDynamicsEnabled}",
+                $"splineSurfaceTriangles={_splineSurfaces.TriangleCount}",
                 $"position={F(Position.X)},{F(Position.Y)},{F(Position.Z)}",
                 $"speedKph={F(SpeedKph)}",
                 $"verticalAccelerationMps2={F(_verticalAccelerationMetersPerSecondSquared)}",
@@ -884,9 +953,11 @@ internal sealed class RuntimeDriveVehicle :
         if (selectedSpawn is not null)
         {
             var y =
-                _terrain.TrySample(
+                TrySampleDrivingSurface(
                     selectedSpawn.X,
                     selectedSpawn.Z,
+                    (float)selectedSpawn.Y +
+                        1.5f,
                     out var sampled)
                     ? sampled + ModelGroundPlaneOffsetMeters
                     : (float)selectedSpawn.Y +
@@ -921,9 +992,11 @@ internal sealed class RuntimeDriveVehicle :
                     spawn.Z;
 
                 var y =
-                    _terrain.TrySample(
+                    TrySampleDrivingSurface(
                         x,
                         z,
+                        (float)spawn.Y +
+                            1.5f,
                         out var sampled)
                         ? sampled + ModelGroundPlaneOffsetMeters
                         : (float)spawn.Y +
@@ -1732,9 +1805,11 @@ internal sealed class RuntimeDriveVehicle :
             nextForward *
             _rotationPointLongitudinalMeters;
 
-        if (_terrain.TrySample(
+        if (TrySampleDrivingSurface(
                 Position.X,
                 Position.Z,
+                Position.Y +
+                    1.5f,
                 out var groundHeight))
         {
             Position =
@@ -1783,13 +1858,17 @@ internal sealed class RuntimeDriveVehicle :
             forward *
             _rearAxleLongitudinalMeters;
 
-        if (_terrain.TrySample(
+        if (TrySampleDrivingSurface(
                 front.X,
                 front.Z,
+                Position.Y +
+                    1.5f,
                 out var frontHeight) &&
-            _terrain.TrySample(
+            TrySampleDrivingSurface(
                 rear.X,
                 rear.Z,
+                Position.Y +
+                    1.5f,
                 out var rearHeight))
         {
             _groundPitchRadians =
@@ -1813,13 +1892,17 @@ internal sealed class RuntimeDriveVehicle :
             right *
             halfTrack;
 
-        if (_terrain.TrySample(
+        if (TrySampleDrivingSurface(
                 rightPoint.X,
                 rightPoint.Z,
+                Position.Y +
+                    1.5f,
                 out var rightHeight) &&
-            _terrain.TrySample(
+            TrySampleDrivingSurface(
                 leftPoint.X,
                 leftPoint.Z,
+                Position.Y +
+                    1.5f,
                 out var leftHeight))
         {
             _groundRollRadians =
@@ -3320,9 +3403,12 @@ internal sealed class RuntimeDriveVehicle :
                 bodyPosition +
                 worldOffset;
 
-            if (!_terrain.TrySample(
+            if (!TrySampleDrivingSurface(
                     worldPoint.X,
                     worldPoint.Y,
+                    worldPoint.Z +
+                        maximumCompressionMeters +
+                        0.15f,
                     out var groundHeight))
             {
                 continue;
@@ -4861,9 +4947,12 @@ internal sealed class RuntimeDriveVehicle :
                     bodyPosition +
                     worldOffset;
 
-                if (!_terrain.TrySample(
+                if (!TrySampleDrivingSurface(
                         worldPoint.X,
                         worldPoint.Y,
+                        worldPoint.Z +
+                            maximumCompression +
+                            0.15f,
                         out var groundHeight))
                 {
                     continue;
