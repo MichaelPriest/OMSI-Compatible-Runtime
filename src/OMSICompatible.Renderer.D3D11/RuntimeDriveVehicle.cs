@@ -3725,15 +3725,43 @@ internal sealed class RuntimeDriveVehicle :
                 trackWidth *
                 0.5f;
 
-            var leftSpeed =
+            var leftLongitudinalSpeed =
                 SpeedMetersPerSecond +
                 _yawRateRadiansPerSecond *
                 halfTrack;
 
-            var rightSpeed =
+            var rightLongitudinalSpeed =
                 SpeedMetersPerSecond -
                 _yawRateRadiansPerSecond *
                 halfTrack;
+
+            var lateralSpeed =
+                _yawRateRadiansPerSecond *
+                (float)info.LongitudinalPositionMeters;
+
+            var leftWheelDirection =
+                ResolveOmsiWheelForwardLocal(
+                    axle,
+                    left:
+                        true);
+
+            var rightWheelDirection =
+                ResolveOmsiWheelForwardLocal(
+                    axle,
+                    left:
+                        false);
+
+            var leftSpeed =
+                lateralSpeed *
+                    leftWheelDirection.X +
+                leftLongitudinalSpeed *
+                    leftWheelDirection.Y;
+
+            var rightSpeed =
+                lateralSpeed *
+                    rightWheelDirection.X +
+                rightLongitudinalSpeed *
+                    rightWheelDirection.Y;
 
             SetOmsiWheelKinematics(
                 axle,
@@ -3844,15 +3872,47 @@ internal sealed class RuntimeDriveVehicle :
                     angularVelocity,
                     rightWorldOffset);
 
+            var leftWheelForward =
+                Vector3.Transform(
+                    ResolveOmsiWheelForwardLocal(
+                        omsiAxleIndex,
+                        left:
+                            true),
+                    orientation);
+
+            var rightWheelForward =
+                Vector3.Transform(
+                    ResolveOmsiWheelForwardLocal(
+                        omsiAxleIndex,
+                        left:
+                            false),
+                    orientation);
+
+            if (leftWheelForward.LengthSquared() <
+                0.000001f ||
+                rightWheelForward.LengthSquared() <
+                    0.000001f)
+            {
+                continue;
+            }
+
+            leftWheelForward =
+                Vector3.Normalize(
+                    leftWheelForward);
+
+            rightWheelForward =
+                Vector3.Normalize(
+                    rightWheelForward);
+
             var leftLongitudinalSpeed =
                 Vector3.Dot(
                     leftVelocity,
-                    forward);
+                    leftWheelForward);
 
             var rightLongitudinalSpeed =
                 Vector3.Dot(
                     rightVelocity,
-                    forward);
+                    rightWheelForward);
 
             SetOmsiWheelKinematics(
                 omsiAxleIndex,
@@ -3923,6 +3983,29 @@ internal sealed class RuntimeDriveVehicle :
         _omsiWheelKinematicsValid[
             axleIndex] =
             true;
+    }
+
+    private Vector3 ResolveOmsiWheelForwardLocal(
+        int omsiAxleIndex,
+        bool left)
+    {
+        if (omsiAxleIndex !=
+            0)
+        {
+            return Vector3.UnitY;
+        }
+
+        var steeringAngle =
+            left
+                ? FrontLeftSteeringRadians
+                : FrontRightSteeringRadians;
+
+        return new Vector3(
+            MathF.Sin(
+                steeringAngle),
+            MathF.Cos(
+                steeringAngle),
+            0.0f);
     }
 
     private static float ResolveAxleTrackWidth(
