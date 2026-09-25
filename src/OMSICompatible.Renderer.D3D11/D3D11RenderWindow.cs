@@ -7005,34 +7005,15 @@ public sealed class D3D11RenderWindow : Form
         switch (key)
         {
             case Keys.E:
-                // Host-owned electrical state is authoritative for the
-                // runtime, but still send the standard cockpit trigger when
-                // that vehicle implements it so key/switch animations follow.
-                if (_scriptRuntime?.HasTrigger(
-                        "cp_batterietrennschalter_toggle") ==
-                    true)
+                if (DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "cp_batterietrennschalter_toggle") ||
+                    DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "kw_batterietrennschalter"))
                 {
-                    const string trigger =
-                        "cp_batterietrennschalter_toggle";
-
-                    DispatchOmsiScriptTrigger(
-                        trigger);
-                    _fallbackOmsiPressTriggers[
-                        key] =
-                        trigger;
-                }
-                else if (_scriptRuntime?.HasTrigger(
-                             "kw_batterietrennschalter") ==
-                         true)
-                {
-                    const string trigger =
-                        "kw_batterietrennschalter";
-
-                    DispatchOmsiScriptTrigger(
-                        trigger);
-                    _fallbackOmsiPressTriggers[
-                        key] =
-                        trigger;
+                    SynchronizeHostVehicleStateFromScripts();
+                    return true;
                 }
 
                 ApplyOmsiHostActionPress(
@@ -7040,48 +7021,56 @@ public sealed class D3D11RenderWindow : Form
                 return true;
 
             case Keys.N:
-                DispatchDefaultScriptTriggerIfPresent(
-                    key,
-                    "automatic_N");
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearNeutral);
+                if (!DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "automatic_N"))
+                {
+                    ApplyOmsiHostActionPress(
+                        RuntimeOmsiHostInputAction.GearNeutral);
+                }
+                else
+                {
+                    SynchronizeHostVehicleStateFromScripts();
+                }
+
                 return true;
 
             case Keys.D:
-                DispatchDefaultScriptTriggerIfPresent(
-                    key,
-                    "automatic_D");
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearDrive);
+                if (!DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "automatic_D"))
+                {
+                    ApplyOmsiHostActionPress(
+                        RuntimeOmsiHostInputAction.GearDrive);
+                }
+                else
+                {
+                    SynchronizeHostVehicleStateFromScripts();
+                }
+
                 return true;
 
             case Keys.R:
-                DispatchDefaultScriptTriggerIfPresent(
-                    key,
-                    "automatic_R");
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearReverse);
+                if (!DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "automatic_R"))
+                {
+                    ApplyOmsiHostActionPress(
+                        RuntimeOmsiHostInputAction.GearReverse);
+                }
+                else
+                {
+                    SynchronizeHostVehicleStateFromScripts();
+                }
+
                 return true;
 
             case Keys.M:
-                const string engineTrigger =
-                    "kw_m_enginestart";
-
-                DispatchOmsiScriptTrigger(
-                    engineTrigger);
-
-                _fallbackOmsiPressTriggers[
-                    key] =
-                    engineTrigger;
-
-                if (_scriptRuntime?.HasLocalVariable(
-                        "engine_on") ==
-                    true)
+                if (DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "kw_m_enginestart"))
                 {
-                    _vehicle.SetEngineRunning(
-                        _scriptRuntime.GetLocal(
-                            "engine_on") >
-                        0.5);
+                    SynchronizeHostVehicleStateFromScripts();
                 }
                 else
                 {
@@ -7095,7 +7084,7 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
-    private void DispatchDefaultScriptTriggerIfPresent(
+    private bool DispatchDefaultScriptTriggerIfPresent(
         Keys key,
         string trigger)
     {
@@ -7103,7 +7092,7 @@ public sealed class D3D11RenderWindow : Form
                 trigger) !=
             true)
         {
-            return;
+            return false;
         }
 
         DispatchOmsiScriptTrigger(
@@ -7112,6 +7101,8 @@ public sealed class D3D11RenderWindow : Form
         _fallbackOmsiPressTriggers[
             key] =
             trigger;
+
+        return true;
     }
 
     private void ApplyLegacyKeyboardFallback(
@@ -7613,7 +7604,12 @@ public sealed class D3D11RenderWindow : Form
                 binding);
 
             if (binding.HostAction is
-                { } hostAction)
+                { } hostAction &&
+                !(_scriptRuntime?.HasTrigger(
+                       binding.Trigger) ==
+                   true &&
+                  IsOmsiScriptAuthoritativeAction(
+                      hostAction)))
             {
                 ApplyOmsiHostActionPress(
                     hostAction);
@@ -7970,6 +7966,21 @@ public sealed class D3D11RenderWindow : Form
                 "view_information" or
                 "view_info";
     }
+
+    private static bool IsOmsiScriptAuthoritativeAction(
+        RuntimeOmsiHostInputAction action) =>
+        action is
+            RuntimeOmsiHostInputAction.ElectricalToggle or
+            RuntimeOmsiHostInputAction.EngineToggle or
+            RuntimeOmsiHostInputAction.EngineStart or
+            RuntimeOmsiHostInputAction.EngineOff or
+            RuntimeOmsiHostInputAction.GearDrive or
+            RuntimeOmsiHostInputAction.GearNeutral or
+            RuntimeOmsiHostInputAction.GearReverse or
+            RuntimeOmsiHostInputAction.ParkingBrakeToggle or
+            RuntimeOmsiHostInputAction.ParkingBrakeSet or
+            RuntimeOmsiHostInputAction.ParkingBrakeRelease or
+            RuntimeOmsiHostInputAction.StopBrakeToggle;
 
     private void ApplyOmsiHostActionPress(
         RuntimeOmsiHostInputAction action)
