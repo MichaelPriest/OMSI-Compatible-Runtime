@@ -1564,6 +1564,14 @@ try
             trailerCharacter.MaximumYawDegrees -
             52.5) <
         0.0001 &&
+        Math.Abs(
+            trailerCharacter.MinimumPitchDegrees +
+            20.0) <
+        0.0001 &&
+        Math.Abs(
+            trailerCharacter.MaximumPitchDegrees -
+            20.0) <
+        0.0001 &&
         trailerCharacter.Type ==
             1 &&
         trailerBus.FrontCouplingOpenForSound &&
@@ -1612,6 +1620,16 @@ try
             articulatedAsset.Sections[0].MaximumYawDegrees -
             52.5) <
         0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].MinimumPitchDegrees +
+            20.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].MaximumPitchDegrees -
+            20.0) <
+        0.0001 &&
+        articulatedAsset.Sections[0].CouplingType ==
+            1 &&
         Math.Abs(
             articulatedAsset.Sections[0].OriginY +
             8.0) <
