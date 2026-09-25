@@ -2310,12 +2310,17 @@ try
         !editorOnlyAsset.IsRenderable,
         "[onlyeditor] scenery must remain in the world but be hidden in game rendering.");
 
+    var verifiedEditorOnlyAsset =
+        editorOnlyAsset ??
+        throw new InvalidOperationException(
+            "Synthetic editor-only scenery asset was not loaded.");
+
     Require(
-        editorOnlyAsset.Paths.Count == 1,
+        verifiedEditorOnlyAsset.Paths.Count == 1,
         "Crossing/scenery [path] metadata was not preserved.");
 
     var crossingPath =
-        editorOnlyAsset.Paths[0];
+        verifiedEditorOnlyAsset.Paths[0];
 
     Require(
         Math.Abs(crossingPath.X - 1.5) < 0.0001 &&
