@@ -6711,6 +6711,62 @@ public sealed class D3D11RenderWindow : Form
                     $"cardanRpm={ScriptValue(_scriptRuntime, "antrieb_n_kardanwelle")}");
             }
 
+            lines.Add(
+                $"primaryDrivenSection={_vehicle.PrimaryDrivenSectionIndex}");
+            lines.Add(
+                $"primaryDrivenOmsiAxle={_vehicle.PrimaryDrivenOmsiAxleIndex}");
+
+            var torqueRuntime =
+                ResolveOmsiWheelTorqueRuntime();
+
+            var torqueAuthority =
+                ReferenceEquals(
+                    torqueRuntime,
+                    _scriptRuntime)
+                    ? "lead"
+                    : _sectionScriptRuntimes
+                        .FirstOrDefault(
+                            pair =>
+                                ReferenceEquals(
+                                    pair.Value,
+                                    torqueRuntime))
+                        .Key is
+                            var sectionKey &&
+                        sectionKey >
+                            0
+                            ? $"section:{sectionKey}"
+                            : torqueRuntime is null
+                                ? "<none>"
+                                : "unknown";
+
+            lines.Add(
+                $"wheelTorqueAuthority={torqueAuthority}");
+
+            foreach (var pair in
+                     _sectionScriptRuntimes
+                         .OrderBy(
+                             static item =>
+                                 item.Key))
+            {
+                var runtime =
+                    pair.Value;
+
+                static string SectionValue(
+                    OmsiScriptRuntime sectionRuntime,
+                    string variable) =>
+                    sectionRuntime.HasLocalVariable(
+                        variable)
+                        ? sectionRuntime.GetLocal(
+                                variable)
+                            .ToString(
+                                "0.###",
+                                System.Globalization.CultureInfo.InvariantCulture)
+                        : "<missing>";
+
+                lines.Add(
+                    $"sectionScript#{pair.Key}|writesM_Wheel={runtime.WritesLocalVariable("M_Wheel")}|M_Wheel={SectionValue(runtime, "M_Wheel")}|writesBrakeforce={runtime.WritesLocalVariable("Brakeforce")}|Brakeforce={SectionValue(runtime, "Brakeforce")}|n_Wheel={SectionValue(runtime, "n_Wheel")}|engine_on={SectionValue(runtime, "engine_on")}|alpha={SectionValue(runtime, "articulation_0_alpha")}|beta={SectionValue(runtime, "articulation_0_beta")}");
+            }
+
             File.WriteAllLines(
                 Path.Combine(
                     AppContext.BaseDirectory,
