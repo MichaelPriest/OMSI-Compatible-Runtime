@@ -8338,6 +8338,38 @@ public sealed class D3D11RenderWindow : Form
             true,
             wheelTorque,
             brakeForce);
+
+        _vehicle.SetOmsiSuspensionSpringFactors(
+            ReadOmsiSpringFactor(
+                "Axle_Springfactor_0_L"),
+            ReadOmsiSpringFactor(
+                "Axle_Springfactor_0_R"),
+            ReadOmsiSpringFactor(
+                "Axle_Springfactor_1_L"),
+            ReadOmsiSpringFactor(
+                "Axle_Springfactor_1_R"));
+    }
+
+    private double ReadOmsiSpringFactor(
+        string variable)
+    {
+        if (_scriptRuntime is null ||
+            !_scriptRuntime.HasLocalVariable(
+                variable))
+        {
+            return 1.0;
+        }
+
+        var value =
+            _scriptRuntime.GetLocal(
+                variable);
+
+        return double.IsFinite(
+                   value) &&
+               value >
+                   0.0
+            ? value
+            : 1.0;
     }
 
     private void SynchronizeHostVehicleStateFromScripts()
