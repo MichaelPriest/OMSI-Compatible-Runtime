@@ -2170,7 +2170,8 @@ internal sealed class RuntimeDriveVehicle :
         RuntimeTerrainGeometry terrainGeometry,
         float headingOffsetRadians = 0.0f,
         float pitchOffsetRadians = 0.0f,
-        float fieldOfViewScale = 1.0f)
+        float fieldOfViewScale = 1.0f,
+        double? maximumRenderDistanceMeters = null)
     {
         var localEye =
             new Vector3(
@@ -2260,6 +2261,24 @@ internal sealed class RuntimeDriveVehicle :
                 18.0,
                 120.0);
 
+        var fallbackFarPlane =
+            MathF.Max(
+                5_000.0f,
+                span * 8.0f);
+
+        var farPlane =
+            maximumRenderDistanceMeters is
+                { } declaredDistance &&
+            double.IsFinite(
+                declaredDistance) &&
+            declaredDistance >
+                0.0
+                ? Math.Clamp(
+                    (float)declaredDistance,
+                    5.0f,
+                    fallbackFarPlane)
+                : fallbackFarPlane;
+
         var projection =
             Matrix4x4.CreatePerspectiveFieldOfView(
                 DegreesToRadians(
@@ -2268,9 +2287,7 @@ internal sealed class RuntimeDriveVehicle :
                     aspect,
                     0.1f),
                 0.04f,
-                MathF.Max(
-                    5_000.0f,
-                    span * 8.0f));
+                farPlane);
 
         return view * projection;
     }
@@ -2290,7 +2307,9 @@ internal sealed class RuntimeDriveVehicle :
                 camera.HeadingDegrees,
                 camera.PitchDegrees),
             aspect,
-            terrainGeometry);
+            terrainGeometry,
+            maximumRenderDistanceMeters:
+                camera.MaximumRenderDistanceMeters);
     }
 
     public Matrix4x4 CreatePassengerViewProjection(
