@@ -4382,6 +4382,28 @@ internal sealed class RuntimeDriveVehicle :
             5.0f);
     }
 
+    private static float NormalizeRadians(
+        float value)
+    {
+        while (value >
+               MathF.PI)
+        {
+            value -=
+                MathF.PI *
+                2.0f;
+        }
+
+        while (value <
+               -MathF.PI)
+        {
+            value +=
+                MathF.PI *
+                2.0f;
+        }
+
+        return value;
+    }
+
     private static float DegreesToRadians(
         double value) =>
         (float)(
