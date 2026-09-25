@@ -5006,13 +5006,38 @@ internal sealed class RuntimeDriveVehicle :
                 Array.Empty<RuntimeVehicleAxleInfo>();
         }
 
-        var firstDiameter =
+        var drivenAxle =
             sourceAxles
-                .FirstOrDefault()?
+                .Where(
+                    static axle =>
+                        axle.DriveFactor is
+                            { } drive &&
+                        double.IsFinite(
+                            drive))
+                .OrderByDescending(
+                    static axle =>
+                        Math.Abs(
+                            axle.DriveFactor ??
+                            0.0))
+                .FirstOrDefault();
+
+        drivenAxle ??=
+            sourceAxles
+                .Where(
+                    static axle =>
+                        double.IsFinite(
+                            axle.LongitudinalPositionMeters))
+                .OrderBy(
+                    static axle =>
+                        axle.LongitudinalPositionMeters)
+                .FirstOrDefault();
+
+        var drivenDiameter =
+            drivenAxle?
                 .WheelDiameterMeters;
 
         var diameter =
-            firstDiameter is
+            drivenDiameter is
                     { } declared &&
                 double.IsFinite(
                     declared) &&
