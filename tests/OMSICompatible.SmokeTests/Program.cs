@@ -1129,6 +1129,264 @@ try
             0),
         "OMSI rail interlocking did not release the signal route after the consist tail cleared it.");
 
+    var railMergeHistoryNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    40,
+                    9000,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [42],
+                    [],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 0.0
+                        }),
+                new WorldTrafficPathSegment(
+                    41,
+                    9001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [42],
+                    [],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 1.0
+                        }),
+                new WorldTrafficPathSegment(
+                    42,
+                    9002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0)
+                    ],
+                    [],
+                    [40, 41],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 1.0
+                        })
+            ],
+            0,
+            0,
+            3,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railMergeHistorySimulation =
+        new WorldRailTrafficSimulation(
+            railMergeHistoryNetwork,
+            railCatalog,
+            maximumAgents:
+                1);
+
+    railMergeHistorySimulation.Step(
+        2.5);
+
+    var railMergeHistoryState =
+        railMergeHistorySimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        railMergeHistoryState.SegmentIndex ==
+            42 &&
+        railMergeHistorySimulation.TrySampleBehind(
+            railMergeHistoryState.AgentIndex,
+            10.0,
+            out var railMergeTrailingSegmentIndex,
+            out _,
+            out _,
+            out _) &&
+        railMergeTrailingSegmentIndex ==
+            41,
+        "OMSI rail consist tail did not follow the actual traversed branch through a merge.");
+
+    var railTwoTrainCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "Rail",
+                    @"trains\synthetic.zug",
+                    trainConsistPath,
+                    1.0),
+                new OmsiAiVehicleDefinition(
+                    "Rail",
+                    @"trains\synthetic.zug",
+                    trainConsistPath,
+                    1.0)
+            ],
+            [],
+            [],
+            [],
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "Rail",
+                    1)
+            ]);
+
+    var railTailOccupancyNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    50,
+                    9100,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [51],
+                    []),
+                new WorldTrafficPathSegment(
+                    51,
+                    9101,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [52],
+                    [50]),
+                new WorldTrafficPathSegment(
+                    52,
+                    9102,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0)
+                    ],
+                    [],
+                    [51])
+            ],
+            0,
+            0,
+            3,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railTailOccupancySimulation =
+        new WorldRailTrafficSimulation(
+            railTailOccupancyNetwork,
+            railTwoTrainCatalog,
+            maximumAgents:
+                2);
+
+    railTailOccupancySimulation
+        .SetConsistTrailingDistance(
+            trainConsistPath,
+            8.0);
+
+    railTailOccupancySimulation.Step(
+        1.2);
+
+    var railTailOccupancyStates =
+        railTailOccupancySimulation
+            .Snapshot();
+
+    Require(
+        railTailOccupancyStates
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    0)
+            .SegmentIndex ==
+            50 &&
+        railTailOccupancyStates
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    1)
+            .SegmentIndex ==
+            52,
+        "OMSI rail traffic entered a path that was still occupied by another consist tail.");
+
+    railTailOccupancySimulation.Step(
+        0.6);
+
+    Require(
+        railTailOccupancySimulation
+            .Snapshot()
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    0)
+            .SegmentIndex ==
+            51,
+        "OMSI rail traffic did not enter the path after the preceding consist tail cleared it.");
+
     File.WriteAllText(
         Path.Combine(
             root,
