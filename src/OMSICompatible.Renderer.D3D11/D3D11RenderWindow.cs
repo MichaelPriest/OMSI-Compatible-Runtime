@@ -9406,9 +9406,9 @@ public sealed class D3D11RenderWindow : Form
                 "kw_m_engineshutdown" =>
                     RuntimeOmsiHostInputAction.EngineOff,
                 "view_interiorcam_plus" =>
-                    RuntimeOmsiHostInputAction.InteriorViewNext,
-                "view_interiorcam_minus" =>
                     RuntimeOmsiHostInputAction.InteriorViewPrevious,
+                "view_interiorcam_minus" =>
+                    RuntimeOmsiHostInputAction.InteriorViewNext,
                 "view_reset_direction" =>
                     RuntimeOmsiHostInputAction.ResetCurrentView,
                 "view_schedule" or
