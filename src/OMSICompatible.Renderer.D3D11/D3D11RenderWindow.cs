@@ -2630,6 +2630,7 @@ public sealed class D3D11RenderWindow : Form
             case RuntimeOmsiMenuCommand.Pause:
                 _simulationPaused =
                     !_simulationPaused;
+                SynchronizeOmsiPauseSystemVariable();
                 break;
 
             case RuntimeOmsiMenuCommand.DriverView:
@@ -9856,6 +9857,7 @@ public sealed class D3D11RenderWindow : Form
             case RuntimeOmsiHostInputAction.PauseToggle:
                 _simulationPaused =
                     !_simulationPaused;
+                SynchronizeOmsiPauseSystemVariable();
                 break;
 
             case RuntimeOmsiHostInputAction.ResetAllViews:
@@ -9880,6 +9882,26 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 break;
+        }
+    }
+
+    private void SynchronizeOmsiPauseSystemVariable()
+    {
+        var value =
+            _simulationPaused
+                ? 1.0
+                : 0.0;
+
+        _scriptRuntime?.SetSystem(
+            "Pause",
+            value);
+
+        foreach (var runtime in
+                 _sectionScriptRuntimes.Values)
+        {
+            runtime.SetSystem(
+                "Pause",
+                value);
         }
     }
 
