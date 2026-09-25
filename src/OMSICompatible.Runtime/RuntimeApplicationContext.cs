@@ -422,7 +422,9 @@ internal sealed class RuntimeApplicationContext :
                     materialNightMapEnabled:
                         _options.MaterialNightMap,
                     trafficStep:
-                        StepTrafficSimulation);
+                        StepTrafficSimulation,
+                    railSignalStateProvider:
+                        GetRailSignalRouteStates);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
@@ -1469,6 +1471,34 @@ internal sealed class RuntimeApplicationContext :
             signalRoutes:
                 world.SignalRoutes);
 
+    private IReadOnlyList<RuntimeRailSignalRouteStateInfo>
+        GetRailSignalRouteStates()
+    {
+        var simulation =
+            _railTrafficSimulation;
+
+        if (simulation is null)
+        {
+            return Array.Empty<
+                RuntimeRailSignalRouteStateInfo>();
+        }
+
+        return simulation
+            .SignalRouteSnapshot()
+            .Where(
+                static state =>
+                    state.Signal is not null)
+            .Select(
+                static state =>
+                    new RuntimeRailSignalRouteStateInfo(
+                        state.RouteIndex,
+                        state.Signal!.ObjectId,
+                        state.Signal.ElementIndex,
+                        state.Reserved,
+                        state.ReservedAgentIndex))
+            .ToArray();
+    }
+
     private IReadOnlyList<RuntimeTrafficAgentInfo>
         StepTrafficSimulation(
             double deltaSeconds)
@@ -2110,6 +2140,24 @@ internal sealed class RuntimeApplicationContext :
                                 item.ResolvedPath))
                     .ToArray());
 
+        var dynamicSceneryObjectIds =
+            WorldRailSignalRouteResolver
+                .Resolve(
+                    world.TrafficPaths,
+                    world.SignalRoutes)
+                .Select(
+                    static route =>
+                        route.Signal?.ObjectId)
+                .Where(
+                    static objectId =>
+                        objectId.HasValue &&
+                        objectId.Value >=
+                            0)
+                .Select(
+                    static objectId =>
+                        objectId!.Value)
+                .ToHashSet();
+
         return new RuntimeWindowInfo(
             world.Name,
             world.Tiles.Count,
@@ -2127,7 +2175,8 @@ internal sealed class RuntimeApplicationContext :
             runtimeAiCatalog,
             runtimeVehicle,
             runtimeSpawn,
-            runtimeTrafficVehicleAssets);
+            runtimeTrafficVehicleAssets,
+            dynamicSceneryObjectIds);
     }
 
     private static RuntimeVehiclePhysicsInfo ConvertVehiclePhysics(
