@@ -62,6 +62,10 @@ internal sealed class RuntimeDriveVehicle
     private bool _omsiScriptDynamicsEnabled;
     private float _omsiWheelTorqueNewtonMeters;
     private float _omsiBrakeForceNewtons;
+    private float _frontLeftSpringFactor = 1.0f;
+    private float _frontRightSpringFactor = 1.0f;
+    private float _rearLeftSpringFactor = 1.0f;
+    private float _rearRightSpringFactor = 1.0f;
 
     public RuntimeDriveVehicle(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -566,6 +570,10 @@ internal sealed class RuntimeDriveVehicle
         _omsiScriptDynamicsEnabled = false;
         _omsiWheelTorqueNewtonMeters = 0.0f;
         _omsiBrakeForceNewtons = 0.0f;
+        _frontLeftSpringFactor = 1.0f;
+        _frontRightSpringFactor = 1.0f;
+        _rearLeftSpringFactor = 1.0f;
+        _rearRightSpringFactor = 1.0f;
 
         ElectricalSystemEnabled = false;
         EngineRunning = false;
@@ -642,6 +650,26 @@ internal sealed class RuntimeDriveVehicle
     {
         ParkingBrakeEngaged =
             engaged;
+    }
+
+    public void SetOmsiSuspensionSpringFactors(
+        double frontLeft,
+        double frontRight,
+        double rearLeft,
+        double rearRight)
+    {
+        _frontLeftSpringFactor =
+            NormalizeSpringFactor(
+                frontLeft);
+        _frontRightSpringFactor =
+            NormalizeSpringFactor(
+                frontRight);
+        _rearLeftSpringFactor =
+            NormalizeSpringFactor(
+                rearLeft);
+        _rearRightSpringFactor =
+            NormalizeSpringFactor(
+                rearRight);
     }
 
     public void SetOmsiScriptDynamics(
@@ -1479,6 +1507,23 @@ internal sealed class RuntimeDriveVehicle
                 ? _frontStaticSuspensionMeters
                 : _rearStaticSuspensionMeters;
 
+        var springFactor =
+            front
+                ? left
+                    ? _frontLeftSpringFactor
+                    : _frontRightSpringFactor
+                : left
+                    ? _rearLeftSpringFactor
+                    : _rearRightSpringFactor;
+
+        // Axle_Springfactor_* is written by the OMSI pneumatic level-control
+        // scripts. It scales the effective spring stiffness; for the same
+        // static load a larger factor therefore yields less compression.
+        staticDeflection /=
+            Math.Max(
+                springFactor,
+                0.10f);
+
         return Math.Clamp(
             staticDeflection +
             pitch +
@@ -1859,6 +1904,23 @@ internal sealed class RuntimeDriveVehicle
                 HeadingRadians) *
             Matrix4x4.CreateTranslation(
                 Position);
+    }
+
+    private static float NormalizeSpringFactor(
+        double value)
+    {
+        if (!double.IsFinite(
+                value) ||
+            value <=
+            0.0)
+        {
+            return 1.0f;
+        }
+
+        return Math.Clamp(
+            (float)value,
+            0.10f,
+            5.0f);
     }
 
     private static float DegreesToRadians(
