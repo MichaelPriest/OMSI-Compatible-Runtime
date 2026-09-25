@@ -81,6 +81,8 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
     private readonly OmsiScriptRuntime? _scriptRuntime;
+    private readonly IReadOnlyDictionary<int, OmsiScriptRuntime>
+        _sectionScriptRuntimes;
     private readonly IReadOnlyDictionary<string, double>? _initialVehicleVariables;
     private readonly OmsiSystemMacroHandler? _previousSystemMacroHandler;
     private readonly HashSet<string> _reportedUnhandledSystemMacros =
@@ -321,10 +323,16 @@ public sealed class D3D11RenderWindow : Form
         bool vehiclePreviewMode = false,
         IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
         string? inputLanguage = null,
-        bool gameControllerEnabled = true)
+        bool gameControllerEnabled = true,
+        IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
+        _sectionScriptRuntimes =
+            sectionScriptRuntimes is null
+                ? new Dictionary<int, OmsiScriptRuntime>()
+                : new Dictionary<int, OmsiScriptRuntime>(
+                    sectionScriptRuntimes);
         _initialVehicleVariables =
             initialVehicleVariables is null
                 ? null
@@ -372,6 +380,38 @@ public sealed class D3D11RenderWindow : Form
                 OnScriptSoundTriggerRequested;
             _scriptRuntime.FileSoundTriggerRequested +=
                 OnScriptFileSoundTriggerRequested;
+        }
+
+        foreach (var pair in
+                 _sectionScriptRuntimes)
+        {
+            var sectionIndex =
+                pair.Key;
+
+            var runtime =
+                pair.Value;
+
+            runtime.SystemMacroHandler =
+                HandleOmsiSystemMacro;
+
+            runtime.UnhandledSystemMacro +=
+                OnUnhandledSystemMacro;
+
+            runtime.DebugMessageRequested +=
+                OnScriptDebugMessage;
+
+            runtime.SoundTriggerRequested +=
+                trigger =>
+                    TriggerSectionOmsiAudio(
+                        sectionIndex,
+                        trigger);
+
+            runtime.FileSoundTriggerRequested +=
+                (trigger, declaredFile) =>
+                    OnSectionScriptFileSoundTriggerRequested(
+                        sectionIndex,
+                        trigger,
+                        declaredFile);
         }
 
         _vehicle = new RuntimeDriveVehicle(
@@ -5598,11 +5638,16 @@ public sealed class D3D11RenderWindow : Form
                     out var sectionPosition,
                     out var sectionHeading);
 
+                var sectionRuntime =
+                    ResolveScriptRuntimeForSection(
+                        section.Index);
+
                 pair.Value.Update(
-                    _scriptRuntime,
+                    sectionRuntime,
                     IsInteriorSoundView() &&
                         section.OpenForSound,
-                    _vehicle.EngineRunning,
+                    ResolveSectionEngineRunning(
+                        sectionRuntime),
                     listenerPosition,
                     sectionPosition,
                     sectionHeading);
@@ -6530,6 +6575,30 @@ public sealed class D3D11RenderWindow : Form
         SynchronizeOmsiScriptDynamics();
         AcknowledgeOmsiStringRefresh();
 
+        foreach (var pair in
+                 _sectionScriptRuntimes)
+        {
+            var section =
+                ResolveVehicleSection(
+                    pair.Key);
+
+            if (section is null)
+            {
+                continue;
+            }
+
+            UpdateSectionScriptHostVariables(
+                pair.Value,
+                section,
+                0.0,
+                0.0);
+
+            pair.Value.ExecuteInit();
+
+            AcknowledgeOmsiStringRefresh(
+                pair.Value);
+        }
+
         WriteVehicleRuntimeStateDiagnostics();
     }
 
@@ -6918,6 +6987,30 @@ public sealed class D3D11RenderWindow : Form
         SynchronizeOmsiScriptDynamics();
         AcknowledgeOmsiStringRefresh();
 
+        foreach (var pair in
+                 _sectionScriptRuntimes)
+        {
+            var section =
+                ResolveVehicleSection(
+                    pair.Key);
+
+            if (section is null)
+            {
+                continue;
+            }
+
+            UpdateSectionScriptHostVariables(
+                pair.Value,
+                section,
+                deltaSeconds,
+                absoluteSeconds);
+
+            pair.Value.ExecuteFrame();
+
+            AcknowledgeOmsiStringRefresh(
+                pair.Value);
+        }
+
         if (!_vehiclePanelAuditWritten &&
             absoluteSeconds >= 1.0)
         {
@@ -6929,8 +7022,17 @@ public sealed class D3D11RenderWindow : Form
 
     private void AcknowledgeOmsiStringRefresh()
     {
-        if (_scriptRuntime is null ||
-            !_scriptRuntime.HasLocalVariable(
+        if (_scriptRuntime is not null)
+        {
+            AcknowledgeOmsiStringRefresh(
+                _scriptRuntime);
+        }
+    }
+
+    private static void AcknowledgeOmsiStringRefresh(
+        OmsiScriptRuntime runtime)
+    {
+        if (!runtime.HasLocalVariable(
                 "Refresh_Strings"))
         {
             return;
@@ -6942,13 +7044,295 @@ public sealed class D3D11RenderWindow : Form
         // draw, so acknowledging the flag here preserves the script
         // handshake without delaying the visual update.
         if (Math.Abs(
-                _scriptRuntime.GetLocal(
+                runtime.GetLocal(
                     "Refresh_Strings")) >
             0.000001)
         {
-            _scriptRuntime.SetLocal(
+            runtime.SetLocal(
                 "Refresh_Strings",
                 0.0);
+        }
+    }
+
+    private RuntimeVehicleSectionInfo? ResolveVehicleSection(
+        int sectionIndex) =>
+        _windowInfo.Vehicle?.Sections?
+            .FirstOrDefault(
+                section =>
+                    section.Index ==
+                    sectionIndex);
+
+    private OmsiScriptRuntime? ResolveScriptRuntimeForSection(
+        int sectionIndex) =>
+        sectionIndex > 0 &&
+        _sectionScriptRuntimes.TryGetValue(
+            sectionIndex,
+            out var runtime)
+                ? runtime
+                : _scriptRuntime;
+
+    private bool ResolveSectionEngineRunning(
+        OmsiScriptRuntime? runtime)
+    {
+        if (runtime is not null &&
+            runtime.HasLocalVariable(
+                "engine_on"))
+        {
+            return runtime.GetLocal(
+                       "engine_on") >
+                   0.5;
+        }
+
+        return _vehicle.EngineRunning;
+    }
+
+    private int ResolveSectionOmsiAxleStartIndex(
+        int sectionIndex)
+    {
+        var start =
+            Math.Max(
+                _windowInfo.Vehicle?.Physics?.Axles.Count ??
+                0,
+                2);
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections?
+                     .OrderBy(
+                         static item =>
+                             item.Index) ??
+                 Enumerable.Empty<RuntimeVehicleSectionInfo>())
+        {
+            if (section.Index ==
+                sectionIndex)
+            {
+                return start;
+            }
+
+            start +=
+                Math.Max(
+                    section.Physics?.Axles.Count ??
+                    0,
+                    1);
+        }
+
+        return start;
+    }
+
+    private void UpdateSectionScriptHostVariables(
+        OmsiScriptRuntime runtime,
+        RuntimeVehicleSectionInfo section,
+        double deltaSeconds,
+        double absoluteSeconds)
+    {
+        runtime.SetSystem(
+            "Timegap",
+            deltaSeconds);
+
+        runtime.SetSystem(
+            "GetTime",
+            absoluteSeconds);
+
+        var now =
+            DateTime.Now;
+
+        runtime.SetSystem(
+            "Time",
+            now.TimeOfDay.TotalSeconds);
+
+        runtime.SetSystem(
+            "Year",
+            now.Year);
+
+        runtime.SetSystem(
+            "Month",
+            now.Month);
+
+        runtime.SetSystem(
+            "Day",
+            now.Day);
+
+        runtime.SetLocal(
+            "Envir_Brightness",
+            1.0);
+
+        runtime.SetLocal(
+            "Throttle",
+            _vehicle.AcceleratorLevel);
+
+        runtime.SetLocal(
+            "Brake",
+            _vehicle.BrakeLevel);
+
+        runtime.SetLocal(
+            "Clutch",
+            Math.Max(
+                _controllerClutchInput,
+                IsHostActionHeld(
+                    RuntimeOmsiHostInputAction.Clutch)
+                    ? 1.0f
+                    : 0.0f));
+
+        runtime.SetLocal(
+            "Velocity",
+            _vehicle.SpeedKph);
+
+        runtime.SetLocal(
+            "Velocity_Ground",
+            _vehicle.SpeedKph);
+
+        runtime.SetLocal(
+            "kmcounter_km",
+            Math.Floor(
+                _odometerMeters /
+                1_000.0));
+
+        runtime.SetLocal(
+            "kmcounter_m",
+            _odometerMeters %
+                1_000.0);
+
+        runtime.SetLocal(
+            "A_Trans_X",
+            _vehicle.LateralAccelerationMetersPerSecondSquared);
+
+        runtime.SetLocal(
+            "A_Trans_Y",
+            _vehicle.LongitudinalAccelerationMetersPerSecondSquared);
+
+        runtime.SetLocal(
+            "A_Trans_Z",
+            _vehicle.VerticalAccelerationMetersPerSecondSquared);
+
+        var globalAxleStart =
+            ResolveSectionOmsiAxleStartIndex(
+                section.Index);
+
+        var localAxleCount =
+            Math.Max(
+                section.Physics?.Axles.Count ??
+                0,
+                1);
+
+        var rpmSum =
+            0.0;
+        var rpmSamples =
+            0;
+
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            var globalAxle =
+                axle <
+                    localAxleCount
+                    ? globalAxleStart +
+                      axle
+                    : -1;
+
+            var hasWheel =
+                globalAxle >=
+                    0 &&
+                _vehicle.TryGetOmsiWheelKinematics(
+                    globalAxle,
+                    out var leftRotation,
+                    out var rightRotation,
+                    out var leftRpm,
+                    out var rightRpm);
+
+            runtime.SetLocal(
+                $"Wheel_Rotation_{axle}_L",
+                hasWheel
+                    ? leftRotation
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Wheel_Rotation_{axle}_R",
+                hasWheel
+                    ? rightRotation
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_L",
+                hasWheel
+                    ? leftRpm
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_R",
+                hasWheel
+                    ? rightRpm
+                    : 0.0);
+
+            if (hasWheel)
+            {
+                rpmSum +=
+                    (leftRpm +
+                     rightRpm) *
+                    0.5;
+
+                rpmSamples++;
+            }
+
+            var hasSuspension =
+                globalAxle >=
+                    0 &&
+                _vehicle.TryGetOmsiAxleSuspension(
+                    globalAxle,
+                    out var leftSuspension,
+                    out var rightSuspension);
+
+            runtime.SetLocal(
+                $"Axle_Suspension_{axle}_L",
+                hasSuspension
+                    ? leftSuspension
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Axle_Suspension_{axle}_R",
+                hasSuspension
+                    ? rightSuspension
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Axle_Steering_{axle}_L",
+                0.0);
+
+            runtime.SetLocal(
+                $"Axle_Steering_{axle}_R",
+                0.0);
+        }
+
+        runtime.SetLocal(
+            "n_Wheel",
+            rpmSamples >
+                0
+                ? rpmSum /
+                  rpmSamples
+                : _vehicle.WheelRotationSpeedRpm);
+
+        if (_vehicle.TryGetOdeArticulatedSectionState(
+                section.Index,
+                out _,
+                out var relativeYaw,
+                out var relativeYawRate,
+                out var relativePitch,
+                out var relativePitchRate))
+        {
+            runtime.SetLocal(
+                "articulation_0_alpha",
+                relativeYaw);
+
+            runtime.SetLocal(
+                "articulation_0_alpha_vel",
+                relativeYawRate);
+
+            runtime.SetLocal(
+                "articulation_0_beta",
+                relativePitch);
+
+            runtime.SetLocal(
+                "articulation_0_beta_vel",
+                relativePitchRate);
         }
     }
 
@@ -7948,6 +8332,17 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime?.ExecuteTrigger(
             trigger);
 
+        foreach (var runtime in
+                 _sectionScriptRuntimes.Values)
+        {
+            if (runtime.HasTrigger(
+                    trigger))
+            {
+                runtime.ExecuteTrigger(
+                    trigger);
+            }
+        }
+
         if (traceStartup)
         {
             AppendVehicleStartupTrace(
@@ -8049,6 +8444,70 @@ public sealed class D3D11RenderWindow : Form
             IsInteriorSoundView());
     }
 
+    private void OnSectionScriptFileSoundTriggerRequested(
+        int sectionIndex,
+        string trigger,
+        string declaredFile)
+    {
+        if (string.IsNullOrWhiteSpace(
+                declaredFile))
+        {
+            TriggerSectionOmsiAudio(
+                sectionIndex,
+                trigger);
+            return;
+        }
+
+        if (_articulatedOmsiAudio.TryGetValue(
+                sectionIndex,
+                out var audio))
+        {
+            audio.TriggerFile(
+                trigger,
+                declaredFile,
+                IsInteriorSoundView());
+        }
+    }
+
+    private void TriggerSectionOmsiAudio(
+        int sectionIndex,
+        string trigger)
+    {
+        if (_vehicleRemoved ||
+            string.IsNullOrWhiteSpace(
+                trigger) ||
+            !_articulatedOmsiAudio.TryGetValue(
+                sectionIndex,
+                out var audio))
+        {
+            return;
+        }
+
+        var section =
+            ResolveVehicleSection(
+                sectionIndex);
+
+        if (section is null)
+        {
+            return;
+        }
+
+        ResolveArticulatedSectionAudioPose(
+            section,
+            out var sectionPosition,
+            out var sectionHeading);
+
+        audio.Trigger(
+            trigger,
+            ResolveScriptRuntimeForSection(
+                sectionIndex),
+            IsInteriorSoundView() &&
+                section.OpenForSound,
+            ResolveActiveCameraPosition(),
+            sectionPosition,
+            sectionHeading);
+    }
+
     private void TriggerOmsiAudio(
         string trigger)
     {
@@ -8092,7 +8551,8 @@ public sealed class D3D11RenderWindow : Form
 
             pair.Value.Trigger(
                 trigger,
-                _scriptRuntime,
+                ResolveScriptRuntimeForSection(
+                    section.Index),
                 IsInteriorSoundView() &&
                     section.OpenForSound,
                 listenerPosition,

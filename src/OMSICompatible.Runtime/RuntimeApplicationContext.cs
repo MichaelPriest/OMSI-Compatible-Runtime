@@ -303,7 +303,40 @@ internal sealed class RuntimeApplicationContext :
                 scriptRuntime =
                     new OmsiScriptRuntime(
                         scriptCatalog);
+            }
 
+            var sectionScriptRuntimes =
+                new Dictionary<int, OmsiScriptRuntime>();
+
+            foreach (var section in
+                     vehicle?.Sections ??
+                     Array.Empty<OmsiVehicleSectionAssetInfo>())
+            {
+                if (section.ScriptManifest is not
+                    { } sectionManifest ||
+                    sectionManifest.RegisteredFileCount <=
+                    0)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var sectionCatalog =
+                        OmsiScriptCatalogLoader.Load(
+                            _contentRoot,
+                            sectionManifest);
+
+                    sectionScriptRuntimes[
+                        section.Index] =
+                        new OmsiScriptRuntime(
+                            sectionCatalog);
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine(
+                        $"[vehicle-script] section={section.Index} catalog unavailable: {exception.Message}");
+                }
             }
 
             ReportProgress(
@@ -325,7 +358,9 @@ internal sealed class RuntimeApplicationContext :
                     inputLanguage:
                         _options.Language,
                     gameControllerEnabled:
-                        _options.GameControllerEnabled);
+                        _options.GameControllerEnabled,
+                    sectionScriptRuntimes:
+                        sectionScriptRuntimes);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
