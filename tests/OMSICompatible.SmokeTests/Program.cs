@@ -527,6 +527,11 @@ try
             "50",
             "0",
             "0",
+            "0",
+            "[rule]",
+            "0",
+            "speedlimit",
+            "10.000",
             "0"),
         Encoding.Unicode);
 
@@ -2199,6 +2204,14 @@ try
                 segment.Type == 0);
 
     Require(
+        secondRoadPath.SpeedLimitKilometersPerHour.HasValue &&
+        Math.Abs(
+            secondRoadPath.SpeedLimitKilometersPerHour.Value -
+            10.0) <
+            0.0001,
+        "Synthetic OMSI [rule] speedlimit was not attached to the matching path.");
+
+    Require(
         firstRoadPath.ForwardConnections.Count == 1 &&
         firstRoadPath.ForwardConnections[0] ==
             secondRoadPath.Index,
@@ -2298,9 +2311,13 @@ try
             secondRoadPath.Index &&
         movedTraffic[0].Position.Z >
             initialTraffic[0].Position.Z &&
+        movedTraffic[0].SpeedMetersPerSecond <=
+            10.0 /
+            3.6 +
+            0.0001 &&
         double.IsFinite(
             movedTraffic[0].HeadingRadians),
-        "Traffic simulation did not advance through the connected road path graph.");
+        "Traffic simulation did not advance through the connected road path graph while honoring speedlimit.");
 
     var sceneryRoadPath =
         trafficPaths.Segments.Single(

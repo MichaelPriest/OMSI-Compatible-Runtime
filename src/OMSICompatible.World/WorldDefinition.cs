@@ -20,6 +20,14 @@ public sealed record WorldAssetReference(
     string SourceSection,
     int SourceLineNumber);
 
+public sealed record WorldTrafficRule(
+    int PathIndex,
+    string Name,
+    double Value,
+    int? GroupIndex,
+    IReadOnlyList<string> ExtraValues,
+    int SourceLineNumber);
+
 public sealed record WorldObjectPlacement(
     WorldTileCoordinate Tile,
     long Id,
@@ -29,7 +37,8 @@ public sealed record WorldObjectPlacement(
     double PitchDegrees,
     double BankDegrees,
     IReadOnlyList<string> ExtraValues,
-    int SourceLineNumber);
+    int SourceLineNumber,
+    IReadOnlyList<WorldTrafficRule>? TrafficRules = null);
 
 public sealed record WorldSplinePlacement(
     WorldTileCoordinate Tile,
@@ -44,7 +53,8 @@ public sealed record WorldSplinePlacement(
     double GradientStartPercent,
     double GradientEndPercent,
     bool UsesHeightProfile,
-    int SourceLineNumber);
+    int SourceLineNumber,
+    IReadOnlyList<WorldTrafficRule>? TrafficRules = null);
 
 public sealed record WorldTerrainMask(
     int LayerIndex,

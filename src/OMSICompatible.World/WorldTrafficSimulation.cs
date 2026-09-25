@@ -155,14 +155,23 @@ public sealed class WorldTrafficSimulation
                             offset,
                         0.0);
 
+            var cruiseSpeed =
+                ResolveCruiseSpeed(
+                    index);
+
+            var initialSpeed =
+                ResolveSegmentMaximumSpeed(
+                    segment,
+                    cruiseSpeed);
+
             _agents.Add(
                 new Agent(
                     index,
                     segment.Index,
                     distance,
                     travelForward,
-                    ResolveCruiseSpeed(
-                        index),
+                    cruiseSpeed,
+                    initialSpeed,
                     vehicle.ResolvedPath!));
         }
     }
@@ -523,13 +532,22 @@ public sealed class WorldTrafficSimulation
         return null;
     }
 
-    private static double ResolveTargetSpeed(
+    private double ResolveTargetSpeed(
         Agent agent,
         double? leadingDistance)
     {
+        var segmentMaximum =
+            _segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var segment)
+                ? ResolveSegmentMaximumSpeed(
+                    segment,
+                    agent.CruiseSpeedMetersPerSecond)
+                : agent.CruiseSpeedMetersPerSecond;
+
         if (!leadingDistance.HasValue)
         {
-            return agent.CruiseSpeedMetersPerSecond;
+            return segmentMaximum;
         }
 
         var usableDistance =
@@ -543,8 +561,27 @@ public sealed class WorldTrafficSimulation
             FollowingTimeHeadwaySeconds;
 
         return Math.Min(
-            agent.CruiseSpeedMetersPerSecond,
+            segmentMaximum,
             followingSpeed);
+    }
+
+    private static double ResolveSegmentMaximumSpeed(
+        WorldTrafficPathSegment segment,
+        double cruiseSpeedMetersPerSecond)
+    {
+        if (!segment.SpeedLimitKilometersPerHour.HasValue ||
+            !double.IsFinite(
+                segment.SpeedLimitKilometersPerHour.Value) ||
+            segment.SpeedLimitKilometersPerHour.Value <=
+                0.0)
+        {
+            return cruiseSpeedMetersPerSecond;
+        }
+
+        return Math.Min(
+            cruiseSpeedMetersPerSecond,
+            segment.SpeedLimitKilometersPerHour.Value /
+                3.6);
     }
 
     private static void UpdateAgentSpeed(
@@ -870,7 +907,8 @@ public sealed class WorldTrafficSimulation
         int segmentIndex,
         double distanceMeters,
         bool travelForward,
-        double speedMetersPerSecond,
+        double cruiseSpeedMetersPerSecond,
+        double initialSpeedMetersPerSecond,
         string vehiclePath)
     {
         public int AgentIndex { get; } =
@@ -894,14 +932,14 @@ public sealed class WorldTrafficSimulation
             travelForward;
 
         public double CruiseSpeedMetersPerSecond { get; } =
-            speedMetersPerSecond;
+            cruiseSpeedMetersPerSecond;
 
         public double SpeedMetersPerSecond
         {
             get;
             set;
         } =
-            speedMetersPerSecond;
+            initialSpeedMetersPerSecond;
 
         public string VehiclePath { get; } =
             vehiclePath;

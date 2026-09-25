@@ -84,7 +84,9 @@ public static class WorldLoader
                     source.PitchDegrees,
                     source.BankDegrees,
                     source.ExtraValues,
-                    source.SourceLineNumber))
+                    source.SourceLineNumber,
+                    ConvertTrafficRules(
+                        source.TrafficRules)))
                 .ToArray();
 
             var tileSplines = placements.Splines
@@ -101,7 +103,9 @@ public static class WorldLoader
                     source.GradientStartPercent,
                     source.GradientEndPercent,
                     source.UsesHeightProfile,
-                    source.SourceLineNumber))
+                    source.SourceLineNumber,
+                    ConvertTrafficRules(
+                        source.TrafficRules)))
                 .ToArray();
 
             var resources = new WorldTileResources(
@@ -1028,6 +1032,26 @@ public static class WorldLoader
             return (null, "terrainAccessDenied");
         }
     }
+
+    private static IReadOnlyList<WorldTrafficRule>
+        ConvertTrafficRules(
+            IReadOnlyList<OmsiTrafficRule>? rules) =>
+        rules is null ||
+        rules.Count ==
+            0
+            ? Array.Empty<
+                WorldTrafficRule>()
+            : rules
+                .Select(
+                    static rule =>
+                        new WorldTrafficRule(
+                            rule.PathIndex,
+                            rule.Name,
+                            rule.Value,
+                            rule.GroupIndex,
+                            rule.ExtraValues,
+                            rule.SourceLineNumber))
+                .ToArray();
 
     private static WorldVector3 ToWorldVector(OmsiSourceVector3 source)
     {
