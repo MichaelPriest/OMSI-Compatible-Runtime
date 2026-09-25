@@ -1387,6 +1387,47 @@ try
             51,
         "OMSI rail traffic did not enter the path after the preceding consist tail cleared it.");
 
+    var railBlockedBrakingSimulation =
+        new WorldRailTrafficSimulation(
+            railTailOccupancyNetwork,
+            railTwoTrainCatalog,
+            maximumAgents:
+                2);
+
+    railBlockedBrakingSimulation
+        .SetConsistTrailingDistance(
+            trainConsistPath,
+            8.0);
+
+    var railBlockedInitialSpeed =
+        railBlockedBrakingSimulation
+            .Snapshot()
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    0)
+            .SpeedMetersPerSecond;
+
+    railBlockedBrakingSimulation.Step(
+        0.5);
+
+    var railBlockedBrakingState =
+        railBlockedBrakingSimulation
+            .Snapshot()
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    0);
+
+    Require(
+        railBlockedBrakingState.SegmentIndex ==
+            50 &&
+        railBlockedBrakingState.SpeedMetersPerSecond >
+            0.0 &&
+        railBlockedBrakingState.SpeedMetersPerSecond <
+            railBlockedInitialSpeed,
+        "OMSI rail traffic did not brake progressively before an occupied path.");
+
     File.WriteAllText(
         Path.Combine(
             root,
