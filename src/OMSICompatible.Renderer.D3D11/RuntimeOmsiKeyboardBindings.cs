@@ -211,124 +211,175 @@ internal static class RuntimeOmsiKeyboardBindings
         ParsedBinding binding,
         out RuntimeOmsiHostInputAction action)
     {
-        action =
-            default;
-
-        if (binding.Shift &&
-            !binding.Control &&
-            binding.Key == Keys.Z)
-        {
-            action =
-                RuntimeOmsiHostInputAction.StatusInfoCycle;
-            return true;
-        }
-
-        if (binding.Shift ||
-            binding.Control)
-        {
-            return false;
-        }
+        // keyboard_reset.cfg describes OMSI's default bindings, but the
+        // semantic host action belongs to the trigger, not to whichever
+        // physical key happens to be assigned there. Mapping by key made
+        // user remaps such as a door on NumPad3 accidentally release the
+        // brake, or blinker_off on Decimal toggle the parking brake.
+        var trigger =
+            binding.Trigger
+                .Trim()
+                .ToLowerInvariant();
 
         action =
-            binding.Key switch
+            trigger switch
             {
-                Keys.NumPad8 =>
+                "throttle" =>
                     RuntimeOmsiHostInputAction.Accelerate,
-                Keys.NumPad2 =>
+                "brake" =>
                     RuntimeOmsiHostInputAction.BrakeIncrease,
-                Keys.Add =>
-                    RuntimeOmsiHostInputAction.BrakeRelease,
-                Keys.NumPad4 =>
+                "steering_left" =>
                     RuntimeOmsiHostInputAction.SteerLeft,
-                Keys.NumPad6 =>
+                "steering_right" =>
                     RuntimeOmsiHostInputAction.SteerRight,
-                Keys.NumPad5 =>
+                "steering_neutral" =>
                     RuntimeOmsiHostInputAction.SteerCenter,
-                Keys.Tab =>
+                "clutch" =>
                     RuntimeOmsiHostInputAction.Clutch,
-                Keys.E =>
+
+                "kw_batterietrennschalter" or
+                "cp_batterietrennschalter_toggle" =>
                     RuntimeOmsiHostInputAction.ElectricalToggle,
-                Keys.M =>
+
+                "kw_m_enginestart" or
+                "kw_m_engine_startbutton" =>
                     RuntimeOmsiHostInputAction.EngineStart,
-                Keys.D or
-                Keys.D1 or
-                Keys.D2 =>
+
+                "kw_m_engineshutdown" =>
+                    RuntimeOmsiHostInputAction.EngineOff,
+
+                "automatic_d" or
+                "automatic_1" or
+                "automatic_2" or
+                "kw_s_1" or
+                "kw_s_2" =>
                     RuntimeOmsiHostInputAction.GearDrive,
-                Keys.N =>
+
+                "automatic_n" or
+                "kw_s_n" =>
                     RuntimeOmsiHostInputAction.GearNeutral,
-                Keys.R =>
+
+                "automatic_r" or
+                "kw_s_r" =>
                     RuntimeOmsiHostInputAction.GearReverse,
-                Keys.Decimal or
-                Keys.OemPeriod =>
+
+                "parking_brake_toggle" or
+                "parking_brake_mouse" =>
                     RuntimeOmsiHostInputAction.ParkingBrakeToggle,
-                Keys.Subtract or
-                Keys.Scroll =>
-                    RuntimeOmsiHostInputAction.StopBrakeToggle,
-                Keys.O =>
+
+                "parking_brake_set" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeSet,
+
+                "parking_brake_release" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeRelease,
+
+                "toggel_mouse_ctrl" or
+                "toggle_mouse_ctrl" =>
                     RuntimeOmsiHostInputAction.MouseDriveToggle,
-                Keys.F1 =>
-                    RuntimeOmsiHostInputAction.DriverView,
-                Keys.F2 =>
-                    RuntimeOmsiHostInputAction.PassengerView,
-                Keys.F3 =>
-                    RuntimeOmsiHostInputAction.ExteriorView,
-                Keys.F4 =>
-                    RuntimeOmsiHostInputAction.FreeCameraView,
-                Keys.Insert =>
-                    RuntimeOmsiHostInputAction.ScheduleView,
-                Keys.Home =>
-                    RuntimeOmsiHostInputAction.TicketSellingView,
-                Keys.Left =>
-                    RuntimeOmsiHostInputAction.InteriorViewNext,
-                Keys.Right =>
-                    RuntimeOmsiHostInputAction.InteriorViewPrevious,
-                Keys.K =>
+
+                "toggel_ctrler" or
+                "toggle_ctrler" or
+                "toggle_controller" =>
                     RuntimeOmsiHostInputAction.ControllerToggle,
-                Keys.P =>
-                    RuntimeOmsiHostInputAction.PauseToggle,
-                Keys.S =>
-                    RuntimeOmsiHostInputAction.ScrollViews,
-                Keys.C =>
+
+                "view_set_driver" =>
+                    RuntimeOmsiHostInputAction.DriverView,
+
+                "view_set_passenger" =>
+                    RuntimeOmsiHostInputAction.PassengerView,
+
+                "view_set_outside" =>
+                    RuntimeOmsiHostInputAction.ExteriorView,
+
+                "view_set_map" =>
+                    RuntimeOmsiHostInputAction.FreeCameraView,
+
+                "view_set_schedule" or
+                "view_schedule" =>
+                    RuntimeOmsiHostInputAction.ScheduleView,
+
+                "view_set_ticketselling" or
+                "view_ticketselling" =>
+                    RuntimeOmsiHostInputAction.TicketSellingView,
+
+                "view_interiorcam_minus" =>
+                    RuntimeOmsiHostInputAction.InteriorViewNext,
+
+                "view_interiorcam_plus" =>
+                    RuntimeOmsiHostInputAction.InteriorViewPrevious,
+
+                "view_reset_direction" =>
                     RuntimeOmsiHostInputAction.ResetCurrentView,
-                Keys.Space =>
+
+                "view_reset_all_directions" =>
                     RuntimeOmsiHostInputAction.ResetAllViews,
+
+                "view_toggle_viewpoint" =>
+                    RuntimeOmsiHostInputAction.ScrollViews,
+
+                "view_toggle_informationdisplay" or
+                "view_status" or
+                "view_information" or
+                "view_info" =>
+                    RuntimeOmsiHostInputAction.StatusInfoCycle,
+
+                "sim_pause" or
+                "pause" =>
+                    RuntimeOmsiHostInputAction.PauseToggle,
+
                 _ =>
                     default
             };
 
-        return binding.Key is
-            Keys.NumPad8 or
-            Keys.NumPad2 or
-            Keys.Add or
-            Keys.NumPad4 or
-            Keys.NumPad6 or
-            Keys.NumPad5 or
-            Keys.Tab or
-            Keys.E or
-            Keys.M or
-            Keys.D or
-            Keys.D1 or
-            Keys.D2 or
-            Keys.N or
-            Keys.R or
-            Keys.Decimal or
-            Keys.OemPeriod or
-            Keys.Subtract or
-            Keys.Scroll or
-            Keys.O or
-            Keys.F1 or
-            Keys.F2 or
-            Keys.F3 or
-            Keys.F4 or
-            Keys.Insert or
-            Keys.Home or
-            Keys.Right or
-            Keys.Left or
-            Keys.K or
-            Keys.P or
-            Keys.S or
-            Keys.C or
-            Keys.Space;
+        return trigger is
+            "throttle" or
+            "brake" or
+            "steering_left" or
+            "steering_right" or
+            "steering_neutral" or
+            "clutch" or
+            "kw_batterietrennschalter" or
+            "cp_batterietrennschalter_toggle" or
+            "kw_m_enginestart" or
+            "kw_m_engine_startbutton" or
+            "kw_m_engineshutdown" or
+            "automatic_d" or
+            "automatic_1" or
+            "automatic_2" or
+            "kw_s_1" or
+            "kw_s_2" or
+            "automatic_n" or
+            "kw_s_n" or
+            "automatic_r" or
+            "kw_s_r" or
+            "parking_brake_toggle" or
+            "parking_brake_mouse" or
+            "parking_brake_set" or
+            "parking_brake_release" or
+            "toggel_mouse_ctrl" or
+            "toggle_mouse_ctrl" or
+            "toggel_ctrler" or
+            "toggle_ctrler" or
+            "toggle_controller" or
+            "view_set_driver" or
+            "view_set_passenger" or
+            "view_set_outside" or
+            "view_set_map" or
+            "view_set_schedule" or
+            "view_schedule" or
+            "view_set_ticketselling" or
+            "view_ticketselling" or
+            "view_interiorcam_minus" or
+            "view_interiorcam_plus" or
+            "view_reset_direction" or
+            "view_reset_all_directions" or
+            "view_toggle_viewpoint" or
+            "view_toggle_informationdisplay" or
+            "view_status" or
+            "view_information" or
+            "view_info" or
+            "sim_pause" or
+            "pause";
     }
 
     private static IReadOnlyList<ParsedBinding>
