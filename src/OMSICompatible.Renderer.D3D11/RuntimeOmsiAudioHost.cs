@@ -620,7 +620,11 @@ internal sealed class RuntimeOmsiAudioHost :
             if (!engineRunning &&
                 sound.Loop &&
                 IsEngineSpeedVariable(
-                    sound.PitchVariable))
+                    sound.PitchVariable) &&
+                !HasExplicitEngineStateCondition(
+                    sound) &&
+                !HasStarterCondition(
+                    sound))
             {
                 volume =
                     0.0f;
@@ -670,6 +674,28 @@ internal sealed class RuntimeOmsiAudioHost :
                 active;
         }
     }
+
+    private static bool HasExplicitEngineStateCondition(
+        RuntimeOmsiSoundDefinition sound) =>
+        sound.Conditions.Any(
+            static condition =>
+                condition.Variable.Equals(
+                    "engine_on",
+                    StringComparison.OrdinalIgnoreCase) ||
+                condition.Variable.Equals(
+                    "engine_injection_on",
+                    StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasStarterCondition(
+        RuntimeOmsiSoundDefinition sound) =>
+        sound.Conditions.Any(
+            static condition =>
+                condition.Variable.Contains(
+                    "starter",
+                    StringComparison.OrdinalIgnoreCase) ||
+                condition.Variable.Contains(
+                    "engine_start",
+                    StringComparison.OrdinalIgnoreCase));
 
     private static bool IsEngineSpeedVariable(
         string? variable)

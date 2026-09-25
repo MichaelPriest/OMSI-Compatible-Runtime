@@ -7929,9 +7929,17 @@ public sealed class D3D11RenderWindow : Form
         string trigger,
         string declaredFile)
     {
-        // T.F is emitted by the lead vehicle VM (announcements, dynamic
-        // files, etc.). Play it through that bus's sound directory; coupled
-        // sections have their own sound.cfg loops/triggers.
+        // OMSI accepts an empty string on T.F as the configured trigger
+        // sound, equivalent to T.L. Dynamic filenames remain relative to
+        // the lead vehicle's sound directory.
+        if (string.IsNullOrWhiteSpace(
+                declaredFile))
+        {
+            TriggerOmsiAudio(
+                trigger);
+            return;
+        }
+
         _omsiAudio?.TriggerFile(
             trigger,
             declaredFile,
