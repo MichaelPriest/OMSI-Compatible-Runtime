@@ -1010,6 +1010,121 @@ try
             [{ SegmentIndex: 22 }],
         "OMSI rail traffic did not stay on the reserved signal-route path sequence.");
 
+    var railTailClearanceNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    30,
+                    8000,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [31],
+                    []),
+                new WorldTrafficPathSegment(
+                    31,
+                    8001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [32],
+                    [30]),
+                new WorldTrafficPathSegment(
+                    32,
+                    8002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0)
+                    ],
+                    [],
+                    [31])
+            ],
+            0,
+            0,
+            3,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railTailClearanceRoutes =
+        new OmsiSignalRoutesFile(
+            "synthetic-tail-signalroutes.cfg",
+            [
+                new OmsiSignalRouteSection(
+                    9,
+                    "entry",
+                    1,
+                    ["8001", "0", "237", "6"])
+            ]);
+
+    var railTailClearanceSimulation =
+        new WorldRailTrafficSimulation(
+            railTailClearanceNetwork,
+            railCatalog,
+            maximumAgents:
+                1,
+            signalRoutes:
+                railTailClearanceRoutes);
+
+    railTailClearanceSimulation
+        .SetConsistTrailingDistance(
+            trainConsistPath,
+            8.0);
+
+    railTailClearanceSimulation.Step(
+        2.0);
+
+    Require(
+        railTailClearanceSimulation.Snapshot() is
+            [{ SegmentIndex: 32 }] &&
+        railTailClearanceSimulation.IsSignalRouteReservedBy(
+            9,
+            0),
+        "OMSI rail interlocking released the signal route before the consist tail cleared it.");
+
+    railTailClearanceSimulation.Step(
+        1.0);
+
+    Require(
+        !railTailClearanceSimulation.IsSignalRouteReservedBy(
+            9,
+            0),
+        "OMSI rail interlocking did not release the signal route after the consist tail cleared it.");
+
     File.WriteAllText(
         Path.Combine(
             root,
