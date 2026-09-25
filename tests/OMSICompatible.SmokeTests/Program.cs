@@ -505,7 +505,7 @@ try
             @"Splines\Synthetic\road.sli",
             "2001",
             "-1",
-            "-1",
+            "2002",
             "5",
             "7",
             "6",
@@ -513,7 +513,21 @@ try
             "100",
             "0",
             "1.5",
-            "2.5"),
+            "2.5",
+            "[spline]",
+            "0",
+            @"Splines\Synthetic\road.sli",
+            "2002",
+            "2001",
+            "-1",
+            "75.7106781186548",
+            "9",
+            "76.7106781186548",
+            "45",
+            "50",
+            "0",
+            "0",
+            "0"),
         Encoding.Unicode);
 
     // This tile exists on disk but is intentionally not declared in global.cfg.
@@ -566,7 +580,21 @@ try
 
     File.WriteAllText(
         Path.Combine(splineDirectory, "road.sli"),
-        Lines("[friendlyname]", "Synthetic Road"),
+        Lines(
+            "[friendlyname]",
+            "Synthetic Road",
+            "[path]",
+            "0",
+            "-1.5",
+            "0.1",
+            "2.5",
+            "0",
+            "[path]",
+            "1",
+            "3.0",
+            "0.25",
+            "1.5",
+            "2"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -2085,8 +2113,8 @@ try
         world.Objects.Count == 2,
         $"Expected 2 objects, found {world.Objects.Count}.");
     Require(
-        world.Splines.Count == 1,
-        $"Expected 1 spline, found {world.Splines.Count}.");
+        world.Splines.Count == 2,
+        $"Expected 2 splines, found {world.Splines.Count}.");
     Require(
         world.PlacementParseIssueCount == 0,
         "Synthetic placements should parse without issues.");
@@ -2122,6 +2150,83 @@ try
     Require(
         worldSpline.GradientStartPercent == 1.5,
         "Spline start gradient was not preserved.");
+
+    Require(
+        worldSpline.NextId == 2002,
+        "Spline next-link ID was not preserved.");
+
+    var trafficPaths =
+        world.TrafficPaths;
+
+    Require(
+        trafficPaths.Segments.Count == 4 &&
+        trafficPaths.RoadVehicleSegmentCount == 2 &&
+        trafficPaths.PedestrianSegmentCount == 2 &&
+        trafficPaths.RailSegmentCount == 0 &&
+        trafficPaths.AircraftSegmentCount == 0,
+        "Synthetic spline [path] lanes were not expanded into the expected world traffic network.");
+
+    Require(
+        trafficPaths.ConnectedEndpointCount == 3 &&
+        trafficPaths.TerminalEndpointCount == 3 &&
+        trafficPaths.BoundaryEndpointCount == 0 &&
+        trafficPaths.UnmatchedEndpointCount == 0,
+        "Synthetic traffic path endpoint connectivity is incorrect.");
+
+    var firstRoadPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SplineId == 2001 &&
+                segment.Type == 0);
+
+    var secondRoadPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SplineId == 2002 &&
+                segment.Type == 0);
+
+    Require(
+        firstRoadPath.ForwardConnections.Count == 1 &&
+        firstRoadPath.ForwardConnections[0] ==
+            secondRoadPath.Index,
+        "Forward road path did not connect across linked OMSI splines.");
+
+    var firstPedestrianPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SplineId == 2001 &&
+                segment.Type == 1);
+
+    var secondPedestrianPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SplineId == 2002 &&
+                segment.Type == 1);
+
+    Require(
+        firstPedestrianPath.ForwardConnections.Contains(
+            secondPedestrianPath.Index) &&
+        secondPedestrianPath.ReverseConnections.Contains(
+            firstPedestrianPath.Index),
+        "Bidirectional pedestrian paths did not connect in both travel directions.");
+
+    var firstRoadStart =
+        firstRoadPath.Points[0];
+
+    Require(
+        Math.Abs(
+            firstRoadStart.X -
+            3.9393398) <
+            0.01 &&
+        Math.Abs(
+            firstRoadStart.Y -
+            7.1) <
+            0.01 &&
+        Math.Abs(
+            firstRoadStart.Z -
+            7.0606602) <
+            0.01,
+        "Traffic path world transform does not match the spline frame/lateral offset.");
 
     Require(
         world.SceneryAssets.TryGetValue(

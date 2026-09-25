@@ -1130,6 +1130,38 @@ internal sealed class RuntimeApplicationContext :
                 entryPoint.WorldZ,
                 -entryPoint.HeadingDegrees);
 
+        var runtimeTrafficPaths =
+            new RuntimeTrafficPathNetworkInfo(
+                world.TrafficPaths.Segments
+                    .Select(
+                        static segment =>
+                            new RuntimeTrafficPathSegmentInfo(
+                                segment.Index,
+                                segment.SplineId,
+                                segment.LocalPathIndex,
+                                segment.Type,
+                                segment.Direction,
+                                segment.WidthMeters,
+                                segment.Points
+                                    .Select(
+                                        static point =>
+                                            new RuntimeTrafficPathPointInfo(
+                                                point.X,
+                                                point.Y,
+                                                point.Z))
+                                    .ToArray(),
+                                segment.ForwardConnections,
+                                segment.ReverseConnections))
+                    .ToArray(),
+                world.TrafficPaths.RoadVehicleSegmentCount,
+                world.TrafficPaths.PedestrianSegmentCount,
+                world.TrafficPaths.RailSegmentCount,
+                world.TrafficPaths.AircraftSegmentCount,
+                world.TrafficPaths.ConnectedEndpointCount,
+                world.TrafficPaths.BoundaryEndpointCount,
+                world.TrafficPaths.TerminalEndpointCount,
+                world.TrafficPaths.UnmatchedEndpointCount);
+
         var runtimeAiCatalog =
             new RuntimeAiCatalogInfo(
                 world.AiCatalog.MovingVehicles
@@ -1176,6 +1208,7 @@ internal sealed class RuntimeApplicationContext :
             runtimeObjects,
             runtimeSceneryAssets,
             runtimeGroundTextures,
+            runtimeTrafficPaths,
             runtimeAiCatalog,
             runtimeVehicle,
             runtimeSpawn);

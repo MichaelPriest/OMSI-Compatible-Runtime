@@ -64,6 +64,46 @@ public sealed record RuntimeSplineInfo(
     IReadOnlyList<RuntimeSplineSurfaceInfo> Surfaces,
     IReadOnlyList<RuntimeSplinePathInfo> Paths);
 
+public sealed record RuntimeTrafficPathPointInfo(
+    double X,
+    double Y,
+    double Z);
+
+public sealed record RuntimeTrafficPathSegmentInfo(
+    int Index,
+    long SplineId,
+    int LocalPathIndex,
+    int Type,
+    int Direction,
+    double WidthMeters,
+    IReadOnlyList<RuntimeTrafficPathPointInfo> Points,
+    IReadOnlyList<int> ForwardConnections,
+    IReadOnlyList<int> ReverseConnections);
+
+public sealed record RuntimeTrafficPathNetworkInfo(
+    IReadOnlyList<RuntimeTrafficPathSegmentInfo> Segments,
+    int RoadVehicleSegmentCount,
+    int PedestrianSegmentCount,
+    int RailSegmentCount,
+    int AircraftSegmentCount,
+    int ConnectedEndpointCount,
+    int BoundaryEndpointCount,
+    int TerminalEndpointCount,
+    int UnmatchedEndpointCount)
+{
+    public static RuntimeTrafficPathNetworkInfo Empty { get; } =
+        new(
+            Array.Empty<RuntimeTrafficPathSegmentInfo>(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0);
+}
+
 public sealed record RuntimeObjectInfo(
     int TileX,
     int TileY,
@@ -430,6 +470,7 @@ public sealed record RuntimeWindowInfo(
     IReadOnlyList<RuntimeObjectInfo> Objects,
     IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> SceneryAssets,
     IReadOnlyList<RuntimeGroundTextureInfo> GroundTextures,
+    RuntimeTrafficPathNetworkInfo TrafficPaths,
     RuntimeAiCatalogInfo AiCatalog,
     RuntimeVehicleInfo? Vehicle,
     RuntimeSpawnInfo? Spawn);

@@ -182,6 +182,11 @@ public static class WorldLoader
             allSplines,
             dependencies);
 
+        var trafficPaths =
+            WorldTrafficPathNetworkBuilder.Build(
+                allSplines,
+                splineAssets);
+
         progress?.Report(
             new WorldLoadProgress(
                 82,
@@ -207,7 +212,7 @@ public static class WorldLoader
             new WorldLoadProgress(
                 90,
                 "Montando mundo",
-                $"Cenário: {sceneryAssets.Values.Count(static asset => asset.IsRenderable):N0} assets renderizáveis · terreno {groundTextures.Count:N0} camada(s) · finalizando modelo x64..."));
+                $"Cenário: {sceneryAssets.Values.Count(static asset => asset.IsRenderable):N0} assets renderizáveis · paths {trafficPaths.Segments.Count:N0} · terreno {groundTextures.Count:N0} camada(s) · finalizando modelo x64..."));
 
         return new WorldDefinition(
             map.FolderName,
@@ -223,6 +228,7 @@ public static class WorldLoader
             splineAssets,
             sceneryAssets,
             groundTextures,
+            trafficPaths,
             aiCatalog,
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
