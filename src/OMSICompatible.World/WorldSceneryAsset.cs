@@ -1,3 +1,5 @@
+using OmsiCompat.Scenery;
+
 namespace OMSICompatible.World;
 
 public sealed record WorldO3dMaterial(
@@ -86,7 +88,8 @@ public sealed record WorldSceneryAsset(
     WorldSceneryTreeDefinition? Tree,
     IReadOnlyList<WorldSceneryPath> Paths,
     double? TrafficLightCycleSeconds = null,
-    IReadOnlyList<WorldTrafficLightProgram>? TrafficLights = null)
+    IReadOnlyList<WorldTrafficLightProgram>? TrafficLights = null,
+    OmsiSceneryScriptManifest? ScriptManifest = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(
