@@ -615,6 +615,101 @@ try
             50.0,
         "OMSI rail consist trailing sample did not traverse back across the connected rail segment boundary.");
 
+    var railGroupRoutingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    5001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [1, 2],
+                    []),
+                new WorldTrafficPathSegment(
+                    1,
+                    5002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            -20.0,
+                            0.0,
+                            40.0)
+                    ],
+                    [],
+                    [0],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 0.0
+                        }),
+                new WorldTrafficPathSegment(
+                    2,
+                    5003,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            20.0,
+                            0.0,
+                            40.0)
+                    ],
+                    [],
+                    [0],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 1.0
+                        })
+            ],
+            0,
+            0,
+            3,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railGroupRoutingSimulation =
+        new WorldRailTrafficSimulation(
+            railGroupRoutingNetwork,
+            railCatalog,
+            maximumAgents:
+                1);
+
+    railGroupRoutingSimulation.Step(
+        4.0);
+
+    Require(
+        railGroupRoutingSimulation.Snapshot() is
+            [{ SegmentIndex: 2 }],
+        "OMSI rail traffic ignored the unscheduled-group density routing weights.");
+
     File.WriteAllText(
         Path.Combine(
             root,
