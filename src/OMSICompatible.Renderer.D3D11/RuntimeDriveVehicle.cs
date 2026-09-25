@@ -5013,7 +5013,10 @@ internal sealed class RuntimeDriveVehicle :
                         axle.DriveFactor is
                             { } drive &&
                         double.IsFinite(
-                            drive))
+                            drive) &&
+                        Math.Abs(
+                            drive) >
+                        0.0001)
                 .OrderByDescending(
                     static axle =>
                         Math.Abs(
