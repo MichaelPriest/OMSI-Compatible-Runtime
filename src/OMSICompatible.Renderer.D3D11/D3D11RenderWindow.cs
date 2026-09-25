@@ -8490,15 +8490,30 @@ public sealed class D3D11RenderWindow : Form
             brakeForce,
             axleBrakeForces);
 
-        _vehicle.SetOmsiSuspensionSpringFactors(
-            ReadOmsiSpringFactor(
-                "Axle_Springfactor_0_L"),
-            ReadOmsiSpringFactor(
-                "Axle_Springfactor_0_R"),
-            ReadOmsiSpringFactor(
-                "Axle_Springfactor_1_L"),
-            ReadOmsiSpringFactor(
-                "Axle_Springfactor_1_R"));
+        var axleSpringFactorLeft =
+            new double[8];
+
+        var axleSpringFactorRight =
+            new double[8];
+
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            axleSpringFactorLeft[
+                axle] =
+                ReadOmsiSpringFactor(
+                    $"Axle_Springfactor_{axle}_L");
+
+            axleSpringFactorRight[
+                axle] =
+                ReadOmsiSpringFactor(
+                    $"Axle_Springfactor_{axle}_R");
+        }
+
+        _vehicle.SetOmsiAxleSpringFactors(
+            axleSpringFactorLeft,
+            axleSpringFactorRight);
     }
 
     private double ReadOmsiSpringFactor(
