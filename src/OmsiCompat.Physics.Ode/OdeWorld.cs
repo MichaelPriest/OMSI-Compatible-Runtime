@@ -38,6 +38,19 @@ public sealed class OdeWorld :
             32);
     }
 
+    internal nint Handle
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(
+                _world ==
+                    nint.Zero,
+                this);
+
+            return _world;
+        }
+    }
+
     public bool Step(
         float deltaSeconds)
     {
