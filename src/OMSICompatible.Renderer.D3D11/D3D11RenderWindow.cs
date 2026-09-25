@@ -160,6 +160,7 @@ public sealed class D3D11RenderWindow : Form
         MouseButtons.None;
     private bool _mouseDriveMode;
     private string? _activeVehicleMouseTrigger;
+    private int _activeVehicleMouseSectionIndex;
     private readonly Dictionary<Keys, string>
         _fallbackOmsiPressTriggers =
             [];
@@ -7531,7 +7532,8 @@ public sealed class D3D11RenderWindow : Form
         if (!string.IsNullOrWhiteSpace(
                 _activeVehicleMouseTrigger))
         {
-            DispatchOmsiScriptTrigger(
+            DispatchOmsiSectionScriptTrigger(
+                _activeVehicleMouseSectionIndex,
                 _activeVehicleMouseTrigger +
                 "_drag");
         }
@@ -8963,6 +8965,75 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool HasOmsiScriptTrigger(
+        int sectionIndex,
+        string trigger)
+    {
+        if (string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return false;
+        }
+
+        if (sectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                sectionIndex,
+                out var sectionRuntime))
+        {
+            return sectionRuntime.HasTrigger(
+                trigger);
+        }
+
+        return _scriptRuntime?.HasTrigger(
+                   trigger) ==
+               true;
+    }
+
+    private void DispatchOmsiSectionScriptTrigger(
+        int sectionIndex,
+        string trigger)
+    {
+        if (string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return;
+        }
+
+        var traceStartup =
+            IsVehicleStartupTraceTrigger(
+                trigger);
+
+        var before =
+            traceStartup
+                ? DescribeVehicleStartupScriptState()
+                : null;
+
+        if (sectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                sectionIndex,
+                out var sectionRuntime))
+        {
+            sectionRuntime.ExecuteTrigger(
+                trigger);
+        }
+        else
+        {
+            _scriptRuntime?.ExecuteTrigger(
+                trigger);
+        }
+
+        if (traceStartup)
+        {
+            AppendVehicleStartupTrace(
+                trigger,
+                before ??
+                    "<no-script-runtime>",
+                DescribeVehicleStartupScriptState());
+        }
+    }
+
+    private bool HasOmsiScriptTrigger(
         string trigger)
     {
         if (string.IsNullOrWhiteSpace(
@@ -10163,7 +10234,9 @@ public sealed class D3D11RenderWindow : Form
     private bool TryDispatchVehicleMouseEvent(
         System.Drawing.Point location)
     {
-        if (_scriptRuntime is null ||
+        if ((_scriptRuntime is null &&
+             _sectionScriptRuntimes.Count ==
+                 0) ||
             !_driveMode ||
             _vehicleViewMode !=
                 RuntimeVehicleViewMode.Driver ||
@@ -10197,6 +10270,8 @@ public sealed class D3D11RenderWindow : Form
             float.MaxValue;
         string? bestTrigger =
             null;
+        var bestSectionIndex =
+            0;
 
         foreach (var batch in
                  geometry.Batches)
@@ -10291,6 +10366,8 @@ public sealed class D3D11RenderWindow : Form
                         depth;
                     bestTrigger =
                         batch.MouseEventTrigger;
+                    bestSectionIndex =
+                        batch.SectionIndex;
                 }
             }
         }
@@ -10303,23 +10380,31 @@ public sealed class D3D11RenderWindow : Form
 
         _activeVehicleMouseTrigger =
             bestTrigger;
+        _activeVehicleMouseSectionIndex =
+            bestSectionIndex;
 
-        DispatchOmsiScriptTrigger(
+        var scriptOwnsTrigger =
+            HasOmsiScriptTrigger(
+                bestSectionIndex,
+                bestTrigger);
+
+        DispatchOmsiSectionScriptTrigger(
+            bestSectionIndex,
             bestTrigger);
 
-        // Some physical cockpit events also affect host-owned state.
-        // Apply that state immediately so the next pre-frame host sync does
-        // not overwrite what the OMSI trigger just changed (notably engine_on).
         if (TryResolveHostAction(
                 bestTrigger,
-                out var hostAction))
+                out var hostAction) &&
+            !(scriptOwnsTrigger &&
+              IsOmsiScriptAuthoritativeAction(
+                  hostAction)))
         {
             ApplyOmsiHostActionPress(
                 hostAction);
         }
 
         Console.WriteLine(
-            $"[cockpit-click] trigger={bestTrigger}; x={location.X}; y={location.Y}");
+            $"[cockpit-click] section={bestSectionIndex}; trigger={bestTrigger}; x={location.X}; y={location.Y}");
 
         return true;
     }
@@ -10650,7 +10735,8 @@ public sealed class D3D11RenderWindow : Form
             var releasedTrigger =
                 _activeVehicleMouseTrigger;
 
-            DispatchOmsiScriptTrigger(
+            DispatchOmsiSectionScriptTrigger(
+                _activeVehicleMouseSectionIndex,
                 ReleaseTriggerName(
                     releasedTrigger));
 
@@ -10664,6 +10750,8 @@ public sealed class D3D11RenderWindow : Form
 
             _activeVehicleMouseTrigger =
                 null;
+            _activeVehicleMouseSectionIndex =
+                0;
             return;
         }
 
