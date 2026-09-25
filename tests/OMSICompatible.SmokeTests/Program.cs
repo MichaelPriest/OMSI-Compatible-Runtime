@@ -658,6 +658,8 @@ try
             "(L.S.GetTime)",
             "\"announcement.wav\"",
             "(T.F.ev_IBIS_Ansagen)",
+            "\"\"",
+            "(T.F.ev_DefaultConfiguredSound)",
             "(L.L.horn_timer)",
             "3",
             "+",
@@ -1903,12 +1905,16 @@ try
             650.0) < 0.0001,
         "OMSI script macro/constant execution failed.");
     Require(
-        fileSoundTriggers.Count == 1 &&
+        fileSoundTriggers.Count == 2 &&
         fileSoundTriggers[0].Trigger ==
             "ev_IBIS_Ansagen" &&
         fileSoundTriggers[0].File ==
-            "announcement.wav",
-        "OMSI T.F file sound trigger execution failed.");
+            "announcement.wav" &&
+        fileSoundTriggers[1].Trigger ==
+            "ev_DefaultConfiguredSound" &&
+        fileSoundTriggers[1].File ==
+            string.Empty,
+        "OMSI T.F file/default sound trigger execution failed.");
     Require(
         scriptRuntime.GetStringLocal(
             "IBIS_line") ==
