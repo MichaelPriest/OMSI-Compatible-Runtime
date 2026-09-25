@@ -364,7 +364,9 @@ internal sealed class RuntimeApplicationContext :
                     masterVolumePercent:
                         _options.MasterVolumePercent,
                     automaticSteeringCenter:
-                        _options.AutomaticSteeringCenter);
+                        _options.AutomaticSteeringCenter,
+                    maximumSoundCount:
+                        _options.MaximumSoundCount);
 
             if (_options.RuntimeBorderlessFullscreen)
             {

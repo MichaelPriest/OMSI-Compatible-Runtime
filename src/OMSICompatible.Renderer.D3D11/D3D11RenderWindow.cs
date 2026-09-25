@@ -320,6 +320,7 @@ public sealed class D3D11RenderWindow : Form
     private FeatureLevel _featureLevel;
     private readonly bool _vsync;
     private readonly float _masterVolume;
+    private readonly int _maximumSoundCount;
 
     public D3D11RenderWindow(
         RuntimeWindowInfo windowInfo,
@@ -332,7 +333,8 @@ public sealed class D3D11RenderWindow : Form
         bool gameControllerEnabled = true,
         IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null,
         int masterVolumePercent = 100,
-        bool automaticSteeringCenter = false)
+        bool automaticSteeringCenter = false,
+        int maximumSoundCount = 400)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
@@ -359,6 +361,11 @@ public sealed class D3D11RenderWindow : Form
                 0,
                 100) /
             100.0f;
+        _maximumSoundCount =
+            Math.Clamp(
+                maximumSoundCount,
+                1,
+                10_000);
         _vehiclePreviewMode =
             vehiclePreviewMode;
         _gameControllerEnabled =
@@ -848,7 +855,8 @@ public sealed class D3D11RenderWindow : Form
             RuntimeOmsiAudioHost.TryCreate(
                 _windowInfo.Vehicle?
                     .SoundConfigPath,
-                _masterVolume);
+                _masterVolume,
+                _maximumSoundCount);
 
         if (_omsiAudio is not null)
         {
@@ -871,7 +879,8 @@ public sealed class D3D11RenderWindow : Form
             var audio =
                 RuntimeOmsiAudioHost.TryCreate(
                     section.SoundConfigPath,
-                    _masterVolume);
+                    _masterVolume,
+                    _maximumSoundCount);
 
             if (audio is null)
             {

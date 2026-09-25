@@ -279,15 +279,19 @@ internal sealed class RuntimeOmsiAudioHost :
     {
         private readonly ISampleProvider _source;
         private IDisposable? _owner;
+        private Action? _completed;
 
         public OwnedSampleProvider(
             ISampleProvider source,
-            IDisposable owner)
+            IDisposable owner,
+            Action? completed = null)
         {
             _source =
                 source;
             _owner =
                 owner;
+            _completed =
+                completed;
         }
 
         public WaveFormat WaveFormat =>
@@ -309,6 +313,13 @@ internal sealed class RuntimeOmsiAudioHost :
                 _owner?.Dispose();
                 _owner =
                     null;
+
+                var completed =
+                    Interlocked.Exchange(
+                        ref _completed,
+                        null);
+
+                completed?.Invoke();
             }
 
             return read;
@@ -325,6 +336,8 @@ internal sealed class RuntimeOmsiAudioHost :
     private readonly string _soundDirectory;
     private readonly MixingSampleProvider _mixer;
     private readonly WaveOutEvent _output;
+    private readonly int _maximumVoiceCount;
+    private int _activeOneShotVoiceCount;
     private readonly Dictionary<int, LoopVoice>
         _loopVoices =
             [];
@@ -341,7 +354,8 @@ internal sealed class RuntimeOmsiAudioHost :
         IReadOnlyList<RuntimeOmsiSoundDefinition> sounds,
         string soundDirectory,
         MixingSampleProvider mixer,
-        WaveOutEvent output)
+        WaveOutEvent output,
+        int maximumVoiceCount)
     {
         _sounds =
             sounds;
@@ -351,6 +365,11 @@ internal sealed class RuntimeOmsiAudioHost :
             mixer;
         _output =
             output;
+        _maximumVoiceCount =
+            Math.Clamp(
+                maximumVoiceCount,
+                1,
+                10_000);
     }
 
     public int SoundCount =>
@@ -365,7 +384,8 @@ internal sealed class RuntimeOmsiAudioHost :
     public static RuntimeOmsiAudioHost?
         TryCreate(
             string? soundConfigPath,
-            float masterVolume = 1.0f)
+            float masterVolume = 1.0f,
+            int maximumVoiceCount = 400)
     {
         if (string.IsNullOrWhiteSpace(
                 soundConfigPath) ||
@@ -427,7 +447,8 @@ internal sealed class RuntimeOmsiAudioHost :
                             soundConfigPath)) ??
                         AppContext.BaseDirectory,
                     mixer,
-                    output);
+                    output,
+                    maximumVoiceCount);
 
             host._lastControlUpdateTimestamp =
                 Stopwatch.GetTimestamp();
@@ -772,7 +793,8 @@ internal sealed class RuntimeOmsiAudioHost :
                 out var voice))
         {
             if (volume <=
-                0.0001f)
+                    0.0001f ||
+                !CanCreateVoice())
             {
                 return;
             }
@@ -1039,6 +1061,11 @@ internal sealed class RuntimeOmsiAudioHost :
         float volume,
         float balance)
     {
+        if (!CanCreateVoice())
+        {
+            return;
+        }
+
         if (!File.Exists(
                 sound.FilePath))
         {
@@ -1083,18 +1110,40 @@ internal sealed class RuntimeOmsiAudioHost :
                         volume
                 };
 
+            Interlocked.Increment(
+                ref _activeOneShotVoiceCount);
+
             _mixer.AddMixerInput(
                 new OwnedSampleProvider(
                     volumeProvider,
-                    reader));
+                    reader,
+                    () =>
+                        Interlocked.Decrement(
+                            ref _activeOneShotVoiceCount)));
         }
         catch (Exception ex)
         {
+            if (Volatile.Read(
+                    ref _activeOneShotVoiceCount) >
+                0)
+            {
+                Interlocked.Decrement(
+                    ref _activeOneShotVoiceCount);
+            }
+
             ReportFailure(
                 sound.FilePath,
                 ex.Message);
         }
     }
+
+    private bool CanCreateVoice() =>
+        _loopVoices.Count +
+        Math.Max(
+            Volatile.Read(
+                ref _activeOneShotVoiceCount),
+            0) <
+        _maximumVoiceCount;
 
     private static ISampleProvider? Normalize(
         ISampleProvider source)
