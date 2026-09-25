@@ -8796,20 +8796,18 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
-                if (!IsPointInScreenTriangle(
+                if (!TryGetScreenTriangleDepth(
                         mouse,
                         a,
                         b,
-                        c))
+                        c,
+                        depthA,
+                        depthB,
+                        depthC,
+                        out var depth))
                 {
                     continue;
                 }
-
-                var depth =
-                    (depthA +
-                     depthB +
-                     depthC) /
-                    3.0f;
 
                 if (depth <
                     bestDepth)
@@ -8992,11 +8990,15 @@ public sealed class D3D11RenderWindow : Form
         return true;
     }
 
-    private static bool IsPointInScreenTriangle(
+    private static bool TryGetScreenTriangleDepth(
         Vector2 point,
         Vector2 a,
         Vector2 b,
-        Vector2 c)
+        Vector2 c,
+        float depthA,
+        float depthB,
+        float depthC,
+        out float depth)
     {
         var v0 =
             c - a;
@@ -9036,6 +9038,8 @@ public sealed class D3D11RenderWindow : Form
                 denominator) <
             0.000001f)
         {
+            depth =
+                float.MaxValue;
             return false;
         }
 
@@ -9058,13 +9062,34 @@ public sealed class D3D11RenderWindow : Form
         const float edgeTolerance =
             0.015f;
 
-        return u >=
-                   -edgeTolerance &&
-               v >=
-                   -edgeTolerance &&
-               u + v <=
-                   1.0f +
-                   edgeTolerance;
+        if (u <
+                -edgeTolerance ||
+            v <
+                -edgeTolerance ||
+            u + v >
+                1.0f +
+                edgeTolerance)
+        {
+            depth =
+                float.MaxValue;
+            return false;
+        }
+
+        var aWeight =
+            1.0f -
+            u -
+            v;
+
+        depth =
+            depthA *
+                aWeight +
+            depthB *
+                v +
+            depthC *
+                u;
+
+        return float.IsFinite(
+            depth);
     }
 
     private void OnRuntimeMouseDown(
