@@ -414,9 +414,15 @@ try
             "0",
             "0",
             "[entry]",
-            "17",
-            "3",
-            "4711",
+            "3001",
+            "0",
+            "237",
+            "6",
+            "[entry]",
+            "3002",
+            "0",
+            "237",
+            "15",
             "1:",
             "[signalroute]",
             "",
@@ -430,7 +436,7 @@ try
 
     Require(
         signalRoutes.Sections.Count ==
-            5 &&
+            6 &&
         signalRoutes.Sections[0].RouteIndex ==
             0 &&
         signalRoutes.Sections[0].Name.Equals(
@@ -459,15 +465,27 @@ try
                     !string.IsNullOrWhiteSpace(
                         line))
             .SequenceEqual(
-                ["17", "3", "4711"]) &&
+                ["3001", "0", "237", "6"]) &&
         signalRoutes.Sections[3].RouteIndex ==
-            1 &&
+            0 &&
+        signalRoutes.Sections[3].Name.Equals(
+            "entry",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[3].Lines
+            .Where(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line))
+            .SequenceEqual(
+                ["3002", "0", "237", "15"]) &&
         signalRoutes.Sections[4].RouteIndex ==
             1 &&
-        signalRoutes.Sections[4].Name.Equals(
+        signalRoutes.Sections[5].RouteIndex ==
+            1 &&
+        signalRoutes.Sections[5].Name.Equals(
             "future_extension",
             StringComparison.OrdinalIgnoreCase) &&
-        signalRoutes.Sections[4].Lines
+        signalRoutes.Sections[5].Lines
             .Single() ==
             "preserve-this-value",
         "OMSI signalroutes.cfg parser did not preserve route indices, known sections and unknown future data.");
@@ -541,6 +559,29 @@ try
             0,
             2,
             0);
+
+    var resolvedSignalRoutes =
+        WorldRailSignalRouteResolver.Resolve(
+            railNetwork,
+            signalRoutes);
+
+    Require(
+        resolvedSignalRoutes.Count ==
+            2 &&
+        resolvedSignalRoutes[0].RouteIndex ==
+            0 &&
+        resolvedSignalRoutes[0].ParsedEntryCount ==
+            2 &&
+        resolvedSignalRoutes[0].UnresolvedEntryCount ==
+            0 &&
+        resolvedSignalRoutes[0].SegmentIndices
+            .SequenceEqual(
+                [0, 1]) &&
+        resolvedSignalRoutes[1].RouteIndex ==
+            1 &&
+        resolvedSignalRoutes[1].ParsedEntryCount ==
+            0,
+        "OMSI signal route entries did not resolve against rail source IDs and local path indices.");
 
     var railCatalog =
         new OmsiMapAiCatalog(
@@ -2597,7 +2638,7 @@ try
 
     Require(
         world.SignalRoutes is
-            { Sections.Count: 5 } &&
+            { Sections.Count: 6 } &&
         world.SignalRoutes.Sections[2].Name.Equals(
             "entry",
             StringComparison.OrdinalIgnoreCase) &&
