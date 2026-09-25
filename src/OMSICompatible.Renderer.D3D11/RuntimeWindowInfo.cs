@@ -311,7 +311,7 @@ public sealed record RuntimeSceneryAssetInfo(
 public sealed record RuntimeRailSignalRouteStateInfo(
     int RouteIndex,
     long SignalObjectId,
-    int SignalElementIndex,
+    int SignalState,
     bool Reserved,
     int? ReservedAgentIndex);
 
