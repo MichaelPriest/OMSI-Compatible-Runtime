@@ -108,7 +108,8 @@ public sealed record OmsiVehicleSectionAssetInfo(
     double? WheelBaseMeters = null,
     double? RollingResistanceNewtons = null,
     double? AverageWheelDiameterMeters = null,
-    OmsiVehiclePhysics? Physics = null);
+    OmsiVehiclePhysics? Physics = null,
+    OmsiVehicleScriptManifest? ScriptManifest = null);
 
 public sealed record OmsiVehicleAsset(
     OmsiBusInfo Bus,

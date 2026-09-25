@@ -624,6 +624,34 @@ internal sealed class RuntimeApplicationContext :
                 failedExamples);
 
             lines.Add("");
+            lines.Add("sectionScripts:");
+
+            foreach (var section in
+                     vehicle.Sections ??
+                     Array.Empty<OmsiVehicleSectionAssetInfo>())
+            {
+                var manifest =
+                    section.ScriptManifest;
+
+                if (manifest is null)
+                {
+                    lines.Add(
+                        $"section={section.Index} | scripts=<none>");
+                    continue;
+                }
+
+                lines.Add(
+                    $"section={section.Index} | registered={manifest.RegisteredFileCount} | missing={manifest.MissingFileCount} | scripts={manifest.ScriptFiles.Count} | varlists={manifest.VariableLists.Count} | stringvarlists={manifest.StringVariableLists.Count} | constfiles={manifest.ConstantFiles.Count}");
+
+                foreach (var script in
+                         manifest.ScriptFiles)
+                {
+                    lines.Add(
+                        $"  script={script.DeclaredPath} | resolved={script.ResolvedPath ?? "<missing>"}");
+                }
+            }
+
+            lines.Add("");
             lines.Add("meshMaterials:");
 
             foreach (var mesh in
