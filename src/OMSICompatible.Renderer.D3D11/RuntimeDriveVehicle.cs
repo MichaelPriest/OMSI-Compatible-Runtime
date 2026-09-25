@@ -641,6 +641,12 @@ internal sealed class RuntimeDriveVehicle :
     public float WheelRotationSpeedRpm =>
         ResolveAverageWheelRotationSpeedRpm();
 
+    public int PrimaryDrivenSectionIndex =>
+        _primaryDrivenSectionIndex;
+
+    public int PrimaryDrivenOmsiAxleIndex =>
+        _primaryDrivenOmsiAxleIndex;
+
     public float FrontLeftSuspensionMeters =>
         ResolveSuspensionOffset(
             front: true,

@@ -9100,20 +9100,12 @@ public sealed class D3D11RenderWindow : Form
 
     private void SynchronizeOmsiScriptDynamics()
     {
-        if (_scriptRuntime is null)
-        {
-            _vehicle.SetOmsiScriptDynamics(
-                false,
-                0.0,
-                0.0);
-            return;
-        }
+        var torqueRuntime =
+            ResolveOmsiWheelTorqueRuntime();
 
-        var hasWheelTorque =
-            _scriptRuntime.HasLocalVariable(
-                "M_Wheel");
-
-        if (!hasWheelTorque)
+        if (torqueRuntime is null ||
+            !torqueRuntime.HasLocalVariable(
+                "M_Wheel"))
         {
             _vehicle.SetOmsiScriptDynamics(
                 false,
@@ -9123,7 +9115,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var wheelTorque =
-            _scriptRuntime.GetLocal(
+            torqueRuntime.GetLocal(
                 "M_Wheel");
 
         var perWheelBrakeForce =
@@ -9132,10 +9124,10 @@ public sealed class D3D11RenderWindow : Form
         var axleBrakeForces =
             new double[8];
 
-        // OMSI counts axles continuously across articulated sections.
-        // Axle_Brakeforce is Newton per wheel. Predefined variables may
-        // exist even on buses that still use legacy Brakeforce, so do not
-        // select the interface merely because the variable exists.
+        // OMSI numbers physical axles continuously in the coupled vehicle,
+        // but a coupled .bus VM sees its own axles from zero. Prefer the
+        // local section VM only when its scripts actually write that brake
+        // output; otherwise retain the lead-VM continuous-index behavior.
         for (var axle = 0;
              axle < 8;
              axle++)
@@ -9143,20 +9135,13 @@ public sealed class D3D11RenderWindow : Form
             foreach (var side in
                      new[] { "L", "R" })
             {
-                var variable =
-                    $"Axle_Brakeforce_{axle}_{side}";
-
-                if (!_scriptRuntime.HasLocalVariable(
-                        variable))
-                {
-                    continue;
-                }
-
                 var wheelBrakeForce =
-                    Math.Max(
-                        0.0,
-                        _scriptRuntime.GetLocal(
-                            variable));
+                    ReadOmsiAxleOutput(
+                        axle,
+                        "Axle_Brakeforce",
+                        side,
+                        defaultValue:
+                            0.0);
 
                 perWheelBrakeForce +=
                     wheelBrakeForce;
@@ -9167,12 +9152,19 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
+        var legacyRuntime =
+            torqueRuntime.WritesLocalVariable(
+                "Brakeforce")
+                ? torqueRuntime
+                : _scriptRuntime;
+
         var legacyBrakeForce =
-            _scriptRuntime.HasLocalVariable(
+            legacyRuntime is not null &&
+            legacyRuntime.HasLocalVariable(
                 "Brakeforce")
                 ? Math.Max(
                     0.0,
-                    _scriptRuntime.GetLocal(
+                    legacyRuntime.GetLocal(
                         "Brakeforce"))
                 : 0.0;
 
@@ -9200,13 +9192,25 @@ public sealed class D3D11RenderWindow : Form
         {
             axleSpringFactorLeft[
                 axle] =
-                ReadOmsiSpringFactor(
-                    $"Axle_Springfactor_{axle}_L");
+                ReadOmsiAxleOutput(
+                    axle,
+                    "Axle_Springfactor",
+                    "L",
+                    defaultValue:
+                        1.0,
+                    requirePositive:
+                        true);
 
             axleSpringFactorRight[
                 axle] =
-                ReadOmsiSpringFactor(
-                    $"Axle_Springfactor_{axle}_R");
+                ReadOmsiAxleOutput(
+                    axle,
+                    "Axle_Springfactor",
+                    "R",
+                    defaultValue:
+                        1.0,
+                    requirePositive:
+                        true);
         }
 
         _vehicle.SetOmsiAxleSpringFactors(
@@ -9214,26 +9218,184 @@ public sealed class D3D11RenderWindow : Form
             axleSpringFactorRight);
     }
 
-    private double ReadOmsiSpringFactor(
-        string variable)
+    private OmsiScriptRuntime? ResolveOmsiWheelTorqueRuntime()
     {
-        if (_scriptRuntime is null ||
-            !_scriptRuntime.HasLocalVariable(
-                variable))
+        if (_vehicle.PrimaryDrivenSectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                _vehicle.PrimaryDrivenSectionIndex,
+                out var drivenSectionRuntime) &&
+            drivenSectionRuntime.WritesLocalVariable(
+                "M_Wheel"))
         {
-            return 1.0;
+            return drivenSectionRuntime;
         }
 
-        var value =
-            _scriptRuntime.GetLocal(
-                variable);
+        if (_scriptRuntime?.WritesLocalVariable(
+                "M_Wheel") ==
+            true)
+        {
+            return _scriptRuntime;
+        }
 
-        return double.IsFinite(
-                   value) &&
-               value >
-                   0.0
-            ? value
-            : 1.0;
+        foreach (var pair in
+                 _sectionScriptRuntimes
+                     .OrderBy(
+                         static pair =>
+                             pair.Key))
+        {
+            if (pair.Value.WritesLocalVariable(
+                    "M_Wheel"))
+            {
+                return pair.Value;
+            }
+        }
+
+        // Compatibility fallback for older/add-on scripts where the write
+        // cannot be statically identified (for example generated VM state).
+        if (_scriptRuntime?.HasLocalVariable(
+                "M_Wheel") ==
+            true)
+        {
+            return _scriptRuntime;
+        }
+
+        return _sectionScriptRuntimes.Values
+            .FirstOrDefault(
+                static runtime =>
+                    runtime.HasLocalVariable(
+                        "M_Wheel"));
+    }
+
+    private double ReadOmsiAxleOutput(
+        int globalAxleIndex,
+        string variablePrefix,
+        string side,
+        double defaultValue,
+        bool requirePositive = false)
+    {
+        var leadVariable =
+            $"{variablePrefix}_{globalAxleIndex}_{side}";
+
+        if (TryResolveSectionScriptAxle(
+                globalAxleIndex,
+                out var sectionRuntime,
+                out var localAxleIndex))
+        {
+            var localVariable =
+                $"{variablePrefix}_{localAxleIndex}_{side}";
+
+            if (sectionRuntime is not null &&
+                sectionRuntime.WritesLocalVariable(
+                    localVariable))
+            {
+                return NormalizeOmsiScriptOutput(
+                    sectionRuntime.GetLocal(
+                        localVariable),
+                    defaultValue,
+                    requirePositive);
+            }
+        }
+
+        if (_scriptRuntime is not null &&
+            _scriptRuntime.HasLocalVariable(
+                leadVariable))
+        {
+            return NormalizeOmsiScriptOutput(
+                _scriptRuntime.GetLocal(
+                    leadVariable),
+                defaultValue,
+                requirePositive);
+        }
+
+        return defaultValue;
+    }
+
+    private bool TryResolveSectionScriptAxle(
+        int globalAxleIndex,
+        out OmsiScriptRuntime? sectionRuntime,
+        out int localAxleIndex)
+    {
+        sectionRuntime =
+            null;
+        localAxleIndex =
+            -1;
+
+        var leadAxleCount =
+            Math.Max(
+                _windowInfo.Vehicle?.Physics?.Axles?.Count ??
+                0,
+                2);
+
+        if (globalAxleIndex <
+            leadAxleCount)
+        {
+            return false;
+        }
+
+        var start =
+            leadAxleCount;
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections?
+                     .OrderBy(
+                         static item =>
+                             item.Index) ??
+                 Enumerable.Empty<RuntimeVehicleSectionInfo>())
+        {
+            var count =
+                Math.Max(
+                    section.Physics?.Axles?.Count ??
+                    0,
+                    1);
+
+            if (globalAxleIndex >=
+                    start &&
+                globalAxleIndex <
+                    start +
+                    count)
+            {
+                localAxleIndex =
+                    globalAxleIndex -
+                    start;
+
+                _sectionScriptRuntimes.TryGetValue(
+                    section.Index,
+                    out sectionRuntime);
+
+                return true;
+            }
+
+            start +=
+                count;
+        }
+
+        return false;
+    }
+
+    private static double NormalizeOmsiScriptOutput(
+        double value,
+        double defaultValue,
+        bool requirePositive)
+    {
+        if (!double.IsFinite(
+                value))
+        {
+            return defaultValue;
+        }
+
+        if (requirePositive &&
+            value <=
+                0.0)
+        {
+            return defaultValue;
+        }
+
+        return Math.Max(
+            value,
+            requirePositive
+                ? double.Epsilon
+                : 0.0);
     }
 
     private void SynchronizeHostVehicleStateFromScripts()
