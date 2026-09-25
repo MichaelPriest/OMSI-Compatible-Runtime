@@ -514,6 +514,11 @@ try
             "0",
             "1.5",
             "2.5",
+            "[rule]",
+            "0",
+            "priority",
+            "160",
+            "0",
             "[spline]",
             "0",
             @"Splines\Synthetic\road.sli",
@@ -2346,6 +2351,11 @@ try
         secondRoadPath.TrafficPriority ==
             192,
         "Synthetic OMSI [rule] priority was not attached to the matching path.");
+
+    Require(
+        firstRoadPath.TrafficPriority ==
+            128,
+        "Unknown OMSI priority encoding did not fall back to normal priority.");
 
     Require(
         firstRoadPath.ForwardConnections.Count == 1 &&
