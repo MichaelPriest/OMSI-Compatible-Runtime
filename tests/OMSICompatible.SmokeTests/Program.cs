@@ -252,6 +252,24 @@ try
             -0.20f,
             0.20f);
 
+        odeUniversal.AddTorques(
+            yawTorqueNewtonMeters:
+                18_000.0f,
+            pitchTorqueNewtonMeters:
+                -9_000.0f);
+
+        Require(
+            odeWorld.Step(
+                1.0f / 120.0f),
+            "ODE universal joint torque API smoke test failed.");
+
+        Require(
+            float.IsFinite(
+                odeUniversal.YawRateRadiansPerSecond) &&
+            float.IsFinite(
+                odeUniversal.PitchRateRadiansPerSecond),
+            "ODE universal joint torque API returned invalid angular rates.");
+
         for (var universalStep = 0;
              universalStep < 240;
              universalStep++)
