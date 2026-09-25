@@ -1230,8 +1230,13 @@ internal sealed class RuntimeOmsiAudioHost :
 
         return condition.Operator switch
         {
+            // OMSI SDK conditionSingle comparison codes:
+            // 0 <> , 1 = , 2 < , 3 > , 4 <= , 5 >=.
             0 =>
-                true,
+                Math.Abs(
+                    current -
+                    condition.Value) >=
+                0.000001,
             1 =>
                 Math.Abs(
                     current -
@@ -1270,14 +1275,33 @@ internal sealed class RuntimeOmsiAudioHost :
                         point.X)
                 .ToArray();
 
-        if (value <=
+        // OMSI sound.cfg curves are active only inside the declared
+        // [pnt] domain. The stock MAN comments explicitly state that below
+        // the lowest X and above the highest X the curve evaluates to zero.
+        if (value <
             points[0].X)
+        {
+            return 0.0;
+        }
+
+        if (value >
+            points[^1].X)
+        {
+            return 0.0;
+        }
+
+        if (Math.Abs(
+                value -
+                points[0].X) <
+            0.000001)
         {
             return points[0].Y;
         }
 
-        if (value >=
-            points[^1].X)
+        if (Math.Abs(
+                value -
+                points[^1].X) <
+            0.000001)
         {
             return points[^1].Y;
         }
