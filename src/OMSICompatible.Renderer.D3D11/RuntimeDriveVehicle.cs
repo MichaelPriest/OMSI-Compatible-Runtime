@@ -645,6 +645,58 @@ internal sealed class RuntimeDriveVehicle :
         return false;
     }
 
+    public IReadOnlyList<string> BuildPhysicsDiagnostics()
+    {
+        static string F(
+            float value) =>
+            value.ToString(
+                "0.###",
+                System.Globalization.CultureInfo.InvariantCulture);
+
+        var lines =
+            new List<string>
+            {
+                $"odeActive={_odeWorld is not null && _odeBody is not null}",
+                $"scriptDynamics={_omsiScriptDynamicsEnabled}",
+                $"position={F(Position.X)},{F(Position.Y)},{F(Position.Z)}",
+                $"speedKph={F(SpeedKph)}",
+                $"headingDeg={F(HeadingRadians * 180.0f / MathF.PI)}",
+                $"yawRateDegPerSec={F(_yawRateRadiansPerSecond * 180.0f / MathF.PI)}",
+                $"pitchDeg={F(BodyPitchRadians * 180.0f / MathF.PI)}",
+                $"rollDeg={F(BodyRollRadians * 180.0f / MathF.PI)}",
+                $"massKg={F(_massKilograms)}",
+                $"drivenSection={_primaryDrivenSectionIndex}",
+                $"drivenWheelRadiusM={F(_drivenWheelRadiusMeters)}",
+                $"wheelTorqueNm={F(_omsiWheelTorqueNewtonMeters)}",
+                $"brakeForceN={F(_omsiBrakeForceNewtons)}",
+                $"suspensionM=FL:{F(FrontLeftSuspensionMeters)},FR:{F(FrontRightSuspensionMeters)},RL:{F(RearLeftSuspensionMeters)},RR:{F(RearRightSuspensionMeters)}",
+                $"axleBrakeForcesN={string.Join(",", _omsiAxleBrakeForceNewtons.Select(F))}"
+            };
+
+        foreach (var section in
+                 _sections.OrderBy(
+                     static item =>
+                         item.Index))
+        {
+            if (!_odeArticulatedSections.TryGetValue(
+                    section.Index,
+                    out var state))
+            {
+                lines.Add(
+                    $"section#{section.Index}|ode=False|parent={section.ParentIndex}|type={section.CouplingType}|maxYawDeg={F((float)section.MaximumYawDegrees)}|pitchDeg={F((float)section.MinimumPitchDegrees)}..{F((float)section.MaximumPitchDegrees)}");
+                continue;
+            }
+
+            var bodyPosition =
+                state.Body.Position;
+
+            lines.Add(
+                $"section#{section.Index}|ode=True|parent={section.ParentIndex}|type={section.CouplingType}|driven={section.Index == _primaryDrivenSectionIndex}|massKg={F(state.MassKilograms)}|axles={state.Axles.Length}|axleStart={state.OmsiAxleStartIndex}|alphaDeg={F(state.RelativeYawRadians * 180.0f / MathF.PI)}|alphaRateDegPerSec={F(state.RelativeYawRateRadiansPerSecond * 180.0f / MathF.PI)}|betaDeg={F(state.RelativePitchRadians * 180.0f / MathF.PI)}|betaRateDegPerSec={F(state.RelativePitchRateRadiansPerSecond * 180.0f / MathF.PI)}|maxYawDeg={F((float)section.MaximumYawDegrees)}|pitchDeg={F((float)section.MinimumPitchDegrees)}..{F((float)section.MaximumPitchDegrees)}|position={F(bodyPosition.X)},{F(bodyPosition.Z)},{F(bodyPosition.Y)}");
+        }
+
+        return lines;
+    }
+
     public void Reset(
         IReadOnlyList<RuntimeSplineInfo> splines,
         RuntimeTerrainGeometry terrainGeometry,

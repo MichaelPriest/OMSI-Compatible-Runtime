@@ -149,6 +149,8 @@ public sealed class D3D11RenderWindow : Form
             [];
 
     private double _lastFrameTimeSeconds;
+    private double _lastVehiclePhysicsDiagnosticsSeconds =
+        double.NegativeInfinity;
     private bool _graphicsPrepared;
     private bool _mouseLooking;
     private MouseButtons _freeCameraDragButton =
@@ -5545,6 +5547,15 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds,
             now);
 
+        if (_driveMode &&
+            now -
+                _lastVehiclePhysicsDiagnosticsSeconds >=
+            1.0)
+        {
+            WriteVehiclePhysicsDiagnostics(
+                now);
+        }
+
         var listenerPosition =
             ResolveActiveCameraPosition();
 
@@ -6474,6 +6485,43 @@ public sealed class D3D11RenderWindow : Form
         SynchronizeOmsiScriptDynamics();
 
         WriteVehicleRuntimeStateDiagnostics();
+    }
+
+    private void WriteVehiclePhysicsDiagnostics(
+        double absoluteSeconds)
+    {
+        _lastVehiclePhysicsDiagnosticsSeconds =
+            absoluteSeconds;
+
+        if (_windowInfo.Vehicle is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"vehicle={_windowInfo.Vehicle.DisplayName}",
+                    ""
+                };
+
+            lines.AddRange(
+                _vehicle.BuildPhysicsDiagnostics());
+
+            File.WriteAllLines(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-physics-state.log"),
+                lines);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[vehicle-physics-state] unable to write diagnostics: {exception.Message}");
+        }
     }
 
     private void WriteVehicleRuntimeStateDiagnostics()
