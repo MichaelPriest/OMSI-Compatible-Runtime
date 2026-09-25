@@ -14,6 +14,13 @@ public sealed record WorldRailTrafficAgentState(
     string? GroupName = null,
     double TraveledDistanceMeters = 0.0);
 
+public sealed record WorldRailSignalRouteState(
+    int RouteIndex,
+    IReadOnlyList<int> SegmentIndices,
+    WorldRailSignalObjectReference? Signal,
+    bool Reserved,
+    int? ReservedAgentIndex);
+
 public sealed class WorldRailTrafficSimulation
 {
     private const double AccelerationMetersPerSecondSquared =
@@ -265,6 +272,33 @@ public sealed class WorldRailTrafficSimulation
         _agents
             .Select(
                 CreateState)
+            .ToArray();
+
+    public IReadOnlyList<WorldRailSignalRouteState>
+        SignalRouteSnapshot() =>
+        _signalRoutesByIndex
+            .Values
+            .OrderBy(
+                static route =>
+                    route.RouteIndex)
+            .Select(
+                route =>
+                {
+                    var reserved =
+                        _interlocking?.Reservations.TryGetValue(
+                            route.RouteIndex,
+                            out var owner) ==
+                        true;
+
+                    return new WorldRailSignalRouteState(
+                        route.RouteIndex,
+                        route.SegmentIndices,
+                        route.Signal,
+                        reserved,
+                        reserved
+                            ? owner
+                            : null);
+                })
             .ToArray();
 
     public void SetConsistTrailingDistance(
