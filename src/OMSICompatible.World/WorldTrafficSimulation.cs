@@ -11,7 +11,8 @@ public sealed record WorldTrafficAgentState(
     WorldVector3 Position,
     double HeadingRadians,
     int? GroupIndex = null,
-    string? GroupName = null);
+    string? GroupName = null,
+    bool AiBrakeLight = false);
 
 public sealed class WorldTrafficSimulation
 {
@@ -292,6 +293,18 @@ public sealed class WorldTrafficSimulation
                         agent,
                         leadingDistance);
 
+                var previousSpeed =
+                    agent.SpeedMetersPerSecond;
+
+                agent.BrakeLight =
+                    targetSpeed <
+                        previousSpeed -
+                            0.01 ||
+                    (targetSpeed <=
+                         0.05 &&
+                     previousSpeed <=
+                         0.5);
+
                 UpdateAgentSpeed(
                     agent,
                     targetSpeed,
@@ -412,6 +425,8 @@ public sealed class WorldTrafficSimulation
         {
             agent.SpeedMetersPerSecond =
                 0.0;
+            agent.BrakeLight =
+                true;
 
             return false;
         }
@@ -423,6 +438,8 @@ public sealed class WorldTrafficSimulation
         {
             agent.SpeedMetersPerSecond =
                 0.0;
+            agent.BrakeLight =
+                true;
 
             return false;
         }
@@ -1087,7 +1104,8 @@ public sealed class WorldTrafficSimulation
                 default,
                 0.0,
                 agent.GroupIndex,
-                agent.GroupName);
+                agent.GroupName,
+                agent.BrakeLight);
         }
 
         SampleSegment(
@@ -1112,7 +1130,8 @@ public sealed class WorldTrafficSimulation
             position,
             heading,
             agent.GroupIndex,
-            agent.GroupName);
+            agent.GroupName,
+            agent.BrakeLight);
     }
 
     private static bool IsRoadVehicle(
@@ -1406,5 +1425,11 @@ public sealed class WorldTrafficSimulation
 
         public string GroupName { get; } =
             groupName;
+
+        public bool BrakeLight
+        {
+            get;
+            set;
+        }
     }
 }

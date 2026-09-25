@@ -3508,7 +3508,8 @@ try
         brakingSignalAgent.SpeedMetersPerSecond >
             0.0 &&
         brakingSignalAgent.SpeedMetersPerSecond <
-            initialSignalAgent.SpeedMetersPerSecond,
+            initialSignalAgent.SpeedMetersPerSecond &&
+        brakingSignalAgent.AiBrakeLight,
         "Traffic agent did not brake progressively before a red OMSI traffic-light path.");
 
     signalSimulation.Step(
@@ -3525,7 +3526,8 @@ try
         redSignalAgent.Position.Z <
             5.0 &&
         redSignalAgent.SpeedMetersPerSecond <
-            0.5,
+            0.5 &&
+        redSignalAgent.AiBrakeLight,
         "Traffic agent did not stop smoothly before the red OMSI traffic-light path.");
 
     signalSimulation.Step(
@@ -3540,7 +3542,8 @@ try
         greenSignalAgent.SegmentIndex ==
             1 &&
         greenSignalAgent.Position.Z >
-            redSignalAgent.Position.Z,
+            redSignalAgent.Position.Z &&
+        !greenSignalAgent.AiBrakeLight,
         "Traffic agent did not enter the OMSI traffic-light path during the green phase.");
 
     var densityRoutingNetwork =

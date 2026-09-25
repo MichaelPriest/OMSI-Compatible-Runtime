@@ -1948,12 +1948,25 @@ public sealed class D3D11RenderWindow : Form
 
         AppendVehicleGeometryDiagnostics();
 
-        var hasVehicleLights =
+        var hasPlayerVehicleLights =
             _windowInfo.Vehicle?.Meshes.Any(
                 static mesh =>
                     mesh.LightEffects is
                         { Count: > 0 }) ==
             true;
+
+        var hasTrafficVehicleLights =
+            _windowInfo.TrafficVehicleAssets?.Values.Any(
+                static vehicle =>
+                    vehicle.Meshes.Any(
+                        static mesh =>
+                            mesh.LightEffects is
+                                { Count: > 0 })) ==
+            true;
+
+        var hasVehicleLights =
+            hasPlayerVehicleLights ||
+            hasTrafficVehicleLights;
 
         var hasTrafficVehicleAssets =
             _windowInfo.TrafficVehicleAssets is
@@ -3048,6 +3061,7 @@ public sealed class D3D11RenderWindow : Form
             DrawSplines();
             DrawObjects();
             DrawTrafficVehicles();
+            DrawTrafficVehicleLights();
             DrawVehicle();
             DrawVehicleLights();
         }
@@ -3796,6 +3810,319 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.RSSetState(
             null);
+    }
+
+    private void DrawTrafficVehicleLights()
+    {
+        if (_trafficAgents.Count ==
+                0 ||
+            _windowInfo.TrafficVehicleAssets is null ||
+            _vehicleLightVertexBuffer is null ||
+            _deviceContext is null ||
+            _renderTargetView is null ||
+            _depthStencilView is null ||
+            _vehicleModelBuffer is null ||
+            _vehicleMaterialBuffer is null ||
+            _vehicleSkinBuffer is null ||
+            _vehicleVertexShader is null ||
+            _vehicleLightPixelShader is null ||
+            _vehicleInputLayout is null ||
+            _terrainCameraBuffer is null ||
+            _terrainAdditiveBlendState is null ||
+            _vehicleDepthReadState is null)
+        {
+            return;
+        }
+
+        Span<RuntimeModelConstants> model =
+            stackalloc RuntimeModelConstants[1];
+
+        Span<RuntimeVehicleMaterialConstants> material =
+            stackalloc RuntimeVehicleMaterialConstants[1];
+
+        Span<RuntimeVehicleSkinConstants> lightSkin =
+            stackalloc RuntimeVehicleSkinConstants[1];
+
+        lightSkin[0] =
+            new RuntimeVehicleSkinConstants
+            {
+                Bone0 = Matrix4x4.Identity,
+                Bone1 = Matrix4x4.Identity,
+                Bone2 = Matrix4x4.Identity,
+                Bone3 = Matrix4x4.Identity
+            };
+
+        _vehicleSkinBuffer.SetData(
+            _deviceContext,
+            lightSkin,
+            MapMode.WriteDiscard);
+
+        _deviceContext.OMSetRenderTargets(
+            _renderTargetView,
+            _depthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            _vehicleInputLayout);
+
+        _deviceContext.IASetVertexBuffer(
+            0,
+            _vehicleLightVertexBuffer,
+            RuntimeObjectVertex.SizeInBytes);
+
+        _deviceContext.VSSetShader(
+            _vehicleVertexShader);
+
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            1,
+            _vehicleModelBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            3,
+            _vehicleSkinBuffer);
+
+        _deviceContext.PSSetShader(
+            _vehicleLightPixelShader);
+
+        _deviceContext.PSSetConstantBuffer(
+            2,
+            _vehicleMaterialBuffer);
+
+        _deviceContext.OMSetBlendState(
+            _terrainAdditiveBlendState);
+
+        _deviceContext.OMSetDepthStencilState(
+            _vehicleDepthReadState);
+
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+
+        var cameraPosition =
+            ResolveActiveCameraPosition();
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            if (!_windowInfo.TrafficVehicleAssets.TryGetValue(
+                    agent.VehiclePath,
+                    out var vehicleInfo))
+            {
+                continue;
+            }
+
+            var heightOffset =
+                (float)(
+                    vehicleInfo.Physics.AiDeltaHeightMeters ??
+                    0.0);
+
+            var vehicleWorld =
+                Matrix4x4.CreateRotationY(
+                    (float)agent.HeadingRadians) *
+                Matrix4x4.CreateTranslation(
+                    (float)agent.X,
+                    (float)agent.Y +
+                        heightOffset,
+                    (float)agent.Z);
+
+            var allLightMeshes =
+                vehicleInfo.Meshes
+                    .Where(
+                        static mesh =>
+                            mesh.LightEffects is
+                                { Count: > 0 })
+                    .ToArray();
+
+            var viewpointMeshes =
+                allLightMeshes
+                    .Where(
+                        static mesh =>
+                            IsVehicleMeshVisibleFromViewpoint(
+                                mesh.ViewpointFlag,
+                                4))
+                    .ToArray();
+
+            var lightMeshes =
+                viewpointMeshes.Length >
+                    0
+                    ? viewpointMeshes
+                    : allLightMeshes;
+
+            foreach (var mesh in
+                     lightMeshes)
+            {
+                var staticTransform =
+                    RuntimeObjectGeometryBuilder
+                        .CreateMeshTransform(
+                            mesh.Transform);
+
+                var parentTransform =
+                    staticTransform *
+                    vehicleWorld;
+
+                foreach (var light in
+                         mesh.LightEffects!)
+                {
+                    var brightness =
+                        ResolveTrafficVehicleLightValue(
+                            agent,
+                            light);
+
+                    if (brightness <=
+                        0.0001)
+                    {
+                        continue;
+                    }
+
+                    var center =
+                        Vector3.Transform(
+                            ConvertCfgPosition(
+                                light.PositionX,
+                                light.PositionY,
+                                light.PositionZ),
+                            parentTransform);
+
+                    var toCamera =
+                        cameraPosition -
+                        center;
+
+                    if (toCamera.LengthSquared() <
+                        0.000001f)
+                    {
+                        continue;
+                    }
+
+                    var cameraDirection =
+                        Vector3.Normalize(
+                            toCamera);
+
+                    brightness *=
+                        ResolveVehicleLightDirectionalAttenuation(
+                            light,
+                            parentTransform,
+                            cameraDirection);
+
+                    if (brightness <=
+                        0.0001)
+                    {
+                        continue;
+                    }
+
+                    center +=
+                        cameraDirection *
+                        (float)light.CameraOffsetMeters;
+
+                    var size =
+                        (float)Math.Clamp(
+                            light.SizeMeters,
+                            0.005,
+                            20.0);
+
+                    model[0] =
+                        new RuntimeModelConstants
+                        {
+                            World =
+                                Matrix4x4.CreateScale(
+                                    size) *
+                                Matrix4x4.CreateBillboard(
+                                    center,
+                                    cameraPosition,
+                                    Vector3.UnitY,
+                                    Vector3.UnitZ)
+                        };
+
+                    _vehicleModelBuffer.SetData(
+                        _deviceContext,
+                        model,
+                        MapMode.WriteDiscard);
+
+                    var normalizedBrightness =
+                        (float)Math.Clamp(
+                            brightness,
+                            0.0,
+                            16.0);
+
+                    material[0] =
+                        new RuntimeVehicleMaterialConstants
+                        {
+                            AlphaScale = 1.0f,
+                            MaterialChangeDiffuse =
+                                new Vector4(
+                                    light.Red / 255.0f *
+                                        normalizedBrightness,
+                                    light.Green / 255.0f *
+                                        normalizedBrightness,
+                                    light.Blue / 255.0f *
+                                        normalizedBrightness,
+                                    1.0f)
+                        };
+
+                    _vehicleMaterialBuffer.SetData(
+                        _deviceContext,
+                        material,
+                        MapMode.WriteDiscard);
+
+                    _deviceContext.Draw(
+                        6,
+                        0);
+                }
+            }
+        }
+
+        _deviceContext.OMSetBlendState(
+            null);
+
+        _deviceContext.OMSetDepthStencilState(
+            null);
+
+        _deviceContext.RSSetState(
+            null);
+    }
+
+    private static double ResolveTrafficVehicleLightValue(
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleLightEffectInfo light)
+    {
+        double source;
+
+        if (!double.TryParse(
+                light.BrightnessVariable,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out source))
+        {
+            source =
+                light.BrightnessVariable
+                    .Trim()
+                    .ToLowerInvariant() switch
+                {
+                    "ai_brakelight" or
+                    "lights_brems" or
+                    "lights_brakes" =>
+                        agent.AiBrakeLight
+                            ? 1.0
+                            : 0.0,
+                    _ =>
+                        0.0
+                };
+        }
+
+        var value =
+            source *
+            light.BrightnessFactor;
+
+        return double.IsFinite(
+                   value)
+            ? Math.Clamp(
+                value,
+                0.0,
+                16.0)
+            : 0.0;
     }
 
     private void DrawVehicle()
