@@ -308,6 +308,13 @@ public sealed record RuntimeSceneryAssetInfo(
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
     RuntimeTreeInfo? Tree);
 
+public sealed record RuntimeRailSignalRouteStateInfo(
+    int RouteIndex,
+    long SignalObjectId,
+    int SignalElementIndex,
+    bool Reserved,
+    int? ReservedAgentIndex);
+
 public sealed record RuntimeTrafficAgentInfo(
     int AgentIndex,
     int SegmentIndex,
@@ -494,4 +501,5 @@ public sealed record RuntimeWindowInfo(
     RuntimeAiCatalogInfo AiCatalog,
     RuntimeVehicleInfo? Vehicle,
     RuntimeSpawnInfo? Spawn,
-    IReadOnlyDictionary<string, RuntimeVehicleInfo>? TrafficVehicleAssets = null);
+    IReadOnlyDictionary<string, RuntimeVehicleInfo>? TrafficVehicleAssets = null,
+    IReadOnlySet<long>? DynamicSceneryObjectIds = null);
