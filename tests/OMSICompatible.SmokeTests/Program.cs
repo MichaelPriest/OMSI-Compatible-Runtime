@@ -525,6 +525,20 @@ try
             50.0,
         "OMSI rail simulation did not follow the connected type-2 rail path.");
 
+    Require(
+        railSimulation.TrySampleBehind(
+            railState.AgentIndex,
+            20.0,
+            out var trailingRailSegmentIndex,
+            out _,
+            out var trailingRailPosition,
+            out _) &&
+        trailingRailSegmentIndex ==
+            0 &&
+        trailingRailPosition.Z <
+            50.0,
+        "OMSI rail consist trailing sample did not traverse back across the connected rail segment boundary.");
+
     File.WriteAllText(
         Path.Combine(
             root,
