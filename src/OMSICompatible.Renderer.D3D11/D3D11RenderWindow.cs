@@ -138,6 +138,12 @@ public sealed class D3D11RenderWindow : Form
     private readonly Dictionary<int, float>
         _articulatedSectionYawRateRadiansPerSecond =
             [];
+    private readonly Dictionary<int, float>
+        _articulatedSectionPitchRadians =
+            [];
+    private readonly Dictionary<int, float>
+        _articulatedSectionPitchRateRadiansPerSecond =
+            [];
     private readonly Dictionary<int, Vector2>
         _articulatedSectionJointWorldPosition =
             [];
@@ -5598,6 +5604,8 @@ public sealed class D3D11RenderWindow : Form
         _articulatedSectionAbsoluteHeadingRadians.Clear();
         _articulatedSectionYawRadians.Clear();
         _articulatedSectionYawRateRadiansPerSecond.Clear();
+        _articulatedSectionPitchRadians.Clear();
+        _articulatedSectionPitchRateRadiansPerSecond.Clear();
         _articulatedSectionJointWorldPosition.Clear();
 
         foreach (var section in
@@ -5613,6 +5621,14 @@ public sealed class D3D11RenderWindow : Form
                 0.0f;
 
             _articulatedSectionYawRateRadiansPerSecond[
+                section.Index] =
+                0.0f;
+
+            _articulatedSectionPitchRadians[
+                section.Index] =
+                0.0f;
+
+            _articulatedSectionPitchRateRadiansPerSecond[
                 section.Index] =
                 0.0f;
         }
@@ -5650,7 +5666,9 @@ public sealed class D3D11RenderWindow : Form
                     section.Index,
                     out var physicalHeading,
                     out var physicalYaw,
-                    out var physicalYawRate))
+                    out var physicalYawRate,
+                    out var physicalPitch,
+                    out var physicalPitchRate))
             {
                 _articulatedSectionAbsoluteHeadingRadians[
                     section.Index] =
@@ -5663,6 +5681,14 @@ public sealed class D3D11RenderWindow : Form
                 _articulatedSectionYawRateRadiansPerSecond[
                     section.Index] =
                     physicalYawRate;
+
+                _articulatedSectionPitchRadians[
+                    section.Index] =
+                    physicalPitch;
+
+                _articulatedSectionPitchRateRadiansPerSecond[
+                    section.Index] =
+                    physicalPitchRate;
 
                 _articulatedSectionJointWorldPosition[
                     section.Index] =
@@ -5864,6 +5890,14 @@ public sealed class D3D11RenderWindow : Form
             _articulatedSectionYawRateRadiansPerSecond[
                 section.Index] =
                 yawRate;
+
+            _articulatedSectionPitchRadians[
+                section.Index] =
+                0.0f;
+
+            _articulatedSectionPitchRateRadiansPerSecond[
+                section.Index] =
+                0.0f;
         }
     }
 
@@ -5964,6 +5998,13 @@ public sealed class D3D11RenderWindow : Form
                 ? storedYaw
                 : 0.0f;
 
+        var pitch =
+            _articulatedSectionPitchRadians.TryGetValue(
+                sectionIndex,
+                out var storedPitch)
+                ? storedPitch
+                : 0.0f;
+
         var pivot =
             new Vector3(
                 (float)section.JointX,
@@ -5973,8 +6014,10 @@ public sealed class D3D11RenderWindow : Form
         var local =
             Matrix4x4.CreateTranslation(
                 -pivot) *
-            Matrix4x4.CreateRotationY(
-                yaw) *
+            Matrix4x4.CreateFromYawPitchRoll(
+                yaw,
+                pitch,
+                0.0f) *
             Matrix4x4.CreateTranslation(
                 pivot);
 
@@ -6904,11 +6947,22 @@ public sealed class D3D11RenderWindow : Form
                 $"articulation_{couplingIndex}_alpha",
                 alphaDegrees);
 
-            // Vertical joint dynamics are not solved yet. Keep beta neutral
-            // rather than leaving stale VM data in the add-on script.
+            var relativePitch =
+                _articulatedSectionPitchRadians
+                    .TryGetValue(
+                        section.Index,
+                        out var pitch)
+                        ? pitch
+                        : 0.0f;
+
+            var betaDegrees =
+                relativePitch *
+                180.0 /
+                Math.PI;
+
             _scriptRuntime.SetLocal(
                 $"articulation_{couplingIndex}_beta",
-                0.0);
+                betaDegrees);
         }
 
         // OMSI numbers trailer axles continuously across the coupled set.

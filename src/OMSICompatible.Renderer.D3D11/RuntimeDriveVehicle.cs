@@ -203,16 +203,21 @@ internal sealed class RuntimeDriveVehicle :
                 1.2f,
                 3.5f);
 
-        _axles =
-            physics?.Axles?.Where(
+        var declaredAxles =
+            physics?.Axles?
+                .Where(
                     static axle =>
                         double.IsFinite(
                             axle.LongitudinalPositionMeters))
+                .ToArray() ??
+            [];
+
+        _axles =
+            declaredAxles
                 .OrderByDescending(
                     static axle =>
                         axle.LongitudinalPositionMeters)
-                .ToArray() ??
-            [];
+                .ToArray();
 
         _wheelRadiusMeters =
             Math.Clamp(
@@ -225,51 +230,10 @@ internal sealed class RuntimeDriveVehicle :
         _primaryDrivenSectionIndex =
             ResolvePrimaryDrivenSectionIndex();
 
-        var drivenAxles =
-            _axles
-                .Concat(
-                    _sections.SelectMany(
-                        static section =>
-                            section.Physics?.Axles ??
-                            Array.Empty<RuntimeVehicleAxleInfo>()))
-                .Where(
-                    static axle =>
-                        axle.DriveFactor is
-                            { } drive &&
-                        double.IsFinite(
-                            drive) &&
-                        Math.Abs(
-                            drive) >
-                        0.0001)
-                .ToArray();
-
-        var drivenAxleWeight =
-            drivenAxles.Sum(
-                static axle =>
-                    Math.Abs(
-                        axle.DriveFactor ??
-                        0.0));
-
         _drivenWheelRadiusMeters =
-            drivenAxleWeight >
-                0.0001
-                ? Math.Clamp(
-                    (float)(
-                        drivenAxles.Sum(
-                            axle =>
-                                Math.Abs(
-                                    axle.DriveFactor ??
-                                    0.0) *
-                                Math.Max(
-                                    axle.WheelDiameterMeters ??
-                                    (2.0 *
-                                     _wheelRadiusMeters),
-                                    0.1) *
-                                0.5) /
-                        drivenAxleWeight),
-                    0.20f,
-                    0.80f)
-                : _wheelRadiusMeters;
+            ResolveOmsiDrivenWheelRadius(
+                physics,
+                declaredAxles);
 
         var configuredRollingResistance =
             physics?.RollingResistanceNewtons ??
@@ -647,7 +611,9 @@ internal sealed class RuntimeDriveVehicle :
         int sectionIndex,
         out float absoluteHeadingRadians,
         out float relativeYawRadians,
-        out float relativeYawRateRadiansPerSecond)
+        out float relativeYawRateRadiansPerSecond,
+        out float relativePitchRadians,
+        out float relativePitchRateRadiansPerSecond)
     {
         if (_odeArticulatedSections.TryGetValue(
                 sectionIndex,
@@ -659,6 +625,10 @@ internal sealed class RuntimeDriveVehicle :
                 state.RelativeYawRadians;
             relativeYawRateRadiansPerSecond =
                 state.RelativeYawRateRadiansPerSecond;
+            relativePitchRadians =
+                state.RelativePitchRadians;
+            relativePitchRateRadiansPerSecond =
+                state.RelativePitchRateRadiansPerSecond;
             return true;
         }
 
@@ -667,6 +637,10 @@ internal sealed class RuntimeDriveVehicle :
         relativeYawRadians =
             0.0f;
         relativeYawRateRadiansPerSecond =
+            0.0f;
+        relativePitchRadians =
+            0.0f;
+        relativePitchRateRadiansPerSecond =
             0.0f;
         return false;
     }
@@ -3485,18 +3459,24 @@ internal sealed class RuntimeDriveVehicle :
                         localJoint,
                         leadingOrientation);
 
-                var hingeAxis =
+                var yawAxis =
                     Vector3.Transform(
                         Vector3.UnitZ,
                         leadingOrientation);
 
-                var hinge =
-                    new OdeHingeJoint(
+                var pitchAxis =
+                    Vector3.Transform(
+                        Vector3.UnitX,
+                        leadingOrientation);
+
+                var articulation =
+                    new OdeUniversalJoint(
                         world,
                         parentBody,
                         body,
                         jointWorld,
-                        hingeAxis);
+                        yawAxis,
+                        pitchAxis);
 
                 var maximumYawRadians =
                     DegreesToRadians(
@@ -3505,9 +3485,31 @@ internal sealed class RuntimeDriveVehicle :
                             5.0,
                             89.0));
 
-                hinge.SetStops(
+                var minimumPitchRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            section.MinimumPitchDegrees,
+                            -45.0,
+                            0.0));
+
+                var maximumPitchRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            section.MaximumPitchDegrees,
+                            0.0,
+                            45.0));
+
+                articulation.SetYawStops(
                     -maximumYawRadians,
                     maximumYawRadians,
+                    stopErp:
+                        0.35f,
+                    stopCfm:
+                        0.00001f);
+
+                articulation.SetPitchStops(
+                    minimumPitchRadians,
+                    maximumPitchRadians,
                     stopErp:
                         0.35f,
                     stopCfm:
@@ -3545,7 +3547,7 @@ internal sealed class RuntimeDriveVehicle :
                     new OdeArticulatedSectionState(
                         section,
                         body,
-                        hinge,
+                        articulation,
                         parentBody,
                         massKilograms,
                         centerOfGravityHeight,
@@ -3725,11 +3727,53 @@ internal sealed class RuntimeDriveVehicle :
                     -lateralForceLimit,
                     lateralForceLimit));
 
+            var sectionHeading =
+                ResolveOdeHeading(
+                    body.Orientation,
+                    state.AbsoluteHeadingRadians);
+
+            var parentHeading =
+                state.ParentBody ==
+                    _odeBody
+                    ? HeadingRadians
+                    : ResolveOdeHeading(
+                        state.ParentBody.Orientation,
+                        sectionHeading);
+
             var relativeYaw =
-                -state.Hinge.AngleRadians;
+                NormalizeRadians(
+                    sectionHeading -
+                    parentHeading);
+
+            var sectionPitch =
+                ResolveOdePitch(
+                    body.Orientation);
+
+            var parentPitch =
+                state.ParentBody ==
+                    _odeBody
+                    ? BodyPitchRadians
+                    : ResolveOdePitch(
+                        state.ParentBody.Orientation);
+
+            var relativePitch =
+                sectionPitch -
+                parentPitch;
 
             var relativeYawRate =
-                -state.Hinge.AngularRateRadiansPerSecond;
+                NormalizeRadians(
+                    relativeYaw -
+                    state.RelativeYawRadians) /
+                Math.Max(
+                    deltaSeconds,
+                    0.0001f);
+
+            var relativePitchRate =
+                (relativePitch -
+                 state.RelativePitchRadians) /
+                Math.Max(
+                    deltaSeconds,
+                    0.0001f);
 
             var maximumYaw =
                 DegreesToRadians(
@@ -3783,6 +3827,75 @@ internal sealed class RuntimeDriveVehicle :
                     0.0f,
                     0.0f,
                     -correctiveTorque));
+
+            var minimumPitch =
+                DegreesToRadians(
+                    Math.Clamp(
+                        state.Section.MinimumPitchDegrees,
+                        -45.0,
+                        0.0));
+
+            var maximumPitch =
+                DegreesToRadians(
+                    Math.Clamp(
+                        state.Section.MaximumPitchDegrees,
+                        0.0,
+                        45.0));
+
+            var pitchSoftMinimum =
+                minimumPitch *
+                0.82f;
+
+            var pitchSoftMaximum =
+                maximumPitch *
+                0.82f;
+
+            var pitchError =
+                relativePitch <
+                    pitchSoftMinimum
+                    ? relativePitch -
+                      pitchSoftMinimum
+                    : relativePitch >
+                        pitchSoftMaximum
+                        ? relativePitch -
+                          pitchSoftMaximum
+                        : 0.0f;
+
+            var desiredPitchAcceleration =
+                -relativePitchRate *
+                1.10f -
+                pitchError *
+                10.0f;
+
+            var correctivePitchTorque =
+                Math.Clamp(
+                    -desiredPitchAcceleration *
+                    state.PitchInertiaKilogramSquareMeters,
+                    -state.PitchInertiaKilogramSquareMeters *
+                        15.0f,
+                    state.PitchInertiaKilogramSquareMeters *
+                        15.0f);
+
+            var worldPitchAxis =
+                Vector3.Transform(
+                    Vector3.UnitX,
+                    state.ParentBody.Orientation);
+
+            if (worldPitchAxis.LengthSquared() >
+                0.000001f)
+            {
+                worldPitchAxis =
+                    Vector3.Normalize(
+                        worldPitchAxis);
+
+                state.Body.AddWorldTorque(
+                    worldPitchAxis *
+                    correctivePitchTorque);
+
+                state.ParentBody.AddWorldTorque(
+                    worldPitchAxis *
+                    -correctivePitchTorque);
+            }
         }
     }
 
@@ -3953,21 +4066,98 @@ internal sealed class RuntimeDriveVehicle :
                         state.ParentBody.Orientation,
                         bodyHeading);
 
-            var relativeYaw =
-                -state.Hinge.AngleRadians;
-
             state.RelativeYawRadians =
                 NormalizeRadians(
-                    relativeYaw);
+                    bodyHeading -
+                    parentHeading);
 
             state.RelativeYawRateRadiansPerSecond =
-                -state.Hinge.AngularRateRadiansPerSecond;
+                -state.Articulation.YawRateRadiansPerSecond;
+
+            var bodyPitch =
+                ResolveOdePitch(
+                    state.Body.Orientation);
+
+            var parentPitch =
+                state.ParentBody ==
+                    _odeBody
+                    ? BodyPitchRadians
+                    : ResolveOdePitch(
+                        state.ParentBody.Orientation);
+
+            state.RelativePitchRadians =
+                bodyPitch -
+                parentPitch;
+
+            state.RelativePitchRateRadiansPerSecond =
+                state.Articulation.PitchRateRadiansPerSecond;
 
             state.AbsoluteHeadingRadians =
-                NormalizeRadians(
-                    parentHeading +
-                    state.RelativeYawRadians);
+                bodyHeading;
         }
+    }
+
+    private float ResolveOmsiDrivenWheelRadius(
+        RuntimeVehiclePhysicsInfo? leadingPhysics,
+        IReadOnlyList<RuntimeVehicleAxleInfo> leadingDeclaredAxles)
+    {
+        IReadOnlyList<RuntimeVehicleAxleInfo> sourceAxles =
+            leadingDeclaredAxles;
+
+        if (_primaryDrivenSectionIndex >
+                0)
+        {
+            sourceAxles =
+                _sections
+                    .FirstOrDefault(
+                        section =>
+                            section.Index ==
+                            _primaryDrivenSectionIndex)?
+                    .Physics?
+                    .Axles ??
+                Array.Empty<RuntimeVehicleAxleInfo>();
+        }
+
+        var firstDiameter =
+            sourceAxles
+                .FirstOrDefault()?
+                .WheelDiameterMeters;
+
+        var diameter =
+            firstDiameter is
+                    { } declared &&
+                double.IsFinite(
+                    declared) &&
+                declared >
+                    0.1
+                ? declared
+                : leadingPhysics?
+                    .AverageWheelDiameterMeters ??
+                  (2.0 *
+                   _wheelRadiusMeters);
+
+        return Math.Clamp(
+            (float)diameter *
+            0.5f,
+            0.20f,
+            0.80f);
+    }
+
+    private static float ResolveOdePitch(
+        Quaternion orientation)
+    {
+        var forward =
+            Vector3.Transform(
+                Vector3.UnitY,
+                orientation);
+
+        return MathF.Atan2(
+            forward.Z,
+            MathF.Sqrt(
+                forward.X *
+                    forward.X +
+                forward.Y *
+                    forward.Y));
     }
 
     private static float ResolveOdeHeading(
@@ -4225,7 +4415,7 @@ internal sealed class RuntimeDriveVehicle :
         public OdeArticulatedSectionState(
             RuntimeVehicleSectionInfo section,
             OdeRigidBody body,
-            OdeHingeJoint hinge,
+            OdeUniversalJoint articulation,
             OdeRigidBody parentBody,
             float massKilograms,
             float centerOfGravityHeightMeters,
@@ -4241,8 +4431,8 @@ internal sealed class RuntimeDriveVehicle :
                 section;
             Body =
                 body;
-            Hinge =
-                hinge;
+            Articulation =
+                articulation;
             ParentBody =
                 parentBody;
             MassKilograms =
@@ -4253,6 +4443,11 @@ internal sealed class RuntimeDriveVehicle :
                 rollingResistanceNewtons;
             YawInertiaKilogramSquareMeters =
                 yawInertiaKilogramSquareMeters;
+            PitchInertiaKilogramSquareMeters =
+                Math.Max(
+                    yawInertiaKilogramSquareMeters *
+                        0.55f,
+                    1_000.0f);
             OmsiAxleStartIndex =
                 omsiAxleStartIndex;
             Axles =
@@ -4269,7 +4464,7 @@ internal sealed class RuntimeDriveVehicle :
 
         public OdeRigidBody Body { get; }
 
-        public OdeHingeJoint Hinge { get; }
+        public OdeUniversalJoint Articulation { get; }
 
         public OdeRigidBody ParentBody { get; }
 
@@ -4280,6 +4475,8 @@ internal sealed class RuntimeDriveVehicle :
         public float RollingResistanceNewtons { get; }
 
         public float YawInertiaKilogramSquareMeters { get; }
+
+        public float PitchInertiaKilogramSquareMeters { get; }
 
         public int OmsiAxleStartIndex { get; }
 
@@ -4297,9 +4494,13 @@ internal sealed class RuntimeDriveVehicle :
 
         public float RelativeYawRateRadiansPerSecond { get; set; }
 
+        public float RelativePitchRadians { get; set; }
+
+        public float RelativePitchRateRadiansPerSecond { get; set; }
+
         public void Dispose()
         {
-            Hinge.Dispose();
+            Articulation.Dispose();
             Body.Dispose();
         }
     }

@@ -191,6 +191,96 @@ try
                 0.34f,
             $"ODE articulated hinge stop was exceeded: {odeArticulation.AngleRadians:0.0000} rad.");
 
+        using var odeUniversalParent =
+            new OdeRigidBody(
+                odeWorld,
+                new OdeRigidBodyParameters(
+                    8_000.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    20_000.0f,
+                    45_000.0f,
+                    55_000.0f));
+
+        using var odeUniversalTrailer =
+            new OdeRigidBody(
+                odeWorld,
+                new OdeRigidBodyParameters(
+                    6_000.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    15_000.0f,
+                    30_000.0f,
+                    40_000.0f));
+
+        odeUniversalParent.SetGravityEnabled(
+            false);
+        odeUniversalTrailer.SetGravityEnabled(
+            false);
+
+        odeUniversalParent.SetPosition(
+            new Vector3(
+                20.0f,
+                0.0f,
+                0.0f));
+
+        odeUniversalTrailer.SetPosition(
+            new Vector3(
+                20.0f,
+                -5.0f,
+                0.0f));
+
+        using var odeUniversal =
+            new OdeUniversalJoint(
+                odeWorld,
+                odeUniversalParent,
+                odeUniversalTrailer,
+                new Vector3(
+                    20.0f,
+                    -2.5f,
+                    0.0f),
+                Vector3.UnitZ,
+                Vector3.UnitX);
+
+        odeUniversal.SetYawStops(
+            -0.35f,
+            0.35f);
+
+        odeUniversal.SetPitchStops(
+            -0.20f,
+            0.20f);
+
+        for (var universalStep = 0;
+             universalStep < 240;
+             universalStep++)
+        {
+            odeUniversalTrailer.AddWorldTorque(
+                new Vector3(
+                    45_000.0f,
+                    0.0f,
+                    120_000.0f));
+
+            Require(
+                odeWorld.Step(
+                    1.0f / 120.0f),
+                "ODE universal articulation QuickStep failed.");
+        }
+
+        Require(
+            float.IsFinite(
+                odeUniversal.YawAngleRadians) &&
+            float.IsFinite(
+                odeUniversal.PitchAngleRadians) &&
+            Math.Abs(
+                odeUniversal.YawAngleRadians) <
+                0.45f &&
+            Math.Abs(
+                odeUniversal.PitchAngleRadians) <
+                0.30f,
+            $"ODE universal articulation stops were exceeded: yaw={odeUniversal.YawAngleRadians:0.0000}, pitch={odeUniversal.PitchAngleRadians:0.0000}.");
+
         var frontSuspension =
             OdeSuspensionTuning.FromSpringDamper(
                 springNewtonsPerMeter:
