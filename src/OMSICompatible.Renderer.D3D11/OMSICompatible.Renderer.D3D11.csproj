@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../OmsiCompat.Scripting/OmsiCompat.Scripting.csproj" />
+    <ProjectReference Include="../OmsiCompat.Physics.Ode/OmsiCompat.Physics.Ode.csproj" />
     <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
   </ItemGroup>
   <ItemGroup>
