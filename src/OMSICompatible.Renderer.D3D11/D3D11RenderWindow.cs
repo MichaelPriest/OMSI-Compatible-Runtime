@@ -321,6 +321,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly bool _vsync;
     private readonly float _masterVolume;
     private readonly int _maximumSoundCount;
+    private readonly bool _materialLightMapEnabled;
+    private readonly bool _materialReflectionMapEnabled;
+    private readonly bool _materialBumpMapEnabled;
 
     public D3D11RenderWindow(
         RuntimeWindowInfo windowInfo,
@@ -334,7 +337,10 @@ public sealed class D3D11RenderWindow : Form
         IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null,
         int masterVolumePercent = 100,
         bool automaticSteeringCenter = false,
-        int maximumSoundCount = 400)
+        int maximumSoundCount = 400,
+        bool materialLightMapEnabled = true,
+        bool materialReflectionMapEnabled = true,
+        bool materialBumpMapEnabled = true)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
@@ -366,6 +372,12 @@ public sealed class D3D11RenderWindow : Form
                 maximumSoundCount,
                 1,
                 10_000);
+        _materialLightMapEnabled =
+            materialLightMapEnabled;
+        _materialReflectionMapEnabled =
+            materialReflectionMapEnabled;
+        _materialBumpMapEnabled =
+            materialBumpMapEnabled;
         _vehiclePreviewMode =
             vehiclePreviewMode;
         _gameControllerEnabled =
@@ -3660,7 +3672,8 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.PSUnsetShaderResource(
                 6);
 
-            if (TryGetVehicleTextureView(
+            if (_materialReflectionMapEnabled &&
+                TryGetVehicleTextureView(
                     materialState.EnvMapTexturePath,
                     out var envMapView))
             {
@@ -3669,7 +3682,8 @@ public sealed class D3D11RenderWindow : Form
                     envMapView!);
             }
 
-            if (TryGetVehicleTextureView(
+            if (_materialReflectionMapEnabled &&
+                TryGetVehicleTextureView(
                     materialState.EnvMapMaskTexturePath,
                     out var envMapMaskView))
             {
@@ -3678,7 +3692,8 @@ public sealed class D3D11RenderWindow : Form
                     envMapMaskView!);
             }
 
-            if (TryGetVehicleTextureView(
+            if (_materialBumpMapEnabled &&
+                TryGetVehicleTextureView(
                     materialState.BumpMapTexturePath,
                     out var bumpMapView))
             {
@@ -3719,7 +3734,8 @@ public sealed class D3D11RenderWindow : Form
                         transMapView!);
                 }
 
-                if (TryGetVehicleTextureView(
+                if (_materialLightMapEnabled &&
+                    TryGetVehicleTextureView(
                         materialState.LightMapTexturePath,
                         out var lightMapView))
                 {
@@ -4413,7 +4429,8 @@ public sealed class D3D11RenderWindow : Form
         string? texturePath,
         double strength)
     {
-        if (string.IsNullOrWhiteSpace(
+        if (!_materialBumpMapEnabled ||
+            string.IsNullOrWhiteSpace(
                 texturePath) ||
             strength <= 0.0 ||
             !TryGetVehicleTextureView(
@@ -4433,7 +4450,8 @@ public sealed class D3D11RenderWindow : Form
         string? texturePath,
         double strength)
     {
-        if (string.IsNullOrWhiteSpace(
+        if (!_materialReflectionMapEnabled ||
+            string.IsNullOrWhiteSpace(
                 texturePath) ||
             strength <= 0.0 ||
             !TryGetVehicleTextureView(
@@ -4453,6 +4471,11 @@ public sealed class D3D11RenderWindow : Form
         string? texturePath,
         bool useDiffuseAlpha)
     {
+        if (!_materialReflectionMapEnabled)
+        {
+            return 0.0f;
+        }
+
         if (useDiffuseAlpha)
         {
             // 2 = use the diffuse texture alpha channel as the reflection
@@ -4543,7 +4566,8 @@ public sealed class D3D11RenderWindow : Form
         string? variableName,
         int sectionIndex = 0)
     {
-        if (string.IsNullOrWhiteSpace(
+        if (!_materialLightMapEnabled ||
+            string.IsNullOrWhiteSpace(
                 texturePath))
         {
             return 0.0f;

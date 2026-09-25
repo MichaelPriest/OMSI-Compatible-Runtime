@@ -366,7 +366,13 @@ internal sealed class RuntimeApplicationContext :
                     automaticSteeringCenter:
                         _options.AutomaticSteeringCenter,
                     maximumSoundCount:
-                        _options.MaximumSoundCount);
+                        _options.MaximumSoundCount,
+                    materialLightMapEnabled:
+                        _options.MaterialLightMap,
+                    materialReflectionMapEnabled:
+                        _options.MaterialReflectionMap,
+                    materialBumpMapEnabled:
+                        _options.MaterialBumpMap);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
