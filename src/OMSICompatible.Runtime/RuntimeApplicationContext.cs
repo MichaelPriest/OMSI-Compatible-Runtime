@@ -372,7 +372,9 @@ internal sealed class RuntimeApplicationContext :
                     materialReflectionMapEnabled:
                         _options.MaterialReflectionMap,
                     materialBumpMapEnabled:
-                        _options.MaterialBumpMap);
+                        _options.MaterialBumpMap,
+                    materialNightMapEnabled:
+                        _options.MaterialNightMap);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
