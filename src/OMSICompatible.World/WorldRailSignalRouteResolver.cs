@@ -3,11 +3,17 @@ using OmsiCompat.Map;
 
 namespace OMSICompatible.World;
 
+public sealed record WorldRailSignalObjectReference(
+    long ObjectId,
+    int ElementIndex,
+    int SourceLineNumber);
+
 public sealed record WorldRailSignalRoute(
     int RouteIndex,
     IReadOnlyList<int> SegmentIndices,
     int ParsedEntryCount,
-    int UnresolvedEntryCount);
+    int UnresolvedEntryCount,
+    WorldRailSignalObjectReference? Signal = null);
 
 public static class WorldRailSignalRouteResolver
 {
@@ -101,15 +107,82 @@ public static class WorldRailSignalRouteResolver
                 }
             }
 
+            var signal =
+                routeGroup
+                    .Where(
+                        static section =>
+                            section.Name.Equals(
+                                "signal",
+                                StringComparison.OrdinalIgnoreCase))
+                    .Select(
+                        section =>
+                            TryReadSignalReference(
+                                section,
+                                out var signalReference)
+                                ? signalReference
+                                : null)
+                    .FirstOrDefault(
+                        static reference =>
+                            reference is not null);
+
             result.Add(
                 new WorldRailSignalRoute(
                     routeGroup.Key,
                     segmentIndices,
                     parsedEntries,
-                    unresolvedEntries));
+                    unresolvedEntries,
+                    signal));
         }
 
         return result;
+    }
+
+    private static bool TryReadSignalReference(
+        OmsiSignalRouteSection section,
+        out WorldRailSignalObjectReference? signal)
+    {
+        signal =
+            null;
+
+        var values =
+            section
+                .Lines
+                .Select(
+                    static line =>
+                        line.Trim())
+                .Where(
+                    static line =>
+                        line.Length >
+                        0)
+                .ToArray();
+
+        if (values.Length <
+                2 ||
+            !long.TryParse(
+                values[0],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var objectId) ||
+            !int.TryParse(
+                values[1],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var elementIndex) ||
+            objectId <
+                0 ||
+            elementIndex <
+                0)
+        {
+            return false;
+        }
+
+        signal =
+            new WorldRailSignalObjectReference(
+                objectId,
+                elementIndex,
+                section.HeaderLineNumber);
+
+        return true;
     }
 
     private static bool TryReadEntryReference(
