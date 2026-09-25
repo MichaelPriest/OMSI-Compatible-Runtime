@@ -85,6 +85,12 @@ public sealed class D3D11RenderWindow : Form
     private IReadOnlyList<RuntimeTrafficAgentInfo>
         _trafficAgents =
             Array.Empty<RuntimeTrafficAgentInfo>();
+    private readonly Func<
+        IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
+        _railSignalStateProvider;
+    private IReadOnlyList<RuntimeRailSignalRouteStateInfo>
+        _railSignalRouteStates =
+            Array.Empty<RuntimeRailSignalRouteStateInfo>();
     private readonly System.Windows.Forms.Timer _renderTimer;
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
@@ -365,7 +371,10 @@ public sealed class D3D11RenderWindow : Form
         Func<
             double,
             IReadOnlyList<RuntimeTrafficAgentInfo>>?
-            trafficStep = null)
+            trafficStep = null,
+        Func<
+            IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
+            railSignalStateProvider = null)
     {
         _windowInfo = windowInfo;
         _trafficStep =
@@ -374,6 +383,11 @@ public sealed class D3D11RenderWindow : Form
             _trafficStep?.Invoke(
                 0.0) ??
             Array.Empty<RuntimeTrafficAgentInfo>();
+        _railSignalStateProvider =
+            railSignalStateProvider;
+        _railSignalRouteStates =
+            _railSignalStateProvider?.Invoke() ??
+            Array.Empty<RuntimeRailSignalRouteStateInfo>();
         _scriptRuntime = scriptRuntime;
         _sectionScriptRuntimes =
             sectionScriptRuntimes is null
@@ -708,7 +722,9 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Tiles,
                 _windowInfo.Objects,
                 _windowInfo.SceneryAssets,
-                useNativeOmsiModelSpace: true);
+                useNativeOmsiModelSpace: true,
+                isolatedObjectIds:
+                    _windowInfo.DynamicSceneryObjectIds);
 
         if (_objectGeometry.Vertices.Length > 0)
         {
@@ -1601,7 +1617,9 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Tiles,
                 _windowInfo.Objects,
                 _windowInfo.SceneryAssets,
-                useNativeOmsiModelSpace: true);
+                useNativeOmsiModelSpace: true,
+                isolatedObjectIds:
+                    _windowInfo.DynamicSceneryObjectIds);
 
         if (_objectGeometry.Vertices.Length == 0 &&
             _splineGeometry.Vertices.Length == 0 &&
@@ -6740,6 +6758,13 @@ public sealed class D3D11RenderWindow : Form
                 _trafficStep(
                     deltaSeconds) ??
                 Array.Empty<RuntimeTrafficAgentInfo>();
+        }
+
+        if (_railSignalStateProvider is not null)
+        {
+            _railSignalRouteStates =
+                _railSignalStateProvider() ??
+                Array.Empty<RuntimeRailSignalRouteStateInfo>();
         }
 
         var controllerFrame =
