@@ -5,7 +5,7 @@ namespace OMSICompatible.World;
 
 public sealed record WorldRailSignalObjectReference(
     long ObjectId,
-    int ElementIndex,
+    int SignalState,
     int SourceLineNumber);
 
 public sealed record WorldRailSignalRoute(
@@ -167,10 +167,10 @@ public static class WorldRailSignalRouteResolver
                 values[1],
                 NumberStyles.Integer,
                 CultureInfo.InvariantCulture,
-                out var elementIndex) ||
+                out var signalState) ||
             objectId <
                 0 ||
-            elementIndex <
+            signalState <
                 0)
         {
             return false;
@@ -179,7 +179,7 @@ public static class WorldRailSignalRouteResolver
         signal =
             new WorldRailSignalObjectReference(
                 objectId,
-                elementIndex,
+                signalState,
                 section.HeaderLineNumber);
 
         return true;
