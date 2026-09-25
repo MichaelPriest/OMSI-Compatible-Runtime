@@ -1075,6 +1075,9 @@ internal sealed class RuntimeOmsiAudioHost :
             return;
         }
 
+        var voiceCountIncremented =
+            false;
+
         try
         {
             var reader =
@@ -1113,6 +1116,9 @@ internal sealed class RuntimeOmsiAudioHost :
             Interlocked.Increment(
                 ref _activeOneShotVoiceCount);
 
+            voiceCountIncremented =
+                true;
+
             _mixer.AddMixerInput(
                 new OwnedSampleProvider(
                     volumeProvider,
@@ -1123,9 +1129,7 @@ internal sealed class RuntimeOmsiAudioHost :
         }
         catch (Exception ex)
         {
-            if (Volatile.Read(
-                    ref _activeOneShotVoiceCount) >
-                0)
+            if (voiceCountIncremented)
             {
                 Interlocked.Decrement(
                     ref _activeOneShotVoiceCount);
