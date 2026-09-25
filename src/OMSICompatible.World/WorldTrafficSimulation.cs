@@ -29,7 +29,7 @@ public sealed class WorldTrafficSimulation
     private const double TrafficLookAheadMeters =
         120.0;
     private const double TrafficStopLineBufferMeters =
-        1.0;
+        0.75;
     private const int MaximumTrafficLookAheadSegments =
         32;
 
