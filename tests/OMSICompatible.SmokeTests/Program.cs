@@ -2501,6 +2501,16 @@ try
     var world = WorldLoader.Load(contentRoot, map);
 
     Require(
+        world.SignalRoutes is
+            { Sections.Count: 5 } &&
+        world.SignalRoutes.Sections[2].Name.Equals(
+            "entry",
+            StringComparison.OrdinalIgnoreCase) &&
+        world.SignalRoutes.Sections[2].RouteIndex ==
+            0,
+        "World load did not retain the parsed OMSI signalroutes.cfg data.");
+
+    Require(
         world.AiCatalog.UnscheduledVehicleGroups is
             { Count: 2 } &&
         world.AiCatalog.UnscheduledVehicleGroups[0].Index ==
