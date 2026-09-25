@@ -6930,27 +6930,41 @@ public sealed class D3D11RenderWindow : Form
             "Axle_Steering_0_R",
             omsiSteeringRight);
 
-        var wheelRotation =
-            _vehicle.WheelRotationRadians;
-        var wheelRotationSpeedRpm =
-            _vehicle.WheelRotationSpeedRpm;
-
         for (var axle = 0;
-             axle < 4;
+             axle < 8;
              axle++)
         {
+            var hasWheelKinematics =
+                _vehicle.TryGetOmsiWheelKinematics(
+                    axle,
+                    out var leftWheelRotation,
+                    out var rightWheelRotation,
+                    out var leftWheelRotationSpeedRpm,
+                    out var rightWheelRotationSpeedRpm);
+
             _scriptRuntime.SetLocal(
                 $"Wheel_Rotation_{axle}_L",
-                wheelRotation);
+                hasWheelKinematics
+                    ? leftWheelRotation
+                    : 0.0f);
+
             _scriptRuntime.SetLocal(
                 $"Wheel_Rotation_{axle}_R",
-                wheelRotation);
+                hasWheelKinematics
+                    ? rightWheelRotation
+                    : 0.0f);
+
             _scriptRuntime.SetLocal(
                 $"Wheel_RotationSpeed_{axle}_L",
-                wheelRotationSpeedRpm);
+                hasWheelKinematics
+                    ? leftWheelRotationSpeedRpm
+                    : 0.0f);
+
             _scriptRuntime.SetLocal(
                 $"Wheel_RotationSpeed_{axle}_R",
-                wheelRotationSpeedRpm);
+                hasWheelKinematics
+                    ? rightWheelRotationSpeedRpm
+                    : 0.0f);
         }
 
         for (var axle = 0;
