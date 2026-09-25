@@ -57,7 +57,8 @@ public sealed record OmsiVehicleMaterialOverride(
     string? TextureCoordinateXVariable,
     string? TextureCoordinateYVariable,
     int MaterialChangeGroupIndex = -1,
-    int MaterialChangeItemIndex = 0);
+    int MaterialChangeItemIndex = 0,
+    bool MaterialChangeMapIsNightMap = false);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
