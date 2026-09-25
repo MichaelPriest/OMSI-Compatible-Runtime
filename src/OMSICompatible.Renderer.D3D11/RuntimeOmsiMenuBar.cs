@@ -9,6 +9,7 @@ internal enum RuntimeOmsiMenuCommand
     StartMenu,
     SaveSituation,
     NewBus,
+    RemoveBus,
     FindBus,
     RepositionBus,
     RouteDestination,
@@ -114,8 +115,15 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             flow,
             RuntimeOmsiMenuCommand.NewBus,
             "BUS+",
-            "Adicionar novo ônibus",
-            false);
+            "Iniciar outro ônibus",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.RemoveBus,
+            "BUS−",
+            "Remover ônibus atual do mapa",
+            true);
 
         AddButton(
             flow,
