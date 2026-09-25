@@ -1955,12 +1955,17 @@ public sealed class D3D11RenderWindow : Form
                         { Count: > 0 }) ==
             true;
 
+        var hasTrafficVehicleAssets =
+            _windowInfo.TrafficVehicleAssets is
+                { Count: > 0 };
+
         if (_vehicleExteriorGeometry.Vertices.Length == 0 &&
             _vehicleInteriorGeometry.Vertices.Length == 0 &&
-            !hasVehicleLights)
+            !hasVehicleLights &&
+            !hasTrafficVehicleAssets)
         {
             Console.WriteLine(
-                "[vehicle-geometry] No real vehicle geometry or light effects could be built.");
+                "[vehicle-geometry] No real player or AI vehicle geometry or light effects could be built.");
             return;
         }
 
