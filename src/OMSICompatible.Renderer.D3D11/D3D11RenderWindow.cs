@@ -6511,6 +6511,48 @@ public sealed class D3D11RenderWindow : Form
             lines.AddRange(
                 _vehicle.BuildPhysicsDiagnostics());
 
+            if (_scriptRuntime is not null)
+            {
+                static string ScriptValue(
+                    OmsiScriptRuntime runtime,
+                    string variable) =>
+                    runtime.HasLocalVariable(
+                        variable)
+                        ? runtime.GetLocal(
+                                variable)
+                            .ToString(
+                                "0.###",
+                                System.Globalization.CultureInfo.InvariantCulture)
+                        : "<missing>";
+
+                lines.Add(
+                    "");
+                lines.Add(
+                    "drivetrainScript:");
+                lines.Add(
+                    $"engine_on={ScriptValue(_scriptRuntime, "engine_on")}");
+                lines.Add(
+                    $"engine_n={ScriptValue(_scriptRuntime, "engine_n")}");
+                lines.Add(
+                    $"engine_M={ScriptValue(_scriptRuntime, "engine_M")}");
+                lines.Add(
+                    $"M_Wheel={ScriptValue(_scriptRuntime, "M_Wheel")}");
+                lines.Add(
+                    $"n_Wheel={ScriptValue(_scriptRuntime, "n_Wheel")}");
+                lines.Add(
+                    $"Brakeforce={ScriptValue(_scriptRuntime, "Brakeforce")}");
+                lines.Add(
+                    $"gearSelector={ScriptValue(_scriptRuntime, "antrieb_getr_gangwahl")}");
+                lines.Add(
+                    $"gearPreselect={ScriptValue(_scriptRuntime, "antrieb_getr_gangvorwahl")}");
+                lines.Add(
+                    $"gearActual={ScriptValue(_scriptRuntime, "antrieb_getr_gang")}");
+                lines.Add(
+                    $"gearRatio={ScriptValue(_scriptRuntime, "antrieb_getr_ratio_act")}");
+                lines.Add(
+                    $"cardanRpm={ScriptValue(_scriptRuntime, "antrieb_n_kardanwelle")}");
+            }
+
             File.WriteAllLines(
                 Path.Combine(
                     AppContext.BaseDirectory,
