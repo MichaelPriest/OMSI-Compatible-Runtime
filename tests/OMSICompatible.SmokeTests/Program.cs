@@ -2238,11 +2238,27 @@ try
         syntheticAiVehiclePath,
         string.Empty);
 
+    var syntheticAiTrainPath =
+        Path.Combine(
+            contentRoot.RootPath,
+            "Vehicles",
+            "Synthetic",
+            "A_train.zug");
+
+    File.WriteAllText(
+        syntheticAiTrainPath,
+        string.Empty);
+
     var trafficSimulation =
         new WorldTrafficSimulation(
             trafficPaths,
             new OmsiMapAiCatalog(
                 [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\A_train.zug",
+                        syntheticAiTrainPath,
+                        10.0),
                     new OmsiAiVehicleDefinition(
                         "NormalCars",
                         @"Vehicles\Synthetic\traffic.bus",
@@ -2264,8 +2280,10 @@ try
         initialTraffic[0].SegmentIndex ==
             firstRoadPath.Index &&
         initialTraffic[0].SpeedMetersPerSecond >
-            0.0,
-        "Traffic simulation did not spawn on the first resolved road path.");
+            0.0 &&
+        initialTraffic[0].VehiclePath ==
+            syntheticAiVehiclePath,
+        "Traffic simulation did not spawn a road-compatible vehicle on the first resolved road path.");
 
     trafficSimulation.Step(
         20.0);

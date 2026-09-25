@@ -39,7 +39,9 @@ public sealed class WorldTrafficSimulation
             aiCatalog.MovingVehicles
                 .Where(
                     static vehicle =>
-                        vehicle.Exists)
+                        vehicle.Exists &&
+                        IsRoadVehicle(
+                            vehicle))
                 .OrderBy(
                     static vehicle =>
                         vehicle.GroupName,
@@ -366,6 +368,21 @@ public sealed class WorldTrafficSimulation
             agent.VehiclePath,
             position,
             heading);
+    }
+
+    private static bool IsRoadVehicle(
+        OmsiAiVehicleDefinition vehicle)
+    {
+        var extension =
+            Path.GetExtension(
+                vehicle.DeclaredPath);
+
+        return extension.Equals(
+                   ".bus",
+                   StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(
+                   ".ovh",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private static OmsiAiVehicleDefinition SelectVehicle(
