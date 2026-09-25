@@ -38,7 +38,8 @@ internal sealed record RuntimeObjectBatch(
     int SectionIndex = 0,
     int ModelOrdinal = -1,
     IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
-    string? MouseEventTrigger = null);
+    string? MouseEventTrigger = null,
+    bool MaterialChangeIsNightMap = false);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -101,7 +102,8 @@ internal static class RuntimeObjectGeometryBuilder
         int SectionIndex = 0,
         int ModelOrdinal = -1,
         IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
-        string? MouseEventTrigger = null);
+        string? MouseEventTrigger = null,
+        bool MaterialChangeIsNightMap = false);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -365,7 +367,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.SectionIndex,
                     key.ModelOrdinal,
                     key.SkinBoneMeshOrdinals,
-                    key.MouseEventTrigger));
+                    key.MouseEventTrigger,
+                    key.MaterialChangeIsNightMap));
         }
 
         return new RuntimeObjectGeometry(
@@ -472,7 +475,8 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.SectionIndex,
                     mesh.ModelOrdinal,
                     mesh.SkinBoneMeshOrdinals,
-                    mesh.MouseEventTrigger);
+                    mesh.MouseEventTrigger,
+                    material?.MaterialChangeIsNightMap ?? false);
 
             var output =
                 GetBatch(
