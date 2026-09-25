@@ -48,6 +48,8 @@ internal sealed class RuntimeDriveVehicle
     private readonly float _suspensionResponse;
     private readonly float _pitchNaturalFrequencyRadiansPerSecond;
     private readonly float _pitchDampingRatio;
+    private readonly float _frontStaticSuspensionMeters;
+    private readonly float _rearStaticSuspensionMeters;
     private readonly float _yawResponse;
     private float _yawRateRadiansPerSecond;
     private float _groundPitchRadians;
@@ -293,6 +295,48 @@ internal sealed class RuntimeDriveVehicle
                      estimatedPitchInertia)),
                 0.35f,
                 1.35f);
+
+        // OMSI Axle_Suspension_* is the actual spring deflection, not a
+        // zero-based visual offset. Stock MAN scripts expect roughly
+        // -0.105 m around normal ride height. Derive the static deflection
+        // from axle load / per-side spring rate so each .bus starts from
+        // its own physical equilibrium instead of an invented zero.
+        var axleSpan =
+            Math.Max(
+                _frontAxleLongitudinalMeters -
+                _rearAxleLongitudinalMeters,
+                0.5f);
+
+        var frontLoadShare =
+            Math.Clamp(
+                -_rearAxleLongitudinalMeters /
+                axleSpan,
+                0.05f,
+                0.95f);
+
+        var rearLoadShare =
+            1.0f -
+            frontLoadShare;
+
+        var vehicleWeightNewtons =
+            _massKilograms *
+            Gravity;
+
+        _frontStaticSuspensionMeters =
+            -vehicleWeightNewtons *
+            frontLoadShare /
+            Math.Max(
+                2.0f *
+                    _frontSuspensionSpringNewtonsPerMeter,
+                50_000.0f);
+
+        _rearStaticSuspensionMeters =
+            -vehicleWeightNewtons *
+            rearLoadShare /
+            Math.Max(
+                2.0f *
+                    _rearSuspensionSpringNewtonsPerMeter,
+                50_000.0f);
 
         var yawInertia =
             Math.Clamp(
@@ -1430,11 +1474,17 @@ internal sealed class RuntimeDriveVehicle
                 ? -1.0f
                 : 1.0f);
 
+        var staticDeflection =
+            front
+                ? _frontStaticSuspensionMeters
+                : _rearStaticSuspensionMeters;
+
         return Math.Clamp(
+            staticDeflection +
             pitch +
             roll,
-            -0.22f,
-            0.22f);
+            -0.30f,
+            0.10f);
     }
 
     public Vector3 GetDriverCameraPosition(
