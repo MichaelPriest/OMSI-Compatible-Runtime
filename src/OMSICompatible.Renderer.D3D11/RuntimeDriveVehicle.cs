@@ -79,6 +79,10 @@ internal sealed class RuntimeDriveVehicle :
     private float _omsiBrakeForceNewtons;
     private readonly float[] _omsiAxleBrakeForceNewtons =
         new float[16];
+    private readonly float[] _omsiAxleSpringFactorLeft =
+        new float[16];
+    private readonly float[] _omsiAxleSpringFactorRight =
+        new float[16];
     private float _frontLeftSpringFactor = 1.0f;
     private float _frontRightSpringFactor = 1.0f;
     private float _rearLeftSpringFactor = 1.0f;
@@ -104,6 +108,13 @@ internal sealed class RuntimeDriveVehicle :
                         section.Index)
                 .ToArray() ??
             [];
+
+        Array.Fill(
+            _omsiAxleSpringFactorLeft,
+            1.0f);
+        Array.Fill(
+            _omsiAxleSpringFactorRight,
+            1.0f);
 
         _wheelBaseMeters =
             Math.Clamp(
@@ -670,7 +681,9 @@ internal sealed class RuntimeDriveVehicle :
                 $"wheelTorqueNm={F(_omsiWheelTorqueNewtonMeters)}",
                 $"brakeForceN={F(_omsiBrakeForceNewtons)}",
                 $"suspensionM=FL:{F(FrontLeftSuspensionMeters)},FR:{F(FrontRightSuspensionMeters)},RL:{F(RearLeftSuspensionMeters)},RR:{F(RearRightSuspensionMeters)}",
-                $"axleBrakeForcesN={string.Join(",", _omsiAxleBrakeForceNewtons.Select(F))}"
+                $"axleBrakeForcesN={string.Join(",", _omsiAxleBrakeForceNewtons.Select(F))}",
+                $"axleSpringFactorL={string.Join(",", _omsiAxleSpringFactorLeft.Select(F))}",
+                $"axleSpringFactorR={string.Join(",", _omsiAxleSpringFactorRight.Select(F))}"
             };
 
         foreach (var section in
@@ -806,6 +819,12 @@ internal sealed class RuntimeDriveVehicle :
         _frontRightSpringFactor = 1.0f;
         _rearLeftSpringFactor = 1.0f;
         _rearRightSpringFactor = 1.0f;
+        Array.Fill(
+            _omsiAxleSpringFactorLeft,
+            1.0f);
+        Array.Fill(
+            _omsiAxleSpringFactorRight,
+            1.0f);
         _odeSuspensionActive = false;
         _odeFrontLeftSuspensionMeters =
             _frontStaticSuspensionMeters;
@@ -903,18 +922,60 @@ internal sealed class RuntimeDriveVehicle :
         double rearLeft,
         double rearRight)
     {
+        SetOmsiAxleSpringFactors(
+            [frontLeft, rearLeft],
+            [frontRight, rearRight]);
+    }
+
+    public void SetOmsiAxleSpringFactors(
+        IReadOnlyList<double> leftFactors,
+        IReadOnlyList<double> rightFactors)
+    {
+        ArgumentNullException.ThrowIfNull(
+            leftFactors);
+        ArgumentNullException.ThrowIfNull(
+            rightFactors);
+
+        Array.Fill(
+            _omsiAxleSpringFactorLeft,
+            1.0f);
+        Array.Fill(
+            _omsiAxleSpringFactorRight,
+            1.0f);
+
+        var count =
+            Math.Min(
+                Math.Min(
+                    leftFactors.Count,
+                    rightFactors.Count),
+                _omsiAxleSpringFactorLeft.Length);
+
+        for (var axle = 0;
+             axle < count;
+             axle++)
+        {
+            _omsiAxleSpringFactorLeft[
+                axle] =
+                NormalizeSpringFactor(
+                    leftFactors[
+                        axle]);
+
+            _omsiAxleSpringFactorRight[
+                axle] =
+                NormalizeSpringFactor(
+                    rightFactors[
+                        axle]);
+        }
+
         _frontLeftSpringFactor =
-            NormalizeSpringFactor(
-                frontLeft);
+            _omsiAxleSpringFactorLeft[0];
         _frontRightSpringFactor =
-            NormalizeSpringFactor(
-                frontRight);
+            _omsiAxleSpringFactorRight[0];
+
         _rearLeftSpringFactor =
-            NormalizeSpringFactor(
-                rearLeft);
+            _omsiAxleSpringFactorLeft[1];
         _rearRightSpringFactor =
-            NormalizeSpringFactor(
-                rearRight);
+            _omsiAxleSpringFactorRight[1];
     }
 
     public void SetOmsiScriptDynamics(
@@ -4005,9 +4066,23 @@ internal sealed class RuntimeDriveVehicle :
                         angularVelocity,
                         worldOffset);
 
+                var omsiAxleIndex =
+                    state.OmsiAxleStartIndex +
+                    axleIndex;
+
+                var springFactor =
+                    ResolveOmsiAxleSpringFactor(
+                        omsiAxleIndex,
+                        left:
+                            side == 0);
+
+                var effectiveSpring =
+                    spring *
+                    springFactor;
+
                 var supportForce =
                     Math.Clamp(
-                        spring *
+                        effectiveSpring *
                             Math.Max(
                                 compression,
                                 0.0f) -
@@ -4227,6 +4302,24 @@ internal sealed class RuntimeDriveVehicle :
                 null,
                 damper)
         ];
+    }
+
+    private float ResolveOmsiAxleSpringFactor(
+        int axleIndex,
+        bool left)
+    {
+        if (axleIndex < 0 ||
+            axleIndex >=
+                _omsiAxleSpringFactorLeft.Length)
+        {
+            return 1.0f;
+        }
+
+        return left
+            ? _omsiAxleSpringFactorLeft[
+                axleIndex]
+            : _omsiAxleSpringFactorRight[
+                axleIndex];
     }
 
     private static float ResolveAverageAxleValue(
