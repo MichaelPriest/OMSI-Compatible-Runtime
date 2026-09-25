@@ -29,6 +29,13 @@ internal sealed class RuntimeApplicationContext :
         _trafficVehicleAssets =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, OmsiScriptCatalog>
+        _trafficScriptCatalogs =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<int, TrafficScriptRuntimeState>
+        _trafficScriptRuntimes =
+            [];
     private (int X, int Y)? _pendingStreamingCenter;
     private int _loadedCenterX;
     private int _loadedCenterY;
@@ -267,6 +274,8 @@ internal sealed class RuntimeApplicationContext :
             _trafficSimulation =
                 CreateTrafficSimulation(
                     world);
+
+            _trafficScriptRuntimes.Clear();
 
             await EnsureTrafficVehicleAssetsAsync(
                 _trafficSimulation);
@@ -927,6 +936,8 @@ internal sealed class RuntimeApplicationContext :
                     CreateTrafficSimulation(
                         streamedWorld);
 
+                _trafficScriptRuntimes.Clear();
+
                 await EnsureTrafficVehicleAssetsAsync(
                     _trafficSimulation);
 
@@ -1054,6 +1065,28 @@ internal sealed class RuntimeApplicationContext :
             _trafficVehicleAssets[
                 pair.Key] =
                 pair.Value;
+
+            if (_trafficScriptCatalogs.ContainsKey(
+                    pair.Key) ||
+                pair.Value.Bus.ScriptManifest.RegisteredFileCount <=
+                    0)
+            {
+                continue;
+            }
+
+            try
+            {
+                _trafficScriptCatalogs[
+                    pair.Key] =
+                    OmsiScriptCatalogLoader.Load(
+                        _contentRoot,
+                        pair.Value.Bus.ScriptManifest);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[traffic-ai] Script catalog unavailable for {Path.GetFileName(pair.Key)}: {exception.Message}");
+            }
         }
 
         Console.WriteLine(
@@ -1091,8 +1124,15 @@ internal sealed class RuntimeApplicationContext :
                 deltaSeconds);
         }
 
-        return simulation
-            .Snapshot()
+        var agents =
+            simulation
+                .Snapshot();
+
+        UpdateTrafficScriptRuntimes(
+            agents,
+            deltaSeconds);
+
+        return agents
             .Select(
                 static agent =>
                     new RuntimeTrafficAgentInfo(
@@ -1113,6 +1153,165 @@ internal sealed class RuntimeApplicationContext :
             .ToArray();
     }
 
+    private void UpdateTrafficScriptRuntimes(
+        IReadOnlyList<WorldTrafficAgentState> agents,
+        double deltaSeconds)
+    {
+        var activeAgentIds =
+            agents
+                .Select(
+                    static agent =>
+                        agent.AgentIndex)
+                .ToHashSet();
+
+        foreach (var staleAgentId in
+                 _trafficScriptRuntimes
+                     .Keys
+                     .Where(
+                         id =>
+                             !activeAgentIds.Contains(
+                                 id))
+                     .ToArray())
+        {
+            _trafficScriptRuntimes.Remove(
+                staleAgentId);
+        }
+
+        var validDeltaSeconds =
+            double.IsFinite(
+                deltaSeconds) &&
+            deltaSeconds >
+                0.0
+                ? deltaSeconds
+                : 0.0;
+
+        foreach (var agent in
+                 agents)
+        {
+            if (!_trafficScriptCatalogs.TryGetValue(
+                    agent.VehiclePath,
+                    out var catalog))
+            {
+                continue;
+            }
+
+            if (!_trafficScriptRuntimes.TryGetValue(
+                    agent.AgentIndex,
+                    out var state) ||
+                !state.VehiclePath.Equals(
+                    agent.VehiclePath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var runtime =
+                    new OmsiScriptRuntime(
+                        catalog);
+
+                SeedTrafficScriptHostVariables(
+                    runtime,
+                    agent,
+                    0.0);
+
+                runtime.ExecuteInit();
+
+                state =
+                    new TrafficScriptRuntimeState(
+                        agent.VehiclePath,
+                        runtime);
+
+                _trafficScriptRuntimes[
+                    agent.AgentIndex] =
+                    state;
+            }
+
+            SeedTrafficScriptHostVariables(
+                state.Runtime,
+                agent,
+                validDeltaSeconds);
+
+            if (validDeltaSeconds >
+                0.0)
+            {
+                state.Runtime.ExecuteFrameAi();
+            }
+        }
+    }
+
+    private void SeedTrafficScriptHostVariables(
+        OmsiScriptRuntime runtime,
+        WorldTrafficAgentState agent,
+        double deltaSeconds)
+    {
+        var speedKilometersPerHour =
+            agent.SpeedMetersPerSecond *
+            3.6;
+
+        runtime.SetLocal(
+            "Velocity",
+            speedKilometersPerHour);
+
+        runtime.SetLocal(
+            "Velocity_Ground",
+            speedKilometersPerHour);
+
+        runtime.SetSystem(
+            "Timegap",
+            deltaSeconds);
+
+        if (!_trafficVehicleAssets.TryGetValue(
+                agent.VehiclePath,
+                out var asset))
+        {
+            return;
+        }
+
+        var wheelDiameter =
+            asset
+                .Bus
+                .Physics
+                .AverageWheelDiameterMeters;
+
+        if (!wheelDiameter.HasValue ||
+            !double.IsFinite(
+                wheelDiameter.Value) ||
+            wheelDiameter.Value <=
+                0.0)
+        {
+            return;
+        }
+
+        var circumference =
+            Math.PI *
+            wheelDiameter.Value;
+
+        if (circumference <=
+            0.000001)
+        {
+            return;
+        }
+
+        var wheelRevolutionsPerMinute =
+            agent.SpeedMetersPerSecond /
+            circumference *
+            60.0;
+
+        runtime.SetLocal(
+            "n_Wheel",
+            wheelRevolutionsPerMinute);
+
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            runtime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_L",
+                wheelRevolutionsPerMinute);
+
+            runtime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_R",
+                wheelRevolutionsPerMinute);
+        }
+    }
+
     private static void WriteTrafficDiagnostics(
         WorldDefinition world,
         WorldTrafficSimulation simulation)
@@ -1129,6 +1328,10 @@ internal sealed class RuntimeApplicationContext :
             $"boundary={world.TrafficPaths.BoundaryEndpointCount}; " +
             $"unmatched={world.TrafficPaths.UnmatchedEndpointCount}");
     }
+
+    private sealed record TrafficScriptRuntimeState(
+        string VehiclePath,
+        OmsiScriptRuntime Runtime);
 
     private static RuntimeWindowInfo BuildRuntimeInfo(
         WorldDefinition world,
