@@ -5477,7 +5477,7 @@ public sealed class D3D11RenderWindow : Form
         foreach (var animation in
                  batch.Animations)
         {
-            if (!TryResolveTrafficWheelAnimationValue(
+            if (!TryResolveTrafficVehicleAnimationValue(
                     animation.VariableName,
                     agent,
                     vehicleInfo,
@@ -5555,7 +5555,249 @@ public sealed class D3D11RenderWindow : Form
         return result;
     }
 
-    private static bool TryResolveTrafficWheelAnimationValue(
+    private static bool TryResolveTrafficVehicleAnimationValue(
+        string variableName,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo,
+        out double value)
+    {
+        if (TryResolveTrafficSteeringAnimationValue(
+                variableName,
+                agent,
+                vehicleInfo,
+                out value))
+        {
+            return true;
+        }
+
+        return TryResolveTrafficWheelRotationAnimationValue(
+            variableName,
+            agent,
+            vehicleInfo,
+            out value);
+    }
+
+    private static bool TryResolveTrafficSteeringAnimationValue(
+        string variableName,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo,
+        out double value)
+    {
+        value =
+            0.0;
+
+        const string prefix =
+            "Axle_Steering_";
+
+        if (!variableName.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var suffix =
+            variableName[
+                prefix.Length..];
+
+        var separator =
+            suffix.IndexOf(
+                '_');
+
+        if (separator <=
+                0 ||
+            !int.TryParse(
+                suffix[
+                    ..separator],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var axleIndex) ||
+            axleIndex !=
+                0)
+        {
+            return false;
+        }
+
+        var side =
+            suffix[
+                (separator + 1)..];
+
+        var isLeft =
+            side.Equals(
+                "L",
+                StringComparison.OrdinalIgnoreCase);
+
+        var isRight =
+            side.Equals(
+                "R",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!isLeft &&
+            !isRight)
+        {
+            return false;
+        }
+
+        var curvature =
+            agent.PathCurvaturePerMeter;
+
+        if (!double.IsFinite(
+                curvature))
+        {
+            return false;
+        }
+
+        var wheelBase =
+            vehicleInfo
+                .Physics
+                .WheelBaseMeters;
+
+        if ((!wheelBase.HasValue ||
+             !double.IsFinite(
+                 wheelBase.Value) ||
+             wheelBase.Value <=
+                 0.0) &&
+            vehicleInfo.Physics.FrontAxleLongitudinalMeters.HasValue &&
+            vehicleInfo.Physics.RearAxleLongitudinalMeters.HasValue)
+        {
+            wheelBase =
+                Math.Abs(
+                    vehicleInfo.Physics.FrontAxleLongitudinalMeters.Value -
+                    vehicleInfo.Physics.RearAxleLongitudinalMeters.Value);
+        }
+
+        if (!wheelBase.HasValue ||
+            !double.IsFinite(
+                wheelBase.Value) ||
+            wheelBase.Value <=
+                0.0)
+        {
+            return false;
+        }
+
+        if (Math.Abs(
+                curvature) <
+            0.000001)
+        {
+            value =
+                0.0;
+            return true;
+        }
+
+        var direction =
+            Math.Sign(
+                curvature);
+
+        var absoluteCurvature =
+            Math.Abs(
+                curvature);
+
+        var centerSteering =
+            Math.Atan(
+                wheelBase.Value *
+                absoluteCurvature);
+
+        double? trackWidth =
+            vehicleInfo
+                .Physics
+                .TrackWidthMeters;
+
+        if ((!trackWidth.HasValue ||
+             !double.IsFinite(
+                 trackWidth.Value) ||
+             trackWidth.Value <=
+                 0.0) &&
+            vehicleInfo.Physics.Axles is
+                { Count: > 0 })
+        {
+            trackWidth =
+                vehicleInfo
+                    .Physics
+                    .Axles[0]
+                    .MaximumWidthMeters;
+        }
+
+        var steering =
+            centerSteering;
+
+        if (trackWidth.HasValue &&
+            double.IsFinite(
+                trackWidth.Value) &&
+            trackWidth.Value >
+                0.0)
+        {
+            var centerRadius =
+                1.0 /
+                absoluteCurvature;
+
+            var halfTrack =
+                trackWidth.Value *
+                0.5;
+
+            var innerRadius =
+                Math.Max(
+                    centerRadius -
+                        halfTrack,
+                    0.05);
+
+            var outerRadius =
+                centerRadius +
+                halfTrack;
+
+            var innerSteering =
+                Math.Atan(
+                    wheelBase.Value /
+                    innerRadius);
+
+            var outerSteering =
+                Math.Atan(
+                    wheelBase.Value /
+                    outerRadius);
+
+            var innerWheel =
+                direction >
+                    0.0
+                    ? isRight
+                    : isLeft;
+
+            steering =
+                innerWheel
+                    ? innerSteering
+                    : outerSteering;
+        }
+
+        steering *=
+            direction;
+
+        var maximumSteeringDegrees =
+            vehicleInfo
+                .Physics
+                .MaximumSteeringAngleDegrees;
+
+        if (maximumSteeringDegrees.HasValue &&
+            double.IsFinite(
+                maximumSteeringDegrees.Value) &&
+            maximumSteeringDegrees.Value >
+                0.0)
+        {
+            var maximumSteeringRadians =
+                DegreesToRadians(
+                    maximumSteeringDegrees.Value);
+
+            steering =
+                Math.Clamp(
+                    steering,
+                    -maximumSteeringRadians,
+                    maximumSteeringRadians);
+        }
+
+        value =
+            steering;
+
+        return true;
+    }
+
+    private static bool TryResolveTrafficWheelRotationAnimationValue(
         string variableName,
         RuntimeTrafficAgentInfo agent,
         RuntimeVehicleInfo vehicleInfo,

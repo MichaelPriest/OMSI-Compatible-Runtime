@@ -15,7 +15,8 @@ public sealed record WorldTrafficAgentState(
     bool AiBrakeLight = false,
     bool AiBlinkerLeft = false,
     bool AiBlinkerRight = false,
-    double TraveledDistanceMeters = 0.0);
+    double TraveledDistanceMeters = 0.0,
+    double PathCurvaturePerMeter = 0.0);
 
 public sealed class WorldTrafficSimulation
 {
@@ -1165,7 +1166,8 @@ public sealed class WorldTrafficSimulation
                 agent.BrakeLight,
                 false,
                 false,
-                agent.TraveledDistanceMeters);
+                agent.TraveledDistanceMeters,
+                0.0);
         }
 
         SampleSegment(
@@ -1187,6 +1189,11 @@ public sealed class WorldTrafficSimulation
             out var blinkerLeft,
             out var blinkerRight);
 
+        var pathCurvaturePerMeter =
+            ResolvePathCurvaturePerMeter(
+                agent,
+                segment);
+
         return new WorldTrafficAgentState(
             agent.AgentIndex,
             agent.SegmentIndex,
@@ -1200,7 +1207,8 @@ public sealed class WorldTrafficSimulation
             agent.BrakeLight,
             blinkerLeft,
             blinkerRight,
-            agent.TraveledDistanceMeters);
+            agent.TraveledDistanceMeters,
+            pathCurvaturePerMeter);
     }
 
     private static bool IsRoadVehicle(
@@ -1388,6 +1396,204 @@ public sealed class WorldTrafficSimulation
                     previous.X,
                 last.Z -
                     previous.Z);
+    }
+
+    private double ResolvePathCurvaturePerMeter(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
+        const double lookAheadMeters =
+            6.0;
+
+        SampleSegment(
+            segment,
+            agent.DistanceMeters,
+            out _,
+            out var currentHeading);
+
+        if (!agent.TravelForward)
+        {
+            currentHeading =
+                ReverseHeading(
+                    currentHeading);
+        }
+
+        if (!TrySampleRouteHeadingAhead(
+                agent,
+                segment,
+                lookAheadMeters,
+                out var futureHeading,
+                out var traveledMeters) ||
+            traveledMeters <=
+                0.001)
+        {
+            return 0.0;
+        }
+
+        var delta =
+            NormalizeHeadingDelta(
+                futureHeading -
+                currentHeading);
+
+        var curvature =
+            delta /
+            traveledMeters;
+
+        return double.IsFinite(
+                   curvature)
+            ? curvature
+            : 0.0;
+    }
+
+    private bool TrySampleRouteHeadingAhead(
+        Agent agent,
+        WorldTrafficPathSegment startSegment,
+        double lookAheadMeters,
+        out double headingRadians,
+        out double traveledMeters)
+    {
+        headingRadians =
+            0.0;
+        traveledMeters =
+            0.0;
+
+        if (!double.IsFinite(
+                lookAheadMeters) ||
+            lookAheadMeters <=
+                0.0)
+        {
+            return false;
+        }
+
+        var current =
+            startSegment;
+
+        var currentDistance =
+            Math.Clamp(
+                agent.DistanceMeters,
+                0.0,
+                SegmentLength(
+                    current));
+
+        var remaining =
+            lookAheadMeters;
+
+        var visited =
+            new HashSet<int>
+            {
+                current.Index
+            };
+
+        for (var hop = 0;
+             hop <
+                 MaximumTrafficLookAheadSegments;
+             hop++)
+        {
+            var length =
+                SegmentLength(
+                    current);
+
+            var available =
+                agent.TravelForward
+                    ? Math.Max(
+                        length -
+                            currentDistance,
+                        0.0)
+                    : Math.Max(
+                        currentDistance,
+                        0.0);
+
+            if (remaining <=
+                    available &&
+                remaining >
+                    0.000001)
+            {
+                var sampleDistance =
+                    agent.TravelForward
+                        ? currentDistance +
+                          remaining
+                        : currentDistance -
+                          remaining;
+
+                SampleSegment(
+                    current,
+                    sampleDistance,
+                    out _,
+                    out headingRadians);
+
+                if (!agent.TravelForward)
+                {
+                    headingRadians =
+                        ReverseHeading(
+                            headingRadians);
+                }
+
+                traveledMeters +=
+                    remaining;
+
+                return true;
+            }
+
+            if (available >
+                0.000001)
+            {
+                traveledMeters +=
+                    available;
+
+                remaining -=
+                    available;
+            }
+
+            var nextIndex =
+                ResolveNextSegmentIndex(
+                    agent,
+                    current);
+
+            if (!nextIndex.HasValue ||
+                !visited.Add(
+                    nextIndex.Value) ||
+                !_segmentsByIndex.TryGetValue(
+                    nextIndex.Value,
+                    out var nextSegment))
+            {
+                if (traveledMeters <=
+                    0.000001)
+                {
+                    return false;
+                }
+
+                var sampleDistance =
+                    agent.TravelForward
+                        ? length
+                        : 0.0;
+
+                SampleSegment(
+                    current,
+                    sampleDistance,
+                    out _,
+                    out headingRadians);
+
+                if (!agent.TravelForward)
+                {
+                    headingRadians =
+                        ReverseHeading(
+                            headingRadians);
+                }
+
+                return true;
+            }
+
+            current =
+                nextSegment;
+
+            currentDistance =
+                agent.TravelForward
+                    ? 0.0
+                    : SegmentLength(
+                        current);
+        }
+
+        return false;
     }
 
     private void ResolveTurnIndicators(

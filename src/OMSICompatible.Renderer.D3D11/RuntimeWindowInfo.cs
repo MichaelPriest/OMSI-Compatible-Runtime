@@ -319,7 +319,8 @@ public sealed record RuntimeTrafficAgentInfo(
     bool AiBrakeLight = false,
     bool AiBlinkerLeft = false,
     bool AiBlinkerRight = false,
-    double TraveledDistanceMeters = 0.0);
+    double TraveledDistanceMeters = 0.0,
+    double PathCurvaturePerMeter = 0.0);
 
 public sealed record RuntimeAiFileReferenceInfo(
     string DeclaredPath,

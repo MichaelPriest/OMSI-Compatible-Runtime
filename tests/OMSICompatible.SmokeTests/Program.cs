@@ -3027,6 +3027,61 @@ try
             0.0,
         "no_cars did not exclude a blocked route for the Taxi group.");
 
+    var curvedSteeringNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8250,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            2.0),
+                        new WorldVector3(
+                            3.0,
+                            0.0,
+                            8.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>())
+            ],
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0);
+
+    var curvedSteeringSimulation =
+        new WorldTrafficSimulation(
+            curvedSteeringNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    var curvedSteeringAgent =
+        curvedSteeringSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        curvedSteeringAgent.PathCurvaturePerMeter >
+            0.01 &&
+        double.IsFinite(
+            curvedSteeringAgent.PathCurvaturePerMeter),
+        "AI path curvature was not derived from the upcoming right-hand bend.");
+
     var defaultDisabledCatalog =
         new OmsiMapAiCatalog(
             [
