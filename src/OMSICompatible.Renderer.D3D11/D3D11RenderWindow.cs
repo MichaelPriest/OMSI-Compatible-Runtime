@@ -7845,6 +7845,20 @@ public sealed class D3D11RenderWindow : Form
             "Day",
             now.Day);
 
+        runtime.SetSystem(
+            "DayOfYear",
+            now.DayOfYear);
+
+        runtime.SetSystem(
+            "Pause",
+            _simulationPaused
+                ? 1.0
+                : 0.0);
+
+        runtime.SetSystem(
+            "NoSound",
+            0.0);
+
         runtime.SetLocal(
             "Envir_Brightness",
             1.0);
@@ -8093,6 +8107,17 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime.SetSystem(
             "Day",
             now.Day);
+        _scriptRuntime.SetSystem(
+            "DayOfYear",
+            now.DayOfYear);
+        _scriptRuntime.SetSystem(
+            "Pause",
+            _simulationPaused
+                ? 1.0
+                : 0.0);
+        _scriptRuntime.SetSystem(
+            "NoSound",
+            0.0);
 
         // The current bootstrap renderer is daylight-only. OMSI vehicle
         // materials use Envir_Brightness as an alpha scale for exterior
