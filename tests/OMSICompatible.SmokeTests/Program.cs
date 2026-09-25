@@ -345,6 +345,24 @@ try
     Directory.CreateDirectory(vehicleModelDirectory);
     Directory.CreateDirectory(programDirectory);
 
+    var catalogTrafficVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "traffic.bus");
+
+    var catalogTaxiVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "taxi.bus");
+
+    File.WriteAllText(
+        catalogTrafficVehiclePath,
+        string.Empty);
+
+    File.WriteAllText(
+        catalogTaxiVehiclePath,
+        string.Empty);
+
     File.WriteAllText(
         Path.Combine(
             root,
@@ -2126,8 +2144,49 @@ try
         bus.Physics.MaximumSteeringAngleDegrees is > 35.0 and < 40.0,
         "Vehicle steering angle was not derived from OMSI turn radius.");
 
+    File.WriteAllText(
+        Path.Combine(
+            mapDirectory,
+            "unsched_vehgroups.txt"),
+        Lines(
+            "[group]",
+            "NormalCars",
+            "1",
+            "[group]",
+            "Taxi",
+            "1"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            mapDirectory,
+            "ailists.cfg"),
+        Lines(
+            "[aigroup_2]",
+            "NormalCars",
+            @"Vehicles\Synthetic\traffic.bus 1",
+            "[end]",
+            "[aigroup_2]",
+            "Taxi",
+            @"Vehicles\Synthetic\taxi.bus 1",
+            "[end]"),
+        Encoding.Unicode);
+
     var map = maps[0];
     var world = WorldLoader.Load(contentRoot, map);
+
+    Require(
+        world.AiCatalog.UnscheduledVehicleGroups is
+            { Count: 2 } &&
+        world.AiCatalog.UnscheduledVehicleGroups[0].Index ==
+            0 &&
+        world.AiCatalog.UnscheduledVehicleGroups[0].Name ==
+            "NormalCars" &&
+        world.AiCatalog.UnscheduledVehicleGroups[1].Index ==
+            1 &&
+        world.AiCatalog.UnscheduledVehicleGroups[1].Name ==
+            "Taxi",
+        "unsched_vehgroups.txt order was not preserved as OMSI group indices.");
 
     Require(
         world.Tiles.Count == 1,
@@ -2217,12 +2276,15 @@ try
         "Synthetic OMSI [rule] speedlimit was not attached to the matching path.");
 
     Require(
-        secondRoadPath.TrafficDensityWeight.HasValue &&
+        secondRoadPath.TrafficDensityWeights is not null &&
+        secondRoadPath.TrafficDensityWeights.TryGetValue(
+            0,
+            out var normalDensity) &&
         Math.Abs(
-            secondRoadPath.TrafficDensityWeight.Value -
+            normalDensity -
             0.5) <
             0.0001,
-        "Synthetic OMSI [rule] trafficdensity was not attached to the matching path.");
+        "Synthetic OMSI [rule] trafficdensity was not attached to the matching group/path.");
 
     Require(
         firstRoadPath.ForwardConnections.Count == 1 &&
@@ -2259,10 +2321,6 @@ try
     Directory.CreateDirectory(
         Path.GetDirectoryName(
             syntheticAiVehiclePath)!);
-
-    File.WriteAllText(
-        syntheticAiVehiclePath,
-        string.Empty);
 
     var syntheticAiTrainPath =
         Path.Combine(
@@ -2694,8 +2752,14 @@ try
                     ],
                     Array.Empty<int>(),
                     Array.Empty<int>(),
-                    TrafficDensityWeight:
-                        0.0),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] =
+                                0.0,
+                            [1] =
+                                4.0
+                        }),
                 new WorldTrafficPathSegment(
                     2,
                     8002,
@@ -2715,8 +2779,14 @@ try
                     ],
                     Array.Empty<int>(),
                     Array.Empty<int>(),
-                    TrafficDensityWeight:
-                        3.0)
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] =
+                                3.0,
+                            [1] =
+                                0.0
+                        })
             ],
             3,
             0,
@@ -2740,7 +2810,17 @@ try
                 ],
                 Array.Empty<OmsiAiFileReference>(),
                 Array.Empty<OmsiAiFileReference>(),
-                Array.Empty<OmsiAiFileReference>()),
+                Array.Empty<OmsiAiFileReference>(),
+                [
+                    new OmsiUnscheduledVehicleGroup(
+                        0,
+                        "NormalCars",
+                        1),
+                    new OmsiUnscheduledVehicleGroup(
+                        1,
+                        "Taxi",
+                        1)
+                ]),
             maximumAgents:
                 1);
 
@@ -2753,11 +2833,15 @@ try
             .Single();
 
     Require(
+        densityRoutedAgent.GroupIndex ==
+            0 &&
+        densityRoutedAgent.GroupName ==
+            "NormalCars" &&
         densityRoutedAgent.SegmentIndex ==
             2 &&
         densityRoutedAgent.Position.X >
             0.0,
-        "OMSI trafficdensity=0 path was not excluded from unscheduled route selection.");
+        "OMSI trafficdensity=0 path was not excluded for the agent's unscheduled vehicle group.");
 
     var followingNetwork =
         new WorldTrafficPathNetwork(

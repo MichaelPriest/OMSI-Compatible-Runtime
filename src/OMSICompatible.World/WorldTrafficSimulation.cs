@@ -9,7 +9,9 @@ public sealed record WorldTrafficAgentState(
     double SpeedMetersPerSecond,
     string VehiclePath,
     WorldVector3 Position,
-    double HeadingRadians);
+    double HeadingRadians,
+    int? GroupIndex = null,
+    string? GroupName = null);
 
 public sealed class WorldTrafficSimulation
 {
@@ -47,6 +49,20 @@ public sealed class WorldTrafficSimulation
             network.Segments.ToDictionary(
                 static segment =>
                     segment.Index);
+
+        var groupIndices =
+            (aiCatalog.UnscheduledVehicleGroups ??
+             Array.Empty<OmsiUnscheduledVehicleGroup>())
+                .GroupBy(
+                    static group =>
+                        group.Name,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    static group =>
+                        group.Key,
+                    static group =>
+                        group.First().Index,
+                    StringComparer.OrdinalIgnoreCase);
 
         var vehicles =
             aiCatalog.MovingVehicles
@@ -172,7 +188,13 @@ public sealed class WorldTrafficSimulation
                     travelForward,
                     cruiseSpeed,
                     initialSpeed,
-                    vehicle.ResolvedPath!));
+                    vehicle.ResolvedPath!,
+                    groupIndices.TryGetValue(
+                        vehicle.GroupName,
+                        out var groupIndex)
+                        ? groupIndex
+                        : null,
+                    vehicle.GroupName));
         }
     }
 
@@ -383,7 +405,8 @@ public sealed class WorldTrafficSimulation
                                 candidate!,
                             Weight =
                                 ResolveTrafficDensityWeight(
-                                    candidate!)
+                                    candidate!,
+                                    agent.GroupIndex)
                         })
                 .Where(
                     static candidate =>
@@ -622,17 +645,22 @@ public sealed class WorldTrafficSimulation
     }
 
     private static double ResolveTrafficDensityWeight(
-        WorldTrafficPathSegment segment)
+        WorldTrafficPathSegment segment,
+        int? groupIndex)
     {
-        if (!segment.TrafficDensityWeight.HasValue ||
+        if (!groupIndex.HasValue ||
+            segment.TrafficDensityWeights is null ||
+            !segment.TrafficDensityWeights.TryGetValue(
+                groupIndex.Value,
+                out var value) ||
             !double.IsFinite(
-                segment.TrafficDensityWeight.Value))
+                value))
         {
             return 1.0;
         }
 
         return Math.Max(
-            segment.TrafficDensityWeight.Value,
+            value,
             0.0);
     }
 
@@ -709,7 +737,9 @@ public sealed class WorldTrafficSimulation
                 agent.SpeedMetersPerSecond,
                 agent.VehiclePath,
                 default,
-                0.0);
+                0.0,
+                agent.GroupIndex,
+                agent.GroupName);
         }
 
         SampleSegment(
@@ -732,7 +762,9 @@ public sealed class WorldTrafficSimulation
             agent.SpeedMetersPerSecond,
             agent.VehiclePath,
             position,
-            heading);
+            heading,
+            agent.GroupIndex,
+            agent.GroupName);
     }
 
     private static bool IsRoadVehicle(
@@ -980,7 +1012,9 @@ public sealed class WorldTrafficSimulation
         bool travelForward,
         double cruiseSpeedMetersPerSecond,
         double initialSpeedMetersPerSecond,
-        string vehiclePath)
+        string vehiclePath,
+        int? groupIndex,
+        string groupName)
     {
         public int AgentIndex { get; } =
             agentIndex;
@@ -1014,5 +1048,11 @@ public sealed class WorldTrafficSimulation
 
         public string VehiclePath { get; } =
             vehiclePath;
+
+        public int? GroupIndex { get; } =
+            groupIndex;
+
+        public string GroupName { get; } =
+            groupName;
     }
 }

@@ -14,7 +14,7 @@ public sealed record WorldTrafficPathSegment(
     IReadOnlyList<int> ReverseConnections,
     long? SceneryObjectId = null,
     double? SpeedLimitKilometersPerHour = null,
-    double? TrafficDensityWeight = null)
+    IReadOnlyDictionary<int, double>? TrafficDensityWeights = null)
 {
     public bool AllowsForward =>
         Direction is 0 or 2;
@@ -140,7 +140,7 @@ public static class WorldTrafficPathNetworkBuilder
                         ResolveSpeedLimit(
                             spline.TrafficRules,
                             pathIndex),
-                        ResolveTrafficDensity(
+                        ResolveTrafficDensityWeights(
                             spline.TrafficRules,
                             pathIndex)));
             }
@@ -199,7 +199,7 @@ public static class WorldTrafficPathNetworkBuilder
                         ResolveSpeedLimit(
                             instance.TrafficRules,
                             pathIndex),
-                        ResolveTrafficDensity(
+                        ResolveTrafficDensityWeights(
                             instance.TrafficRules,
                             pathIndex)));
             }
@@ -348,7 +348,7 @@ public static class WorldTrafficPathNetworkBuilder
                                 .ToArray(),
                             builder.SceneryObject?.Id,
                             builder.SpeedLimitKilometersPerHour,
-                            builder.TrafficDensityWeight))
+                            builder.TrafficDensityWeights))
                 .ToArray();
 
         return new WorldTrafficPathNetwork(
@@ -960,9 +960,10 @@ public static class WorldTrafficPathNetworkBuilder
             .LastOrDefault();
     }
 
-    private static double? ResolveTrafficDensity(
-        IReadOnlyList<WorldTrafficRule>? rules,
-        int pathIndex)
+    private static IReadOnlyDictionary<int, double>?
+        ResolveTrafficDensityWeights(
+            IReadOnlyList<WorldTrafficRule>? rules,
+            int pathIndex)
     {
         if (rules is null ||
             rules.Count ==
@@ -971,24 +972,35 @@ public static class WorldTrafficPathNetworkBuilder
             return null;
         }
 
-        return rules
-            .Where(
-                rule =>
-                    rule.PathIndex ==
-                        pathIndex &&
+        var values =
+            rules
+                .Where(
+                    rule =>
+                        rule.PathIndex ==
+                            pathIndex &&
                     rule.Name.Equals(
                         "trafficdensity",
                         StringComparison.OrdinalIgnoreCase) &&
-                    (rule.GroupIndex is
-                         null or 0) &&
+                    rule.GroupIndex.HasValue &&
+                    rule.GroupIndex.Value >=
+                        0 &&
                     double.IsFinite(
                         rule.Value) &&
                     rule.Value >=
                         0.0)
-            .Select(
-                static rule =>
-                    (double?)rule.Value)
-            .LastOrDefault();
+                .GroupBy(
+                    static rule =>
+                        rule.GroupIndex!.Value)
+                .ToDictionary(
+                    static group =>
+                        group.Key,
+                    static group =>
+                        group.Last().Value);
+
+        return values.Count ==
+                   0
+            ? null
+            : values;
     }
 
     private static double ConnectionTolerance(
@@ -1244,7 +1256,7 @@ public static class WorldTrafficPathNetworkBuilder
         double widthMeters,
         WorldVector3[] points,
         double? speedLimitKilometersPerHour,
-        double? trafficDensityWeight)
+        IReadOnlyDictionary<int, double>? trafficDensityWeights)
     {
         public int Index { get; } =
             index;
@@ -1270,8 +1282,8 @@ public static class WorldTrafficPathNetworkBuilder
         public double? SpeedLimitKilometersPerHour { get; } =
             speedLimitKilometersPerHour;
 
-        public double? TrafficDensityWeight { get; } =
-            trafficDensityWeight;
+        public IReadOnlyDictionary<int, double>? TrafficDensityWeights { get; } =
+            trafficDensityWeights;
 
         public WorldVector3[] Points { get; } =
             points;
