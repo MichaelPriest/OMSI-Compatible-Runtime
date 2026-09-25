@@ -1421,6 +1421,7 @@ try
         Path.GetFileName(
             vehicleAsset.Meshes[0].Materials[0].MaterialChangeTexturePath!) ==
             "panel_n.bmp" &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeIsNightMap &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets is
             { Count: 1 } &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].VariableName ==
@@ -1429,6 +1430,7 @@ try
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].ItemIndex == 0 &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].AlphaMode is null &&
         !vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].HasTransMapDirective &&
+        !vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].MaterialChangeIsNightMap &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].ItemIndex == 1 &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].AlphaMode == 1 &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].HasTransMapDirective &&
@@ -1444,6 +1446,7 @@ try
         Path.GetFileName(
             vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].MaterialChangeTexturePath!) ==
             "panel_n.bmp" &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].MaterialChangeIsNightMap &&
         Math.Abs(
             vehicleAsset.Meshes[0].Materials[0].EnvMapStrength -
             0.5) < 0.0001 &&
