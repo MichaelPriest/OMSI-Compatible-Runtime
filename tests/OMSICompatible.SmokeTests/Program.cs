@@ -345,24 +345,6 @@ try
     Directory.CreateDirectory(vehicleModelDirectory);
     Directory.CreateDirectory(programDirectory);
 
-    var catalogTrafficVehiclePath =
-        Path.Combine(
-            vehicleDirectory,
-            "traffic.bus");
-
-    var catalogTaxiVehiclePath =
-        Path.Combine(
-            vehicleDirectory,
-            "taxi.bus");
-
-    File.WriteAllText(
-        catalogTrafficVehiclePath,
-        string.Empty);
-
-    File.WriteAllText(
-        catalogTaxiVehiclePath,
-        string.Empty);
-
     File.WriteAllText(
         Path.Combine(
             root,
@@ -2148,6 +2130,24 @@ try
     Require(
         bus.Physics.MaximumSteeringAngleDegrees is > 35.0 and < 40.0,
         "Vehicle steering angle was not derived from OMSI turn radius.");
+
+    var catalogTrafficVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "traffic.bus");
+
+    var catalogTaxiVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "taxi.bus");
+
+    File.WriteAllText(
+        catalogTrafficVehiclePath,
+        string.Empty);
+
+    File.WriteAllText(
+        catalogTaxiVehiclePath,
+        string.Empty);
 
     File.WriteAllText(
         Path.Combine(
