@@ -247,6 +247,14 @@ internal static class OdeNative
     [DllImport(
         LibraryName,
         CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointSetHingeParam(
+        nint joint,
+        int parameter,
+        float value);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
     internal static extern float dJointGetHingeAngle(
         nint joint);
 

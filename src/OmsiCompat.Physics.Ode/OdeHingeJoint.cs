@@ -5,6 +5,11 @@ namespace OmsiCompat.Physics.Ode;
 public sealed class OdeHingeJoint :
     IDisposable
 {
+    private const int ParamLowStop = 0;
+    private const int ParamHighStop = 1;
+    private const int ParamStopErp = 7;
+    private const int ParamStopCfm = 8;
+
     private nint _joint;
 
     public OdeHingeJoint(
@@ -61,6 +66,55 @@ public sealed class OdeHingeJoint :
             axis.X,
             axis.Y,
             axis.Z);
+    }
+
+    public void SetStops(
+        float lowRadians,
+        float highRadians,
+        float stopErp = 0.35f,
+        float stopCfm = 0.00001f)
+    {
+        ObjectDisposedException.ThrowIf(
+            _joint ==
+                nint.Zero,
+            this);
+
+        if (!float.IsFinite(
+                lowRadians) ||
+            !float.IsFinite(
+                highRadians) ||
+            lowRadians >
+                highRadians)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(lowRadians),
+                "Hinge limits must be finite and low <= high.");
+        }
+
+        OdeNative.dJointSetHingeParam(
+            _joint,
+            ParamLowStop,
+            lowRadians);
+
+        OdeNative.dJointSetHingeParam(
+            _joint,
+            ParamHighStop,
+            highRadians);
+
+        OdeNative.dJointSetHingeParam(
+            _joint,
+            ParamStopErp,
+            Math.Clamp(
+                stopErp,
+                0.0f,
+                1.0f));
+
+        OdeNative.dJointSetHingeParam(
+            _joint,
+            ParamStopCfm,
+            Math.Max(
+                stopCfm,
+                0.0f));
     }
 
     public float AngleRadians

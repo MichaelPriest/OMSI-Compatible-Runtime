@@ -3498,6 +3498,21 @@ internal sealed class RuntimeDriveVehicle :
                         jointWorld,
                         hingeAxis);
 
+                var maximumYawRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            section.MaximumYawDegrees,
+                            5.0,
+                            89.0));
+
+                hinge.SetStops(
+                    -maximumYawRadians,
+                    maximumYawRadians,
+                    stopErp:
+                        0.35f,
+                    stopCfm:
+                        0.00001f);
+
                 var axles =
                     ResolveSectionAxles(
                         section,
@@ -3710,36 +3725,11 @@ internal sealed class RuntimeDriveVehicle :
                     -lateralForceLimit,
                     lateralForceLimit));
 
-            var sectionHeading =
-                ResolveOdeHeading(
-                    body.Orientation,
-                    state.AbsoluteHeadingRadians);
-
-            var parentHeading =
-                state.ParentBody ==
-                    _odeBody
-                    ? HeadingRadians
-                    : ResolveOdeHeading(
-                        state.ParentBody.Orientation,
-                        sectionHeading);
-
             var relativeYaw =
-                NormalizeRadians(
-                    sectionHeading -
-                    parentHeading);
-
-            var sectionYawRate =
-                -body.AngularVelocity.Z;
-
-            var parentYawRate =
-                state.ParentBody ==
-                    _odeBody
-                    ? _yawRateRadiansPerSecond
-                    : -state.ParentBody.AngularVelocity.Z;
+                -state.Hinge.AngleRadians;
 
             var relativeYawRate =
-                sectionYawRate -
-                parentYawRate;
+                -state.Hinge.AngularRateRadiansPerSecond;
 
             var maximumYaw =
                 DegreesToRadians(
@@ -3750,9 +3740,9 @@ internal sealed class RuntimeDriveVehicle :
 
             var softLimit =
                 maximumYaw *
-                0.90f;
+                0.82f;
 
-            var excess =
+            var approach =
                 Math.Max(
                     Math.Abs(
                         relativeYaw) -
@@ -3761,16 +3751,16 @@ internal sealed class RuntimeDriveVehicle :
 
             var desiredRelativeAcceleration =
                 -relativeYawRate *
-                1.8f;
+                1.15f;
 
-            if (excess >
+            if (approach >
                 0.0f)
             {
                 desiredRelativeAcceleration +=
                     -Math.Sign(
                         relativeYaw) *
-                    excess *
-                    28.0f;
+                    approach *
+                    12.0f;
             }
 
             var correctiveTorque =
@@ -3950,7 +3940,7 @@ internal sealed class RuntimeDriveVehicle :
                          static item =>
                              item.Section.Index))
         {
-            var absoluteHeading =
+            var bodyHeading =
                 ResolveOdeHeading(
                     state.Body.Orientation,
                     state.AbsoluteHeadingRadians);
@@ -3961,28 +3951,22 @@ internal sealed class RuntimeDriveVehicle :
                     ? HeadingRadians
                     : ResolveOdeHeading(
                         state.ParentBody.Orientation,
-                        absoluteHeading);
+                        bodyHeading);
 
-            state.AbsoluteHeadingRadians =
-                absoluteHeading;
+            var relativeYaw =
+                -state.Hinge.AngleRadians;
 
             state.RelativeYawRadians =
                 NormalizeRadians(
-                    absoluteHeading -
-                    parentHeading);
-
-            var sectionYawRate =
-                -state.Body.AngularVelocity.Z;
-
-            var parentYawRate =
-                state.ParentBody ==
-                    _odeBody
-                    ? _yawRateRadiansPerSecond
-                    : -state.ParentBody.AngularVelocity.Z;
+                    relativeYaw);
 
             state.RelativeYawRateRadiansPerSecond =
-                sectionYawRate -
-                parentYawRate;
+                -state.Hinge.AngularRateRadiansPerSecond;
+
+            state.AbsoluteHeadingRadians =
+                NormalizeRadians(
+                    parentHeading +
+                    state.RelativeYawRadians);
         }
     }
 

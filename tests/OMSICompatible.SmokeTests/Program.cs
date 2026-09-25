@@ -138,6 +138,8 @@ try
                     InertiaZKilogramSquareMeters:
                         40_000.0f));
 
+        odeTrailerBody.SetGravityEnabled(
+            false);
         odeTrailerBody.SetPosition(
             new Vector3(
                 0.0f,
@@ -155,12 +157,39 @@ try
                     0.0f),
                 Vector3.UnitZ);
 
+        odeArticulation.SetStops(
+            -0.2617994f,
+            0.2617994f,
+            stopErp:
+                0.35f,
+            stopCfm:
+                0.00001f);
+
+        for (var hingeStep = 0;
+             hingeStep < 240;
+             hingeStep++)
+        {
+            odeTrailerBody.AddWorldTorque(
+                new Vector3(
+                    0.0f,
+                    0.0f,
+                    120_000.0f));
+
+            Require(
+                odeWorld.Step(
+                    1.0f / 120.0f),
+                "ODE articulated hinge stop QuickStep failed.");
+        }
+
         Require(
             float.IsFinite(
                 odeArticulation.AngleRadians) &&
             float.IsFinite(
-                odeArticulation.AngularRateRadiansPerSecond),
-            "ODE articulated hinge bridge did not return finite state.");
+                odeArticulation.AngularRateRadiansPerSecond) &&
+            Math.Abs(
+                odeArticulation.AngleRadians) <
+                0.34f,
+            $"ODE articulated hinge stop was exceeded: {odeArticulation.AngleRadians:0.0000} rad.");
 
         var frontSuspension =
             OdeSuspensionTuning.FromSpringDamper(
