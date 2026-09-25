@@ -18,6 +18,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Build ODE x64 single precision
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $odeVersion = "0.16.6"
+          $expectedSha512 = "c9160d9b7419c74c700d9efe5cdb82e70cab867a10f03fe8b99c32ed946ee4ecb50e055a6c11495dd9ed4754110ef0d071fbcfbf4cc6b67841607ed90b1ce35b"
+          $nativeRoot = Join-Path $PWD "native"
+          $archive = Join-Path $nativeRoot "ode-$odeVersion.tar.gz"
+          $sourceRoot = Join-Path $nativeRoot "ode-src"
+          $buildRoot = Join-Path $nativeRoot "ode-build"
+          $outputRoot = Join-Path $nativeRoot "win-x64"
+          New-Item -ItemType Directory -Force $nativeRoot, $sourceRoot, $outputRoot | Out-Null
+          Invoke-WebRequest -Uri "https://bitbucket.org/odedevs/ode/get/$odeVersion.tar.gz" -OutFile $archive
+          $actualSha512 = (Get-FileHash -Algorithm SHA512 $archive).Hash.ToLowerInvariant()
+          if ($actualSha512 -ne $expectedSha512) { throw "ODE $odeVersion SHA-512 mismatch: $actualSha512" }
+          tar -xzf $archive -C $sourceRoot
+          if ($LASTEXITCODE -ne 0) { throw "Failed to extract ODE source." }
+          $source = Get-ChildItem $sourceRoot -Directory | Select-Object -First 1
+          if (-not $source) { throw "ODE source directory was not found." }
+          cmake -S $source.FullName -B $buildRoot -G "Visual Studio 17 2022" -A x64 -DBUILD_SHARED_LIBS=ON -DODE_DOUBLE_PRECISION=OFF -DODE_WITH_DEMOS=OFF -DODE_WITH_TESTS=OFF -DODE_WITH_OPCODE=ON
+          if ($LASTEXITCODE -ne 0) { throw "ODE CMake configure failed." }
+          cmake --build $buildRoot --config Release --target ODE
+          if ($LASTEXITCODE -ne 0) { throw "ODE x64 build failed." }
+          $odeDll = Get-ChildItem $buildRoot -Recurse -Filter "ode_single.dll" | Select-Object -First 1
+          if (-not $odeDll) { throw "ode_single.dll was not produced." }
+          Copy-Item $odeDll.FullName (Join-Path $outputRoot "ode_single.dll") -Force
+
       - name: Verify preinstalled .NET
         run: dotnet --info
 
@@ -27,7 +54,16 @@ jobs:
       - name: Build x64
         run: dotnet build OMSI-Compatible-Runtime.slnx -c Release --no-restore
 
+      - name: Stage ODE x64 for smoke test
+        shell: pwsh
+        run: |
+          $target = "tests/OMSICompatible.SmokeTests/bin/Release/net10.0"
+          New-Item -ItemType Directory -Force $target | Out-Null
+          Copy-Item "native/win-x64/ode_single.dll" (Join-Path $target "ode_single.dll") -Force
+
       - name: Run synthetic world smoke test
+        env:
+          OMSI_REQUIRE_ODE: "1"
         run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
 
       - name: Publish Launcher x64
@@ -53,6 +89,12 @@ jobs:
           -p:DebugType=None
           -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime
+
+      - name: Package ODE x64
+        shell: pwsh
+        run: |
+          Copy-Item "native/win-x64/ode_single.dll" "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/ode_single.dll" -Force
+          Copy-Item "native/win-x64/ode_single.dll" "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime/ode_single.dll" -Force
 
       - name: Add test instructions
         shell: pwsh
@@ -207,7 +249,8 @@ jobs:
           - Ônibus OMSI real carregado por .bus/model.cfg
           - Câmeras F1/F2/F3/F4, horário e bilhetagem
           - Espelhos/reflexões D3D11 iniciais
-          - Física baseada em eixos/raio de giro do .bus
+          - Backend Open Dynamics Engine x64 single precision, compilado na CI
+          - Física alimentada pelos scripts OMSI via M_Wheel e Brakeforce/Axle_Brakeforce
           - Manifesto de scripts OMSI
           - VM RPN inicial em desenvolvimento
           - keyboard.cfg/.kyb executando triggers de veículo
@@ -216,8 +259,8 @@ jobs:
           - gamectrler.cfg via DirectInput com eixos e botões
           - sincronização inicial de marcha, elétrica, motor e freio de mão
             entre eventos/scripts OMSI e o estado físico do Runtime
-          - dinâmica veicular usa massa, centro de gravidade, resistência ao
-            rolamento, entre-eixos, bitola, inércia, molas e amortecedores do .bus
+          - o backend de dinâmica está migrando para ODE x64 usando massa,
+            inércia, eixos, molas, amortecedores e demais parâmetros do .bus
           - inclinação da carroceria em curvas/aceleração/frenagem e terreno
           - animações model.cfg [newanim] com anim_rot/anim_trans, origin,
             origin_rot_x/y/z, offset, delay e maxspeed
