@@ -46,19 +46,19 @@ public static class OmsiScriptCatalogLoader
 
         var systemVariables =
             new HashSet<string>(
-                StringComparer.OrdinalIgnoreCase);
+                StringComparer.Ordinal);
 
         var vehicleCallbacks =
             new HashSet<string>(
-                StringComparer.OrdinalIgnoreCase);
+                StringComparer.Ordinal);
 
         var sceneryCallbacks =
             new HashSet<string>(
-                StringComparer.OrdinalIgnoreCase);
+                StringComparer.Ordinal);
 
         var scriptTextureCallbacks =
             new HashSet<string>(
-                StringComparer.OrdinalIgnoreCase);
+                StringComparer.Ordinal);
 
         if (!string.IsNullOrWhiteSpace(
                 programPath))
@@ -102,11 +102,11 @@ public static class OmsiScriptCatalogLoader
 
         var constants =
             new Dictionary<string, double>(
-                StringComparer.OrdinalIgnoreCase);
+                StringComparer.Ordinal);
 
         var curves =
             new Dictionary<string, OmsiScriptCurve>(
-                StringComparer.OrdinalIgnoreCase);
+                StringComparer.Ordinal);
 
         foreach (var file in
                  manifest.ConstantFiles)
@@ -150,7 +150,7 @@ public static class OmsiScriptCatalogLoader
     {
         var result =
             new HashSet<string>(
-                StringComparer.OrdinalIgnoreCase);
+                StringComparer.Ordinal);
 
         foreach (var file in files)
         {
