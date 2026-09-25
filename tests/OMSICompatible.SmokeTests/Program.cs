@@ -2477,6 +2477,131 @@ try
             bridgeSecond.Index,
         "Traffic simulation did not traverse spline -> crossing/scenery -> spline.");
 
+    var reverseSplineAsset =
+        new WorldSplineAsset(
+            @"Splines\Synthetic\reverse.sli",
+            null,
+            true,
+            Array.Empty<WorldSplineSurface>(),
+            [
+                new WorldSplinePath(
+                    0,
+                    0.0,
+                    0.0,
+                    2.5,
+                    1)
+            ]);
+
+    var reverseNetwork =
+        WorldTrafficPathNetworkBuilder.Build(
+            [
+                new WorldSplinePlacement(
+                    new WorldTileCoordinate(
+                        0,
+                        0),
+                    5002,
+                    5001,
+                    -1,
+                    @"Splines\Synthetic\reverse.sli",
+                    new WorldVector3(
+                        0.0,
+                        0.0,
+                        10.0),
+                    0.0,
+                    10.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    false,
+                    0),
+                new WorldSplinePlacement(
+                    new WorldTileCoordinate(
+                        0,
+                        0),
+                    5001,
+                    -1,
+                    5002,
+                    @"Splines\Synthetic\reverse.sli",
+                    new WorldVector3(
+                        0.0,
+                        0.0,
+                        0.0),
+                    0.0,
+                    10.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    false,
+                    0)
+            ],
+            new Dictionary<string, WorldSplineAsset>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [@"Splines\Synthetic\reverse.sli"] =
+                    reverseSplineAsset
+            });
+
+    var reverseStartSegment =
+        reverseNetwork.Segments.Single(
+            static segment =>
+                segment.SplineId ==
+                    5002);
+
+    var reverseNextSegment =
+        reverseNetwork.Segments.Single(
+            static segment =>
+                segment.SplineId ==
+                    5001);
+
+    Require(
+        reverseStartSegment.ReverseConnections.Contains(
+            reverseNextSegment.Index),
+        "Reverse-only OMSI path did not resolve its previous-spline connection.");
+
+    var reverseSimulation =
+        new WorldTrafficSimulation(
+            reverseNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    var reverseInitial =
+        reverseSimulation.Snapshot();
+
+    reverseSimulation.Step(
+        2.0);
+
+    var reverseMoved =
+        reverseSimulation.Snapshot();
+
+    Require(
+        reverseInitial.Count ==
+            1 &&
+        reverseInitial[0].SegmentIndex ==
+            reverseStartSegment.Index &&
+        reverseMoved.Count ==
+            1 &&
+        reverseMoved[0].SegmentIndex ==
+            reverseNextSegment.Index &&
+        reverseMoved[0].Position.Z <
+            reverseInitial[0].Position.Z &&
+        Math.Abs(
+            Math.Abs(
+                reverseMoved[0].HeadingRadians) -
+            Math.PI) <
+            0.001,
+        "Reverse-only OMSI traffic path did not move End -> Start through ReverseConnections.");
+
     var firstRoadStart =
         firstRoadPath.Points[0];
 

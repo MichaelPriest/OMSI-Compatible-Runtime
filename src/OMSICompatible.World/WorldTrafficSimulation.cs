@@ -105,7 +105,7 @@ public sealed class WorldTrafficSimulation
                 SegmentLength(
                     segment);
 
-            var distance =
+            var offset =
                 length >
                     1.0
                     ? Math.Min(
@@ -119,11 +119,33 @@ public sealed class WorldTrafficSimulation
                             0.0))
                     : 0.0;
 
+            var travelForward =
+                segment.Direction switch
+                {
+                    1 =>
+                        false,
+                    2 =>
+                        index %
+                            2 ==
+                        0,
+                    _ =>
+                        true
+                };
+
+            var distance =
+                travelForward
+                    ? offset
+                    : Math.Max(
+                        length -
+                            offset,
+                        0.0);
+
             _agents.Add(
                 new Agent(
                     index,
                     segment.Index,
                     distance,
+                    travelForward,
                     ResolveCruiseSpeed(
                         index),
                     vehicle.ResolvedPath!));
@@ -200,16 +222,22 @@ public sealed class WorldTrafficSimulation
                     }
 
                     var available =
-                        Math.Max(
-                            length -
+                        agent.TravelForward
+                            ? Math.Max(
+                                length -
+                                    agent.DistanceMeters,
+                                0.0)
+                            : Math.Max(
                                 agent.DistanceMeters,
-                            0.0);
+                                0.0);
 
                     if (remaining <=
                         available)
                     {
                         agent.DistanceMeters +=
-                            remaining;
+                            agent.TravelForward
+                                ? remaining
+                                : -remaining;
 
                         remaining =
                             0.0;
@@ -221,7 +249,9 @@ public sealed class WorldTrafficSimulation
                         available;
 
                     agent.DistanceMeters =
-                        length;
+                        agent.TravelForward
+                            ? length
+                            : 0.0;
 
                     if (!TryAdvanceSegment(
                             agent,
@@ -244,10 +274,21 @@ public sealed class WorldTrafficSimulation
         Agent agent,
         WorldTrafficPathSegment segment)
     {
+        var connections =
+            agent.TravelForward
+                ? segment.ForwardConnections
+                : segment.ReverseConnections;
+
         var candidates =
-            segment.ForwardConnections
+            connections
                 .Where(
-                    _segmentsByIndex.ContainsKey)
+                    candidateIndex =>
+                        _segmentsByIndex.TryGetValue(
+                            candidateIndex,
+                            out var candidate) &&
+                        (agent.TravelForward
+                            ? candidate.AllowsForward
+                            : candidate.AllowsReverse))
                 .Order()
                 .ToArray();
 
@@ -265,11 +306,24 @@ public sealed class WorldTrafficSimulation
                 agent.AgentIndex %
                 candidates.Length];
 
+        if (!_segmentsByIndex.TryGetValue(
+                next,
+                out var nextSegment))
+        {
+            agent.SpeedMetersPerSecond =
+                0.0;
+
+            return false;
+        }
+
         agent.SegmentIndex =
             next;
 
         agent.DistanceMeters =
-            0.0;
+            agent.TravelForward
+                ? 0.0
+                : SegmentLength(
+                    nextSegment);
 
         return true;
     }
@@ -296,6 +350,13 @@ public sealed class WorldTrafficSimulation
             agent.DistanceMeters,
             out var position,
             out var heading);
+
+        if (!agent.TravelForward)
+        {
+            heading =
+                ReverseHeading(
+                    heading);
+        }
 
         return new WorldTrafficAgentState(
             agent.AgentIndex,
@@ -479,6 +540,14 @@ public sealed class WorldTrafficSimulation
                     previous.Z);
     }
 
+    private static double ReverseHeading(
+        double headingRadians) =>
+        Math.Atan2(
+            -Math.Sin(
+                headingRadians),
+            -Math.Cos(
+                headingRadians));
+
     private static WorldVector3 Lerp(
         WorldVector3 a,
         WorldVector3 b,
@@ -526,6 +595,7 @@ public sealed class WorldTrafficSimulation
         int agentIndex,
         int segmentIndex,
         double distanceMeters,
+        bool travelForward,
         double speedMetersPerSecond,
         string vehiclePath)
     {
@@ -545,6 +615,9 @@ public sealed class WorldTrafficSimulation
             set;
         } =
             distanceMeters;
+
+        public bool TravelForward { get; } =
+            travelForward;
 
         public double SpeedMetersPerSecond
         {
