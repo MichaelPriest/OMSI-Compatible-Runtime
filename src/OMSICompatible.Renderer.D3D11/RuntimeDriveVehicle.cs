@@ -162,8 +162,7 @@ internal sealed class RuntimeDriveVehicle :
                 3.5f);
 
         _axles =
-            physics?.Axles?
-                .Where(
+            physics?.Axles?.Where(
                     static axle =>
                         double.IsFinite(
                             axle.LongitudinalPositionMeters))
