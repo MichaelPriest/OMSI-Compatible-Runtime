@@ -41,12 +41,19 @@ internal sealed class RuntimeDriveVehicle
     private readonly float _wheelRadiusMeters;
     private readonly float _rollingResistanceNewtons;
     private readonly float _suspensionSpringNewtonsPerMeter;
+    private readonly float _frontSuspensionSpringNewtonsPerMeter;
+    private readonly float _rearSuspensionSpringNewtonsPerMeter;
+    private readonly float _frontSuspensionDamperNewtonSecondsPerMeter;
+    private readonly float _rearSuspensionDamperNewtonSecondsPerMeter;
     private readonly float _suspensionResponse;
+    private readonly float _pitchNaturalFrequencyRadiansPerSecond;
+    private readonly float _pitchDampingRatio;
     private readonly float _yawResponse;
     private float _yawRateRadiansPerSecond;
     private float _groundPitchRadians;
     private float _groundRollRadians;
     private float _bodyPitchRadians;
+    private float _bodyPitchVelocityRadiansPerSecond;
     private float _bodyRollRadians;
     private float _longitudinalAccelerationMetersPerSecondSquared;
     private float _wheelRotationRadians;
@@ -169,6 +176,47 @@ internal sealed class RuntimeDriveVehicle
                 2.0f,
                 150.0f);
 
+        var frontSpringRate =
+            Math.Clamp(
+                (float)(physics?.FrontSuspensionSpringKilonewtonsPerMeter ??
+                    springRate),
+                25.0f,
+                1_500.0f);
+
+        var rearSpringRate =
+            Math.Clamp(
+                (float)(physics?.RearSuspensionSpringKilonewtonsPerMeter ??
+                    springRate),
+                25.0f,
+                1_500.0f);
+
+        var frontDamperRate =
+            Math.Clamp(
+                (float)(physics?.FrontSuspensionDamperKilonewtonSecondsPerMeter ??
+                    damperRate),
+                2.0f,
+                150.0f);
+
+        var rearDamperRate =
+            Math.Clamp(
+                (float)(physics?.RearSuspensionDamperKilonewtonSecondsPerMeter ??
+                    damperRate),
+                2.0f,
+                150.0f);
+
+        _frontSuspensionSpringNewtonsPerMeter =
+            frontSpringRate *
+            1_000.0f;
+        _rearSuspensionSpringNewtonsPerMeter =
+            rearSpringRate *
+            1_000.0f;
+        _frontSuspensionDamperNewtonSecondsPerMeter =
+            frontDamperRate *
+            1_000.0f;
+        _rearSuspensionDamperNewtonSecondsPerMeter =
+            rearDamperRate *
+            1_000.0f;
+
         _suspensionResponse =
             Math.Clamp(
                 MathF.Sqrt(
@@ -179,6 +227,69 @@ internal sealed class RuntimeDriveVehicle
                     damperRate),
                 0.45f,
                 2.5f);
+
+        var frontPitchLever =
+            Math.Max(
+                Math.Abs(
+                    _frontAxleLongitudinalMeters),
+                0.5f);
+
+        var rearPitchLever =
+            Math.Max(
+                Math.Abs(
+                    _rearAxleLongitudinalMeters),
+                0.5f);
+
+        // OMSI achse_feder/achse_daempfer are specified per side.
+        // Two spring/damper units therefore contribute at each axle.
+        var pitchStiffness =
+            2.0f *
+                _frontSuspensionSpringNewtonsPerMeter *
+                frontPitchLever *
+                frontPitchLever +
+            2.0f *
+                _rearSuspensionSpringNewtonsPerMeter *
+                rearPitchLever *
+                rearPitchLever;
+
+        var estimatedPitchInertia =
+            Math.Max(
+                _massKilograms *
+                (_wheelBaseMeters *
+                     _wheelBaseMeters +
+                 4.0f *
+                     _centerOfGravityHeightMeters *
+                     _centerOfGravityHeightMeters) /
+                12.0f,
+                1_000.0f);
+
+        var pitchDamping =
+            2.0f *
+                _frontSuspensionDamperNewtonSecondsPerMeter *
+                frontPitchLever *
+                frontPitchLever +
+            2.0f *
+                _rearSuspensionDamperNewtonSecondsPerMeter *
+                rearPitchLever *
+                rearPitchLever;
+
+        _pitchNaturalFrequencyRadiansPerSecond =
+            Math.Clamp(
+                MathF.Sqrt(
+                    pitchStiffness /
+                    estimatedPitchInertia),
+                1.5f,
+                8.0f);
+
+        _pitchDampingRatio =
+            Math.Clamp(
+                pitchDamping /
+                (2.0f *
+                 MathF.Sqrt(
+                     pitchStiffness *
+                     estimatedPitchInertia)),
+                0.35f,
+                1.35f);
 
         var yawInertia =
             Math.Clamp(
@@ -397,6 +508,7 @@ internal sealed class RuntimeDriveVehicle
         _groundPitchRadians = 0.0f;
         _groundRollRadians = 0.0f;
         _bodyPitchRadians = 0.0f;
+        _bodyPitchVelocityRadiansPerSecond = 0.0f;
         _bodyRollRadians = 0.0f;
         _longitudinalAccelerationMetersPerSecondSquared = 0.0f;
         _wheelRotationRadians = 0.0f;
@@ -722,27 +834,41 @@ internal sealed class RuntimeDriveVehicle
             Math.Abs(
                 SpeedMetersPerSecond);
 
+        var maximumForwardForceNewtons =
+            Math.Clamp(
+                _massKilograms *
+                    2.55f,
+                18_000.0f,
+                48_000.0f);
+
+        var nominalEnginePowerWatts =
+            Math.Clamp(
+                180_000.0f *
+                    (_massKilograms /
+                     DefaultMassKilograms),
+                120_000.0f,
+                300_000.0f);
+
+        var powerLimitedForceNewtons =
+            nominalEnginePowerWatts /
+            Math.Max(
+                absoluteSpeed,
+                3.0f);
+
+        var availableForwardForceNewtons =
+            Math.Min(
+                maximumForwardForceNewtons,
+                powerLimitedForceNewtons);
+
         var driveForceNewtons =
             requestedDirection == 0
                 ? 0.0f
                 : AcceleratorLevel *
+                  availableForwardForceNewtons *
                   (requestedDirection < 0
-                      ? 10_000.0f
-                      : 18_000.0f);
-
-        // A simple power fade prevents the placeholder host drivetrain
-        // from applying the same tractive force at every road speed.
-        var forceFade =
-            Math.Clamp(
-                1.0f -
-                absoluteSpeed /
-                34.0f,
-                0.18f,
-                1.0f);
-
-        driveForceNewtons *=
-            forceFade *
-            requestedDirection;
+                      ? 0.48f
+                      : 1.0f) *
+                  requestedDirection;
 
         var driveAcceleration =
             driveForceNewtons /
@@ -758,18 +884,6 @@ internal sealed class RuntimeDriveVehicle
              gradeAcceleration) *
             deltaSeconds;
 
-        var effectiveBrake =
-            Math.Clamp(
-                BrakeLevel +
-                (StopBrakeEngaged
-                    ? 0.55f
-                    : 0.0f) +
-                (ParkingBrakeEngaged
-                    ? 1.0f
-                    : 0.0f),
-                0.0f,
-                1.0f);
-
         var rollingAcceleration =
             _rollingResistanceNewtons /
             _massKilograms;
@@ -779,14 +893,30 @@ internal sealed class RuntimeDriveVehicle
             SpeedMetersPerSecond *
             SpeedMetersPerSecond;
 
+        // Service braking on a city bus is deliberately below the tyre
+        // friction ceiling; stop/parking brakes add their own demand rather
+        // than being folded into an exaggerated generic 7.2 m/s² scale.
         var serviceBrakeAcceleration =
-            effectiveBrake *
-            7.2f;
+            BrakeLevel *
+            5.4f;
+
+        var stopBrakeAcceleration =
+            StopBrakeEngaged
+                ? 3.2f
+                : 0.0f;
+
+        var parkingBrakeAcceleration =
+            ParkingBrakeEngaged
+                ? 7.0f
+                : 0.0f;
 
         var passiveDeceleration =
             rollingAcceleration +
             aerodynamicAcceleration +
-            serviceBrakeAcceleration;
+            Math.Max(
+                serviceBrakeAcceleration +
+                    stopBrakeAcceleration,
+                parkingBrakeAcceleration);
 
         if (Math.Abs(
                 SpeedMetersPerSecond) >
@@ -799,8 +929,10 @@ internal sealed class RuntimeDriveVehicle
                     passiveDeceleration *
                     deltaSeconds);
         }
-        else if (effectiveBrake >
-                 0.05f)
+        else if (BrakeLevel >
+                     0.05f ||
+                 StopBrakeEngaged ||
+                 ParkingBrakeEngaged)
         {
             SpeedMetersPerSecond =
                 0.0f;
@@ -1070,11 +1202,9 @@ internal sealed class RuntimeDriveVehicle
                 DegreesToRadians(
                     8.0));
 
-        // Longitudinal body pitch comes from suspension load transfer,
-        // not a generic acceleration-to-angle multiplier. With the MEP
-        // Quadbus II values (8 t, CG 1.2 m, ~240/280 kN/m springs) this
-        // produces sub-degree dive/squat under normal driving instead of
-        // several degrees of exaggerated body rotation.
+        // Dynamic load transfer is distributed through the actual front
+        // and rear axle spring rates from the .bus file. achse_feder is per
+        // side, so each axle has two springs in parallel.
         var longitudinalLoadTransferNewtons =
             -_longitudinalAccelerationMetersPerSecondSquared *
             _massKilograms *
@@ -1083,15 +1213,23 @@ internal sealed class RuntimeDriveVehicle
                 _wheelBaseMeters,
                 1.0f);
 
-        // RuntimeVehiclePhysicsInfo currently carries the real axle spring
-        // values as their average. Treat that as one spring rate per axle;
-        // front compression plus rear extension determines body pitch.
+        var frontCompressionMeters =
+            longitudinalLoadTransferNewtons /
+            Math.Max(
+                2.0f *
+                    _frontSuspensionSpringNewtonsPerMeter,
+                50_000.0f);
+
+        var rearExtensionMeters =
+            longitudinalLoadTransferNewtons /
+            Math.Max(
+                2.0f *
+                    _rearSuspensionSpringNewtonsPerMeter,
+                50_000.0f);
+
         var suspensionPitchTravelMeters =
-            longitudinalLoadTransferNewtons *
-            (2.0f /
-             Math.Max(
-                 _suspensionSpringNewtonsPerMeter,
-                 25_000.0f));
+            frontCompressionMeters +
+            rearExtensionMeters;
 
         var pitchTarget =
             Math.Clamp(
@@ -1101,9 +1239,9 @@ internal sealed class RuntimeDriveVehicle
                         _wheelBaseMeters,
                         1.0f)),
                 DegreesToRadians(
-                    -2.0),
+                    -1.6),
                 DegreesToRadians(
-                    2.0));
+                    1.6));
 
         var response =
             (2.0f +
@@ -1117,12 +1255,34 @@ internal sealed class RuntimeDriveVehicle
                 rollTarget,
                 response);
 
+        var pitchError =
+            pitchTarget -
+            _bodyPitchRadians;
+
+        var pitchAcceleration =
+            _pitchNaturalFrequencyRadiansPerSecond *
+                _pitchNaturalFrequencyRadiansPerSecond *
+                pitchError -
+            2.0f *
+                _pitchDampingRatio *
+                _pitchNaturalFrequencyRadiansPerSecond *
+                _bodyPitchVelocityRadiansPerSecond;
+
+        _bodyPitchVelocityRadiansPerSecond +=
+            pitchAcceleration *
+            deltaSeconds;
+
+        _bodyPitchRadians +=
+            _bodyPitchVelocityRadiansPerSecond *
+            deltaSeconds;
+
         _bodyPitchRadians =
-            MoveTowards(
+            Math.Clamp(
                 _bodyPitchRadians,
-                pitchTarget,
-                response *
-                0.75f);
+                DegreesToRadians(
+                    -1.8),
+                DegreesToRadians(
+                    1.8));
     }
 
     private float ResolveAckermannSteeringAngle(
