@@ -1257,6 +1257,14 @@ internal sealed class RuntimeApplicationContext :
                 _railRuntimeConsists[
                     trainPath] =
                     runtimeConsist;
+
+                if (runtimeConsist.TailClearanceMeters is
+                    { } tailClearanceMeters)
+                {
+                    simulation.SetConsistTrailingDistance(
+                        trainPath,
+                        tailClearanceMeters);
+                }
             }
         }
 
@@ -1348,9 +1356,56 @@ internal sealed class RuntimeApplicationContext :
                 vehicle.Reverse;
         }
 
+        double? tailClearanceMeters =
+            null;
+
+        if (cars.Count >
+                0 &&
+            previousAsset is not null)
+        {
+            var rearOverhang =
+                ResolveRailRearOverhang(
+                    previousAsset,
+                    previousReverse);
+
+            if (rearOverhang.HasValue)
+            {
+                tailClearanceMeters =
+                    trailingDistance +
+                    rearOverhang.Value;
+            }
+        }
+
         return new RailRuntimeConsist(
             consist.SourcePath,
-            cars);
+            cars,
+            tailClearanceMeters);
+    }
+
+    private static double? ResolveRailRearOverhang(
+        OmsiVehicleAsset asset,
+        bool reverse)
+    {
+        var rearCouplingLongitudinal =
+            reverse
+                ? asset.Bus.FrontCoupling?.Y
+                : asset.Bus.BackCoupling?.Y;
+
+        if (!rearCouplingLongitudinal.HasValue ||
+            !double.IsFinite(
+                rearCouplingLongitudinal.Value))
+        {
+            return null;
+        }
+
+        var distance =
+            Math.Abs(
+                rearCouplingLongitudinal.Value);
+
+        return distance >
+               0.1
+            ? distance
+            : null;
     }
 
     private static double? ResolveRailCarSpacing(
@@ -1776,7 +1831,8 @@ internal sealed class RuntimeApplicationContext :
 
     private sealed record RailRuntimeConsist(
         string TrainConsistPath,
-        IReadOnlyList<RailRuntimeCar> Cars);
+        IReadOnlyList<RailRuntimeCar> Cars,
+        double? TailClearanceMeters);
 
     private sealed record TrafficScriptRuntimeState(
         string VehiclePath,
