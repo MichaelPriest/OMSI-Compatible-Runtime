@@ -393,7 +393,11 @@ public sealed class D3D11RenderWindow : Form
                 pair.Value;
 
             runtime.SystemMacroHandler =
-                HandleOmsiSystemMacro;
+                (name, context) =>
+                    HandleOmsiSectionSystemMacro(
+                        sectionIndex,
+                        name,
+                        context);
 
             runtime.UnhandledSystemMacro +=
                 OnUnhandledSystemMacro;
@@ -6441,6 +6445,24 @@ public sealed class D3D11RenderWindow : Form
 
     private bool HandleOmsiSystemMacro(
         string name,
+        OmsiScriptCallbackContext context) =>
+        HandleOmsiSystemMacro(
+            0,
+            name,
+            context);
+
+    private bool HandleOmsiSectionSystemMacro(
+        int sectionIndex,
+        string name,
+        OmsiScriptCallbackContext context) =>
+        HandleOmsiSystemMacro(
+            sectionIndex,
+            name,
+            context);
+
+    private bool HandleOmsiSystemMacro(
+        int sectionIndex,
+        string name,
         OmsiScriptCallbackContext context)
     {
         if (name.Equals(
@@ -6494,6 +6516,7 @@ public sealed class D3D11RenderWindow : Form
 
             context.PushFloat(
                 ResolveHeightAboveOmsiPoint(
+                    sectionIndex,
                     localX,
                     localY,
                     localZ));
@@ -6501,13 +6524,16 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
-        return _previousSystemMacroHandler?.Invoke(
+        return sectionIndex ==
+                   0 &&
+               _previousSystemMacroHandler?.Invoke(
                    name,
                    context) ==
                true;
     }
 
     private double ResolveHeightAboveOmsiPoint(
+        int sectionIndex,
         double omsiX,
         double omsiY,
         double omsiZ)
@@ -6532,6 +6558,8 @@ public sealed class D3D11RenderWindow : Form
                 (float)omsiY);
 
         var vehicleWorld =
+            CreateArticulatedSectionMatrix(
+                sectionIndex) *
             _vehicle.CreateWorldMatrix();
 
         var origin =
