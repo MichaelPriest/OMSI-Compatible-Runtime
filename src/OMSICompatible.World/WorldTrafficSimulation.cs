@@ -122,15 +122,37 @@ public sealed class WorldTrafficSimulation
              index < count;
              index++)
         {
-            var segment =
-                roadSegments[
-                    index %
-                    roadSegments.Length];
-
             var vehicle =
                 SelectVehicle(
                     vehicles,
                     index);
+
+            var groupIndex =
+                groupIndices.TryGetValue(
+                    vehicle.GroupName,
+                    out var resolvedGroupIndex)
+                    ? resolvedGroupIndex
+                    : (int?)null;
+
+            var allowedSegments =
+                roadSegments
+                    .Where(
+                        segment =>
+                            IsTrafficGroupAllowed(
+                                segment,
+                                groupIndex))
+                    .ToArray();
+
+            if (allowedSegments.Length ==
+                0)
+            {
+                continue;
+            }
+
+            var segment =
+                allowedSegments[
+                    index %
+                    allowedSegments.Length];
 
             var length =
                 SegmentLength(
@@ -189,11 +211,7 @@ public sealed class WorldTrafficSimulation
                     cruiseSpeed,
                     initialSpeed,
                     vehicle.ResolvedPath!,
-                    groupIndices.TryGetValue(
-                        vehicle.GroupName,
-                        out var groupIndex)
-                        ? groupIndex
-                        : null,
+                    groupIndex,
                     vehicle.GroupName));
         }
     }
@@ -394,6 +412,9 @@ public sealed class WorldTrafficSimulation
                 .Where(
                     candidate =>
                         candidate is not null &&
+                        IsTrafficGroupAllowed(
+                            candidate,
+                            agent.GroupIndex) &&
                         (agent.TravelForward
                             ? candidate.AllowsForward
                             : candidate.AllowsReverse))
@@ -642,6 +663,20 @@ public sealed class WorldTrafficSimulation
         return Math.Min(
             segmentMaximum,
             followingSpeed);
+    }
+
+    private static bool IsTrafficGroupAllowed(
+        WorldTrafficPathSegment segment,
+        int? groupIndex)
+    {
+        if (!groupIndex.HasValue ||
+            segment.BlockedUnscheduledGroupIndices is null)
+        {
+            return true;
+        }
+
+        return !segment.BlockedUnscheduledGroupIndices.Contains(
+            groupIndex.Value);
     }
 
     private static double ResolveTrafficDensityWeight(

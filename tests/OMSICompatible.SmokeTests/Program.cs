@@ -555,7 +555,12 @@ try
             "0",
             "trafficdensity",
             "0.500",
-            "0"),
+            "0",
+            "[rule]",
+            "0",
+            "no_cars",
+            "0",
+            "1"),
         Encoding.Unicode);
 
     // This tile exists on disk but is intentionally not declared in global.cfg.
@@ -2290,6 +2295,12 @@ try
         "Synthetic OMSI [rule] trafficdensity was not attached to the matching group/path.");
 
     Require(
+        secondRoadPath.BlockedUnscheduledGroupIndices is not null &&
+        secondRoadPath.BlockedUnscheduledGroupIndices.Contains(
+            1),
+        "Synthetic OMSI [rule] no_cars was not attached to the matching group/path.");
+
+    Require(
         firstRoadPath.ForwardConnections.Count == 1 &&
         firstRoadPath.ForwardConnections[0] ==
             secondRoadPath.Index,
@@ -2710,6 +2721,265 @@ try
             Math.PI) <
             0.001,
         "Reverse-only OMSI traffic path did not move End -> Start through ReverseConnections.");
+
+    var blockedSpawnNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8100,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    BlockedUnscheduledGroupIndices:
+                        new HashSet<int>
+                        {
+                            0
+                        }),
+                new WorldTrafficPathSegment(
+                    1,
+                    8101,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>())
+            ],
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0);
+
+    var normalGroupCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "NormalCars",
+                    @"Vehicles\Synthetic\traffic.bus",
+                    syntheticAiVehiclePath,
+                    1.0)
+            ],
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "NormalCars",
+                    1),
+                new OmsiUnscheduledVehicleGroup(
+                    1,
+                    "Taxi",
+                    1)
+            ]);
+
+    var blockedSpawnSimulation =
+        new WorldTrafficSimulation(
+            blockedSpawnNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    var blockedSpawnAgent =
+        blockedSpawnSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        blockedSpawnAgent.GroupIndex ==
+            0 &&
+        blockedSpawnAgent.SegmentIndex ==
+            1,
+        "no_cars did not prevent the matching unscheduled group from spawning on a blocked path.");
+
+    var groupRoutingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8200,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8201,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    BlockedUnscheduledGroupIndices:
+                        new HashSet<int>
+                        {
+                            0
+                        }),
+                new WorldTrafficPathSegment(
+                    2,
+                    8202,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    BlockedUnscheduledGroupIndices:
+                        new HashSet<int>
+                        {
+                            1
+                        })
+            ],
+            3,
+            0,
+            0,
+            0,
+            1,
+            0,
+            2,
+            0);
+
+    var normalRoutingSimulation =
+        new WorldTrafficSimulation(
+            groupRoutingNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    normalRoutingSimulation.Step(
+        2.0);
+
+    var normalRoutedAgent =
+        normalRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        normalRoutedAgent.GroupIndex ==
+            0 &&
+        normalRoutedAgent.SegmentIndex ==
+            2 &&
+        normalRoutedAgent.Position.X >
+            0.0,
+        "no_cars did not exclude a blocked route for the NormalCars group.");
+
+    var taxiVehiclePath =
+        Path.Combine(
+            contentRoot.RootPath,
+            "Vehicles",
+            "Synthetic",
+            "taxi.bus");
+
+    var taxiGroupCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "Taxi",
+                    @"Vehicles\Synthetic\taxi.bus",
+                    taxiVehiclePath,
+                    1.0)
+            ],
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "NormalCars",
+                    1),
+                new OmsiUnscheduledVehicleGroup(
+                    1,
+                    "Taxi",
+                    1)
+            ]);
+
+    var taxiRoutingSimulation =
+        new WorldTrafficSimulation(
+            groupRoutingNetwork,
+            taxiGroupCatalog,
+            maximumAgents:
+                1);
+
+    taxiRoutingSimulation.Step(
+        2.0);
+
+    var taxiRoutedAgent =
+        taxiRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        taxiRoutedAgent.GroupIndex ==
+            1 &&
+        taxiRoutedAgent.SegmentIndex ==
+            1 &&
+        taxiRoutedAgent.Position.X <
+            0.0,
+        "no_cars did not exclude a blocked route for the Taxi group.");
 
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
