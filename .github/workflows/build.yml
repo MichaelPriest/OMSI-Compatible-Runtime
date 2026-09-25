@@ -37,7 +37,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Failed to extract ODE source." }
           $source = Get-ChildItem $sourceRoot -Directory | Select-Object -First 1
           if (-not $source) { throw "ODE source directory was not found." }
-          cmake -S $source.FullName -B $buildRoot -G "Visual Studio 17 2022" -A x64 -DBUILD_SHARED_LIBS=ON -DODE_DOUBLE_PRECISION=OFF -DODE_WITH_DEMOS=OFF -DODE_WITH_TESTS=OFF -DODE_WITH_OPCODE=ON
+          cmake -S $source.FullName -B $buildRoot -G "Visual Studio 17 2022" -A x64 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DBUILD_SHARED_LIBS=ON -DODE_DOUBLE_PRECISION=OFF -DODE_WITH_DEMOS=OFF -DODE_WITH_TESTS=OFF -DODE_WITH_OPCODE=ON
           if ($LASTEXITCODE -ne 0) { throw "ODE CMake configure failed." }
           cmake --build $buildRoot --config Release --target ODE
           if ($LASTEXITCODE -ne 0) { throw "ODE x64 build failed." }
