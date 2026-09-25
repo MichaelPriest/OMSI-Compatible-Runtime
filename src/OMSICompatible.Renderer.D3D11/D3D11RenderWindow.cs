@@ -6953,18 +6953,28 @@ public sealed class D3D11RenderWindow : Form
                 wheelRotationSpeedRpm);
         }
 
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_0_L",
-            _vehicle.FrontLeftSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_0_R",
-            _vehicle.FrontRightSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_1_L",
-            _vehicle.RearLeftSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_1_R",
-            _vehicle.RearRightSuspensionMeters);
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            var hasSuspension =
+                _vehicle.TryGetOmsiAxleSuspension(
+                    axle,
+                    out var leftSuspension,
+                    out var rightSuspension);
+
+            _scriptRuntime.SetLocal(
+                $"Axle_Suspension_{axle}_L",
+                hasSuspension
+                    ? leftSuspension
+                    : 0.0f);
+
+            _scriptRuntime.SetLocal(
+                $"Axle_Suspension_{axle}_R",
+                hasSuspension
+                    ? rightSuspension
+                    : 0.0f);
+        }
 
         // Coupled OMSI .bus models expose the articulation angle as a host
         // variable. The MEP Quadbus II bellows and its articulation.osc
@@ -7013,21 +7023,6 @@ public sealed class D3D11RenderWindow : Form
                 betaDegrees);
         }
 
-        // OMSI numbers trailer axles continuously across the coupled set.
-        // Until each body gets independent suspension contact, propagate the
-        // rear-body contact response instead of leaving axle 2/3 at zero.
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_2_L",
-            _vehicle.RearLeftSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_2_R",
-            _vehicle.RearRightSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_3_L",
-            _vehicle.RearLeftSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_3_R",
-            _vehicle.RearRightSuspensionMeters);
     }
 
     private void OnRuntimeKeyDown(
