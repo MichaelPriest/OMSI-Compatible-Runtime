@@ -1948,7 +1948,8 @@ internal sealed class RuntimeApplicationContext :
                             item.HeadingDegrees,
                             item.PitchDegrees,
                             item.BankDegrees,
-                            item.ExtraValues))
+                            item.ExtraValues,
+                            item.Id))
                 .ToArray();
 
         var runtimeSceneryAssets =
