@@ -1134,7 +1134,7 @@ internal sealed class RuntimeApplicationContext :
 
         return agents
             .Select(
-                static agent =>
+                agent =>
                     new RuntimeTrafficAgentInfo(
                         agent.AgentIndex,
                         agent.SegmentIndex,
@@ -1149,7 +1149,9 @@ internal sealed class RuntimeApplicationContext :
                         agent.AiBlinkerLeft,
                         agent.AiBlinkerRight,
                         agent.TraveledDistanceMeters,
-                        agent.PathCurvaturePerMeter))
+                        agent.PathCurvaturePerMeter,
+                        ResolveTrafficScriptRuntime(
+                            agent)))
             .ToArray();
     }
 
@@ -1310,6 +1312,22 @@ internal sealed class RuntimeApplicationContext :
                 $"Wheel_RotationSpeed_{axle}_R",
                 wheelRevolutionsPerMinute);
         }
+    }
+
+    private OmsiScriptRuntime? ResolveTrafficScriptRuntime(
+        WorldTrafficAgentState agent)
+    {
+        if (!_trafficScriptRuntimes.TryGetValue(
+                agent.AgentIndex,
+                out var state) ||
+            !state.VehiclePath.Equals(
+                agent.VehiclePath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return state.Runtime;
     }
 
     private static void WriteTrafficDiagnostics(

@@ -122,6 +122,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly Dictionary<int, RuntimeOmsiAudioHost>
         _articulatedOmsiAudio =
             [];
+    private readonly Dictionary<int, TrafficOmsiAudioState>
+        _trafficOmsiAudio =
+            [];
     private bool _controllerInputEnabled = true;
     private float _controllerClutchInput;
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
@@ -6963,11 +6966,148 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
+        UpdateTrafficOmsiAudio(
+            listenerPosition);
+
         UpdateVehicleAnimationStates(
             deltaSeconds);
 
         UpdateVehicleLightStates(
             deltaSeconds);
+    }
+
+    private void UpdateTrafficOmsiAudio(
+        Vector3 listenerPosition)
+    {
+        var activeAgentIds =
+            _trafficAgents
+                .Select(
+                    static agent =>
+                        agent.AgentIndex)
+                .ToHashSet();
+
+        foreach (var staleAgentId in
+                 _trafficOmsiAudio
+                     .Keys
+                     .Where(
+                         id =>
+                             !activeAgentIds.Contains(
+                                 id))
+                     .ToArray())
+        {
+            _trafficOmsiAudio[
+                staleAgentId]
+                .Audio
+                .Dispose();
+
+            _trafficOmsiAudio.Remove(
+                staleAgentId);
+        }
+
+        if (_trafficAgents.Count ==
+                0 ||
+            _windowInfo.TrafficVehicleAssets is
+                null)
+        {
+            return;
+        }
+
+        var perAgentVoiceBudget =
+            Math.Max(
+                4,
+                _maximumSoundCount /
+                Math.Max(
+                    _trafficAgents.Count,
+                    1));
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            if (!_windowInfo.TrafficVehicleAssets.TryGetValue(
+                    agent.VehiclePath,
+                    out var vehicleInfo) ||
+                string.IsNullOrWhiteSpace(
+                    vehicleInfo.SoundConfigPath))
+            {
+                continue;
+            }
+
+            if (!_trafficOmsiAudio.TryGetValue(
+                    agent.AgentIndex,
+                    out var state) ||
+                !state.VehiclePath.Equals(
+                    agent.VehiclePath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                state?.Audio.Dispose();
+
+                var audio =
+                    RuntimeOmsiAudioHost.TryCreate(
+                        vehicleInfo.SoundConfigPath,
+                        _masterVolume,
+                        perAgentVoiceBudget);
+
+                if (audio is null)
+                {
+                    _trafficOmsiAudio.Remove(
+                        agent.AgentIndex);
+                    continue;
+                }
+
+                state =
+                    new TrafficOmsiAudioState(
+                        agent.VehiclePath,
+                        audio);
+
+                _trafficOmsiAudio[
+                    agent.AgentIndex] =
+                    state;
+
+                Console.WriteLine(
+                    $"[traffic-ai] audio agent={agent.AgentIndex}; vehicle={Path.GetFileName(agent.VehiclePath)}; sounds={audio.ExistingFileCount}/{audio.SoundCount}");
+            }
+
+            state.Audio.Update(
+                agent.ScriptRuntime,
+                interiorView:
+                    false,
+                engineRunning:
+                    ResolveTrafficEngineRunning(
+                        agent.ScriptRuntime),
+                listenerPosition,
+                new Vector3(
+                    (float)agent.X,
+                    (float)agent.Y,
+                    (float)agent.Z),
+                (float)agent.HeadingRadians);
+        }
+    }
+
+    private static bool ResolveTrafficEngineRunning(
+        OmsiScriptRuntime? runtime)
+    {
+        if (runtime is null)
+        {
+            return true;
+        }
+
+        if (runtime.HasLocalVariable(
+                "engine_on"))
+        {
+            return runtime.GetLocal(
+                       "engine_on") >
+                   0.5;
+        }
+
+        if (runtime.HasLocalVariable(
+                "engine_injection_on"))
+        {
+            return runtime.GetLocal(
+                       "engine_injection_on") >
+                   0.5;
+        }
+
+        return true;
     }
 
     private void ResetArticulatedSections()
@@ -12840,6 +12980,10 @@ public sealed class D3D11RenderWindow : Form
             };
     }
 
+    private sealed record TrafficOmsiAudioState(
+        string VehiclePath,
+        RuntimeOmsiAudioHost Audio);
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -12884,6 +13028,14 @@ public sealed class D3D11RenderWindow : Form
             }
 
             _articulatedOmsiAudio.Clear();
+
+            foreach (var state in
+                     _trafficOmsiAudio.Values)
+            {
+                state.Audio.Dispose();
+            }
+
+            _trafficOmsiAudio.Clear();
 
             _vehicle.Dispose();
 

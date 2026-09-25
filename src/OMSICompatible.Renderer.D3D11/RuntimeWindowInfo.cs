@@ -1,4 +1,5 @@
 using System.Numerics;
+using OmsiCompat.Scripting;
 
 namespace OMSICompatible.Renderer.D3D11;
 
@@ -320,7 +321,8 @@ public sealed record RuntimeTrafficAgentInfo(
     bool AiBlinkerLeft = false,
     bool AiBlinkerRight = false,
     double TraveledDistanceMeters = 0.0,
-    double PathCurvaturePerMeter = 0.0);
+    double PathCurvaturePerMeter = 0.0,
+    OmsiScriptRuntime? ScriptRuntime = null);
 
 public sealed record RuntimeAiFileReferenceInfo(
     string DeclaredPath,
