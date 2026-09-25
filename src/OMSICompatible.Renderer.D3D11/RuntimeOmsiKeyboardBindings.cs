@@ -120,12 +120,22 @@ internal static class RuntimeOmsiKeyboardBindings
                 .Distinct()
                 .ToArray();
 
+        var entryCount =
+            CountEntries(
+                keyboardPath);
+
+        var keyboardEntryAudit =
+            AnalyzeKeyboardEntries(
+                keyboardPath,
+                keyIndexToWindowsKey);
+
         WriteKeyboardAudit(
             keyboardPath,
             keyTablePath,
-            CountEntries(
-                keyboardPath),
+            entryCount,
             parsed.Count,
+            keyboardEntryAudit.UnassignedCount,
+            keyboardEntryAudit.InvalidEntries,
             bindings);
 
         return bindings;
@@ -722,6 +732,126 @@ internal static class RuntimeOmsiKeyboardBindings
             out key);
     }
 
+    private sealed record KeyboardEntryAudit(
+        int UnassignedCount,
+        IReadOnlyList<string> InvalidEntries);
+
+    private static KeyboardEntryAudit AnalyzeKeyboardEntries(
+        string path,
+        IReadOnlyDictionary<int, Keys> keyIndexToWindowsKey)
+    {
+        string[] lines;
+
+        try
+        {
+            lines =
+                File.ReadAllLines(
+                    path);
+        }
+        catch
+        {
+            return new KeyboardEntryAudit(
+                0,
+                Array.Empty<string>());
+        }
+
+        var unassignedCount =
+            0;
+
+        var invalidEntries =
+            new List<string>();
+
+        for (var index = 0;
+             index < lines.Length;
+             index++)
+        {
+            if (!string.Equals(
+                    lines[index].Trim(),
+                    "[entry]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                NextMeaningful(
+                    lines,
+                    index + 1,
+                    3);
+
+            var entryLine =
+                index + 1;
+
+            if (values.Count <
+                3)
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger=<unknown> | reason=incomplete-entry");
+                continue;
+            }
+
+            var trigger =
+                lines[values[0]]
+                    .Trim()
+                    .Trim('"');
+
+            var keyText =
+                lines[values[1]]
+                    .Trim();
+
+            var flagsText =
+                lines[values[2]]
+                    .Trim();
+
+            if (trigger.Length ==
+                0)
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger=<empty> | keyIndex={keyText} | flags={flagsText} | reason=empty-trigger");
+                continue;
+            }
+
+            if (!int.TryParse(
+                    keyText,
+                    out var keyIndex))
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger={trigger} | keyIndex={keyText} | flags={flagsText} | reason=invalid-key-index");
+                continue;
+            }
+
+            if (!int.TryParse(
+                    flagsText,
+                    out _))
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger={trigger} | keyIndex={keyIndex} | flags={flagsText} | reason=invalid-flags");
+                continue;
+            }
+
+            // OMSI uses key index 0 for entries intentionally left without
+            // a keyboard assignment. They are valid configuration entries,
+            // not parser failures.
+            if (keyIndex ==
+                0)
+            {
+                unassignedCount++;
+                continue;
+            }
+
+            if (!keyIndexToWindowsKey.ContainsKey(
+                    keyIndex))
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger={trigger} | keyIndex={keyIndex} | flags={flagsText} | reason=key-index-not-in-{Path.GetFileName(path)}-table");
+            }
+        }
+
+        return new KeyboardEntryAudit(
+            unassignedCount,
+            invalidEntries);
+    }
+
     private static int CountEntries(
         string path)
     {
@@ -747,6 +877,8 @@ internal static class RuntimeOmsiKeyboardBindings
         string? keyTablePath,
         int entryCount,
         int resolvedEntryCount,
+        int unassignedEntryCount,
+        IReadOnlyList<string> invalidEntries,
         IReadOnlyList<RuntimeOmsiKeyboardBinding> bindings)
     {
         try
@@ -759,11 +891,30 @@ internal static class RuntimeOmsiKeyboardBindings
                     $"keyTable={keyTablePath ?? "<none>"}",
                     $"entries={entryCount}",
                     $"resolvedEntries={resolvedEntryCount}",
+                    $"unassignedEntries={unassignedEntryCount}",
+                    $"invalidEntries={invalidEntries.Count}",
                     $"distinctBindings={bindings.Count}",
-                    $"unresolvedEntries={Math.Max(entryCount - resolvedEntryCount, 0)}",
+                    $"unresolvedEntries={invalidEntries.Count}",
                     $"hostMapped={bindings.Count(binding => binding.HostAction.HasValue)}",
                     "",
-                    "bindings:"
+                    "invalidBindings:"
+                };
+
+            if (invalidEntries.Count ==
+                0)
+            {
+                lines.Add(
+                    "<none>");
+            }
+            else
+            {
+                lines.AddRange(
+                    invalidEntries);
+            }
+
+            lines.Add("");
+            lines.Add(
+                "bindings:"
                 };
 
             foreach (var binding in
