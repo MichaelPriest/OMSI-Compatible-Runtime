@@ -542,7 +542,12 @@ try
             "0",
             "no_cars",
             "0",
-            "1"),
+            "1",
+            "[rule]",
+            "0",
+            "priority",
+            "192",
+            "0"),
         Encoding.Unicode);
 
     // This tile exists on disk but is intentionally not declared in global.cfg.
@@ -2301,6 +2306,11 @@ try
         "Synthetic OMSI [rule] no_cars was not attached to the matching group/path.");
 
     Require(
+        secondRoadPath.TrafficPriority ==
+            192,
+        "Synthetic OMSI [rule] priority was not attached to the matching path.");
+
+    Require(
         firstRoadPath.ForwardConnections.Count == 1 &&
         firstRoadPath.ForwardConnections[0] ==
             secondRoadPath.Index,
@@ -3216,7 +3226,9 @@ try
                     [
                         2
                     ],
-                    Array.Empty<int>()),
+                    Array.Empty<int>(),
+                    TrafficPriority:
+                        64),
                 new WorldTrafficPathSegment(
                     1,
                     8501,
@@ -3237,7 +3249,9 @@ try
                     [
                         3
                     ],
-                    Array.Empty<int>()),
+                    Array.Empty<int>(),
+                    TrafficPriority:
+                        192),
                 new WorldTrafficPathSegment(
                     2,
                     -1,
@@ -3354,12 +3368,12 @@ try
         crossingReservationFirst.Length ==
             2 &&
         crossingReservationFirst[0].SegmentIndex ==
-            2 &&
+            0 &&
+        crossingReservationFirst[0].SpeedMetersPerSecond ==
+            0.0 &&
         crossingReservationFirst[1].SegmentIndex ==
-            1 &&
-        crossingReservationFirst[1].SpeedMetersPerSecond ==
-            0.0,
-        "Crossing reservation did not stop the second AI agent before an occupied multipath scenery crossing.");
+            3,
+        "OMSI priority did not let the higher-priority AI agent reserve the crossing first.");
 
     crossingReservationSimulation.Step(
         2.0);

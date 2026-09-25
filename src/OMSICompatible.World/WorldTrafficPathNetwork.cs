@@ -15,7 +15,8 @@ public sealed record WorldTrafficPathSegment(
     long? SceneryObjectId = null,
     double? SpeedLimitKilometersPerHour = null,
     IReadOnlyDictionary<int, double>? TrafficDensityWeights = null,
-    IReadOnlySet<int>? BlockedUnscheduledGroupIndices = null)
+    IReadOnlySet<int>? BlockedUnscheduledGroupIndices = null,
+    int TrafficPriority = 128)
 {
     public bool AllowsForward =>
         Direction is 0 or 2;
@@ -146,6 +147,9 @@ public static class WorldTrafficPathNetworkBuilder
                             pathIndex),
                         ResolveBlockedUnscheduledGroups(
                             spline.TrafficRules,
+                            pathIndex),
+                        ResolveTrafficPriority(
+                            spline.TrafficRules,
                             pathIndex)));
             }
         }
@@ -207,6 +211,9 @@ public static class WorldTrafficPathNetworkBuilder
                             instance.TrafficRules,
                             pathIndex),
                         ResolveBlockedUnscheduledGroups(
+                            instance.TrafficRules,
+                            pathIndex),
+                        ResolveTrafficPriority(
                             instance.TrafficRules,
                             pathIndex)));
             }
@@ -356,7 +363,8 @@ public static class WorldTrafficPathNetworkBuilder
                             builder.SceneryObject?.Id,
                             builder.SpeedLimitKilometersPerHour,
                             builder.TrafficDensityWeights,
-                            builder.BlockedUnscheduledGroupIndices))
+                            builder.BlockedUnscheduledGroupIndices,
+                            builder.TrafficPriority))
                 .ToArray();
 
         return new WorldTrafficPathNetwork(
@@ -1046,6 +1054,48 @@ public static class WorldTrafficPathNetworkBuilder
             : blocked;
     }
 
+    private static int ResolveTrafficPriority(
+        IReadOnlyList<WorldTrafficRule>? rules,
+        int pathIndex)
+    {
+        if (rules is null ||
+            rules.Count ==
+                0)
+        {
+            return 128;
+        }
+
+        var value =
+            rules
+                .Where(
+                    rule =>
+                        rule.PathIndex ==
+                            pathIndex &&
+                        rule.Name.Equals(
+                            "priority",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        (rule.GroupIndex is
+                             null or 0) &&
+                        double.IsFinite(
+                            rule.Value))
+                .Select(
+                    static rule =>
+                        (double?)rule.Value)
+                .LastOrDefault();
+
+        if (!value.HasValue)
+        {
+            return 128;
+        }
+
+        return Math.Clamp(
+            (int)Math.Round(
+                value.Value,
+                MidpointRounding.AwayFromZero),
+            byte.MinValue,
+            byte.MaxValue);
+    }
+
     private static double ConnectionTolerance(
         SegmentBuilder source,
         SegmentBuilder candidate) =>
@@ -1300,7 +1350,8 @@ public static class WorldTrafficPathNetworkBuilder
         WorldVector3[] points,
         double? speedLimitKilometersPerHour,
         IReadOnlyDictionary<int, double>? trafficDensityWeights,
-        IReadOnlySet<int>? blockedUnscheduledGroupIndices)
+        IReadOnlySet<int>? blockedUnscheduledGroupIndices,
+        int trafficPriority)
     {
         public int Index { get; } =
             index;
@@ -1331,6 +1382,9 @@ public static class WorldTrafficPathNetworkBuilder
 
         public IReadOnlySet<int>? BlockedUnscheduledGroupIndices { get; } =
             blockedUnscheduledGroupIndices;
+
+        public int TrafficPriority { get; } =
+            trafficPriority;
 
         public WorldVector3[] Points { get; } =
             points;

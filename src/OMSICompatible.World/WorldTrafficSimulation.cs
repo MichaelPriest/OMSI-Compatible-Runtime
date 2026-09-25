@@ -412,6 +412,7 @@ public sealed class WorldTrafficSimulation
 
         if (!CanEnterSegment(
                 agent,
+                segment,
                 nextSegment))
         {
             agent.SpeedMetersPerSecond =
@@ -434,6 +435,7 @@ public sealed class WorldTrafficSimulation
 
     private bool CanEnterSegment(
         Agent agent,
+        WorldTrafficPathSegment currentSegment,
         WorldTrafficPathSegment nextSegment)
     {
         if (!nextSegment.SceneryObjectId.HasValue ||
@@ -461,6 +463,42 @@ public sealed class WorldTrafficSimulation
 
             if (otherSegment.SceneryObjectId ==
                 crossingId)
+            {
+                return false;
+            }
+
+            if (otherSegment.SceneryObjectId.HasValue &&
+                _crossingSceneryObjectIds.Contains(
+                    otherSegment.SceneryObjectId.Value))
+            {
+                continue;
+            }
+
+            var otherNextIndex =
+                ResolveNextSegmentIndex(
+                    other,
+                    otherSegment);
+
+            if (!otherNextIndex.HasValue ||
+                !_segmentsByIndex.TryGetValue(
+                    otherNextIndex.Value,
+                    out var otherNextSegment) ||
+                otherNextSegment.SceneryObjectId !=
+                    crossingId)
+            {
+                continue;
+            }
+
+            if (otherSegment.TrafficPriority >
+                currentSegment.TrafficPriority)
+            {
+                return false;
+            }
+
+            if (otherSegment.TrafficPriority ==
+                    currentSegment.TrafficPriority &&
+                other.AgentIndex <
+                    agent.AgentIndex)
             {
                 return false;
             }
