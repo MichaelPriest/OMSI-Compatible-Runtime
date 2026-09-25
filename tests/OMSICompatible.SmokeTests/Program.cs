@@ -3193,6 +3193,192 @@ try
             0.0,
         "Default-disabled OMSI unscheduled group entered a path without explicit trafficdensity.");
 
+    var crossingReservationNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8500,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8501,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        3
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [
+                        4
+                    ],
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9001),
+                new WorldTrafficPathSegment(
+                    3,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        5
+                    ],
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9001),
+                new WorldTrafficPathSegment(
+                    4,
+                    8504,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    5,
+                    8505,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            15.0,
+                            0.0,
+                            5.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>())
+            ],
+            6,
+            0,
+            0,
+            0,
+            4,
+            0,
+            2,
+            0);
+
+    var crossingReservationSimulation =
+        new WorldTrafficSimulation(
+            crossingReservationNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                2);
+
+    crossingReservationSimulation.Step(
+        1.0);
+
+    var crossingReservationFirst =
+        crossingReservationSimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        crossingReservationFirst.Length ==
+            2 &&
+        crossingReservationFirst[0].SegmentIndex ==
+            2 &&
+        crossingReservationFirst[1].SegmentIndex ==
+            1 &&
+        crossingReservationFirst[1].SpeedMetersPerSecond ==
+            0.0,
+        "Crossing reservation did not stop the second AI agent before an occupied multipath scenery crossing.");
+
+    crossingReservationSimulation.Step(
+        2.0);
+
+    var crossingReservationReleased =
+        crossingReservationSimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        crossingReservationReleased[0].SegmentIndex ==
+            4 &&
+        crossingReservationReleased[1].SegmentIndex is
+            3 or 5,
+        "Crossing reservation did not release after the first AI agent left the scenery crossing.");
+
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
             [

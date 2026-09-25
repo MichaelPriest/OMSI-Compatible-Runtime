@@ -30,6 +30,7 @@ public sealed class WorldTrafficSimulation
 
     private readonly WorldTrafficPathNetwork _network;
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
+    private readonly HashSet<long> _crossingSceneryObjectIds;
     private readonly List<Agent> _agents;
 
     public WorldTrafficSimulation(
@@ -49,6 +50,25 @@ public sealed class WorldTrafficSimulation
             network.Segments.ToDictionary(
                 static segment =>
                     segment.Index);
+
+        _crossingSceneryObjectIds =
+            network.Segments
+                .Where(
+                    static segment =>
+                        segment.Type ==
+                            0 &&
+                        segment.SceneryObjectId.HasValue)
+                .GroupBy(
+                    static segment =>
+                        segment.SceneryObjectId!.Value)
+                .Where(
+                    static group =>
+                        group.Count() >
+                            1)
+                .Select(
+                    static group =>
+                        group.Key)
+                .ToHashSet();
 
         var groupDefinitions =
             (aiCatalog.UnscheduledVehicleGroups ??
@@ -92,11 +112,14 @@ public sealed class WorldTrafficSimulation
         var roadSegments =
             network.Segments
                 .Where(
-                    static segment =>
+                    segment =>
                         segment.Type ==
-                        0 &&
+                            0 &&
                         segment.Points.Count >=
-                        2)
+                            2 &&
+                        (!segment.SceneryObjectId.HasValue ||
+                         !_crossingSceneryObjectIds.Contains(
+                             segment.SceneryObjectId.Value)))
                 .OrderBy(
                     static segment =>
                         segment.Index)
@@ -387,6 +410,16 @@ public sealed class WorldTrafficSimulation
             return false;
         }
 
+        if (!CanEnterSegment(
+                agent,
+                nextSegment))
+        {
+            agent.SpeedMetersPerSecond =
+                0.0;
+
+            return false;
+        }
+
         agent.SegmentIndex =
             next.Value;
 
@@ -395,6 +428,43 @@ public sealed class WorldTrafficSimulation
                 ? 0.0
                 : SegmentLength(
                     nextSegment);
+
+        return true;
+    }
+
+    private bool CanEnterSegment(
+        Agent agent,
+        WorldTrafficPathSegment nextSegment)
+    {
+        if (!nextSegment.SceneryObjectId.HasValue ||
+            !_crossingSceneryObjectIds.Contains(
+                nextSegment.SceneryObjectId.Value))
+        {
+            return true;
+        }
+
+        var crossingId =
+            nextSegment.SceneryObjectId.Value;
+
+        foreach (var other in
+                 _agents)
+        {
+            if (ReferenceEquals(
+                    other,
+                    agent) ||
+                !_segmentsByIndex.TryGetValue(
+                    other.SegmentIndex,
+                    out var otherSegment))
+            {
+                continue;
+            }
+
+            if (otherSegment.SceneryObjectId ==
+                crossingId)
+            {
+                return false;
+            }
+        }
 
         return true;
     }
