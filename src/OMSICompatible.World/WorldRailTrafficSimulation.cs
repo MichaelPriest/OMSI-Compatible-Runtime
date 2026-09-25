@@ -474,9 +474,30 @@ public sealed class WorldRailTrafficSimulation
                     continue;
                 }
 
+                var blockedEntryDistance =
+                    ResolveBlockedEntryDistance(
+                        agent,
+                        segment);
+
                 var targetSpeed =
                     ResolveSegmentMaximumSpeed(
                         segment);
+
+                if (blockedEntryDistance.HasValue)
+                {
+                    var brakingLimitedSpeed =
+                        Math.Sqrt(
+                            2.0 *
+                            BrakingMetersPerSecondSquared *
+                            Math.Max(
+                                blockedEntryDistance.Value,
+                                0.0));
+
+                    targetSpeed =
+                        Math.Min(
+                            targetSpeed,
+                            brakingLimitedSpeed);
+                }
 
                 UpdateAgentSpeed(
                     agent,
@@ -486,6 +507,16 @@ public sealed class WorldRailTrafficSimulation
                 var remainingDistance =
                     agent.SpeedMetersPerSecond *
                     step;
+
+                if (blockedEntryDistance.HasValue)
+                {
+                    remainingDistance =
+                        Math.Min(
+                            remainingDistance,
+                            Math.Max(
+                                blockedEntryDistance.Value,
+                                0.0));
+                }
 
                 var guard =
                     0;
@@ -562,6 +593,19 @@ public sealed class WorldRailTrafficSimulation
                     {
                         break;
                     }
+                }
+
+                if (blockedEntryDistance.HasValue &&
+                    _segmentsByIndex.TryGetValue(
+                        agent.SegmentIndex,
+                        out var stoppedSegment) &&
+                    DistanceToSegmentExit(
+                        agent,
+                        stoppedSegment) <=
+                        0.0001)
+                {
+                    agent.SpeedMetersPerSecond =
+                        0.0;
                 }
 
                 ReleaseClearedSignalRoutes(
@@ -647,96 +691,16 @@ public sealed class WorldRailTrafficSimulation
             }
         }
 
-        var candidates =
-            connections
-                .Select(
-                    index =>
-                        _segmentsByIndex.TryGetValue(
-                            index,
-                            out var candidate)
-                            ? candidate
-                            : null)
-                .Where(
-                    candidate =>
-                        candidate is not null &&
-                        !IsSegmentOccupiedByOtherAgent(
-                            candidate.Index,
-                            agent.AgentIndex) &&
-                        IsTrafficGroupAllowed(
-                            candidate,
-                            agent.GroupIndex,
-                            agent.DefaultDensityClassIndex) &&
-                        (agent.TravelForward
-                            ? candidate.AllowsForward
-                            : candidate.AllowsReverse))
-                .Select(
-                    candidate =>
-                        new
-                        {
-                            Segment =
-                                candidate!,
-                            Weight =
-                                ResolveTrafficDensityWeight(
-                                    candidate!,
-                                    agent.GroupIndex,
-                                    agent.DefaultDensityClassIndex)
-                        })
-                .Where(
-                    static candidate =>
-                        candidate.Weight >
-                            0.0)
-                .OrderBy(
-                    static candidate =>
-                        candidate.Segment.Index)
-                .ToArray();
-
-        if (candidates.Length ==
-            0)
-        {
-            agent.SpeedMetersPerSecond =
-                0.0;
-            return false;
-        }
-
-        var totalWeight =
-            candidates.Sum(
-                static candidate =>
-                    candidate.Weight);
-
-        if (!double.IsFinite(
-                totalWeight) ||
-            totalWeight <=
-                0.0)
-        {
-            agent.SpeedMetersPerSecond =
-                0.0;
-            return false;
-        }
-
-        var selector =
-            ((agent.AgentIndex +
-              1) *
-             0.6180339887498949 %
-             1.0) *
-            totalWeight;
-
         var next =
-            candidates[^1]
-                .Segment;
+            SelectNextAvailableSegment(
+                agent,
+                connections);
 
-        foreach (var candidate in
-                 candidates)
+        if (next is null)
         {
-            selector -=
-                candidate.Weight;
-
-            if (selector <=
-                0.0)
-            {
-                next =
-                    candidate.Segment;
-                break;
-            }
+            agent.SpeedMetersPerSecond =
+                0.0;
+            return false;
         }
 
         WorldRailSignalRoute? nextSignalRoute =
@@ -807,6 +771,215 @@ public sealed class WorldRailTrafficSimulation
         }
 
         return true;
+    }
+
+    private double? ResolveBlockedEntryDistance(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
+        var connections =
+            agent.TravelForward
+                ? segment.ForwardConnections
+                : segment.ReverseConnections;
+
+        var activeSignalRoute =
+            ResolveActiveSignalRoute(
+                agent);
+
+        if (activeSignalRoute is not null)
+        {
+            var routePosition =
+                IndexOfSegment(
+                    activeSignalRoute,
+                    segment.Index);
+
+            if (routePosition >=
+                    0 &&
+                routePosition <
+                    activeSignalRoute.SegmentIndices.Count -
+                    1)
+            {
+                var expectedSegmentIndex =
+                    activeSignalRoute.SegmentIndices[
+                        routePosition +
+                        1];
+
+                if (!connections.Contains(
+                        expectedSegmentIndex) ||
+                    !_segmentsByIndex.TryGetValue(
+                        expectedSegmentIndex,
+                        out var expectedSegment) ||
+                    IsSegmentOccupiedByOtherAgent(
+                        expectedSegmentIndex,
+                        agent.AgentIndex) ||
+                    !IsTrafficGroupAllowed(
+                        expectedSegment,
+                        agent.GroupIndex,
+                        agent.DefaultDensityClassIndex) ||
+                    !(agent.TravelForward
+                        ? expectedSegment.AllowsForward
+                        : expectedSegment.AllowsReverse))
+                {
+                    return DistanceToSegmentExit(
+                        agent,
+                        segment);
+                }
+
+                return null;
+            }
+        }
+
+        var next =
+            SelectNextAvailableSegment(
+                agent,
+                connections);
+
+        if (next is null)
+        {
+            return DistanceToSegmentExit(
+                agent,
+                segment);
+        }
+
+        if (_signalRoutesByFirstSegment.TryGetValue(
+                next.Index,
+                out var candidateSignalRoutes))
+        {
+            var nextSignalRoute =
+                candidateSignalRoutes
+                    .Where(
+                        route =>
+                            IsSignalRouteTraversable(
+                                agent,
+                                route))
+                    .OrderBy(
+                        static route =>
+                            route.RouteIndex)
+                    .FirstOrDefault();
+
+            if (nextSignalRoute is null ||
+                _interlocking is null ||
+                !_interlocking.CanReserve(
+                    nextSignalRoute.RouteIndex,
+                    agent.AgentIndex,
+                    BuildOccupiedSegments(
+                        agent.AgentIndex)))
+            {
+                return DistanceToSegmentExit(
+                    agent,
+                    segment);
+            }
+        }
+
+        return null;
+    }
+
+    private WorldTrafficPathSegment? SelectNextAvailableSegment(
+        Agent agent,
+        IReadOnlyList<int> connections)
+    {
+        var candidates =
+            connections
+                .Select(
+                    index =>
+                        _segmentsByIndex.TryGetValue(
+                            index,
+                            out var candidate)
+                            ? candidate
+                            : null)
+                .Where(
+                    candidate =>
+                        candidate is not null &&
+                        !IsSegmentOccupiedByOtherAgent(
+                            candidate.Index,
+                            agent.AgentIndex) &&
+                        IsTrafficGroupAllowed(
+                            candidate,
+                            agent.GroupIndex,
+                            agent.DefaultDensityClassIndex) &&
+                        (agent.TravelForward
+                            ? candidate.AllowsForward
+                            : candidate.AllowsReverse))
+                .Select(
+                    candidate =>
+                        new
+                        {
+                            Segment =
+                                candidate!,
+                            Weight =
+                                ResolveTrafficDensityWeight(
+                                    candidate!,
+                                    agent.GroupIndex,
+                                    agent.DefaultDensityClassIndex)
+                        })
+                .Where(
+                    static candidate =>
+                        candidate.Weight >
+                            0.0)
+                .OrderBy(
+                    static candidate =>
+                        candidate.Segment.Index)
+                .ToArray();
+
+        if (candidates.Length ==
+            0)
+        {
+            return null;
+        }
+
+        var totalWeight =
+            candidates.Sum(
+                static candidate =>
+                    candidate.Weight);
+
+        if (!double.IsFinite(
+                totalWeight) ||
+            totalWeight <=
+                0.0)
+        {
+            return null;
+        }
+
+        var selector =
+            ((agent.AgentIndex +
+              1) *
+             0.6180339887498949 %
+             1.0) *
+            totalWeight;
+
+        foreach (var candidate in
+                 candidates)
+        {
+            selector -=
+                candidate.Weight;
+
+            if (selector <=
+                0.0)
+            {
+                return candidate.Segment;
+            }
+        }
+
+        return candidates[^1]
+            .Segment;
+    }
+
+    private static double DistanceToSegmentExit(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
+        var segmentLength =
+            SegmentLength(
+                segment);
+
+        return agent.TravelForward
+            ? Math.Max(
+                segmentLength -
+                    agent.DistanceMeters,
+                0.0)
+            : Math.Max(
+                agent.DistanceMeters,
+                0.0);
     }
 
     private WorldRailSignalRoute? ResolveActiveSignalRoute(
