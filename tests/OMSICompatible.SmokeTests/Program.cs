@@ -395,7 +395,7 @@ try
             "{endif}",
             "{end}",
             "{macro:helper}",
-            "(C.L.engine_idle)",
+            "(C.L.ENGINE_IDLE)",
             "(S.L.idle_copy)",
             "{end}"),
         Encoding.Unicode);
@@ -1532,11 +1532,11 @@ try
         scriptCatalog.Program.FrameBlocks.Count == 1 &&
         scriptCatalog.Program.Macros.ContainsKey(
             "HELPER") &&
-        !scriptCatalog.NumericVariables.Contains(
+        scriptCatalog.NumericVariables.Contains(
             "ENGINE_SPEED") &&
-        !scriptCatalog.Constants.ContainsKey(
+        scriptCatalog.Constants.ContainsKey(
             "ENGINE_IDLE") &&
-        !scriptCatalog.Curves.ContainsKey(
+        scriptCatalog.Curves.ContainsKey(
             "ENGINE_CURVE"),
         "Synthetic OMSI script entry points were not parsed.");
 
@@ -1652,17 +1652,13 @@ try
     Require(
         Math.Abs(
             scriptRuntime.GetSystem(
-                "GetTime") -
+                "getTime") -
             10.0) < 0.0001 &&
         Math.Abs(
-            scriptRuntime.GetSystem(
-                "getTime")) <
-            0.0001 &&
-        Math.Abs(
             scriptRuntime.GetLocal(
-                "ENGINE_SPEED")) <
-            0.0001,
-        "OMSI variable and system-variable names must preserve casing.");
+                "ENGINE_SPEED") -
+            660.0) < 0.0001,
+        "OMSI variables and system variables must resolve case-insensitively.");
 
     Require(
         scriptRuntime.HasTrigger(
