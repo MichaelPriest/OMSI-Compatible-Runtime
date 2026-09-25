@@ -306,6 +306,17 @@ public sealed record RuntimeSceneryAssetInfo(
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
     RuntimeTreeInfo? Tree);
 
+public sealed record RuntimeTrafficAgentInfo(
+    int AgentIndex,
+    int SegmentIndex,
+    double DistanceMeters,
+    double SpeedMetersPerSecond,
+    string VehiclePath,
+    double X,
+    double Y,
+    double Z,
+    double HeadingRadians);
+
 public sealed record RuntimeAiFileReferenceInfo(
     string DeclaredPath,
     string? ResolvedPath);

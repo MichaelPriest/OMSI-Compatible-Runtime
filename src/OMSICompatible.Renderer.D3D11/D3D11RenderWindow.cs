@@ -77,6 +77,13 @@ public sealed class D3D11RenderWindow : Form
     ];
 
     private RuntimeWindowInfo _windowInfo;
+    private readonly Func<
+        double,
+        IReadOnlyList<RuntimeTrafficAgentInfo>>?
+        _trafficStep;
+    private IReadOnlyList<RuntimeTrafficAgentInfo>
+        _trafficAgents =
+            Array.Empty<RuntimeTrafficAgentInfo>();
     private readonly System.Windows.Forms.Timer _renderTimer;
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
@@ -342,9 +349,19 @@ public sealed class D3D11RenderWindow : Form
         bool materialLightMapEnabled = true,
         bool materialReflectionMapEnabled = true,
         bool materialBumpMapEnabled = true,
-        bool materialNightMapEnabled = true)
+        bool materialNightMapEnabled = true,
+        Func<
+            double,
+            IReadOnlyList<RuntimeTrafficAgentInfo>>?
+            trafficStep = null)
     {
         _windowInfo = windowInfo;
+        _trafficStep =
+            trafficStep;
+        _trafficAgents =
+            _trafficStep?.Invoke(
+                0.0) ??
+            Array.Empty<RuntimeTrafficAgentInfo>();
         _scriptRuntime = scriptRuntime;
         _sectionScriptRuntimes =
             sectionScriptRuntimes is null
@@ -5532,6 +5549,14 @@ public sealed class D3D11RenderWindow : Form
                 elapsed,
                 0.0,
                 0.1);
+
+        if (_trafficStep is not null)
+        {
+            _trafficAgents =
+                _trafficStep(
+                    deltaSeconds) ??
+                Array.Empty<RuntimeTrafficAgentInfo>();
+        }
 
         var controllerFrame =
             _controllerInputEnabled

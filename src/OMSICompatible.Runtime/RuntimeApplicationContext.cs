@@ -24,6 +24,7 @@ internal sealed class RuntimeApplicationContext :
 
     private D3D11RenderWindow? _runtimeWindow;
     private OmsiVehicleAsset? _vehicleAsset;
+    private WorldTrafficSimulation? _trafficSimulation;
     private (int X, int Y)? _pendingStreamingCenter;
     private int _loadedCenterX;
     private int _loadedCenterY;
@@ -259,6 +260,14 @@ internal sealed class RuntimeApplicationContext :
             _vehicleAsset =
                 vehicle;
 
+            _trafficSimulation =
+                CreateTrafficSimulation(
+                    world);
+
+            WriteTrafficDiagnostics(
+                world,
+                _trafficSimulation);
+
             if (vehicle is not null)
             {
                 WriteVehicleLoadDiagnostics(
@@ -374,7 +383,9 @@ internal sealed class RuntimeApplicationContext :
                     materialBumpMapEnabled:
                         _options.MaterialBumpMap,
                     materialNightMapEnabled:
-                        _options.MaterialNightMap);
+                        _options.MaterialNightMap,
+                    trafficStep:
+                        StepTrafficSimulation);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
@@ -904,6 +915,14 @@ internal sealed class RuntimeApplicationContext :
                     return;
                 }
 
+                _trafficSimulation =
+                    CreateTrafficSimulation(
+                        streamedWorld);
+
+                WriteTrafficDiagnostics(
+                    streamedWorld,
+                    _trafficSimulation);
+
                 var runtimeInfo =
                     BuildRuntimeInfo(
                         streamedWorld,
@@ -933,6 +952,71 @@ internal sealed class RuntimeApplicationContext :
         {
             _streamingGate.Release();
         }
+    }
+
+    private static WorldTrafficSimulation
+        CreateTrafficSimulation(
+            WorldDefinition world) =>
+        new(
+            world.TrafficPaths,
+            world.AiCatalog,
+            maximumAgents:
+                12);
+
+    private IReadOnlyList<RuntimeTrafficAgentInfo>
+        StepTrafficSimulation(
+            double deltaSeconds)
+    {
+        var simulation =
+            _trafficSimulation;
+
+        if (simulation is null)
+        {
+            return Array.Empty<
+                RuntimeTrafficAgentInfo>();
+        }
+
+        if (double.IsFinite(
+                deltaSeconds) &&
+            deltaSeconds >
+                0.0)
+        {
+            simulation.Step(
+                deltaSeconds);
+        }
+
+        return simulation
+            .Snapshot()
+            .Select(
+                static agent =>
+                    new RuntimeTrafficAgentInfo(
+                        agent.AgentIndex,
+                        agent.SegmentIndex,
+                        agent.DistanceMeters,
+                        agent.SpeedMetersPerSecond,
+                        agent.VehiclePath,
+                        agent.Position.X,
+                        agent.Position.Y,
+                        agent.Position.Z,
+                        agent.HeadingRadians))
+            .ToArray();
+    }
+
+    private static void WriteTrafficDiagnostics(
+        WorldDefinition world,
+        WorldTrafficSimulation simulation)
+    {
+        var agents =
+            simulation.Snapshot();
+
+        Console.WriteLine(
+            $"[traffic] agents={agents.Count}; " +
+            $"paths={world.TrafficPaths.Segments.Count}; " +
+            $"road={world.TrafficPaths.RoadVehicleSegmentCount}; " +
+            $"connected={world.TrafficPaths.ConnectedEndpointCount}; " +
+            $"terminal={world.TrafficPaths.TerminalEndpointCount}; " +
+            $"boundary={world.TrafficPaths.BoundaryEndpointCount}; " +
+            $"unmatched={world.TrafficPaths.UnmatchedEndpointCount}");
     }
 
     private static RuntimeWindowInfo BuildRuntimeInfo(
