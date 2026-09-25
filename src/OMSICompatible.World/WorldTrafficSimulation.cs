@@ -25,6 +25,8 @@ public sealed class WorldTrafficSimulation
         4.0;
     private const double TrafficLookAheadMeters =
         120.0;
+    private const double TrafficStopLineBufferMeters =
+        0.35;
     private const int MaximumTrafficLookAheadSegments =
         32;
 
@@ -863,24 +865,91 @@ public sealed class WorldTrafficSimulation
                     agent.CruiseSpeedMetersPerSecond)
                 : agent.CruiseSpeedMetersPerSecond;
 
-        if (!leadingDistance.HasValue)
+        var targetSpeed =
+            segmentMaximum;
+
+        if (leadingDistance.HasValue)
         {
-            return segmentMaximum;
+            var usableDistance =
+                Math.Max(
+                    leadingDistance.Value -
+                        MinimumTrafficSeparationMeters,
+                    0.0);
+
+            var followingSpeed =
+                usableDistance /
+                FollowingTimeHeadwaySeconds;
+
+            targetSpeed =
+                Math.Min(
+                    targetSpeed,
+                    followingSpeed);
         }
 
-        var usableDistance =
-            Math.Max(
-                leadingDistance.Value -
-                    MinimumTrafficSeparationMeters,
+        if (segment is not null)
+        {
+            var stopDistance =
+                ResolveBlockedEntryDistance(
+                    agent,
+                    segment);
+
+            if (stopDistance.HasValue)
+            {
+                var usableStopDistance =
+                    Math.Max(
+                        stopDistance.Value -
+                            TrafficStopLineBufferMeters,
+                        0.0);
+
+                var brakingLimitedSpeed =
+                    Math.Sqrt(
+                        2.0 *
+                        TrafficBrakingMetersPerSecondSquared *
+                        usableStopDistance);
+
+                targetSpeed =
+                    Math.Min(
+                        targetSpeed,
+                        brakingLimitedSpeed);
+            }
+        }
+
+        return targetSpeed;
+    }
+
+    private double? ResolveBlockedEntryDistance(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
+        var nextIndex =
+            ResolveNextSegmentIndex(
+                agent,
+                segment);
+
+        if (!nextIndex.HasValue ||
+            !_segmentsByIndex.TryGetValue(
+                nextIndex.Value,
+                out var nextSegment) ||
+            CanEnterSegment(
+                agent,
+                segment,
+                nextSegment))
+        {
+            return null;
+        }
+
+        var segmentLength =
+            SegmentLength(
+                segment);
+
+        return agent.TravelForward
+            ? Math.Max(
+                segmentLength -
+                    agent.DistanceMeters,
+                0.0)
+            : Math.Max(
+                agent.DistanceMeters,
                 0.0);
-
-        var followingSpeed =
-            usableDistance /
-            FollowingTimeHeadwaySeconds;
-
-        return Math.Min(
-            segmentMaximum,
-            followingSpeed);
     }
 
     private static bool IsTrafficGroupAllowed(

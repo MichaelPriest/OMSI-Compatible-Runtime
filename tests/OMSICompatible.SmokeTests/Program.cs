@@ -3485,6 +3485,32 @@ try
             maximumAgents:
                 1);
 
+    var initialSignalAgent =
+        signalSimulation
+            .Snapshot()
+            .Single();
+
+    signalSimulation.Step(
+        0.5);
+
+    var brakingSignalAgent =
+        signalSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        brakingSignalAgent.SegmentIndex ==
+            0 &&
+        brakingSignalAgent.Position.Z >
+            initialSignalAgent.Position.Z &&
+        brakingSignalAgent.Position.Z <
+            5.0 &&
+        brakingSignalAgent.SpeedMetersPerSecond >
+            0.0 &&
+        brakingSignalAgent.SpeedMetersPerSecond <
+            initialSignalAgent.SpeedMetersPerSecond,
+        "Traffic agent did not brake progressively before a red OMSI traffic-light path.");
+
     signalSimulation.Step(
         1.0);
 
@@ -3496,12 +3522,14 @@ try
     Require(
         redSignalAgent.SegmentIndex ==
             0 &&
+        redSignalAgent.Position.Z <
+            5.0 &&
         redSignalAgent.SpeedMetersPerSecond <
-            0.0001,
-        "Traffic agent did not stop before a red OMSI traffic-light path.");
+            0.5,
+        "Traffic agent did not stop smoothly before the red OMSI traffic-light path.");
 
     signalSimulation.Step(
-        2.0);
+        1.5);
 
     var greenSignalAgent =
         signalSimulation
