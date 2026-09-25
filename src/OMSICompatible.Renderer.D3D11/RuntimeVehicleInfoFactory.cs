@@ -105,10 +105,12 @@ public static class RuntimeVehicleInfoFactory
                                                                                             freeTexture.SourceTextureName,
                                                                                             freeTexture.VariableName))
                                                                                 .ToArray(),
-                                                                            item.TextTextureIndex))
+                                                                            item.TextTextureIndex,
+                                                                            item.MaterialChangeIsNightMap))
                                                                 .ToArray()))
                                                 .ToArray(),
-                                            material.HasTransMapDirective))
+                                            material.HasTransMapDirective,
+                                            material.MaterialChangeIsNightMap))
                                 .ToArray(),
                             mesh.ViewpointFlag,
                             mesh.LodThreshold,
