@@ -3387,11 +3387,11 @@ try
             .ToArray();
 
     Require(
-        crossingReservationReleased[0].SegmentIndex ==
-            4 &&
-        crossingReservationReleased[1].SegmentIndex is
-            3 or 5,
-        "Crossing reservation did not release after the first AI agent left the scenery crossing.");
+        crossingReservationReleased[0].SegmentIndex is
+            2 or 4 &&
+        crossingReservationReleased[1].SegmentIndex ==
+            5,
+        "Crossing reservation did not release the lower-priority AI only after the higher-priority agent left.");
 
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
