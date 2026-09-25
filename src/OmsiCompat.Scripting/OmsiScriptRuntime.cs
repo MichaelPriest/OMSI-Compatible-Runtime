@@ -127,6 +127,8 @@ public sealed class OmsiScriptRuntime
         _locals;
     private readonly Dictionary<string, string>
         _stringLocals;
+    private readonly HashSet<string>
+        _writtenLocalVariables;
     private readonly Dictionary<string, double>
         _mapVariables =
             new(
@@ -157,6 +159,10 @@ public sealed class OmsiScriptRuntime
                 static name => name,
                 static _ => string.Empty,
                 StringComparer.OrdinalIgnoreCase);
+
+        _writtenLocalVariables =
+            CollectWrittenLocalVariables(
+                catalog.Program);
     }
 
     public event Action<string>?
@@ -229,6 +235,13 @@ public sealed class OmsiScriptRuntime
     public bool HasLocalVariable(
         string name) =>
         _catalog.NumericVariables.Contains(
+            name);
+
+    public bool WritesLocalVariable(
+        string name) =>
+        !string.IsNullOrWhiteSpace(
+            name) &&
+        _writtenLocalVariables.Contains(
             name);
 
     public void SetLocal(
@@ -1227,6 +1240,44 @@ public sealed class OmsiScriptRuntime
         Stack<ConditionalFrame> conditions) =>
             conditions.Count == 0 ||
             conditions.Peek().Active;
+
+    private static HashSet<string> CollectWrittenLocalVariables(
+        OmsiScriptProgram program)
+    {
+        var result =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        var blocks =
+            program.InitBlocks
+                .Concat(
+                    program.FrameBlocks)
+                .Concat(
+                    program.FrameAiBlocks)
+                .Concat(
+                    program.Macros.Values)
+                .Concat(
+                    program.Triggers.Values);
+
+        foreach (var block in
+                 blocks)
+        {
+            foreach (var token in
+                     block.Tokens)
+            {
+                if (TryCommand(
+                        token,
+                        "(S.L.",
+                        out var name))
+                {
+                    result.Add(
+                        name);
+                }
+            }
+        }
+
+        return result;
+    }
 
     private static bool TryCommand(
         string token,

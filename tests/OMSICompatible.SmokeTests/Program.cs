@@ -1847,6 +1847,21 @@ try
         new OmsiScriptRuntime(
             scriptCatalog);
 
+    Require(
+        scriptRuntime.WritesLocalVariable(
+            "engine_speed"),
+        "OMSI script write analysis did not detect an S.L. target.");
+
+    Require(
+        scriptRuntime.WritesLocalVariable(
+            "mesh_visible"),
+        "OMSI script write analysis missed an init-block S.L. target.");
+
+    Require(
+        !scriptRuntime.WritesLocalVariable(
+            "Throttle"),
+        "OMSI script write analysis incorrectly marked a read-only host variable as script-authored.");
+
     var invokedSystemMacros =
         new List<string>();
 
