@@ -6663,12 +6663,9 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds,
             absoluteSeconds);
 
-        // Host controls are inputs to the OMSI VM. Write them before the
-        // frame, then let cockpit/engine/electrical scripts derive the
-        // actual animation variables instead of overwriting their outputs
-        // after the frame has run.
-        WriteVehicleControlStateToScripts();
-
+        // OMSI scripts own engine/electrical/gearbox state. The host feeds
+        // predefined physical/input variables, then the vehicle scripts
+        // calculate drivetrain, brake, cockpit and sound state themselves.
         foreach (var binding in
                  _activeOmsiContinuousBindings)
         {
@@ -6676,8 +6673,17 @@ public sealed class D3D11RenderWindow : Form
                 binding.Trigger);
         }
 
+        if (!string.IsNullOrWhiteSpace(
+                _activeVehicleMouseTrigger))
+        {
+            DispatchOmsiScriptTrigger(
+                _activeVehicleMouseTrigger +
+                "_drag");
+        }
+
         _scriptRuntime.ExecuteFrame();
         SynchronizeHostVehicleStateFromScripts();
+        SynchronizeOmsiScriptDynamics();
 
         if (!_vehiclePanelAuditWritten &&
             absoluteSeconds >= 1.0)
@@ -6686,57 +6692,6 @@ public sealed class D3D11RenderWindow : Form
             _vehiclePanelAuditWritten =
                 true;
         }
-    }
-
-    private void WriteVehicleControlStateToScripts()
-    {
-        if (_scriptRuntime is null)
-        {
-            return;
-        }
-
-        var electrical =
-            _vehicle.ElectricalSystemEnabled
-                ? 1.0
-                : 0.0;
-
-        _scriptRuntime.SetLocal(
-            "elec_busbar_main",
-            electrical);
-        _scriptRuntime.SetLocal(
-            "elec_busbar_main_sw",
-            electrical);
-        _scriptRuntime.SetLocal(
-            "engine_on",
-            _vehicle.EngineRunning
-                ? 1.0
-                : 0.0);
-        _scriptRuntime.SetLocal(
-            "bremse_feststell",
-            _vehicle.ParkingBrakeEngaged
-                ? 1.0
-                : 0.0);
-
-        // OMSI automatic gearbox selector convention:
-        // 0 = reverse, 1 = neutral, 2 = drive.
-        // MEP engine.osc explicitly requires gangwahl == 1 before starting.
-        var omsiGearSelector =
-            _vehicle.Gear switch
-            {
-                RuntimeDriveGear.Reverse =>
-                    0.0,
-                RuntimeDriveGear.Drive =>
-                    2.0,
-                _ =>
-                    1.0
-            };
-
-        _scriptRuntime.SetLocal(
-            "antrieb_getr_gangwahl",
-            omsiGearSelector);
-        _scriptRuntime.SetLocal(
-            "antrieb_getr_gangvorwahl",
-            omsiGearSelector);
     }
 
     private void UpdateScriptHostVariables(
@@ -6799,6 +6754,20 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime.SetLocal(
             "Velocity_Ground",
             _vehicle.SpeedKph);
+        _scriptRuntime.SetLocal(
+            "n_Wheel",
+            _vehicle.WheelRotationSpeedRpm);
+
+        // OMSI vehicle coordinates are x=right, y=forward, z=up.
+        _scriptRuntime.SetLocal(
+            "A_Trans_X",
+            _vehicle.LateralAccelerationMetersPerSecondSquared);
+        _scriptRuntime.SetLocal(
+            "A_Trans_Y",
+            _vehicle.LongitudinalAccelerationMetersPerSecondSquared);
+        _scriptRuntime.SetLocal(
+            "A_Trans_Z",
+            0.0);
 
         // Keep input/physics steering independent from model animation.
         // The OMSI Axle_Steering_* variables use the same signed steering
@@ -8265,6 +8234,86 @@ public sealed class D3D11RenderWindow : Form
                 binding.Key ==
                 key);
 
+    private void SynchronizeOmsiScriptDynamics()
+    {
+        if (_scriptRuntime is null)
+        {
+            _vehicle.SetOmsiScriptDynamics(
+                false,
+                0.0,
+                0.0);
+            return;
+        }
+
+        var hasWheelTorque =
+            _scriptRuntime.HasLocalVariable(
+                "M_Wheel");
+
+        if (!hasWheelTorque)
+        {
+            _vehicle.SetOmsiScriptDynamics(
+                false,
+                0.0,
+                0.0);
+            return;
+        }
+
+        var wheelTorque =
+            _scriptRuntime.GetLocal(
+                "M_Wheel");
+
+        var brakeForce =
+            0.0;
+        var hasPerWheelBrake =
+            false;
+
+        // OMSI counts axles continuously across articulated sections.
+        // Supporting eight axles here is intentionally above the common
+        // 2-4 axle bus case and costs practically nothing.
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            foreach (var side in
+                     new[] { "L", "R" })
+            {
+                var variable =
+                    $"Axle_Brakeforce_{axle}_{side}";
+
+                if (!_scriptRuntime.HasLocalVariable(
+                        variable))
+                {
+                    continue;
+                }
+
+                hasPerWheelBrake =
+                    true;
+
+                brakeForce +=
+                    Math.Max(
+                        0.0,
+                        _scriptRuntime.GetLocal(
+                            variable));
+            }
+        }
+
+        if (!hasPerWheelBrake &&
+            _scriptRuntime.HasLocalVariable(
+                "Brakeforce"))
+        {
+            brakeForce =
+                Math.Max(
+                    0.0,
+                    _scriptRuntime.GetLocal(
+                        "Brakeforce"));
+        }
+
+        _vehicle.SetOmsiScriptDynamics(
+            true,
+            wheelTorque,
+            brakeForce);
+    }
+
     private void SynchronizeHostVehicleStateFromScripts()
     {
         if (_scriptRuntime is null)
@@ -8305,6 +8354,23 @@ public sealed class D3D11RenderWindow : Form
                 _scriptRuntime.GetLocal(
                     "bremse_feststell") >
                 0.5);
+        }
+
+        if (_scriptRuntime.HasLocalVariable(
+                "antrieb_getr_gangwahl"))
+        {
+            var selector =
+                _scriptRuntime.GetLocal(
+                    "antrieb_getr_gangwahl");
+
+            _vehicle.SelectGear(
+                selector <
+                    0.5
+                    ? RuntimeDriveGear.Reverse
+                    : selector <
+                        1.5
+                        ? RuntimeDriveGear.Neutral
+                        : RuntimeDriveGear.Drive);
         }
     }
 
