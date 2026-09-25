@@ -12,7 +12,9 @@ concurrency:
 
 jobs:
   build-x64:
-    runs-on: windows-latest
+    # Native ODE x64 is compiled with MSVC. Pin the image so the
+    # Visual Studio 2022 generator/toolchain remains deterministic.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
