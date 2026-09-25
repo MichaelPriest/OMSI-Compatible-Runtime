@@ -276,7 +276,23 @@ public static class RuntimeVehicleInfoFactory
                     vehicle.Bus.Physics.Axles,
                     front: false,
                     static axle =>
-                        axle.DamperRateKilonewtonSecondsPerMeter)),
+                        axle.DamperRateKilonewtonSecondsPerMeter),
+                vehicle.Bus.Physics.MomentOfInertiaX,
+                vehicle.Bus.Physics.MomentOfInertiaY,
+                vehicle.Bus.Physics.MomentOfInertiaZ,
+                vehicle.Bus.Physics.Axles
+                    .Select(
+                        static axle =>
+                            new RuntimeVehicleAxleInfo(
+                                axle.LongitudinalPositionMeters,
+                                axle.WheelDiameterMeters,
+                                axle.DriveFactor,
+                                axle.MaximumWidthMeters,
+                                axle.MinimumWidthMeters,
+                                axle.SpringRateKilonewtonsPerMeter,
+                                axle.MaximumForceKilonewtons,
+                                axle.DamperRateKilonewtonSecondsPerMeter))
+                    .ToArray()),
             vehicle.DriverPosition is null
                 ? null
                 : new RuntimeDriverPositionInfo(
