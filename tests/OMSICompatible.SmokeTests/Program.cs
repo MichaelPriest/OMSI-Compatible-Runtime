@@ -396,6 +396,135 @@ try
         trainConsist.Vehicles[1].Exists,
         "OMSI .zug consist parsing did not preserve .ovh order/orientation or resolve vehicle files.");
 
+    var railNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    3001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0)
+                    ],
+                    [1],
+                    []),
+                new WorldTrafficPathSegment(
+                    1,
+                    3002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            100.0)
+                    ],
+                    [],
+                    [0]),
+                new WorldTrafficPathSegment(
+                    2,
+                    4001,
+                    0,
+                    0,
+                    0,
+                    3.0,
+                    [
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            100.0)
+                    ],
+                    [],
+                    [])
+            ],
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "Rail",
+                    @"trains\synthetic.zug",
+                    trainConsistPath,
+                    1.0)
+            ],
+            [],
+            [],
+            [],
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "Rail",
+                    1)
+            ]);
+
+    var railSimulation =
+        new WorldRailTrafficSimulation(
+            railNetwork,
+            railCatalog,
+            maximumAgents:
+                1);
+
+    Require(
+        railSimulation.Snapshot() is
+            [{ SegmentIndex: 0 }],
+        "OMSI rail simulation did not spawn the .zug consist on a type-2 rail path.");
+
+    var roadSimulationWithRailOnly =
+        new WorldTrafficSimulation(
+            railNetwork,
+            railCatalog,
+            maximumAgents:
+                1);
+
+    Require(
+        roadSimulationWithRailOnly.Snapshot().Count ==
+            0,
+        "OMSI road traffic simulation must not consume .zug train consists.");
+
+    railSimulation.Step(
+        6.0);
+
+    var railState =
+        railSimulation.Snapshot()
+            .Single();
+
+    Require(
+        railState.SegmentIndex ==
+            1 &&
+        railState.Position.Z >
+            50.0 &&
+        railState.TraveledDistanceMeters >
+            50.0,
+        "OMSI rail simulation did not follow the connected type-2 rail path.");
+
     File.WriteAllText(
         Path.Combine(
             root,
