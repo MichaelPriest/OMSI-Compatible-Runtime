@@ -944,7 +944,7 @@ public sealed class WorldRailTrafficSimulation
                 ? Math.Max(
                     configuredTrailingDistance,
                     0.0)
-                : 0.0;
+                : double.PositiveInfinity;
 
         foreach (var pair in
                  agent.PendingSignalRouteClearanceOrigins
