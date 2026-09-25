@@ -2351,8 +2351,7 @@ internal sealed class RuntimeDriveVehicle :
                 MathF.Cos(HeadingRadians));
 
         var vehicleRotation =
-            Matrix4x4.CreateRotationY(
-                HeadingRadians);
+            CreateBodyRotationMatrix();
 
         var localCenter =
             outsideCenter is null
