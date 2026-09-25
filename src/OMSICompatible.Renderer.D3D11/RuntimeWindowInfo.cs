@@ -138,7 +138,8 @@ public sealed record RuntimeVehicleMaterialChangeItemInfo(
     string? BumpMapTexturePath,
     double BumpMapStrength,
     IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures,
-    int? TextTextureIndex);
+    int? TextTextureIndex,
+    bool MaterialChangeIsNightMap = false);
 
 public sealed record RuntimeVehicleMaterialChangeSetInfo(
     string VariableName,
@@ -170,7 +171,8 @@ public sealed record RuntimeO3dMaterialInfo(
     IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
     int? TextTextureIndex = null,
     IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
-    bool HasTransMapDirective = false);
+    bool HasTransMapDirective = false,
+    bool MaterialChangeIsNightMap = false);
 
 public sealed record RuntimeVehicleLightEffectInfo(
     double PositionX,
