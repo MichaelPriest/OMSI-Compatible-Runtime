@@ -362,15 +362,36 @@ public sealed class WorldTrafficSimulation
 
         var candidates =
             connections
-                .Where(
+                .Select(
                     candidateIndex =>
                         _segmentsByIndex.TryGetValue(
                             candidateIndex,
-                            out var candidate) &&
+                            out var candidate)
+                            ? candidate
+                            : null)
+                .Where(
+                    candidate =>
+                        candidate is not null &&
                         (agent.TravelForward
                             ? candidate.AllowsForward
                             : candidate.AllowsReverse))
-                .Order()
+                .Select(
+                    candidate =>
+                        new
+                        {
+                            Segment =
+                                candidate!,
+                            Weight =
+                                ResolveTrafficDensityWeight(
+                                    candidate!)
+                        })
+                .Where(
+                    static candidate =>
+                        candidate.Weight >
+                            0.0)
+                .OrderBy(
+                    static candidate =>
+                        candidate.Segment.Index)
                 .ToArray();
 
         if (candidates.Length ==
@@ -379,9 +400,44 @@ public sealed class WorldTrafficSimulation
             return null;
         }
 
-        return candidates[
-            agent.AgentIndex %
-            candidates.Length];
+        var totalWeight =
+            candidates.Sum(
+                static candidate =>
+                    candidate.Weight);
+
+        if (!double.IsFinite(
+                totalWeight) ||
+            totalWeight <=
+                0.0)
+        {
+            return null;
+        }
+
+        var selector =
+            ((agent.AgentIndex +
+              1) *
+             0.6180339887498949 %
+             1.0) *
+            totalWeight;
+
+        foreach (var candidate in
+                 candidates)
+        {
+            selector -=
+                candidate.Weight;
+
+            if (selector <=
+                0.0)
+            {
+                return candidate
+                    .Segment
+                    .Index;
+            }
+        }
+
+        return candidates[^1]
+            .Segment
+            .Index;
     }
 
     private double? FindLeadingDistance(
@@ -563,6 +619,21 @@ public sealed class WorldTrafficSimulation
         return Math.Min(
             segmentMaximum,
             followingSpeed);
+    }
+
+    private static double ResolveTrafficDensityWeight(
+        WorldTrafficPathSegment segment)
+    {
+        if (!segment.TrafficDensityWeight.HasValue ||
+            !double.IsFinite(
+                segment.TrafficDensityWeight.Value))
+        {
+            return 1.0;
+        }
+
+        return Math.Max(
+            segment.TrafficDensityWeight.Value,
+            0.0);
     }
 
     private static double ResolveSegmentMaximumSpeed(

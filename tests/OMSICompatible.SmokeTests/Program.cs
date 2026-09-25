@@ -532,6 +532,11 @@ try
             "0",
             "speedlimit",
             "10.000",
+            "0",
+            "[rule]",
+            "0",
+            "trafficdensity",
+            "0.500",
             "0"),
         Encoding.Unicode);
 
@@ -2212,6 +2217,14 @@ try
         "Synthetic OMSI [rule] speedlimit was not attached to the matching path.");
 
     Require(
+        secondRoadPath.TrafficDensityWeight.HasValue &&
+        Math.Abs(
+            secondRoadPath.TrafficDensityWeight.Value -
+            0.5) <
+            0.0001,
+        "Synthetic OMSI [rule] trafficdensity was not attached to the matching path.");
+
+    Require(
         firstRoadPath.ForwardConnections.Count == 1 &&
         firstRoadPath.ForwardConnections[0] ==
             secondRoadPath.Index,
@@ -2636,6 +2649,115 @@ try
             Math.PI) <
             0.001,
         "Reverse-only OMSI traffic path did not move End -> Start through ReverseConnections.");
+
+    var densityRoutingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8000,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8001,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TrafficDensityWeight:
+                        0.0),
+                new WorldTrafficPathSegment(
+                    2,
+                    8002,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TrafficDensityWeight:
+                        3.0)
+            ],
+            3,
+            0,
+            0,
+            0,
+            1,
+            0,
+            2,
+            0);
+
+    var densityRoutingSimulation =
+        new WorldTrafficSimulation(
+            densityRoutingNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    densityRoutingSimulation.Step(
+        2.0);
+
+    var densityRoutedAgent =
+        densityRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        densityRoutedAgent.SegmentIndex ==
+            2 &&
+        densityRoutedAgent.Position.X >
+            0.0,
+        "OMSI trafficdensity=0 path was not excluded from unscheduled route selection.");
 
     var followingNetwork =
         new WorldTrafficPathNetwork(

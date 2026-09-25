@@ -13,7 +13,8 @@ public sealed record WorldTrafficPathSegment(
     IReadOnlyList<int> ForwardConnections,
     IReadOnlyList<int> ReverseConnections,
     long? SceneryObjectId = null,
-    double? SpeedLimitKilometersPerHour = null)
+    double? SpeedLimitKilometersPerHour = null,
+    double? TrafficDensityWeight = null)
 {
     public bool AllowsForward =>
         Direction is 0 or 2;
@@ -138,6 +139,9 @@ public static class WorldTrafficPathNetworkBuilder
                         points,
                         ResolveSpeedLimit(
                             spline.TrafficRules,
+                            pathIndex),
+                        ResolveTrafficDensity(
+                            spline.TrafficRules,
                             pathIndex)));
             }
         }
@@ -193,6 +197,9 @@ public static class WorldTrafficPathNetworkBuilder
                         path.WidthMeters,
                         points,
                         ResolveSpeedLimit(
+                            instance.TrafficRules,
+                            pathIndex),
+                        ResolveTrafficDensity(
                             instance.TrafficRules,
                             pathIndex)));
             }
@@ -340,7 +347,8 @@ public static class WorldTrafficPathNetworkBuilder
                                 .Order()
                                 .ToArray(),
                             builder.SceneryObject?.Id,
-                            builder.SpeedLimitKilometersPerHour))
+                            builder.SpeedLimitKilometersPerHour,
+                            builder.TrafficDensityWeight))
                 .ToArray();
 
         return new WorldTrafficPathNetwork(
@@ -952,6 +960,37 @@ public static class WorldTrafficPathNetworkBuilder
             .LastOrDefault();
     }
 
+    private static double? ResolveTrafficDensity(
+        IReadOnlyList<WorldTrafficRule>? rules,
+        int pathIndex)
+    {
+        if (rules is null ||
+            rules.Count ==
+                0)
+        {
+            return null;
+        }
+
+        return rules
+            .Where(
+                rule =>
+                    rule.PathIndex ==
+                        pathIndex &&
+                    rule.Name.Equals(
+                        "trafficdensity",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    (rule.GroupIndex is
+                         null or 0) &&
+                    double.IsFinite(
+                        rule.Value) &&
+                    rule.Value >=
+                        0.0)
+            .Select(
+                static rule =>
+                    (double?)rule.Value)
+            .LastOrDefault();
+    }
+
     private static double ConnectionTolerance(
         SegmentBuilder source,
         SegmentBuilder candidate) =>
@@ -1204,7 +1243,8 @@ public static class WorldTrafficPathNetworkBuilder
         int direction,
         double widthMeters,
         WorldVector3[] points,
-        double? speedLimitKilometersPerHour)
+        double? speedLimitKilometersPerHour,
+        double? trafficDensityWeight)
     {
         public int Index { get; } =
             index;
@@ -1229,6 +1269,9 @@ public static class WorldTrafficPathNetworkBuilder
 
         public double? SpeedLimitKilometersPerHour { get; } =
             speedLimitKilometersPerHour;
+
+        public double? TrafficDensityWeight { get; } =
+            trafficDensityWeight;
 
         public WorldVector3[] Points { get; } =
             points;
