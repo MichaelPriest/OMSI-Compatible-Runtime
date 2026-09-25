@@ -3457,7 +3457,7 @@ internal sealed class RuntimeDriveVehicle :
                          item.Index))
         {
             var sectionAxles =
-                section.Physics?.Axles?
+                section.Physics?.Axles
                     .Where(
                         static axle =>
                             double.IsFinite(
