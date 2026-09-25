@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using NAudio.Wave;
@@ -121,6 +122,13 @@ internal sealed class RuntimeOmsiAudioHost :
         public StereoPanSampleProvider Spatial { get; }
 
         public VolumeSampleProvider Volume { get; }
+
+        public float CurrentPitchFactor { get; set; } =
+            1.0f;
+
+        public float CurrentVolume { get; set; }
+
+        public float CurrentBalance { get; set; }
 
         public void Dispose()
         {
@@ -323,6 +331,7 @@ internal sealed class RuntimeOmsiAudioHost :
         _reportedFailures =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private long _lastControlUpdateTimestamp;
 
     private RuntimeOmsiAudioHost(
         IReadOnlyList<RuntimeOmsiSoundDefinition> sounds,
@@ -383,10 +392,14 @@ internal sealed class RuntimeOmsiAudioHost :
             var output =
                 new WaveOutEvent
                 {
+                    // Leave enough headroom for map streaming / D3D uploads
+                    // without starving the audio callback. OMSI vehicle
+                    // loops are long-running voices, so a little extra
+                    // latency is preferable to audible buffer underruns.
                     DesiredLatency =
-                        100,
+                        180,
                     NumberOfBuffers =
-                        3
+                        4
                 };
 
             output.Init(
@@ -396,14 +409,20 @@ internal sealed class RuntimeOmsiAudioHost :
             Console.WriteLine(
                 $"[audio] OMSI sound.cfg loaded: {sounds.Count} sound entries.");
 
-            return new RuntimeOmsiAudioHost(
-                sounds,
-                Path.GetDirectoryName(
-                    Path.GetFullPath(
-                        soundConfigPath)) ??
-                    AppContext.BaseDirectory,
-                mixer,
-                output);
+            var host =
+                new RuntimeOmsiAudioHost(
+                    sounds,
+                    Path.GetDirectoryName(
+                        Path.GetFullPath(
+                            soundConfigPath)) ??
+                        AppContext.BaseDirectory,
+                    mixer,
+                    output);
+
+            host._lastControlUpdateTimestamp =
+                Stopwatch.GetTimestamp();
+
+            return host;
         }
         catch (Exception ex)
         {
@@ -562,6 +581,9 @@ internal sealed class RuntimeOmsiAudioHost :
         Vector3 vehiclePosition,
         float vehicleHeadingRadians)
     {
+        var controlDeltaSeconds =
+            ResolveControlDeltaSeconds();
+
         foreach (var sound in
                  _sounds)
         {
@@ -608,7 +630,8 @@ internal sealed class RuntimeOmsiAudioHost :
                     EvaluatePitch(
                         sound,
                         scriptRuntime),
-                    spatial.Balance);
+                    spatial.Balance,
+                    controlDeltaSeconds);
                 continue;
             }
 
@@ -695,26 +718,19 @@ internal sealed class RuntimeOmsiAudioHost :
         RuntimeOmsiSoundDefinition sound,
         float volume,
         float pitchFactor,
-        float balance)
+        float balance,
+        float deltaSeconds)
     {
-        if (volume <=
-            0.0001f)
-        {
-            if (_loopVoices.TryGetValue(
-                    sound.Id,
-                    out var muted))
-            {
-                muted.Volume.Volume =
-                    0.0f;
-            }
-
-            return;
-        }
-
         if (!_loopVoices.TryGetValue(
                 sound.Id,
                 out var voice))
         {
+            if (volume <=
+                0.0001f)
+            {
+                return;
+            }
+
             voice =
                 TryCreateLoopVoice(
                     sound);
@@ -729,17 +745,117 @@ internal sealed class RuntimeOmsiAudioHost :
                 voice;
         }
 
-        voice.Pitch.PitchFactor =
+        var targetPitch =
             Math.Clamp(
                 pitchFactor,
                 0.25f,
                 4.0f);
 
+        var targetVolume =
+            Math.Clamp(
+                volume,
+                0.0f,
+                1.0f);
+
+        var targetBalance =
+            Math.Clamp(
+                balance,
+                -1.0f,
+                1.0f);
+
+        voice.CurrentPitchFactor =
+            SmoothAudioControl(
+                voice.CurrentPitchFactor,
+                targetPitch,
+                deltaSeconds,
+                0.085f);
+
+        voice.CurrentVolume =
+            SmoothAudioControl(
+                voice.CurrentVolume,
+                targetVolume,
+                deltaSeconds,
+                targetVolume >
+                    voice.CurrentVolume
+                    ? 0.035f
+                    : 0.055f);
+
+        voice.CurrentBalance =
+            SmoothAudioControl(
+                voice.CurrentBalance,
+                targetBalance,
+                deltaSeconds,
+                0.080f);
+
+        // SmbPitchShiftingSampleProvider is relatively expensive to retune
+        // and abrupt per-frame changes can create grainy/chopped output.
+        // Update it only after the smoothed value moved materially.
+        if (Math.Abs(
+                voice.Pitch.PitchFactor -
+                voice.CurrentPitchFactor) >
+            0.0015f)
+        {
+            voice.Pitch.PitchFactor =
+                voice.CurrentPitchFactor;
+        }
+
         voice.Spatial.Balance =
-            balance;
+            voice.CurrentBalance;
 
         voice.Volume.Volume =
-            volume;
+            voice.CurrentVolume;
+    }
+
+    private float ResolveControlDeltaSeconds()
+    {
+        var now =
+            Stopwatch.GetTimestamp();
+
+        if (_lastControlUpdateTimestamp <=
+            0)
+        {
+            _lastControlUpdateTimestamp =
+                now;
+            return 1.0f / 60.0f;
+        }
+
+        var elapsed =
+            (float)(
+                (now -
+                 _lastControlUpdateTimestamp) /
+                (double)Stopwatch.Frequency);
+
+        _lastControlUpdateTimestamp =
+            now;
+
+        return Math.Clamp(
+            elapsed,
+            1.0f / 240.0f,
+            0.1f);
+    }
+
+    private static float SmoothAudioControl(
+        float current,
+        float target,
+        float deltaSeconds,
+        float timeConstantSeconds)
+    {
+        var timeConstant =
+            Math.Max(
+                timeConstantSeconds,
+                0.001f);
+
+        var alpha =
+            1.0f -
+            MathF.Exp(
+                -Math.Max(
+                    deltaSeconds,
+                    0.0f) /
+                timeConstant);
+
+        return current +
+               (target - current) *
+               alpha;
     }
 
     private LoopVoice? TryCreateLoopVoice(
