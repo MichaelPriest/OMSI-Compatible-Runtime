@@ -3532,11 +3532,13 @@ public sealed class D3D11RenderWindow : Form
                 {
                     AlphaScale =
                         ResolveVehicleAlphaScale(
-                            materialState.AlphaScaleVariable),
+                            materialState.AlphaScaleVariable,
+                            batch.SectionIndex),
                     LightMapStrength =
                         ResolveVehicleLightMapStrength(
                             materialState.LightMapTexturePath,
-                            materialState.LightMapVariable),
+                            materialState.LightMapVariable,
+                            batch.SectionIndex),
                     MaterialChangeStrength =
                         materialState.HasMaterialChange
                             ? 1.0f
@@ -3649,6 +3651,7 @@ public sealed class D3D11RenderWindow : Form
                 requiresTextTexture
                     ? TryGetVehicleTextTextureView(
                         materialState.TextTextureIndex,
+                        batch.SectionIndex,
                         out textureView)
                     : TryGetVehicleTextureView(
                         ResolveVehicleDiffuseTexturePath(
@@ -3895,7 +3898,8 @@ public sealed class D3D11RenderWindow : Form
             }
 
             if (!AreVehicleVisibilityConditionsMet(
-                    mesh.VisibilityConditions))
+                    mesh.VisibilityConditions,
+                    mesh.SectionIndex))
             {
                 continue;
             }
@@ -3909,7 +3913,8 @@ public sealed class D3D11RenderWindow : Form
                 CreateVehicleAnimationMatrix(
                     mesh.Animations,
                     mesh.SourceTransform,
-                    staticTransform);
+                    staticTransform,
+                    mesh.SectionIndex);
 
             var parentTransform =
                 staticTransform *
@@ -3923,7 +3928,8 @@ public sealed class D3D11RenderWindow : Form
             {
                 var brightness =
                     ResolveVehicleLightValue(
-                        light);
+                        light,
+                        mesh.SectionIndex);
 
                 if (brightness <=
                     0.0001)
@@ -4045,7 +4051,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool AreVehicleVisibilityConditionsMet(
-        IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? conditions)
+        IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? conditions,
+        int sectionIndex = 0)
     {
         if (conditions is null ||
             conditions.Count == 0)
@@ -4053,11 +4060,15 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
+        var runtime =
+            ResolveScriptRuntimeForSection(
+                sectionIndex);
+
         foreach (var condition in
                  conditions)
         {
             var value =
-                _scriptRuntime?.GetLocal(
+                runtime?.GetLocal(
                     condition.VariableName) ??
                 0.0;
 
@@ -4178,6 +4189,10 @@ public sealed class D3D11RenderWindow : Form
     private ResolvedVehicleMaterialState ResolveVehicleMaterialState(
         RuntimeObjectBatch batch)
     {
+        var runtime =
+            ResolveScriptRuntimeForSection(
+                batch.SectionIndex);
+
         RuntimeVehicleMaterialChangeItemInfo? selectedItem =
             null;
 
@@ -4190,7 +4205,7 @@ public sealed class D3D11RenderWindow : Form
                              set.GroupIndex))
             {
                 var value =
-                    _scriptRuntime?.GetLocal(
+                    runtime?.GetLocal(
                         changeSet.VariableName) ??
                     0.0;
 
@@ -4239,10 +4254,10 @@ public sealed class D3D11RenderWindow : Form
             !string.IsNullOrWhiteSpace(
                 batch.MaterialChangeVariable) &&
             double.IsFinite(
-                _scriptRuntime?.GetLocal(
+                runtime?.GetLocal(
                     batch.MaterialChangeVariable) ??
                 0.0) &&
-            (_scriptRuntime?.GetLocal(
+            (runtime?.GetLocal(
                  batch.MaterialChangeVariable) ??
              0.0) >= 0.5;
 
@@ -4487,7 +4502,8 @@ public sealed class D3D11RenderWindow : Form
 
     private float ResolveVehicleLightMapStrength(
         string? texturePath,
-        string? variableName)
+        string? variableName,
+        int sectionIndex = 0)
     {
         if (string.IsNullOrWhiteSpace(
                 texturePath))
@@ -4502,8 +4518,10 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            _scriptRuntime?.GetLocal(
-                variableName) ??
+            ResolveScriptRuntimeForSection(
+                    sectionIndex)?
+                .GetLocal(
+                    variableName) ??
             0.0;
 
         if (!double.IsFinite(
@@ -4518,7 +4536,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private float ResolveVehicleAlphaScale(
-        string? variableName)
+        string? variableName,
+        int sectionIndex = 0)
     {
         if (string.IsNullOrWhiteSpace(
                 variableName))
@@ -4527,8 +4546,10 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            _scriptRuntime?.GetLocal(
-                variableName) ??
+            ResolveScriptRuntimeForSection(
+                    sectionIndex)?
+                .GetLocal(
+                    variableName) ??
             0.0;
 
         if (!double.IsFinite(
@@ -4613,7 +4634,8 @@ public sealed class D3D11RenderWindow : Form
     private bool IsVehicleBatchVisible(
         RuntimeObjectBatch batch) =>
         AreVehicleVisibilityConditionsMet(
-            batch.VisibilityConditions);
+            batch.VisibilityConditions,
+            batch.SectionIndex);
 
     private Matrix4x4 CreateVehicleAnimationMatrix(
         RuntimeObjectBatch batch)
@@ -4642,7 +4664,8 @@ public sealed class D3D11RenderWindow : Form
             CreateVehicleAnimationMatrix(
                 batch.Animations,
                 batch.SourceTransform,
-                batch.StaticTransform);
+                batch.StaticTransform,
+                batch.SectionIndex);
 
         if (string.IsNullOrWhiteSpace(
                 batch.AnimationParent) ||
@@ -4667,7 +4690,8 @@ public sealed class D3D11RenderWindow : Form
     private Matrix4x4 CreateVehicleAnimationMatrix(
         IReadOnlyList<RuntimeVehicleAnimationInfo>? animations,
         Matrix4x4? sourceTransform,
-        Matrix4x4? staticTransform)
+        Matrix4x4? staticTransform,
+        int sectionIndex = 0)
     {
         if (animations is null ||
             animations.Count == 0)
@@ -4683,7 +4707,8 @@ public sealed class D3D11RenderWindow : Form
         {
             var variableValue =
                 ResolveVehicleAnimationValue(
-                    animation);
+                    animation,
+                    sectionIndex);
 
             var amount =
                 variableValue *
@@ -4948,6 +4973,7 @@ public sealed class D3D11RenderWindow : Form
 
     private bool TryGetVehicleTextTextureView(
         int? textTextureIndex,
+        int sectionIndex,
         out ID3D11ShaderResourceView? view)
     {
         view =
@@ -4973,8 +4999,10 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            _scriptRuntime?.GetStringLocal(
-                definition.StringVariable) ??
+            ResolveScriptRuntimeForSection(
+                    sectionIndex)?
+                .GetStringLocal(
+                    definition.StringVariable) ??
             string.Empty;
 
         var texture =
@@ -5006,9 +5034,13 @@ public sealed class D3D11RenderWindow : Form
         IReadOnlyList<RuntimeVehicleFreeTextureInfo>? bindings)
     {
 
+        var runtime =
+            ResolveScriptRuntimeForSection(
+                batch.SectionIndex);
+
         if (bindings is null ||
             bindings.Count == 0 ||
-            _scriptRuntime is null)
+            runtime is null)
         {
             return batch.TexturePath;
         }
@@ -5032,7 +5064,7 @@ public sealed class D3D11RenderWindow : Form
             }
 
             var value =
-                _scriptRuntime.GetStringLocal(
+                runtime.GetStringLocal(
                     binding.VariableName);
 
             if (string.IsNullOrWhiteSpace(
@@ -6154,8 +6186,10 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 var target =
-                    _scriptRuntime?.GetLocal(
-                        animation.VariableName) ??
+                    ResolveScriptRuntimeForSection(
+                            mesh.SectionIndex)?
+                        .GetLocal(
+                            animation.VariableName) ??
                     0.0;
 
                 if (!double.IsFinite(
@@ -6285,7 +6319,8 @@ public sealed class D3D11RenderWindow : Form
             {
                 var target =
                     ResolveVehicleLightTarget(
-                        light);
+                        light,
+                        mesh.SectionIndex);
 
                 if (!_vehicleLightValues.TryGetValue(
                         light,
@@ -6331,7 +6366,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private double ResolveVehicleLightTarget(
-        RuntimeVehicleLightEffectInfo light)
+        RuntimeVehicleLightEffectInfo light,
+        int sectionIndex = 0)
     {
         double source;
 
@@ -6342,8 +6378,10 @@ public sealed class D3D11RenderWindow : Form
                 out source))
         {
             source =
-                _scriptRuntime?.GetLocal(
-                    light.BrightnessVariable) ??
+                ResolveScriptRuntimeForSection(
+                        sectionIndex)?
+                    .GetLocal(
+                        light.BrightnessVariable) ??
                 0.0;
         }
 
@@ -6367,7 +6405,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private double ResolveVehicleLightValue(
-        RuntimeVehicleLightEffectInfo light)
+        RuntimeVehicleLightEffectInfo light,
+        int sectionIndex = 0)
     {
         if (_vehicleLightValues.TryGetValue(
                 light,
@@ -6379,11 +6418,13 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return ResolveVehicleLightTarget(
-            light);
+            light,
+            sectionIndex);
     }
 
     private double ResolveVehicleAnimationValue(
-        RuntimeVehicleAnimationInfo animation)
+        RuntimeVehicleAnimationInfo animation,
+        int sectionIndex = 0)
     {
         if (_vehicleAnimationValues.TryGetValue(
                 animation,
@@ -6395,8 +6436,10 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var raw =
-            _scriptRuntime?.GetLocal(
-                animation.VariableName) ??
+            ResolveScriptRuntimeForSection(
+                    sectionIndex)?
+                .GetLocal(
+                    animation.VariableName) ??
             0.0;
 
         return double.IsFinite(
