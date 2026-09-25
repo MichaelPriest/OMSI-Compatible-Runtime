@@ -345,6 +345,57 @@ try
     Directory.CreateDirectory(vehicleModelDirectory);
     Directory.CreateDirectory(programDirectory);
 
+    var trainDirectory =
+        Path.Combine(
+            root,
+            "trains");
+    Directory.CreateDirectory(
+        trainDirectory);
+
+    var trainFrontVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "rail_front.ovh");
+    var trainRearVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "rail_rear.ovh");
+
+    File.WriteAllText(
+        trainFrontVehiclePath,
+        string.Empty);
+    File.WriteAllText(
+        trainRearVehiclePath,
+        string.Empty);
+
+    var trainConsistPath =
+        Path.Combine(
+            trainDirectory,
+            "synthetic.zug");
+
+    File.WriteAllText(
+        trainConsistPath,
+        Lines(
+            @"Vehicles\Synthetic\rail_front.ovh",
+            "0",
+            @"Vehicles\Synthetic\rail_rear.ovh",
+            "1"),
+        Encoding.Unicode);
+
+    var trainConsist =
+        OmsiTrainConsistReader.ReadFile(
+            root,
+            trainConsistPath);
+
+    Require(
+        trainConsist.Vehicles.Count ==
+            2 &&
+        !trainConsist.Vehicles[0].Reverse &&
+        trainConsist.Vehicles[0].Exists &&
+        trainConsist.Vehicles[1].Reverse &&
+        trainConsist.Vehicles[1].Exists,
+        "OMSI .zug consist parsing did not preserve .ovh order/orientation or resolve vehicle files.");
+
     File.WriteAllText(
         Path.Combine(
             root,
