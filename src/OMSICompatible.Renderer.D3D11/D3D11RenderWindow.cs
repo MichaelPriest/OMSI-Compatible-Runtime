@@ -6371,11 +6371,12 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
-        // A freshly spawned OMSI bus starts electrically off, engine off,
-        // neutral and with the parking brake applied. Some add-on init
-        // scripts leave engine/electrical variables non-zero; normalize the
-        // host-owned state before audio and the first frame are evaluated.
-        WriteVehicleControlStateToScripts();
+        // From this point the OMSI vehicle script is authoritative.
+        // Do not overwrite engine/electrical/gearbox state after {init};
+        // synchronize the x64 host from the state the original scripts
+        // established, exactly as the runtime frame path does.
+        SynchronizeHostVehicleStateFromScripts();
+        SynchronizeOmsiScriptDynamics();
 
         WriteVehicleRuntimeStateDiagnostics();
     }
