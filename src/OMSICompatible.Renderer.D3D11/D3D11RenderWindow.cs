@@ -161,6 +161,8 @@ public sealed class D3D11RenderWindow : Form
     private bool _mouseDriveMode;
     private string? _activeVehicleMouseTrigger;
     private int _activeVehicleMouseSectionIndex;
+    private float _vehicleMouseDeltaX;
+    private float _vehicleMouseDeltaY;
     private readonly Dictionary<Keys, string>
         _fallbackOmsiPressTriggers =
             [];
@@ -7532,10 +7534,25 @@ public sealed class D3D11RenderWindow : Form
         if (!string.IsNullOrWhiteSpace(
                 _activeVehicleMouseTrigger))
         {
+            SetOmsiMouseSystemVariables(
+                _activeVehicleMouseSectionIndex,
+                _vehicleMouseDeltaX,
+                _vehicleMouseDeltaY);
+
             DispatchOmsiSectionScriptTrigger(
                 _activeVehicleMouseSectionIndex,
                 _activeVehicleMouseTrigger +
                 "_drag");
+
+            _vehicleMouseDeltaX =
+                0.0f;
+            _vehicleMouseDeltaY =
+                0.0f;
+
+            SetOmsiMouseSystemVariables(
+                _activeVehicleMouseSectionIndex,
+                0.0f,
+                0.0f);
         }
 
         _scriptRuntime.ExecuteFrame();
@@ -8989,6 +9006,40 @@ public sealed class D3D11RenderWindow : Form
                true;
     }
 
+    private void SetOmsiMouseSystemVariables(
+        int sectionIndex,
+        float mouseX,
+        float mouseY)
+    {
+        var runtime =
+            sectionIndex >
+                    0 &&
+                _sectionScriptRuntimes.TryGetValue(
+                    sectionIndex,
+                    out var sectionRuntime)
+                ? sectionRuntime
+                : _scriptRuntime;
+
+        if (runtime is null)
+        {
+            return;
+        }
+
+        // OMSI documents mouse_x/mouse_y as pixel-valued system variables.
+        // In mouseevent *_drag scripts they are consumed as incremental
+        // movement (e.g. mouse_x / -400 added to a door accumulator).
+        // Accumulate WinForms motion between frames and consume it once,
+        // reproducing the effective relative-drag behavior without making
+        // controls jump to a screen-coordinate-dependent limit.
+        runtime.SetSystem(
+            "mouse_x",
+            mouseX);
+
+        runtime.SetSystem(
+            "mouse_y",
+            mouseY);
+    }
+
     private void DispatchOmsiSectionScriptTrigger(
         int sectionIndex,
         string trigger)
@@ -10382,6 +10433,19 @@ public sealed class D3D11RenderWindow : Form
             bestTrigger;
         _activeVehicleMouseSectionIndex =
             bestSectionIndex;
+        _vehicleMouseDeltaX =
+            0.0f;
+        _vehicleMouseDeltaY =
+            0.0f;
+        _lastMousePosition =
+            location;
+        Capture =
+            true;
+
+        SetOmsiMouseSystemVariables(
+            bestSectionIndex,
+            0.0f,
+            0.0f);
 
         var scriptOwnsTrigger =
             HasOmsiScriptTrigger(
@@ -10748,10 +10812,45 @@ public sealed class D3D11RenderWindow : Form
                     releasedHostAction);
             }
 
+            SetOmsiMouseSystemVariables(
+                _activeVehicleMouseSectionIndex,
+                0.0f,
+                0.0f);
+
             _activeVehicleMouseTrigger =
                 null;
             _activeVehicleMouseSectionIndex =
                 0;
+            _vehicleMouseDeltaX =
+                0.0f;
+            _vehicleMouseDeltaY =
+                0.0f;
+
+            if (_mouseDriveMode)
+            {
+                Capture =
+                    true;
+                Cursor =
+                    Cursors.Cross;
+
+                var center =
+                    new System.Drawing.Point(
+                        ClientSize.Width / 2,
+                        ClientSize.Height / 2);
+
+                _lastMousePosition =
+                    center;
+
+                Cursor.Position =
+                    PointToScreen(
+                        center);
+            }
+            else
+            {
+                Capture =
+                    false;
+            }
+
             return;
         }
 
@@ -10817,6 +10916,29 @@ public sealed class D3D11RenderWindow : Form
                     previewDeltaY * 0.006f,
                     -0.35f,
                     0.75f);
+
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                _activeVehicleMouseTrigger))
+        {
+            var controlDeltaX =
+                e.X -
+                _lastMousePosition.X;
+
+            var controlDeltaY =
+                e.Y -
+                _lastMousePosition.Y;
+
+            _lastMousePosition =
+                e.Location;
+
+            _vehicleMouseDeltaX +=
+                controlDeltaX;
+
+            _vehicleMouseDeltaY +=
+                controlDeltaY;
 
             return;
         }
