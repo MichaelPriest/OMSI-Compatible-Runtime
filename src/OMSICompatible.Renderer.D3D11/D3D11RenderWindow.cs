@@ -4778,13 +4778,30 @@ public sealed class D3D11RenderWindow : Form
                         axisZ)
                     : Vector3.UnitZ;
 
-            // Preserve the authored handedness of origin_from_mesh.
-            // OMSI add-ons can intentionally use a reflected O3D source
-            // transform for the steering wheel. Forcing that basis back to
-            // right-handed space reverses anim_rot while the front-wheel
-            // steering variables themselves remain correct. Keeping the
-            // original basis fixes the visual wheel direction without
-            // changing SteeringInput/Ackermann physics.
+            // An animation origin is a rotation frame, so it must not
+            // carry a mirror/reflection. Some exported O3D meshes (the MEP
+            // Quadbus steering wheel is a real example) have a negative
+            // determinant in their source transform. OMSI still evaluates
+            // anim_rot around a proper local X rotation axis. Keep mirrored
+            // bases intact for anim_trans, but remove the X reflection for
+            // rotations only. This changes the visual steering-wheel
+            // direction without touching Axle_Steering_* or Ackermann
+            // physics used by the road wheels.
+            var handedness =
+                Vector3.Dot(
+                    Vector3.Cross(
+                        axisX,
+                        axisY),
+                    axisZ);
+
+            if (animation.Kind ==
+                    RuntimeVehicleAnimationKind.Rotation &&
+                handedness <
+                    0.0f)
+            {
+                axisX =
+                    -axisX;
+            }
 
             orientation =
                 new Matrix4x4(
