@@ -234,6 +234,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11RasterizerState? _terrainRasterizerState;
     private RuntimeTerrainGeometry _terrainGeometry =
         RuntimeTerrainGeometry.Empty;
+    private RuntimeTerrainSampler _terrainSurfaceSampler;
     private uint _terrainVertexCount;
 
     private ID3D11Buffer? _splineVertexBuffer;
@@ -414,6 +415,10 @@ public sealed class D3D11RenderWindow : Form
                         declaredFile);
         }
 
+        _terrainSurfaceSampler =
+            new RuntimeTerrainSampler(
+                windowInfo.Tiles);
+
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
             windowInfo.Vehicle?.Physics,
@@ -524,6 +529,10 @@ public sealed class D3D11RenderWindow : Form
 
         _windowInfo =
             windowInfo;
+
+        _terrainSurfaceSampler =
+            new RuntimeTerrainSampler(
+                windowInfo.Tiles);
 
         _vehicle.ReplaceTerrainTiles(
             windowInfo.Tiles);
@@ -6443,10 +6452,443 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
+        if (name.Equals(
+                "GetHumanCountOnPathLink",
+                StringComparison.Ordinal))
+        {
+            _ =
+                (int)Math.Truncate(
+                    context.PopFloat());
+
+            // The x64 runtime does not spawn passenger agents yet, so the
+            // exact current passenger count on every path link is zero.
+            // Keeping this macro handled preserves native door/collision
+            // script semantics without inventing phantom occupants.
+            context.PushFloat(
+                0.0);
+
+            return true;
+        }
+
+        if (name.Equals(
+                "GetHeightAbovePoint",
+                StringComparison.Ordinal))
+        {
+            var localZ =
+                context.PopFloat();
+
+            var localY =
+                context.PopFloat();
+
+            var localX =
+                context.PopFloat();
+
+            context.PushFloat(
+                ResolveHeightAboveOmsiPoint(
+                    localX,
+                    localY,
+                    localZ));
+
+            return true;
+        }
+
         return _previousSystemMacroHandler?.Invoke(
                    name,
                    context) ==
                true;
+    }
+
+    private double ResolveHeightAboveOmsiPoint(
+        double omsiX,
+        double omsiY,
+        double omsiZ)
+    {
+        if (!double.IsFinite(
+                omsiX) ||
+            !double.IsFinite(
+                omsiY) ||
+            !double.IsFinite(
+                omsiZ))
+        {
+            return 0.0;
+        }
+
+        // OMSI vehicle coordinates are x=right, y=forward, z=up. Vehicle
+        // geometry/cameras are normalized to renderer x=left, y=up,
+        // z=forward, therefore x is mirrored and y/z are swapped.
+        var localPoint =
+            new Vector3(
+                -(float)omsiX,
+                (float)omsiZ,
+                (float)omsiY);
+
+        var vehicleWorld =
+            _vehicle.CreateWorldMatrix();
+
+        var origin =
+            Vector3.Transform(
+                localPoint,
+                vehicleWorld);
+
+        var direction =
+            Vector3.TransformNormal(
+                -Vector3.UnitY,
+                vehicleWorld);
+
+        if (direction.LengthSquared() <
+            0.000001f)
+        {
+            direction =
+                -Vector3.UnitY;
+        }
+        else
+        {
+            direction =
+                Vector3.Normalize(
+                    direction);
+        }
+
+        const float maximumDistanceMeters =
+            100.0f;
+
+        var bestDistance =
+            maximumDistanceMeters;
+
+        var found =
+            TryRaycastSplineSurface(
+                origin,
+                direction,
+                maximumDistanceMeters,
+                out var splineDistance);
+
+        if (found)
+        {
+            bestDistance =
+                Math.Min(
+                    bestDistance,
+                    splineDistance);
+        }
+
+        if (TryRaycastTerrainSurface(
+                origin,
+                direction,
+                bestDistance,
+                out var terrainDistance))
+        {
+            bestDistance =
+                Math.Min(
+                    bestDistance,
+                    terrainDistance);
+
+            found = true;
+        }
+
+        return found
+            ? Math.Max(
+                bestDistance,
+                0.0f)
+            : 0.0;
+    }
+
+    private bool TryRaycastSplineSurface(
+        Vector3 origin,
+        Vector3 direction,
+        float maximumDistanceMeters,
+        out float distance)
+    {
+        distance =
+            float.PositiveInfinity;
+
+        var vertices =
+            _splineGeometry.Vertices;
+
+        if (vertices.Length <
+            3)
+        {
+            return false;
+        }
+
+        var found =
+            false;
+
+        for (var index = 0;
+             index + 2 <
+                 vertices.Length;
+             index += 3)
+        {
+            var a =
+                vertices[index]
+                    .Position;
+
+            var b =
+                vertices[index + 1]
+                    .Position;
+
+            var c =
+                vertices[index + 2]
+                    .Position;
+
+            if (!TryRayTriangleDistance(
+                    origin,
+                    direction,
+                    a,
+                    b,
+                    c,
+                    out var candidate) ||
+                candidate <
+                    0.0f ||
+                candidate >
+                    maximumDistanceMeters ||
+                candidate >=
+                    distance)
+            {
+                continue;
+            }
+
+            distance =
+                candidate;
+
+            found = true;
+        }
+
+        return found;
+    }
+
+    private bool TryRaycastTerrainSurface(
+        Vector3 origin,
+        Vector3 direction,
+        float maximumDistanceMeters,
+        out float distance)
+    {
+        distance =
+            0.0f;
+
+        if (maximumDistanceMeters <=
+            0.0f)
+        {
+            return false;
+        }
+
+        const float stepMeters =
+            0.25f;
+
+        var previousDistance =
+            0.0f;
+
+        if (!_terrainSurfaceSampler.TrySample(
+                origin.X,
+                origin.Z,
+                out var previousGround))
+        {
+            return false;
+        }
+
+        var previousClearance =
+            origin.Y -
+            previousGround;
+
+        if (previousClearance <=
+            0.0f)
+        {
+            distance =
+                0.0f;
+
+            return true;
+        }
+
+        for (var currentDistance =
+                 stepMeters;
+             currentDistance <=
+                 maximumDistanceMeters +
+                 0.0001f;
+             currentDistance +=
+                 stepMeters)
+        {
+            var point =
+                origin +
+                direction *
+                currentDistance;
+
+            if (!_terrainSurfaceSampler.TrySample(
+                    point.X,
+                    point.Z,
+                    out var ground))
+            {
+                previousDistance =
+                    currentDistance;
+                previousClearance =
+                    float.NaN;
+                continue;
+            }
+
+            var clearance =
+                point.Y -
+                ground;
+
+            if (clearance <=
+                    0.0f &&
+                float.IsFinite(
+                    previousClearance) &&
+                previousClearance >
+                    0.0f)
+            {
+                var low =
+                    previousDistance;
+
+                var high =
+                    currentDistance;
+
+                for (var iteration = 0;
+                     iteration < 12;
+                     iteration++)
+                {
+                    var middle =
+                        (low +
+                         high) *
+                        0.5f;
+
+                    var middlePoint =
+                        origin +
+                        direction *
+                        middle;
+
+                    if (!_terrainSurfaceSampler.TrySample(
+                            middlePoint.X,
+                            middlePoint.Z,
+                            out var middleGround))
+                    {
+                        low =
+                            middle;
+
+                        continue;
+                    }
+
+                    if (middlePoint.Y -
+                        middleGround >
+                        0.0f)
+                    {
+                        low =
+                            middle;
+                    }
+                    else
+                    {
+                        high =
+                            middle;
+                    }
+                }
+
+                distance =
+                    high;
+
+                return true;
+            }
+
+            previousDistance =
+                currentDistance;
+
+            previousClearance =
+                clearance;
+        }
+
+        return false;
+    }
+
+    private static bool TryRayTriangleDistance(
+        Vector3 origin,
+        Vector3 direction,
+        Vector3 a,
+        Vector3 b,
+        Vector3 c,
+        out float distance)
+    {
+        distance =
+            0.0f;
+
+        var edge1 =
+            b -
+            a;
+
+        var edge2 =
+            c -
+            a;
+
+        var p =
+            Vector3.Cross(
+                direction,
+                edge2);
+
+        var determinant =
+            Vector3.Dot(
+                edge1,
+                p);
+
+        if (Math.Abs(
+                determinant) <
+            0.000001f)
+        {
+            return false;
+        }
+
+        var inverse =
+            1.0f /
+            determinant;
+
+        var t =
+            origin -
+            a;
+
+        var u =
+            Vector3.Dot(
+                t,
+                p) *
+            inverse;
+
+        if (u <
+                -0.00001f ||
+            u >
+                1.00001f)
+        {
+            return false;
+        }
+
+        var q =
+            Vector3.Cross(
+                t,
+                edge1);
+
+        var v =
+            Vector3.Dot(
+                direction,
+                q) *
+            inverse;
+
+        if (v <
+                -0.00001f ||
+            u +
+                v >
+                1.00001f)
+        {
+            return false;
+        }
+
+        var candidate =
+            Vector3.Dot(
+                edge2,
+                q) *
+            inverse;
+
+        if (!float.IsFinite(
+                candidate) ||
+            candidate <
+                0.0f)
+        {
+            return false;
+        }
+
+        distance =
+            candidate;
+
+        return true;
     }
 
     private double ResolveNrSpecRandom(
