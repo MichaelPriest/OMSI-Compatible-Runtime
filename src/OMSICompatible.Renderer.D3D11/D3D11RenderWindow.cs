@@ -8674,6 +8674,10 @@ public sealed class D3D11RenderWindow : Form
                     batch.SectionIndex) *
                 vehicleWorld;
 
+            var skin =
+                ResolveVehicleSkinConstants(
+                    batch);
+
             var startVertex =
                 checked(
                     (int)batch.StartVertex);
@@ -8691,24 +8695,30 @@ public sealed class D3D11RenderWindow : Form
             {
                 if (!TryProjectVehiclePoint(
                         Vector3.Transform(
-                            geometry.Vertices[
-                                vertex].Position,
+                            ResolveVehiclePickingPosition(
+                                geometry.Vertices[
+                                    vertex],
+                                skin),
                             world),
                         viewProjection,
                         out var a,
                         out var depthA) ||
                     !TryProjectVehiclePoint(
                         Vector3.Transform(
-                            geometry.Vertices[
-                                vertex + 1].Position,
+                            ResolveVehiclePickingPosition(
+                                geometry.Vertices[
+                                    vertex + 1],
+                                skin),
                             world),
                         viewProjection,
                         out var b,
                         out var depthB) ||
                     !TryProjectVehiclePoint(
                         Vector3.Transform(
-                            geometry.Vertices[
-                                vertex + 2].Position,
+                            ResolveVehiclePickingPosition(
+                                geometry.Vertices[
+                                    vertex + 2],
+                                skin),
                             world),
                         viewProjection,
                         out var c,
@@ -8770,6 +8780,82 @@ public sealed class D3D11RenderWindow : Form
             $"[cockpit-click] trigger={bestTrigger}; x={location.X}; y={location.Y}");
 
         return true;
+    }
+
+    private static Vector3 ResolveVehiclePickingPosition(
+        RuntimeObjectVertex vertex,
+        RuntimeVehicleSkinConstants skin)
+    {
+        var weights =
+            new Vector4(
+                Math.Max(
+                    vertex.SkinWeights.X,
+                    0.0f),
+                Math.Max(
+                    vertex.SkinWeights.Y,
+                    0.0f),
+                Math.Max(
+                    vertex.SkinWeights.Z,
+                    0.0f),
+                Math.Max(
+                    vertex.SkinWeights.W,
+                    0.0f));
+
+        var skinSum =
+            Math.Clamp(
+                weights.X +
+                weights.Y +
+                weights.Z +
+                weights.W,
+                0.0f,
+                1.0f);
+
+        var result =
+            vertex.Position *
+            (1.0f -
+             skinSum);
+
+        if (weights.X >
+            0.0f)
+        {
+            result +=
+                Vector3.Transform(
+                    vertex.Position,
+                    skin.Bone0) *
+                weights.X;
+        }
+
+        if (weights.Y >
+            0.0f)
+        {
+            result +=
+                Vector3.Transform(
+                    vertex.Position,
+                    skin.Bone1) *
+                weights.Y;
+        }
+
+        if (weights.Z >
+            0.0f)
+        {
+            result +=
+                Vector3.Transform(
+                    vertex.Position,
+                    skin.Bone2) *
+                weights.Z;
+        }
+
+        if (weights.W >
+            0.0f)
+        {
+            result +=
+                Vector3.Transform(
+                    vertex.Position,
+                    skin.Bone3) *
+                weights.W;
+        }
+
+        return result;
     }
 
     private bool TryProjectVehiclePoint(
