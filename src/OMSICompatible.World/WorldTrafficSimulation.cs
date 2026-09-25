@@ -559,7 +559,14 @@ public sealed class WorldTrafficSimulation
             if (otherSegment.SceneryObjectId ==
                 crossingId)
             {
-                return false;
+                if (TrafficPathsConflict(
+                        nextSegment,
+                        otherSegment))
+                {
+                    return false;
+                }
+
+                continue;
             }
 
             if (otherSegment.SceneryObjectId.HasValue &&
@@ -579,7 +586,19 @@ public sealed class WorldTrafficSimulation
                     otherNextIndex.Value,
                     out var otherNextSegment) ||
                 otherNextSegment.SceneryObjectId !=
-                    crossingId)
+                    crossingId ||
+                !TrafficPathsConflict(
+                    nextSegment,
+                    otherNextSegment))
+            {
+                continue;
+            }
+
+            // A red approach cannot reserve a conflict against
+            // another approach that is already allowed to enter.
+            if (!IsTrafficSignalGreen(
+                    otherNextSegment.TrafficSignal,
+                    _simulationElapsedSeconds))
             {
                 continue;
             }
@@ -592,14 +611,341 @@ public sealed class WorldTrafficSimulation
 
             if (otherSegment.TrafficPriority ==
                     currentSegment.TrafficPriority &&
-                other.AgentIndex <
-                    agent.AgentIndex)
+                ApproachesFromRight(
+                    currentSegment,
+                    agent.TravelForward,
+                    otherSegment,
+                    other.TravelForward))
             {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private static bool ApproachesFromRight(
+        WorldTrafficPathSegment currentSegment,
+        bool currentTravelForward,
+        WorldTrafficPathSegment otherSegment,
+        bool otherTravelForward)
+    {
+        var currentHeading =
+            HeadingAtExit(
+                currentSegment,
+                currentTravelForward);
+
+        var otherHeading =
+            HeadingAtExit(
+                otherSegment,
+                otherTravelForward);
+
+        var delta =
+            NormalizeHeadingDelta(
+                otherHeading -
+                currentHeading);
+
+        // In OMSI's renderer frame, a vehicle approaching from
+        // the right has a travel heading roughly 90 degrees
+        // clockwise from the current approach.
+        return delta <
+                   -Math.PI /
+                   4.0 &&
+               delta >
+                   -3.0 *
+                   Math.PI /
+                   4.0;
+    }
+
+    private static double HeadingAtExit(
+        WorldTrafficPathSegment segment,
+        bool travelForward)
+    {
+        var length =
+            SegmentLength(
+                segment);
+
+        SampleSegment(
+            segment,
+            travelForward
+                ? length
+                : 0.0,
+            out _,
+            out var heading);
+
+        return travelForward
+            ? heading
+            : ReverseHeading(
+                heading);
+    }
+
+    private static bool TrafficPathsConflict(
+        WorldTrafficPathSegment first,
+        WorldTrafficPathSegment second)
+    {
+        if (first.Index ==
+            second.Index)
+        {
+            return true;
+        }
+
+        if (!first.SceneryObjectId.HasValue ||
+            first.SceneryObjectId !=
+                second.SceneryObjectId ||
+            first.Points.Count <
+                2 ||
+            second.Points.Count <
+                2)
+        {
+            return false;
+        }
+
+        const double conflictToleranceMeters =
+            0.5;
+
+        var maximumDistanceSquared =
+            conflictToleranceMeters *
+            conflictToleranceMeters;
+
+        for (var firstIndex = 1;
+             firstIndex <
+                 first.Points.Count;
+             firstIndex++)
+        {
+            for (var secondIndex = 1;
+                 secondIndex <
+                     second.Points.Count;
+                 secondIndex++)
+            {
+                if (SegmentDistanceSquared(
+                        first.Points[
+                            firstIndex -
+                            1],
+                        first.Points[
+                            firstIndex],
+                        second.Points[
+                            secondIndex -
+                            1],
+                        second.Points[
+                            secondIndex]) <=
+                    maximumDistanceSquared)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static double SegmentDistanceSquared(
+        WorldVector3 firstStart,
+        WorldVector3 firstEnd,
+        WorldVector3 secondStart,
+        WorldVector3 secondEnd)
+    {
+        var d1X =
+            firstEnd.X -
+            firstStart.X;
+        var d1Y =
+            firstEnd.Y -
+            firstStart.Y;
+        var d1Z =
+            firstEnd.Z -
+            firstStart.Z;
+
+        var d2X =
+            secondEnd.X -
+            secondStart.X;
+        var d2Y =
+            secondEnd.Y -
+            secondStart.Y;
+        var d2Z =
+            secondEnd.Z -
+            secondStart.Z;
+
+        var rX =
+            firstStart.X -
+            secondStart.X;
+        var rY =
+            firstStart.Y -
+            secondStart.Y;
+        var rZ =
+            firstStart.Z -
+            secondStart.Z;
+
+        var a =
+            d1X * d1X +
+            d1Y * d1Y +
+            d1Z * d1Z;
+
+        var e =
+            d2X * d2X +
+            d2Y * d2Y +
+            d2Z * d2Z;
+
+        var f =
+            d2X * rX +
+            d2Y * rY +
+            d2Z * rZ;
+
+        const double epsilon =
+            0.000000001;
+
+        double s;
+        double t;
+
+        if (a <=
+                epsilon &&
+            e <=
+                epsilon)
+        {
+            return DistanceSquared(
+                firstStart,
+                secondStart);
+        }
+
+        if (a <=
+            epsilon)
+        {
+            s =
+                0.0;
+            t =
+                Math.Clamp(
+                    f /
+                    e,
+                    0.0,
+                    1.0);
+        }
+        else
+        {
+            var c =
+                d1X * rX +
+                d1Y * rY +
+                d1Z * rZ;
+
+            if (e <=
+                epsilon)
+            {
+                t =
+                    0.0;
+                s =
+                    Math.Clamp(
+                        -c /
+                        a,
+                        0.0,
+                        1.0);
+            }
+            else
+            {
+                var b =
+                    d1X * d2X +
+                    d1Y * d2Y +
+                    d1Z * d2Z;
+
+                var denominator =
+                    a *
+                    e -
+                    b *
+                    b;
+
+                s =
+                    Math.Abs(
+                        denominator) >
+                    epsilon
+                        ? Math.Clamp(
+                            (b *
+                                 f -
+                             c *
+                                 e) /
+                            denominator,
+                            0.0,
+                            1.0)
+                        : 0.0;
+
+                t =
+                    (b *
+                         s +
+                     f) /
+                    e;
+
+                if (t <
+                    0.0)
+                {
+                    t =
+                        0.0;
+                    s =
+                        Math.Clamp(
+                            -c /
+                            a,
+                            0.0,
+                            1.0);
+                }
+                else if (t >
+                         1.0)
+                {
+                    t =
+                        1.0;
+                    s =
+                        Math.Clamp(
+                            (b -
+                             c) /
+                            a,
+                            0.0,
+                            1.0);
+                }
+            }
+        }
+
+        var firstClosest =
+            new WorldVector3(
+                firstStart.X +
+                d1X *
+                s,
+                firstStart.Y +
+                d1Y *
+                s,
+                firstStart.Z +
+                d1Z *
+                s);
+
+        var secondClosest =
+            new WorldVector3(
+                secondStart.X +
+                d2X *
+                t,
+                secondStart.Y +
+                d2Y *
+                t,
+                secondStart.Z +
+                d2Z *
+                t);
+
+        return DistanceSquared(
+            firstClosest,
+            secondClosest);
+    }
+
+    private static double DistanceSquared(
+        WorldVector3 first,
+        WorldVector3 second)
+    {
+        var x =
+            first.X -
+            second.X;
+        var y =
+            first.Y -
+            second.Y;
+        var z =
+            first.Z -
+            second.Z;
+
+        return x *
+                   x +
+               y *
+                   y +
+               z *
+                   z;
     }
 
     private static bool IsTrafficSignalGreen(
