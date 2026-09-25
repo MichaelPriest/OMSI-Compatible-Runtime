@@ -73,6 +73,7 @@ internal sealed class RuntimeDriveVehicle :
     private float _bodyPitchVelocityRadiansPerSecond;
     private float _bodyRollRadians;
     private float _longitudinalAccelerationMetersPerSecondSquared;
+    private float _verticalAccelerationMetersPerSecondSquared;
     private float _wheelRotationRadians;
     private bool _omsiScriptDynamicsEnabled;
     private float _omsiWheelTorqueNewtonMeters;
@@ -573,6 +574,9 @@ internal sealed class RuntimeDriveVehicle :
     public float LongitudinalAccelerationMetersPerSecondSquared =>
         _longitudinalAccelerationMetersPerSecondSquared;
 
+    public float VerticalAccelerationMetersPerSecondSquared =>
+        _verticalAccelerationMetersPerSecondSquared;
+
     public float LateralAccelerationMetersPerSecondSquared =>
         SpeedMetersPerSecond *
         _yawRateRadiansPerSecond;
@@ -743,6 +747,7 @@ internal sealed class RuntimeDriveVehicle :
                 $"scriptDynamics={_omsiScriptDynamicsEnabled}",
                 $"position={F(Position.X)},{F(Position.Y)},{F(Position.Z)}",
                 $"speedKph={F(SpeedKph)}",
+                $"verticalAccelerationMps2={F(_verticalAccelerationMetersPerSecondSquared)}",
                 $"headingDeg={F(HeadingRadians * 180.0f / MathF.PI)}",
                 $"yawRateDegPerSec={F(_yawRateRadiansPerSecond * 180.0f / MathF.PI)}",
                 $"pitchDeg={F(BodyPitchRadians * 180.0f / MathF.PI)}",
@@ -881,6 +886,7 @@ internal sealed class RuntimeDriveVehicle :
         _bodyPitchVelocityRadiansPerSecond = 0.0f;
         _bodyRollRadians = 0.0f;
         _longitudinalAccelerationMetersPerSecondSquared = 0.0f;
+        _verticalAccelerationMetersPerSecondSquared = 0.0f;
         _wheelRotationRadians = 0.0f;
         _omsiScriptDynamicsEnabled = false;
         _omsiWheelTorqueNewtonMeters = 0.0f;
@@ -1403,6 +1409,9 @@ internal sealed class RuntimeDriveVehicle :
         {
             return;
         }
+
+        _verticalAccelerationMetersPerSecondSquared =
+            0.0f;
 
         var driveAcceleration =
             driveForceNewtons /
@@ -2734,6 +2743,16 @@ internal sealed class RuntimeDriveVehicle :
 
             var nextVelocity =
                 body.LinearVelocity;
+
+            _verticalAccelerationMetersPerSecondSquared =
+                Math.Clamp(
+                    (nextVelocity.Z -
+                     velocity.Z) /
+                    Math.Max(
+                        deltaSeconds,
+                        0.001f),
+                    -30.0f,
+                    30.0f);
 
             var nextLongitudinalSpeed =
                 Math.Clamp(

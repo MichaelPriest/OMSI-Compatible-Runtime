@@ -6911,7 +6911,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicle.LongitudinalAccelerationMetersPerSecondSquared);
         _scriptRuntime.SetLocal(
             "A_Trans_Z",
-            0.0);
+            _vehicle.VerticalAccelerationMetersPerSecondSquared);
 
         // Keep input/physics steering independent from model animation.
         // The OMSI Axle_Steering_* variables use the same signed steering
