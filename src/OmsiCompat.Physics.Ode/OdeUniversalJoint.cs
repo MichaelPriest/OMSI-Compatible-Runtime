@@ -165,6 +165,26 @@ public sealed class OdeUniversalJoint :
             Math.Max(stopCfm, 0.0f));
     }
 
+    public void AddTorques(
+        float yawTorqueNewtonMeters,
+        float pitchTorqueNewtonMeters)
+    {
+        if (!float.IsFinite(
+                yawTorqueNewtonMeters) ||
+            !float.IsFinite(
+                pitchTorqueNewtonMeters))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(yawTorqueNewtonMeters),
+                "Universal joint torques must be finite.");
+        }
+
+        OdeNative.dJointAddUniversalTorques(
+            RequireHandle(),
+            yawTorqueNewtonMeters,
+            pitchTorqueNewtonMeters);
+    }
+
     private nint RequireHandle()
     {
         ObjectDisposedException.ThrowIf(
