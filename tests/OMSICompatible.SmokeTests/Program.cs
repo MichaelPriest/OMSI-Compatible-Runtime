@@ -2424,6 +2424,8 @@ try
             10.0 /
             3.6 +
             0.0001 &&
+        movedTraffic[0].TraveledDistanceMeters >
+            0.0 &&
         double.IsFinite(
             movedTraffic[0].HeadingRadians),
         "Traffic simulation did not advance through the connected road path graph while honoring speedlimit.");
@@ -3547,7 +3549,9 @@ try
             5.0 &&
         redSignalAgent.SpeedMetersPerSecond <
             0.5 &&
-        redSignalAgent.AiBrakeLight,
+        redSignalAgent.AiBrakeLight &&
+        redSignalAgent.TraveledDistanceMeters >=
+            brakingSignalAgent.TraveledDistanceMeters,
         "Traffic agent did not stop smoothly before the red OMSI traffic-light path.");
 
     signalSimulation.Step(
@@ -3563,6 +3567,8 @@ try
             1 &&
         greenSignalAgent.Position.Z >
             redSignalAgent.Position.Z &&
+        greenSignalAgent.TraveledDistanceMeters >
+            redSignalAgent.TraveledDistanceMeters &&
         !greenSignalAgent.AiBrakeLight,
         "Traffic agent did not enter the OMSI traffic-light path during the green phase.");
 

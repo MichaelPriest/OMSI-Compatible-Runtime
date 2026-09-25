@@ -3638,6 +3638,10 @@ public sealed class D3D11RenderWindow : Form
                     new RuntimeModelConstants
                     {
                         World =
+                            CreateTrafficVehicleAnimationMatrix(
+                                batch,
+                                agent,
+                                vehicleInfo) *
                             vehicleWorld
                     };
 
@@ -5453,6 +5457,215 @@ public sealed class D3D11RenderWindow : Form
         AreVehicleVisibilityConditionsMet(
             batch.VisibilityConditions,
             batch.SectionIndex);
+
+    private static Matrix4x4 CreateTrafficVehicleAnimationMatrix(
+        RuntimeObjectBatch batch,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo)
+    {
+        if (batch.Animations is null ||
+            batch.Animations.Count ==
+                0)
+        {
+            return Matrix4x4.Identity;
+        }
+
+        var result =
+            Matrix4x4.Identity;
+
+        foreach (var animation in
+                 batch.Animations)
+        {
+            if (!TryResolveTrafficWheelAnimationValue(
+                    animation.VariableName,
+                    agent,
+                    vehicleInfo,
+                    out var variableValue))
+            {
+                continue;
+            }
+
+            var amount =
+                variableValue *
+                animation.Delta +
+                animation.Offset;
+
+            if (!double.IsFinite(
+                    amount) ||
+                Math.Abs(
+                    amount) <
+                0.0000001)
+            {
+                continue;
+            }
+
+            ResolveAnimationFrame(
+                batch.SourceTransform,
+                batch.StaticTransform,
+                animation,
+                out var pivot,
+                out var orientation);
+
+            var axis =
+                Vector3.TransformNormal(
+                    Vector3.UnitX,
+                    orientation);
+
+            if (axis.LengthSquared() <
+                0.000001f)
+            {
+                axis =
+                    Vector3.UnitX;
+            }
+            else
+            {
+                axis =
+                    Vector3.Normalize(
+                        axis);
+            }
+
+            Matrix4x4 animationTransform;
+
+            if (animation.Kind ==
+                RuntimeVehicleAnimationKind.Translation)
+            {
+                animationTransform =
+                    Matrix4x4.CreateTranslation(
+                        axis *
+                        (float)amount);
+            }
+            else
+            {
+                animationTransform =
+                    Matrix4x4.CreateTranslation(
+                        -pivot) *
+                    Matrix4x4.CreateFromAxisAngle(
+                        axis,
+                        DegreesToRadians(
+                            amount)) *
+                    Matrix4x4.CreateTranslation(
+                        pivot);
+            }
+
+            result *=
+                animationTransform;
+        }
+
+        return result;
+    }
+
+    private static bool TryResolveTrafficWheelAnimationValue(
+        string variableName,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo,
+        out double value)
+    {
+        value =
+            0.0;
+
+        const string prefix =
+            "Wheel_Rotation_";
+
+        if (!variableName.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var suffix =
+            variableName[
+                prefix.Length..];
+
+        var separator =
+            suffix.IndexOf(
+                '_');
+
+        if (separator <=
+            0 ||
+            !int.TryParse(
+                suffix[
+                    ..separator],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var axleIndex))
+        {
+            return false;
+        }
+
+        var side =
+            suffix[
+                (separator + 1)..];
+
+        if (!side.Equals(
+                "L",
+                StringComparison.OrdinalIgnoreCase) &&
+            !side.Equals(
+                "R",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        double? diameter =
+            null;
+
+        if (vehicleInfo.Physics.Axles is
+                { Count: > 0 } &&
+            axleIndex >=
+                0 &&
+            axleIndex <
+                vehicleInfo.Physics.Axles.Count)
+        {
+            diameter =
+                vehicleInfo
+                    .Physics
+                    .Axles[
+                        axleIndex]
+                    .WheelDiameterMeters;
+        }
+
+        diameter ??=
+            vehicleInfo
+                .Physics
+                .AverageWheelDiameterMeters;
+
+        if (!diameter.HasValue ||
+            !double.IsFinite(
+                diameter.Value) ||
+            diameter.Value <=
+                0.0)
+        {
+            return false;
+        }
+
+        var radius =
+            Math.Clamp(
+                diameter.Value *
+                    0.5,
+                0.05,
+                2.0);
+
+        value =
+            agent.TraveledDistanceMeters /
+            radius;
+
+        if (!double.IsFinite(
+                value))
+        {
+            value =
+                0.0;
+            return false;
+        }
+
+        value =
+            Math.IEEERemainder(
+                value,
+                Math.PI *
+                2.0);
+
+        return true;
+    }
 
     private Matrix4x4 CreateVehicleAnimationMatrix(
         RuntimeObjectBatch batch)

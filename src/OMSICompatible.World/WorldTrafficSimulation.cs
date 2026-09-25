@@ -14,7 +14,8 @@ public sealed record WorldTrafficAgentState(
     string? GroupName = null,
     bool AiBrakeLight = false,
     bool AiBlinkerLeft = false,
-    bool AiBlinkerRight = false);
+    bool AiBlinkerRight = false,
+    double TraveledDistanceMeters = 0.0);
 
 public sealed class WorldTrafficSimulation
 {
@@ -402,6 +403,9 @@ public sealed class WorldTrafficSimulation
                                 ? remaining
                                 : -remaining;
 
+                        agent.TraveledDistanceMeters +=
+                            remaining;
+
                         remaining =
                             0.0;
 
@@ -409,6 +413,9 @@ public sealed class WorldTrafficSimulation
                     }
 
                     remaining -=
+                        available;
+
+                    agent.TraveledDistanceMeters +=
                         available;
 
                     agent.DistanceMeters =
@@ -1157,7 +1164,8 @@ public sealed class WorldTrafficSimulation
                 agent.GroupName,
                 agent.BrakeLight,
                 false,
-                false);
+                false,
+                agent.TraveledDistanceMeters);
         }
 
         SampleSegment(
@@ -1191,7 +1199,8 @@ public sealed class WorldTrafficSimulation
             agent.GroupName,
             agent.BrakeLight,
             blinkerLeft,
-            blinkerRight);
+            blinkerRight,
+            agent.TraveledDistanceMeters);
     }
 
     private static bool IsRoadVehicle(
@@ -1597,6 +1606,12 @@ public sealed class WorldTrafficSimulation
             groupName;
 
         public bool BrakeLight
+        {
+            get;
+            set;
+        }
+
+        public double TraveledDistanceMeters
         {
             get;
             set;

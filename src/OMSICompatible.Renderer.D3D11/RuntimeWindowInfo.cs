@@ -318,7 +318,8 @@ public sealed record RuntimeTrafficAgentInfo(
     double HeadingRadians,
     bool AiBrakeLight = false,
     bool AiBlinkerLeft = false,
-    bool AiBlinkerRight = false);
+    bool AiBlinkerRight = false,
+    double TraveledDistanceMeters = 0.0);
 
 public sealed record RuntimeAiFileReferenceInfo(
     string DeclaredPath,
