@@ -129,6 +129,8 @@ public sealed class OmsiScriptRuntime
         _stringLocals;
     private readonly HashSet<string>
         _writtenLocalVariables;
+    private readonly HashSet<string>
+        _writtenStringLocalVariables;
     private readonly Dictionary<string, double>
         _mapVariables =
             new(
@@ -162,7 +164,13 @@ public sealed class OmsiScriptRuntime
 
         _writtenLocalVariables =
             CollectWrittenLocalVariables(
-                catalog.Program);
+                catalog.Program,
+                "(S.L.");
+
+        _writtenStringLocalVariables =
+            CollectWrittenLocalVariables(
+                catalog.Program,
+                "(S.$.");
     }
 
     public event Action<string>?
@@ -242,6 +250,13 @@ public sealed class OmsiScriptRuntime
         !string.IsNullOrWhiteSpace(
             name) &&
         _writtenLocalVariables.Contains(
+            name);
+
+    public bool WritesStringLocalVariable(
+        string name) =>
+        !string.IsNullOrWhiteSpace(
+            name) &&
+        _writtenStringLocalVariables.Contains(
             name);
 
     public void SetLocal(
@@ -1242,7 +1257,8 @@ public sealed class OmsiScriptRuntime
             conditions.Peek().Active;
 
     private static HashSet<string> CollectWrittenLocalVariables(
-        OmsiScriptProgram program)
+        OmsiScriptProgram program,
+        string storePrefix)
     {
         var result =
             new HashSet<string>(
@@ -1267,7 +1283,7 @@ public sealed class OmsiScriptRuntime
             {
                 if (TryCommand(
                         token,
-                        "(S.L.",
+                        storePrefix,
                         out var name))
                 {
                     result.Add(

@@ -1862,6 +1862,16 @@ try
             "Throttle"),
         "OMSI script write analysis incorrectly marked a read-only host variable as script-authored.");
 
+    Require(
+        scriptRuntime.WritesStringLocalVariable(
+            "IBIS_line"),
+        "OMSI script write analysis did not detect an S.$. target.");
+
+    Require(
+        !scriptRuntime.WritesStringLocalVariable(
+            "Matrix_SchildFrnt"),
+        "OMSI script write analysis incorrectly marked an unwritten string variable as script-authored.");
+
     var invokedSystemMacros =
         new List<string>();
 
