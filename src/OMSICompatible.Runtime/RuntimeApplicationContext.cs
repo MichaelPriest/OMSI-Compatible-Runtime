@@ -360,7 +360,9 @@ internal sealed class RuntimeApplicationContext :
                     gameControllerEnabled:
                         _options.GameControllerEnabled,
                     sectionScriptRuntimes:
-                        sectionScriptRuntimes);
+                        sectionScriptRuntimes,
+                    masterVolumePercent:
+                        _options.MasterVolumePercent);
 
             if (_options.RuntimeBorderlessFullscreen)
             {

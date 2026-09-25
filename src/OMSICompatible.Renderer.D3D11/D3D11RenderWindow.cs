@@ -318,6 +318,7 @@ public sealed class D3D11RenderWindow : Form
 
     private FeatureLevel _featureLevel;
     private readonly bool _vsync;
+    private readonly float _masterVolume;
 
     public D3D11RenderWindow(
         RuntimeWindowInfo windowInfo,
@@ -328,7 +329,8 @@ public sealed class D3D11RenderWindow : Form
         IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
         string? inputLanguage = null,
         bool gameControllerEnabled = true,
-        IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null)
+        IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null,
+        int masterVolumePercent = 100)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
@@ -349,6 +351,12 @@ public sealed class D3D11RenderWindow : Form
                 _initialVehicleVariables);
 
         _vsync = vsync;
+        _masterVolume =
+            Math.Clamp(
+                masterVolumePercent,
+                0,
+                100) /
+            100.0f;
         _vehiclePreviewMode =
             vehiclePreviewMode;
         _gameControllerEnabled =
@@ -835,7 +843,8 @@ public sealed class D3D11RenderWindow : Form
         _omsiAudio =
             RuntimeOmsiAudioHost.TryCreate(
                 _windowInfo.Vehicle?
-                    .SoundConfigPath);
+                    .SoundConfigPath,
+                _masterVolume);
 
         if (_omsiAudio is not null)
         {
@@ -857,7 +866,8 @@ public sealed class D3D11RenderWindow : Form
 
             var audio =
                 RuntimeOmsiAudioHost.TryCreate(
-                    section.SoundConfigPath);
+                    section.SoundConfigPath,
+                    _masterVolume);
 
             if (audio is null)
             {
@@ -7858,7 +7868,10 @@ public sealed class D3D11RenderWindow : Form
 
         runtime.SetSystem(
             "NoSound",
-            0.0);
+            _masterVolume <=
+                    0.0001f
+                ? 1.0
+                : 0.0);
 
         runtime.SetLocal(
             "Envir_Brightness",
@@ -8118,7 +8131,10 @@ public sealed class D3D11RenderWindow : Form
                 : 0.0);
         _scriptRuntime.SetSystem(
             "NoSound",
-            0.0);
+            _masterVolume <=
+                    0.0001f
+                ? 1.0
+                : 0.0);
 
         // The current bootstrap renderer is daylight-only. OMSI vehicle
         // materials use Envir_Brightness as an alpha scale for exterior

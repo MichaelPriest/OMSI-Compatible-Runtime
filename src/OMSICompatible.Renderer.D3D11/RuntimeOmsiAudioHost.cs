@@ -364,7 +364,8 @@ internal sealed class RuntimeOmsiAudioHost :
 
     public static RuntimeOmsiAudioHost?
         TryCreate(
-            string? soundConfigPath)
+            string? soundConfigPath,
+            float masterVolume = 1.0f)
     {
         if (string.IsNullOrWhiteSpace(
                 soundConfigPath) ||
@@ -403,7 +404,12 @@ internal sealed class RuntimeOmsiAudioHost :
                     DesiredLatency =
                         180,
                     NumberOfBuffers =
-                        4
+                        4,
+                    Volume =
+                        Math.Clamp(
+                            masterVolume,
+                            0.0f,
+                            1.0f)
                 };
 
             output.Init(
