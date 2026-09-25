@@ -149,6 +149,7 @@ public sealed class D3D11RenderWindow : Form
             [];
 
     private double _lastFrameTimeSeconds;
+    private double _odometerMeters;
     private double _lastVehiclePhysicsDiagnosticsSeconds =
         double.NegativeInfinity;
     private bool _graphicsPrepared;
@@ -330,6 +331,11 @@ public sealed class D3D11RenderWindow : Form
                 : new Dictionary<string, double>(
                     initialVehicleVariables,
                     StringComparer.OrdinalIgnoreCase);
+
+        _odometerMeters =
+            ResolveInitialOdometerMeters(
+                _initialVehicleVariables);
+
         _vsync = vsync;
         _vehiclePreviewMode =
             vehiclePreviewMode;
@@ -6452,6 +6458,45 @@ public sealed class D3D11RenderWindow : Form
             $"[script:$msg] {message}");
     }
 
+    private static double ResolveInitialOdometerMeters(
+        IReadOnlyDictionary<string, double>? initialVariables)
+    {
+        if (initialVariables is null)
+        {
+            return 0.0;
+        }
+
+        initialVariables.TryGetValue(
+            "kmcounter_km",
+            out var kilometers);
+
+        initialVariables.TryGetValue(
+            "kmcounter_m",
+            out var meters);
+
+        kilometers =
+            double.IsFinite(
+                    kilometers)
+                ? Math.Max(
+                    Math.Floor(
+                        kilometers),
+                    0.0)
+                : 0.0;
+
+        meters =
+            double.IsFinite(
+                    meters)
+                ? Math.Clamp(
+                    meters,
+                    0.0,
+                    999.999999)
+                : 0.0;
+
+        return kilometers *
+                   1_000.0 +
+               meters;
+    }
+
     private void InitializeVehicleScripts()
     {
         if (_scriptRuntime is null)
@@ -6940,6 +6985,37 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime.SetLocal(
             "Velocity_Ground",
             _vehicle.SpeedKph);
+
+        if (_driveMode &&
+            !_simulationPaused &&
+            !_vehicleRemoved &&
+            deltaSeconds >
+                0.0)
+        {
+            _odometerMeters +=
+                Math.Abs(
+                    _vehicle.SpeedMetersPerSecond) *
+                deltaSeconds;
+        }
+
+        var odometerKilometers =
+            Math.Floor(
+                _odometerMeters /
+                1_000.0);
+
+        var odometerRemainderMeters =
+            _odometerMeters -
+            odometerKilometers *
+                1_000.0;
+
+        _scriptRuntime.SetLocal(
+            "kmcounter_km",
+            odometerKilometers);
+
+        _scriptRuntime.SetLocal(
+            "kmcounter_m",
+            odometerRemainderMeters);
+
         _scriptRuntime.SetLocal(
             "n_Wheel",
             _vehicle.WheelRotationSpeedRpm);
