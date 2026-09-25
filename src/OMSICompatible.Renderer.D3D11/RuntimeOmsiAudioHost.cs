@@ -458,10 +458,19 @@ internal sealed class RuntimeOmsiAudioHost :
                 !string.Equals(
                     sound.Trigger,
                     trigger,
-                    StringComparison.OrdinalIgnoreCase) ||
-                !ViewpointMatches(
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var viewpointGain =
+                EvaluateViewpointGain(
                     sound.Viewpoint,
-                    interiorView))
+                    interiorView,
+                    scriptRuntime);
+
+            if (viewpointGain <=
+                0.0001f)
             {
                 continue;
             }
@@ -477,7 +486,8 @@ internal sealed class RuntimeOmsiAudioHost :
                 EvaluateVolume(
                     sound,
                     scriptRuntime) *
-                spatial.Gain;
+                spatial.Gain *
+                viewpointGain;
 
             if (volume >
                 0.0001f)
@@ -591,10 +601,11 @@ internal sealed class RuntimeOmsiAudioHost :
         foreach (var sound in
                  _sounds)
         {
-            var viewVisible =
-                ViewpointMatches(
+            var viewpointGain =
+                EvaluateViewpointGain(
                     sound.Viewpoint,
-                    interiorView);
+                    interiorView,
+                    scriptRuntime);
 
             var spatial =
                 EvaluateSpatial(
@@ -604,12 +615,11 @@ internal sealed class RuntimeOmsiAudioHost :
                     vehicleHeadingRadians);
 
             var volume =
-                viewVisible
-                    ? EvaluateVolume(
-                          sound,
-                          scriptRuntime) *
-                      spatial.Gain
-                    : 0.0f;
+                EvaluateVolume(
+                    sound,
+                    scriptRuntime) *
+                spatial.Gain *
+                viewpointGain;
 
             // OMSI engine loops identify their playback-speed source in the
             // [loopsound] declaration (normally engine_n). Do not allow a
@@ -1461,24 +1471,60 @@ internal sealed class RuntimeOmsiAudioHost :
             variable);
     }
 
-    private static bool ViewpointMatches(
+    private static float EvaluateViewpointGain(
         int viewpoint,
-        bool interiorView)
+        bool interiorView,
+        OmsiScriptRuntime? scriptRuntime)
     {
         if (viewpoint is
             <= 0 or >= 7)
         {
-            return true;
+            return 1.0f;
         }
 
-        var mask =
-            interiorView
-                ? 2
-                : 1;
+        var audibleOutside =
+            (viewpoint &
+             1) !=
+            0;
 
-        return (viewpoint &
-                mask) !=
-               0;
+        var audibleInside =
+            (viewpoint &
+             2) !=
+            0;
+
+        if (!interiorView)
+        {
+            return audibleOutside
+                ? 1.0f
+                : 0.0f;
+        }
+
+        if (audibleInside)
+        {
+            return 1.0f;
+        }
+
+        if (!audibleOutside)
+        {
+            return 0.0f;
+        }
+
+        // OMSI exposes Snd_OutsideVol specifically so vehicle scripts can
+        // control how much exterior sound leaks into the cabin (doors,
+        // windows, partitions, etc.). Exterior-only sounds therefore remain
+        // audible from an interior camera at the script-defined gain.
+        var outsideVolume =
+            ResolveVariable(
+                scriptRuntime,
+                "Snd_OutsideVol");
+
+        return double.IsFinite(
+                outsideVolume)
+                ? Math.Clamp(
+                    (float)outsideVolume,
+                    0.0f,
+                    1.0f)
+                : 0.0f;
     }
 
     private void ReportFailure(
