@@ -370,7 +370,7 @@ try
             "{endif}",
             "{end}",
             "{macro:helper}",
-            "(C.L.ENGINE_IDLE)",
+            "(C.L.engine_idle)",
             "(S.L.idle_copy)",
             "{end}"),
         Encoding.Unicode);
@@ -1507,11 +1507,11 @@ try
         scriptCatalog.Program.FrameBlocks.Count == 1 &&
         scriptCatalog.Program.Macros.ContainsKey(
             "HELPER") &&
-        scriptCatalog.NumericVariables.Contains(
+        !scriptCatalog.NumericVariables.Contains(
             "ENGINE_SPEED") &&
-        scriptCatalog.Constants.ContainsKey(
+        !scriptCatalog.Constants.ContainsKey(
             "ENGINE_IDLE") &&
-        scriptCatalog.Curves.ContainsKey(
+        !scriptCatalog.Curves.ContainsKey(
             "ENGINE_CURVE"),
         "Synthetic OMSI script entry points were not parsed.");
 
