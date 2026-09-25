@@ -928,9 +928,11 @@ internal sealed class RuntimeDriveVehicle
             _massKilograms;
 
         var aerodynamicAcceleration =
-            0.0022f *
-            SpeedMetersPerSecond *
-            SpeedMetersPerSecond;
+            _omsiScriptDynamicsEnabled
+                ? 0.0f
+                : 0.0022f *
+                  SpeedMetersPerSecond *
+                  SpeedMetersPerSecond;
 
         float serviceBrakeAcceleration;
         float stopBrakeAcceleration;
