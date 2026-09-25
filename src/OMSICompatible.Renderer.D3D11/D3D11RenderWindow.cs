@@ -8447,9 +8447,8 @@ public sealed class D3D11RenderWindow : Form
         Keys key,
         string trigger)
     {
-        if (_scriptRuntime?.HasTrigger(
-                trigger) !=
-            true)
+        if (!HasOmsiScriptTrigger(
+                trigger))
         {
             return false;
         }
@@ -8929,6 +8928,28 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private bool HasOmsiScriptTrigger(
+        string trigger)
+    {
+        if (string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return false;
+        }
+
+        if (_scriptRuntime?.HasTrigger(
+                trigger) ==
+            true)
+        {
+            return true;
+        }
+
+        return _sectionScriptRuntimes.Values.Any(
+            runtime =>
+                runtime.HasTrigger(
+                    trigger));
+    }
+
     private bool DispatchOmsiKeyboardKeyDown(
         KeyEventArgs e)
     {
@@ -8964,9 +8985,8 @@ public sealed class D3D11RenderWindow : Form
 
             if (binding.HostAction is
                 { } hostAction &&
-                !(_scriptRuntime?.HasTrigger(
-                       binding.Trigger) ==
-                   true &&
+                !(HasOmsiScriptTrigger(
+                      binding.Trigger) &&
                   IsOmsiScriptAuthoritativeAction(
                       hostAction)))
             {
