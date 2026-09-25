@@ -30,6 +30,7 @@ internal sealed class RuntimeDriveVehicle :
     private const float DefaultYawInertiaKilogramSquareMeters = 300_000.0f;
 
     private RuntimeTerrainSampler _terrain;
+    private readonly RuntimeVehicleSectionInfo[] _sections;
     private readonly float _wheelBaseMeters;
     private readonly float _frontAxleLongitudinalMeters;
     private readonly float _rearAxleLongitudinalMeters;
@@ -61,6 +62,9 @@ internal sealed class RuntimeDriveVehicle :
     private readonly float _yawResponse;
     private OdeWorld? _odeWorld;
     private OdeRigidBody? _odeBody;
+    private readonly Dictionary<int, OdeArticulatedSectionState>
+        _odeArticulatedSections =
+            [];
     private float _yawRateRadiansPerSecond;
     private float _groundPitchRadians;
     private float _groundRollRadians;
@@ -84,10 +88,19 @@ internal sealed class RuntimeDriveVehicle :
 
     public RuntimeDriveVehicle(
         IReadOnlyList<RuntimeTileInfo> tiles,
-        RuntimeVehiclePhysicsInfo? physics)
+        RuntimeVehiclePhysicsInfo? physics,
+        IReadOnlyList<RuntimeVehicleSectionInfo>? sections = null)
     {
         _terrain =
             new RuntimeTerrainSampler(tiles);
+
+        _sections =
+            sections?
+                .OrderBy(
+                    static section =>
+                        section.Index)
+                .ToArray() ??
+            [];
 
         _wheelBaseMeters =
             Math.Clamp(
@@ -144,11 +157,31 @@ internal sealed class RuntimeDriveVehicle :
             MathF.PI /
             180.0f;
 
+        var configuredMassTonnes =
+            physics?.MassTonnes ??
+            (DefaultMassKilograms /
+             1000.0f);
+
+        var articulatedMassTonnes =
+            _sections.Sum(
+                static section =>
+                    section.Physics?.MassTonnes ??
+                    section.MassTonnes ??
+                    0.0);
+
+        var leadingMassTonnes =
+            articulatedMassTonnes >
+                    0.0 &&
+                configuredMassTonnes >
+                    articulatedMassTonnes +
+                    2.0
+                ? configuredMassTonnes -
+                  articulatedMassTonnes
+                : configuredMassTonnes;
+
         _massKilograms =
             Math.Clamp(
-                (float)(physics?.MassTonnes ??
-                    (DefaultMassKilograms /
-                     1000.0f)) *
+                (float)leadingMassTonnes *
                 1000.0f,
                 2_000.0f,
                 45_000.0f);
@@ -227,10 +260,29 @@ internal sealed class RuntimeDriveVehicle :
                     0.80f)
                 : _wheelRadiusMeters;
 
+        var configuredRollingResistance =
+            physics?.RollingResistanceNewtons ??
+            DefaultRollingResistanceNewtons;
+
+        var articulatedRollingResistance =
+            _sections.Sum(
+                static section =>
+                    section.Physics?.RollingResistanceNewtons ??
+                    section.RollingResistanceNewtons ??
+                    0.0);
+
+        var leadingRollingResistance =
+            articulatedRollingResistance >
+                    0.0 &&
+                configuredRollingResistance >
+                    articulatedRollingResistance
+                ? configuredRollingResistance -
+                  articulatedRollingResistance
+                : configuredRollingResistance;
+
         _rollingResistanceNewtons =
             Math.Clamp(
-                (float)(physics?.RollingResistanceNewtons ??
-                    DefaultRollingResistanceNewtons),
+                (float)leadingRollingResistance,
                 0.0f,
                 15_000.0f);
 
@@ -580,6 +632,34 @@ internal sealed class RuntimeDriveVehicle :
             front: false,
             left: false);
 
+    public bool TryGetOdeArticulatedSectionState(
+        int sectionIndex,
+        out float absoluteHeadingRadians,
+        out float relativeYawRadians,
+        out float relativeYawRateRadiansPerSecond)
+    {
+        if (_odeArticulatedSections.TryGetValue(
+                sectionIndex,
+                out var state))
+        {
+            absoluteHeadingRadians =
+                state.AbsoluteHeadingRadians;
+            relativeYawRadians =
+                state.RelativeYawRadians;
+            relativeYawRateRadiansPerSecond =
+                state.RelativeYawRateRadiansPerSecond;
+            return true;
+        }
+
+        absoluteHeadingRadians =
+            0.0f;
+        relativeYawRadians =
+            0.0f;
+        relativeYawRateRadiansPerSecond =
+            0.0f;
+        return false;
+    }
+
     public void Reset(
         IReadOnlyList<RuntimeSplineInfo> splines,
         RuntimeTerrainGeometry terrainGeometry,
@@ -705,6 +785,7 @@ internal sealed class RuntimeDriveVehicle :
 
         UpdateGroundAttitude();
         SynchronizeOdeBodyFromRuntime();
+        ResetOdeArticulatedSections();
     }
 
     public void ToggleElectricalSystem()
@@ -2401,8 +2482,13 @@ internal sealed class RuntimeDriveVehicle :
                     -desiredYawAcceleration *
                     _yawInertiaKilogramSquareMeters));
 
+            ApplyOdeArticulatedForces(
+                deltaSeconds);
+
             world.Step(
                 deltaSeconds);
+
+            UpdateOdeArticulatedSectionState();
 
             var orientation =
                 body.Orientation;
@@ -2733,6 +2819,8 @@ internal sealed class RuntimeDriveVehicle :
                     _frontSuspensionSpringNewtonsPerMeter,
                     _frontSuspensionDamperNewtonSecondsPerMeter,
                     _frontMaximumSuspensionCompressionMeters,
+                    _frontSuspensionSpringNewtonsPerMeter *
+                        _frontMaximumSuspensionCompressionMeters,
                     -_frontStaticSuspensionMeters,
                     front: true);
 
@@ -2748,6 +2836,8 @@ internal sealed class RuntimeDriveVehicle :
                     _rearSuspensionSpringNewtonsPerMeter,
                     _rearSuspensionDamperNewtonSecondsPerMeter,
                     _rearMaximumSuspensionCompressionMeters,
+                    _rearSuspensionSpringNewtonsPerMeter *
+                        _rearMaximumSuspensionCompressionMeters,
                     -_rearStaticSuspensionMeters,
                     front: false);
 
@@ -2796,6 +2886,19 @@ internal sealed class RuntimeDriveVehicle :
                     axle,
                     springRate);
 
+            var maximumForce =
+                axle.MaximumForceKilonewtons is
+                    { } declaredMaximumForce &&
+                double.IsFinite(
+                    declaredMaximumForce) &&
+                declaredMaximumForce >
+                    0.0
+                    ? (float)(
+                        declaredMaximumForce *
+                        1_000.0)
+                    : springRate *
+                      maximumCompression;
+
             var trackWidth =
                 Math.Clamp(
                     (float)(axle.MaximumWidthMeters ??
@@ -2825,6 +2928,7 @@ internal sealed class RuntimeDriveVehicle :
                     springRate,
                     damperRate,
                     maximumCompression,
+                    maximumForce,
                     staticCompression,
                     front);
         }
@@ -2847,6 +2951,7 @@ internal sealed class RuntimeDriveVehicle :
         float springNewtonsPerMeter,
         float damperNewtonSecondsPerMeter,
         float maximumCompressionMeters,
+        float maximumForceNewtons,
         float staticCompressionMeters,
         bool front)
     {
@@ -2932,20 +3037,14 @@ internal sealed class RuntimeDriveVehicle :
                 -damperNewtonSecondsPerMeter *
                 pointVelocity.Z;
 
-            var maximumForce =
-                Math.Max(
-                    effectiveSpring *
-                    maximumCompressionMeters,
-                    _massKilograms *
-                    Gravity *
-                    0.25f);
-
             var supportForce =
                 Math.Clamp(
                     springForce +
                     damperForce,
                     0.0f,
-                    maximumForce);
+                    Math.Max(
+                        maximumForceNewtons,
+                        1.0f));
 
             body.AddWorldForceAtLocalPosition(
                 new Vector3(
@@ -2991,16 +3090,802 @@ internal sealed class RuntimeDriveVehicle :
         return contacts;
     }
 
-    private float[] BuildAxleStaticCompressions()
+    private float[] BuildAxleStaticCompressions() =>
+        BuildStaticCompressions(
+            _massKilograms,
+            _axles,
+            _suspensionSpringNewtonsPerMeter);
+
+    private void ResetOdeArticulatedSections()
     {
-        if (_axles.Length == 0)
+        DisposeOdeArticulatedSections();
+
+        var world =
+            _odeWorld;
+        var leadingBody =
+            _odeBody;
+
+        if (world is null ||
+            leadingBody is null ||
+            _sections.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var leadingOrientation =
+                leadingBody.Orientation;
+
+            var leadingCenter =
+                leadingBody.Position;
+
+            var leadingOrigin =
+                leadingCenter -
+                Vector3.Transform(
+                    new Vector3(
+                        0.0f,
+                        0.0f,
+                        _centerOfGravityHeightMeters),
+                    leadingOrientation);
+
+            foreach (var section in
+                     _sections)
+            {
+                var physics =
+                    section.Physics;
+
+                var massKilograms =
+                    Math.Clamp(
+                        (float)(physics?.MassTonnes ??
+                            section.MassTonnes ??
+                            6.0) *
+                        1_000.0f,
+                        1_000.0f,
+                        45_000.0f);
+
+                var centerOfGravityHeight =
+                    Math.Clamp(
+                        (float)(physics?.CenterOfGravityHeightMeters ??
+                            DefaultCenterOfGravityHeightMeters),
+                        0.35f,
+                        3.5f);
+
+                var wheelBase =
+                    Math.Clamp(
+                        (float)(physics?.WheelBaseMeters ??
+                            section.WheelBaseMeters ??
+                            section.FollowerLengthMeters),
+                        1.0f,
+                        15.0f);
+
+                var trackWidth =
+                    Math.Clamp(
+                        (float)(physics?.TrackWidthMeters ??
+                            DefaultTrackWidthMeters),
+                        1.2f,
+                        3.5f);
+
+                var pitchInertia =
+                    Math.Clamp(
+                        (float)(physics?.MomentOfInertiaX ??
+                            (massKilograms *
+                             (wheelBase *
+                                  wheelBase +
+                              4.0f *
+                                  centerOfGravityHeight *
+                                  centerOfGravityHeight) /
+                             12.0f /
+                             1_000.0f)) *
+                        1_000.0f,
+                        1_000.0f,
+                        8_000_000.0f);
+
+                var rollInertia =
+                    Math.Clamp(
+                        (float)(physics?.MomentOfInertiaY ??
+                            (massKilograms *
+                             (trackWidth *
+                                  trackWidth +
+                              4.0f *
+                                  centerOfGravityHeight *
+                                  centerOfGravityHeight) /
+                             12.0f /
+                             1_000.0f)) *
+                        1_000.0f,
+                        1_000.0f,
+                        8_000_000.0f);
+
+                var yawInertia =
+                    Math.Clamp(
+                        (float)(physics?.MomentOfInertiaZ ??
+                            section.YawInertiaTonneSquareMeters ??
+                            (massKilograms *
+                             (wheelBase *
+                                  wheelBase +
+                              trackWidth *
+                                  trackWidth) /
+                             12.0f /
+                             1_000.0f)) *
+                        1_000.0f,
+                        5_000.0f,
+                        8_000_000.0f);
+
+                var body =
+                    new OdeRigidBody(
+                        world,
+                        new OdeRigidBodyParameters(
+                            massKilograms,
+                            0.0f,
+                            0.0f,
+                            0.0f,
+                            pitchInertia,
+                            rollInertia,
+                            yawInertia));
+
+                body.SetGravityEnabled(
+                    true);
+
+                var localOrigin =
+                    new Vector3(
+                        (float)section.OriginX,
+                        (float)section.OriginZ,
+                        (float)section.OriginY);
+
+                var sectionOrigin =
+                    leadingOrigin +
+                    Vector3.Transform(
+                        localOrigin,
+                        leadingOrientation);
+
+                var sectionCenter =
+                    sectionOrigin +
+                    Vector3.Transform(
+                        new Vector3(
+                            0.0f,
+                            0.0f,
+                            centerOfGravityHeight),
+                        leadingOrientation);
+
+                body.SetPosition(
+                    sectionCenter);
+
+                body.SetOrientation(
+                    leadingOrientation);
+
+                var offsetFromLeadingCenter =
+                    sectionCenter -
+                    leadingCenter;
+
+                body.SetLinearVelocity(
+                    leadingBody.LinearVelocity +
+                    Vector3.Cross(
+                        leadingBody.AngularVelocity,
+                        offsetFromLeadingCenter));
+
+                body.SetAngularVelocity(
+                    leadingBody.AngularVelocity);
+
+                var parentBody =
+                    section.ParentIndex >
+                            0 &&
+                        _odeArticulatedSections.TryGetValue(
+                            section.ParentIndex,
+                            out var parentState)
+                        ? parentState.Body
+                        : leadingBody;
+
+                var localJoint =
+                    new Vector3(
+                        (float)section.JointX,
+                        (float)section.JointZ,
+                        (float)section.JointY);
+
+                var jointWorld =
+                    leadingOrigin +
+                    Vector3.Transform(
+                        localJoint,
+                        leadingOrientation);
+
+                var hingeAxis =
+                    Vector3.Transform(
+                        Vector3.UnitZ,
+                        leadingOrientation);
+
+                var hinge =
+                    new OdeHingeJoint(
+                        world,
+                        parentBody,
+                        body,
+                        jointWorld,
+                        hingeAxis);
+
+                var axles =
+                    ResolveSectionAxles(
+                        section,
+                        physics,
+                        wheelBase,
+                        trackWidth);
+
+                var averageSpring =
+                    ResolveAverageAxleValue(
+                        axles,
+                        static axle =>
+                            axle.SpringRateKilonewtonsPerMeter,
+                        DefaultSpringKilonewtonsPerMeter);
+
+                var averageDamper =
+                    ResolveAverageAxleValue(
+                        axles,
+                        static axle =>
+                            axle.DamperRateKilonewtonSecondsPerMeter,
+                        DefaultDamperKilonewtonSecondsPerMeter);
+
+                var staticCompressions =
+                    BuildStaticCompressions(
+                        massKilograms,
+                        axles,
+                        averageSpring *
+                        1_000.0f);
+
+                var state =
+                    new OdeArticulatedSectionState(
+                        section,
+                        body,
+                        hinge,
+                        parentBody,
+                        massKilograms,
+                        centerOfGravityHeight,
+                        Math.Clamp(
+                            (float)(physics?.RollingResistanceNewtons ??
+                                section.RollingResistanceNewtons ??
+                                DefaultRollingResistanceNewtons),
+                            0.0f,
+                            15_000.0f),
+                        yawInertia,
+                        axles,
+                        staticCompressions,
+                        averageSpring *
+                            1_000.0f,
+                        averageDamper *
+                            1_000.0f);
+
+                state.AbsoluteHeadingRadians =
+                    HeadingRadians;
+                state.RelativeYawRadians =
+                    0.0f;
+                state.RelativeYawRateRadiansPerSecond =
+                    0.0f;
+
+                _odeArticulatedSections[
+                    section.Index] =
+                    state;
+            }
+        }
+        catch (Exception exception)
+            when (exception is
+                DllNotFoundException or
+                EntryPointNotFoundException or
+                BadImageFormatException or
+                InvalidOperationException or
+                ArgumentOutOfRangeException)
+        {
+            DisposeOdeArticulatedSections();
+        }
+    }
+
+    private void ApplyOdeArticulatedForces(
+        float deltaSeconds)
+    {
+        foreach (var state in
+                 _odeArticulatedSections.Values
+                     .OrderBy(
+                         static item =>
+                             item.Section.Index))
+        {
+            var body =
+                state.Body;
+
+            var orientation =
+                body.Orientation;
+
+            var contacts =
+                ApplyOdeSectionSuspension(
+                    state,
+                    orientation);
+
+            if (contacts == 0)
+            {
+                body.AddWorldForce(
+                    Vector3.UnitZ *
+                    state.MassKilograms *
+                    Gravity);
+
+                var velocityWithoutTerrain =
+                    body.LinearVelocity;
+
+                body.SetLinearVelocity(
+                    new Vector3(
+                        velocityWithoutTerrain.X,
+                        velocityWithoutTerrain.Y,
+                        0.0f));
+            }
+
+            var forward3D =
+                Vector3.Transform(
+                    Vector3.UnitY,
+                    orientation);
+
+            var forward =
+                new Vector3(
+                    forward3D.X,
+                    forward3D.Y,
+                    0.0f);
+
+            if (forward.LengthSquared() <
+                0.000001f)
+            {
+                forward =
+                    new Vector3(
+                        MathF.Sin(
+                            state.AbsoluteHeadingRadians),
+                        MathF.Cos(
+                            state.AbsoluteHeadingRadians),
+                        0.0f);
+            }
+            else
+            {
+                forward =
+                    Vector3.Normalize(
+                        forward);
+            }
+
+            var right =
+                new Vector3(
+                    forward.Y,
+                    -forward.X,
+                    0.0f);
+
+            var velocity =
+                body.LinearVelocity;
+
+            var longitudinalSpeed =
+                Vector3.Dot(
+                    velocity,
+                    forward);
+
+            if (Math.Abs(
+                    longitudinalSpeed) >
+                0.01f)
+            {
+                body.AddWorldForce(
+                    forward *
+                    (-Math.Sign(
+                         longitudinalSpeed) *
+                     state.RollingResistanceNewtons));
+            }
+
+            var lateralSpeed =
+                Vector3.Dot(
+                    velocity,
+                    right);
+
+            var lateralForceLimit =
+                state.MassKilograms *
+                Gravity *
+                0.62f;
+
+            body.AddWorldForce(
+                right *
+                Math.Clamp(
+                    -lateralSpeed *
+                    state.MassKilograms *
+                    5.0f,
+                    -lateralForceLimit,
+                    lateralForceLimit));
+
+            var sectionHeading =
+                ResolveOdeHeading(
+                    body.Orientation,
+                    state.AbsoluteHeadingRadians);
+
+            var parentHeading =
+                state.ParentBody ==
+                    _odeBody
+                    ? HeadingRadians
+                    : ResolveOdeHeading(
+                        state.ParentBody.Orientation,
+                        sectionHeading);
+
+            var relativeYaw =
+                NormalizeRadians(
+                    sectionHeading -
+                    parentHeading);
+
+            var sectionYawRate =
+                -body.AngularVelocity.Z;
+
+            var parentYawRate =
+                state.ParentBody ==
+                    _odeBody
+                    ? _yawRateRadiansPerSecond
+                    : -state.ParentBody.AngularVelocity.Z;
+
+            var relativeYawRate =
+                sectionYawRate -
+                parentYawRate;
+
+            var maximumYaw =
+                DegreesToRadians(
+                    Math.Clamp(
+                        state.Section.MaximumYawDegrees,
+                        5.0,
+                        89.0));
+
+            var softLimit =
+                maximumYaw *
+                0.90f;
+
+            var excess =
+                Math.Max(
+                    Math.Abs(
+                        relativeYaw) -
+                    softLimit,
+                    0.0f);
+
+            var desiredRelativeAcceleration =
+                -relativeYawRate *
+                1.8f;
+
+            if (excess >
+                0.0f)
+            {
+                desiredRelativeAcceleration +=
+                    -Math.Sign(
+                        relativeYaw) *
+                    excess *
+                    28.0f;
+            }
+
+            var correctiveTorque =
+                Math.Clamp(
+                    -desiredRelativeAcceleration *
+                    state.YawInertiaKilogramSquareMeters,
+                    -state.YawInertiaKilogramSquareMeters *
+                        20.0f,
+                    state.YawInertiaKilogramSquareMeters *
+                        20.0f);
+
+            body.AddWorldTorque(
+                new Vector3(
+                    0.0f,
+                    0.0f,
+                    correctiveTorque));
+
+            state.ParentBody.AddWorldTorque(
+                new Vector3(
+                    0.0f,
+                    0.0f,
+                    -correctiveTorque));
+        }
+    }
+
+    private int ApplyOdeSectionSuspension(
+        OdeArticulatedSectionState state,
+        Quaternion orientation)
+    {
+        var body =
+            state.Body;
+
+        var bodyPosition =
+            body.Position;
+        var linearVelocity =
+            body.LinearVelocity;
+        var angularVelocity =
+            body.AngularVelocity;
+
+        var contacts =
+            0;
+
+        for (var axleIndex = 0;
+             axleIndex < state.Axles.Length;
+             axleIndex++)
+        {
+            var axle =
+                state.Axles[axleIndex];
+
+            var spring =
+                Math.Clamp(
+                    (float)(axle.SpringRateKilonewtonsPerMeter ??
+                        (state.FallbackSpringNewtonsPerMeter /
+                         1_000.0f)),
+                    25.0f,
+                    1_500.0f) *
+                1_000.0f;
+
+            var damper =
+                Math.Clamp(
+                    (float)(axle.DamperRateKilonewtonSecondsPerMeter ??
+                        (state.FallbackDamperNewtonSecondsPerMeter /
+                         1_000.0f)),
+                    2.0f,
+                    150.0f) *
+                1_000.0f;
+
+            var trackWidth =
+                Math.Clamp(
+                    (float)(axle.MaximumWidthMeters ??
+                        axle.MinimumWidthMeters ??
+                        DefaultTrackWidthMeters),
+                    1.2f,
+                    3.5f);
+
+            var staticCompression =
+                axleIndex <
+                    state.StaticCompressionMeters.Length
+                    ? state.StaticCompressionMeters[
+                        axleIndex]
+                    : 0.08f;
+
+            var maximumForce =
+                axle.MaximumForceKilonewtons is
+                    { } declaredMaximumForce &&
+                double.IsFinite(
+                    declaredMaximumForce) &&
+                declaredMaximumForce >
+                    0.0
+                    ? (float)(
+                        declaredMaximumForce *
+                        1_000.0)
+                    : spring *
+                      0.30f;
+
+            var maximumCompression =
+                Math.Clamp(
+                    maximumForce /
+                    Math.Max(
+                        spring,
+                        1.0f),
+                    0.03f,
+                    0.50f);
+
+            for (var side = 0;
+                 side < 2;
+                 side++)
+            {
+                var localPoint =
+                    new Vector3(
+                        (side == 0
+                            ? -0.5f
+                            : 0.5f) *
+                        trackWidth,
+                        (float)axle.LongitudinalPositionMeters,
+                        -state.CenterOfGravityHeightMeters);
+
+                var worldOffset =
+                    Vector3.Transform(
+                        localPoint,
+                        orientation);
+
+                var worldPoint =
+                    bodyPosition +
+                    worldOffset;
+
+                if (!_terrain.TrySample(
+                        worldPoint.X,
+                        worldPoint.Y,
+                        out var groundHeight))
+                {
+                    continue;
+                }
+
+                contacts++;
+
+                var compression =
+                    staticCompression +
+                    groundHeight +
+                    ModelGroundPlaneOffsetMeters -
+                    worldPoint.Z;
+
+                var pointVelocity =
+                    linearVelocity +
+                    Vector3.Cross(
+                        angularVelocity,
+                        worldOffset);
+
+                var supportForce =
+                    Math.Clamp(
+                        spring *
+                            Math.Max(
+                                compression,
+                                0.0f) -
+                        damper *
+                            pointVelocity.Z,
+                        0.0f,
+                        maximumForce);
+
+                body.AddWorldForceAtLocalPosition(
+                    new Vector3(
+                        0.0f,
+                        0.0f,
+                        supportForce),
+                    localPoint);
+            }
+        }
+
+        return contacts;
+    }
+
+    private void UpdateOdeArticulatedSectionState()
+    {
+        foreach (var state in
+                 _odeArticulatedSections.Values
+                     .OrderBy(
+                         static item =>
+                             item.Section.Index))
+        {
+            var absoluteHeading =
+                ResolveOdeHeading(
+                    state.Body.Orientation,
+                    state.AbsoluteHeadingRadians);
+
+            var parentHeading =
+                state.ParentBody ==
+                    _odeBody
+                    ? HeadingRadians
+                    : ResolveOdeHeading(
+                        state.ParentBody.Orientation,
+                        absoluteHeading);
+
+            state.AbsoluteHeadingRadians =
+                absoluteHeading;
+
+            state.RelativeYawRadians =
+                NormalizeRadians(
+                    absoluteHeading -
+                    parentHeading);
+
+            var sectionYawRate =
+                -state.Body.AngularVelocity.Z;
+
+            var parentYawRate =
+                state.ParentBody ==
+                    _odeBody
+                    ? _yawRateRadiansPerSecond
+                    : -state.ParentBody.AngularVelocity.Z;
+
+            state.RelativeYawRateRadiansPerSecond =
+                sectionYawRate -
+                parentYawRate;
+        }
+    }
+
+    private static float ResolveOdeHeading(
+        Quaternion orientation,
+        float fallback)
+    {
+        var forward =
+            Vector3.Transform(
+                Vector3.UnitY,
+                orientation);
+
+        var horizontalLengthSquared =
+            forward.X *
+                forward.X +
+            forward.Y *
+                forward.Y;
+
+        if (horizontalLengthSquared <
+            0.000001f)
+        {
+            return fallback;
+        }
+
+        return MathF.Atan2(
+            forward.X,
+            forward.Y);
+    }
+
+    private static RuntimeVehicleAxleInfo[] ResolveSectionAxles(
+        RuntimeVehicleSectionInfo section,
+        RuntimeVehiclePhysicsInfo? physics,
+        float wheelBaseMeters,
+        float trackWidthMeters)
+    {
+        if (physics?.Axles is
+            { Count: > 0 })
+        {
+            return physics.Axles
+                .Where(
+                    static axle =>
+                        double.IsFinite(
+                            axle.LongitudinalPositionMeters))
+                .OrderByDescending(
+                    static axle =>
+                        axle.LongitudinalPositionMeters)
+                .ToArray();
+        }
+
+        var diameter =
+            physics?.AverageWheelDiameterMeters ??
+            section.AverageWheelDiameterMeters ??
+            DefaultWheelDiameterMeters;
+
+        var spring =
+            physics?.SuspensionSpringKilonewtonsPerMeter ??
+            DefaultSpringKilonewtonsPerMeter;
+
+        var damper =
+            physics?.SuspensionDamperKilonewtonSecondsPerMeter ??
+            DefaultDamperKilonewtonSecondsPerMeter;
+
+        var halfWheelBase =
+            wheelBaseMeters *
+            0.5f;
+
+        return
+        [
+            new RuntimeVehicleAxleInfo(
+                halfWheelBase,
+                diameter,
+                null,
+                trackWidthMeters,
+                null,
+                spring,
+                null,
+                damper),
+            new RuntimeVehicleAxleInfo(
+                -halfWheelBase,
+                diameter,
+                null,
+                trackWidthMeters,
+                null,
+                spring,
+                null,
+                damper)
+        ];
+    }
+
+    private static float ResolveAverageAxleValue(
+        IReadOnlyList<RuntimeVehicleAxleInfo> axles,
+        Func<RuntimeVehicleAxleInfo, double?> selector,
+        float fallback)
+    {
+        var values =
+            axles
+                .Select(
+                    selector)
+                .Where(
+                    static value =>
+                        value.HasValue &&
+                        double.IsFinite(
+                            value.Value) &&
+                        value.Value >
+                            0.0)
+                .Select(
+                    static value =>
+                        value!.Value)
+                .ToArray();
+
+        return values.Length ==
+                0
+                ? fallback
+                : (float)values.Average();
+    }
+
+    private static float[] BuildStaticCompressions(
+        float massKilograms,
+        IReadOnlyList<RuntimeVehicleAxleInfo> axles,
+        float fallbackSpringNewtonsPerMeter)
+    {
+        if (axles.Count == 0)
         {
             return [];
         }
 
-        var axleStiffness =
+        var stiffness =
             new double[
-                _axles.Length];
+                axles.Count];
 
         double stiffnessSum =
             0.0;
@@ -3010,48 +3895,48 @@ internal sealed class RuntimeDriveVehicle :
             0.0;
 
         for (var index = 0;
-             index < _axles.Length;
+             index < axles.Count;
              index++)
         {
             var axle =
-                _axles[index];
+                axles[index];
 
             var springPerSide =
                 Math.Clamp(
-                    axle.SpringRateKilonewtonsPerMeter ??
-                    (_suspensionSpringNewtonsPerMeter /
-                     1_000.0f),
-                    25.0,
-                    1_500.0) *
-                1_000.0;
+                    (axle.SpringRateKilonewtonsPerMeter ??
+                     (fallbackSpringNewtonsPerMeter /
+                      1_000.0f)) *
+                    1_000.0,
+                    25_000.0,
+                    1_500_000.0);
 
-            var stiffness =
+            var axleStiffness =
                 2.0 *
                 springPerSide;
 
-            axleStiffness[index] =
-                stiffness;
+            stiffness[index] =
+                axleStiffness;
 
-            var longitudinal =
+            var position =
                 axle.LongitudinalPositionMeters;
 
             stiffnessSum +=
-                stiffness;
+                axleStiffness;
             weightedPositionSum +=
-                stiffness *
-                longitudinal;
+                axleStiffness *
+                position;
             weightedSquaredPositionSum +=
-                stiffness *
-                longitudinal *
-                longitudinal;
+                axleStiffness *
+                position *
+                position;
         }
 
         var result =
             new float[
-                _axles.Length];
+                axles.Count];
 
         var weight =
-            _massKilograms *
+            massKilograms *
             Gravity;
 
         var determinant =
@@ -3085,13 +3970,13 @@ internal sealed class RuntimeDriveVehicle :
                 : 0.0;
 
         for (var index = 0;
-             index < _axles.Length;
+             index < axles.Count;
              index++)
         {
             var compression =
                 constantTerm +
                 slopeTerm *
-                _axles[index]
+                axles[index]
                     .LongitudinalPositionMeters;
 
             if (!double.IsFinite(
@@ -3111,6 +3996,97 @@ internal sealed class RuntimeDriveVehicle :
         }
 
         return result;
+    }
+
+    private void DisposeOdeArticulatedSections()
+    {
+        foreach (var state in
+                 _odeArticulatedSections.Values)
+        {
+            state.Dispose();
+        }
+
+        _odeArticulatedSections.Clear();
+    }
+
+    private sealed class OdeArticulatedSectionState :
+        IDisposable
+    {
+        public OdeArticulatedSectionState(
+            RuntimeVehicleSectionInfo section,
+            OdeRigidBody body,
+            OdeHingeJoint hinge,
+            OdeRigidBody parentBody,
+            float massKilograms,
+            float centerOfGravityHeightMeters,
+            float rollingResistanceNewtons,
+            float yawInertiaKilogramSquareMeters,
+            RuntimeVehicleAxleInfo[] axles,
+            float[] staticCompressionMeters,
+            float fallbackSpringNewtonsPerMeter,
+            float fallbackDamperNewtonSecondsPerMeter)
+        {
+            Section =
+                section;
+            Body =
+                body;
+            Hinge =
+                hinge;
+            ParentBody =
+                parentBody;
+            MassKilograms =
+                massKilograms;
+            CenterOfGravityHeightMeters =
+                centerOfGravityHeightMeters;
+            RollingResistanceNewtons =
+                rollingResistanceNewtons;
+            YawInertiaKilogramSquareMeters =
+                yawInertiaKilogramSquareMeters;
+            Axles =
+                axles;
+            StaticCompressionMeters =
+                staticCompressionMeters;
+            FallbackSpringNewtonsPerMeter =
+                fallbackSpringNewtonsPerMeter;
+            FallbackDamperNewtonSecondsPerMeter =
+                fallbackDamperNewtonSecondsPerMeter;
+        }
+
+        public RuntimeVehicleSectionInfo Section { get; }
+
+        public OdeRigidBody Body { get; }
+
+        public OdeHingeJoint Hinge { get; }
+
+        public OdeRigidBody ParentBody { get; }
+
+        public float MassKilograms { get; }
+
+        public float CenterOfGravityHeightMeters { get; }
+
+        public float RollingResistanceNewtons { get; }
+
+        public float YawInertiaKilogramSquareMeters { get; }
+
+        public RuntimeVehicleAxleInfo[] Axles { get; }
+
+        public float[] StaticCompressionMeters { get; }
+
+        public float FallbackSpringNewtonsPerMeter { get; }
+
+        public float FallbackDamperNewtonSecondsPerMeter { get; }
+
+        public float AbsoluteHeadingRadians { get; set; }
+
+        public float RelativeYawRadians { get; set; }
+
+        public float RelativeYawRateRadiansPerSecond { get; set; }
+
+        public void Dispose()
+        {
+            Hinge.Dispose();
+            Body.Dispose();
+        }
     }
 
     private static float ResolveMaximumSuspensionCompression(
@@ -3140,6 +4116,8 @@ internal sealed class RuntimeDriveVehicle :
 
     private void DisableOdeDynamics()
     {
+        DisposeOdeArticulatedSections();
+
         _odeBody?.Dispose();
         _odeBody =
             null;

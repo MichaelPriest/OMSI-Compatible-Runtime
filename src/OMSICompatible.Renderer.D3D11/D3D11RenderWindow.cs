@@ -362,7 +362,8 @@ public sealed class D3D11RenderWindow : Form
 
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
-            windowInfo.Vehicle?.Physics);
+            windowInfo.Vehicle?.Physics,
+            windowInfo.Vehicle?.Sections);
         _driveMode =
             windowInfo.Vehicle is not null &&
             !_vehiclePreviewMode;
@@ -5645,6 +5646,32 @@ public sealed class D3D11RenderWindow : Form
                      static item =>
                          item.Index))
         {
+            if (_vehicle.TryGetOdeArticulatedSectionState(
+                    section.Index,
+                    out var physicalHeading,
+                    out var physicalYaw,
+                    out var physicalYawRate))
+            {
+                _articulatedSectionAbsoluteHeadingRadians[
+                    section.Index] =
+                    physicalHeading;
+
+                _articulatedSectionYawRadians[
+                    section.Index] =
+                    physicalYaw;
+
+                _articulatedSectionYawRateRadiansPerSecond[
+                    section.Index] =
+                    physicalYawRate;
+
+                _articulatedSectionJointWorldPosition[
+                    section.Index] =
+                    ResolveArticulatedJointWorldPosition(
+                        section);
+
+                continue;
+            }
+
             var parentHeading =
                 section.ParentIndex <= 0
                     ? _vehicle.HeadingRadians
