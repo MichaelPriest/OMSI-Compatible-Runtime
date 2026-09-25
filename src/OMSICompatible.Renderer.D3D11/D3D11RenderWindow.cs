@@ -4060,17 +4060,13 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
-        var runtime =
-            ResolveScriptRuntimeForSection(
-                sectionIndex);
-
         foreach (var condition in
                  conditions)
         {
             var value =
-                runtime?.GetLocal(
-                    condition.VariableName) ??
-                0.0;
+                ResolveSectionNumericValue(
+                    sectionIndex,
+                    condition.VariableName);
 
             if (Math.Abs(
                     value -
@@ -4189,10 +4185,6 @@ public sealed class D3D11RenderWindow : Form
     private ResolvedVehicleMaterialState ResolveVehicleMaterialState(
         RuntimeObjectBatch batch)
     {
-        var runtime =
-            ResolveScriptRuntimeForSection(
-                batch.SectionIndex);
-
         RuntimeVehicleMaterialChangeItemInfo? selectedItem =
             null;
 
@@ -4205,9 +4197,9 @@ public sealed class D3D11RenderWindow : Form
                              set.GroupIndex))
             {
                 var value =
-                    runtime?.GetLocal(
-                        changeSet.VariableName) ??
-                    0.0;
+                    ResolveSectionNumericValue(
+                        batch.SectionIndex,
+                        changeSet.VariableName);
 
                 if (!double.IsFinite(
                         value))
@@ -4254,12 +4246,12 @@ public sealed class D3D11RenderWindow : Form
             !string.IsNullOrWhiteSpace(
                 batch.MaterialChangeVariable) &&
             double.IsFinite(
-                runtime?.GetLocal(
-                    batch.MaterialChangeVariable) ??
-                0.0) &&
-            (runtime?.GetLocal(
-                 batch.MaterialChangeVariable) ??
-             0.0) >= 0.5;
+                ResolveSectionNumericValue(
+                    batch.SectionIndex,
+                    batch.MaterialChangeVariable)) &&
+            ResolveSectionNumericValue(
+                batch.SectionIndex,
+                batch.MaterialChangeVariable) >= 0.5;
 
         var alphaMode =
             selectedItem?.AlphaMode ??
@@ -4518,11 +4510,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            ResolveScriptRuntimeForSection(
-                    sectionIndex)?
-                .GetLocal(
-                    variableName) ??
-            0.0;
+            ResolveSectionNumericValue(
+                sectionIndex,
+                variableName);
 
         if (!double.IsFinite(
                 value))
@@ -4546,11 +4536,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            ResolveScriptRuntimeForSection(
-                    sectionIndex)?
-                .GetLocal(
-                    variableName) ??
-            0.0;
+            ResolveSectionNumericValue(
+                sectionIndex,
+                variableName);
 
         if (!double.IsFinite(
                 value))
@@ -4999,11 +4987,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            ResolveScriptRuntimeForSection(
-                    sectionIndex)?
-                .GetStringLocal(
-                    definition.StringVariable) ??
-            string.Empty;
+            ResolveSectionStringValue(
+                sectionIndex,
+                definition.StringVariable);
 
         var texture =
             _vehicleTextTextureRenderer
@@ -5034,13 +5020,8 @@ public sealed class D3D11RenderWindow : Form
         IReadOnlyList<RuntimeVehicleFreeTextureInfo>? bindings)
     {
 
-        var runtime =
-            ResolveScriptRuntimeForSection(
-                batch.SectionIndex);
-
         if (bindings is null ||
-            bindings.Count == 0 ||
-            runtime is null)
+            bindings.Count == 0)
         {
             return batch.TexturePath;
         }
@@ -5064,7 +5045,8 @@ public sealed class D3D11RenderWindow : Form
             }
 
             var value =
-                runtime.GetStringLocal(
+                ResolveSectionStringValue(
+                    batch.SectionIndex,
                     binding.VariableName);
 
             if (string.IsNullOrWhiteSpace(
@@ -6186,11 +6168,9 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 var target =
-                    ResolveScriptRuntimeForSection(
-                            mesh.SectionIndex)?
-                        .GetLocal(
-                            animation.VariableName) ??
-                    0.0;
+                    ResolveSectionNumericValue(
+                        mesh.SectionIndex,
+                        animation.VariableName);
 
                 if (!double.IsFinite(
                         target))
@@ -6378,11 +6358,9 @@ public sealed class D3D11RenderWindow : Form
                 out source))
         {
             source =
-                ResolveScriptRuntimeForSection(
-                        sectionIndex)?
-                    .GetLocal(
-                        light.BrightnessVariable) ??
-                0.0;
+                ResolveSectionNumericValue(
+                    sectionIndex,
+                    light.BrightnessVariable);
         }
 
         if (!double.IsFinite(
@@ -6436,11 +6414,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var raw =
-            ResolveScriptRuntimeForSection(
-                    sectionIndex)?
-                .GetLocal(
-                    animation.VariableName) ??
-            0.0;
+            ResolveSectionNumericValue(
+                sectionIndex,
+                animation.VariableName);
 
         return double.IsFinite(
                 raw)
@@ -7170,6 +7146,125 @@ public sealed class D3D11RenderWindow : Form
                 ? runtime
                 : _scriptRuntime;
 
+    private double ResolveSectionNumericValue(
+        int sectionIndex,
+        string variableName)
+    {
+        if (sectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                sectionIndex,
+                out var sectionRuntime))
+        {
+            if (sectionRuntime.WritesLocalVariable(
+                    variableName) ||
+                IsSectionHostLocalVariable(
+                    variableName) ||
+                _scriptRuntime is null ||
+                !_scriptRuntime.HasLocalVariable(
+                    variableName))
+            {
+                return sectionRuntime.GetLocal(
+                    variableName);
+            }
+        }
+
+        return _scriptRuntime?.GetLocal(
+                   variableName) ??
+               0.0;
+    }
+
+    private string ResolveSectionStringValue(
+        int sectionIndex,
+        string variableName)
+    {
+        if (sectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                sectionIndex,
+                out var sectionRuntime) &&
+            (sectionRuntime.WritesStringLocalVariable(
+                 variableName) ||
+             _scriptRuntime is null))
+        {
+            return sectionRuntime.GetStringLocal(
+                variableName);
+        }
+
+        return _scriptRuntime?.GetStringLocal(
+                   variableName) ??
+               string.Empty;
+    }
+
+    private static bool IsSectionHostLocalVariable(
+        string variableName) =>
+        variableName.Equals(
+            "Throttle",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Brake",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Clutch",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Velocity",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Velocity_Ground",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "n_Wheel",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "kmcounter_km",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "kmcounter_m",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Envir_Brightness",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "A_Trans_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "Wheel_Rotation_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "Wheel_RotationSpeed_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "Axle_Suspension_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "Axle_Steering_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "articulation_",
+            StringComparison.OrdinalIgnoreCase);
+
+    private void InheritLeadScriptValueWhenPassive(
+        OmsiScriptRuntime sectionRuntime,
+        string variableName)
+    {
+        if (_scriptRuntime is null ||
+            sectionRuntime.WritesLocalVariable(
+                variableName) ||
+            !sectionRuntime.HasLocalVariable(
+                variableName) ||
+            !_scriptRuntime.HasLocalVariable(
+                variableName))
+        {
+            return;
+        }
+
+        sectionRuntime.SetLocal(
+            variableName,
+            _scriptRuntime.GetLocal(
+                variableName));
+    }
+
     private bool ResolveSectionEngineRunning(
         OmsiScriptRuntime? runtime)
     {
@@ -7303,6 +7398,24 @@ public sealed class D3D11RenderWindow : Form
         runtime.SetLocal(
             "A_Trans_Z",
             _vehicle.VerticalAccelerationMetersPerSecondSquared);
+
+        foreach (var sharedVariable in
+                 new[]
+                 {
+                     "engine_on",
+                     "engine_injection_on",
+                     "engine_n",
+                     "engine_M",
+                     "elec_busbar_main",
+                     "elec_busbar_main_sw",
+                     "elec_bus_main",
+                     "Snd_OutsideVol"
+                 })
+        {
+            InheritLeadScriptValueWhenPassive(
+                runtime,
+                sharedVariable);
+        }
 
         var globalAxleStart =
             ResolveSectionOmsiAxleStartIndex(
