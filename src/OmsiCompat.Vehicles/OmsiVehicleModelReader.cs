@@ -863,6 +863,9 @@ public static class OmsiVehicleModelReader
                             .FirstOrDefault()?
                             .Trim()
                             .Trim('"');
+
+                    material.MaterialChangeMapIsNightMap =
+                        true;
                 }
 
                 continue;
@@ -1706,6 +1709,7 @@ public static class OmsiVehicleModelReader
         public string? LightMapVariable { get; set; }
         public string? MaterialChangeVariable { get; set; }
         public string? MaterialChangeMapSource { get; set; }
+        public bool MaterialChangeMapIsNightMap { get; set; }
         public OmsiVehicleMaterialColor? AllColor { get; set; }
         public string? EnvMapSource { get; set; }
         public double EnvMapStrength { get; set; }
@@ -1737,6 +1741,8 @@ public static class OmsiVehicleModelReader
                     LightMapVariable = LightMapVariable,
                     MaterialChangeVariable = MaterialChangeVariable,
                     MaterialChangeMapSource = MaterialChangeMapSource,
+                    MaterialChangeMapIsNightMap =
+                        MaterialChangeMapIsNightMap,
                     AllColor = AllColor,
                     EnvMapSource = EnvMapSource,
                     EnvMapStrength = EnvMapStrength,
@@ -1784,6 +1790,7 @@ public static class OmsiVehicleModelReader
                 TextureCoordinateXVariable,
                 TextureCoordinateYVariable,
                 MaterialChangeGroupIndex,
-                MaterialChangeItemIndex);
+                MaterialChangeItemIndex,
+                MaterialChangeMapIsNightMap);
     }
 }
