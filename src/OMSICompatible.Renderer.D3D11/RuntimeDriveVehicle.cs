@@ -639,7 +639,7 @@ internal sealed class RuntimeDriveVehicle :
         ResolveDrivenWheelRotationRadians();
 
     public float WheelRotationSpeedRpm =>
-        ResolveDrivenWheelRotationSpeedRpm();
+        ResolveAverageWheelRotationSpeedRpm();
 
     public float FrontLeftSuspensionMeters =>
         ResolveSuspensionOffset(
@@ -3540,6 +3540,49 @@ internal sealed class RuntimeDriveVehicle :
         }
 
         return _wheelRotationRadians;
+    }
+
+    private float ResolveAverageWheelRotationSpeedRpm()
+    {
+        var sum =
+            0.0f;
+        var count =
+            0;
+
+        for (var axle = 0;
+             axle < _omsiWheelKinematicsValid.Length;
+             axle++)
+        {
+            if (!_omsiWheelKinematicsValid[
+                    axle])
+            {
+                continue;
+            }
+
+            sum +=
+                _omsiWheelRotationSpeedRpmLeft[
+                    axle] +
+                _omsiWheelRotationSpeedRpmRight[
+                    axle];
+
+            count +=
+                2;
+        }
+
+        if (count >
+            0)
+        {
+            return sum /
+                   count;
+        }
+
+        return SpeedMetersPerSecond /
+               (2.0f *
+                MathF.PI *
+                Math.Max(
+                    _wheelRadiusMeters,
+                    0.05f)) *
+               60.0f;
     }
 
     private float ResolveDrivenWheelRotationSpeedRpm()
