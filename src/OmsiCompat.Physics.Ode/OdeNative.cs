@@ -204,4 +204,55 @@ internal static class OdeNative
         float x,
         float y,
         float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nint dJointCreateHinge(
+        nint world,
+        nint jointGroup);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointDestroy(
+        nint joint);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointAttach(
+        nint joint,
+        nint body1,
+        nint body2);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointSetHingeAnchor(
+        nint joint,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointSetHingeAxis(
+        nint joint,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern float dJointGetHingeAngle(
+        nint joint);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern float dJointGetHingeAngleRate(
+        nint joint);
 }

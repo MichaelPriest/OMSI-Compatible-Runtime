@@ -274,6 +274,9 @@ public sealed class OdeRigidBody :
             this);
     }
 
+    internal nint Handle =>
+        RequireHandle();
+
     private nint RequireHandle()
     {
         ObjectDisposedException.ThrowIf(

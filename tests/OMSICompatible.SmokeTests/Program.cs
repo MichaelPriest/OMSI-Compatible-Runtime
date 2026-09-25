@@ -119,6 +119,49 @@ try
                 0.01f,
             "ODE rigid body force-at-position, torque or quaternion bridge is invalid.");
 
+        using var odeTrailerBody =
+            new OdeRigidBody(
+                odeWorld,
+                new OdeRigidBodyParameters(
+                    MassKilograms:
+                        6_000.0f,
+                    CenterOfMassX:
+                        0.0f,
+                    CenterOfMassY:
+                        0.0f,
+                    CenterOfMassZ:
+                        0.0f,
+                    InertiaXKilogramSquareMeters:
+                        15_000.0f,
+                    InertiaYKilogramSquareMeters:
+                        30_000.0f,
+                    InertiaZKilogramSquareMeters:
+                        40_000.0f));
+
+        odeTrailerBody.SetPosition(
+            new Vector3(
+                0.0f,
+                -5.0f,
+                0.0f));
+
+        using var odeArticulation =
+            new OdeHingeJoint(
+                odeWorld,
+                odeBody,
+                odeTrailerBody,
+                new Vector3(
+                    0.0f,
+                    -2.5f,
+                    0.0f),
+                Vector3.UnitZ);
+
+        Require(
+            float.IsFinite(
+                odeArticulation.AngleRadians) &&
+            float.IsFinite(
+                odeArticulation.AngularRateRadiansPerSecond),
+            "ODE articulated hinge bridge did not return finite state.");
+
         var frontSuspension =
             OdeSuspensionTuning.FromSpringDamper(
                 springNewtonsPerMeter:

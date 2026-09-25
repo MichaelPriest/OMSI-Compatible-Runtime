@@ -216,7 +216,8 @@ public static class OmsiArticulatedVehicleAssetLoader
                     childBus.Physics.RotationPointLongitudinalMeters,
                     childBus.Physics.WheelBaseMeters,
                     childBus.Physics.RollingResistanceNewtons,
-                    childBus.Physics.AverageWheelDiameterMeters));
+                    childBus.Physics.AverageWheelDiameterMeters,
+                    childBus.Physics));
 
             combinedMassTonnes =
                 SumOptional(

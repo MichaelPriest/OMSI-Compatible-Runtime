@@ -391,7 +391,8 @@ public sealed record RuntimeVehicleSectionInfo(
     double? RotationPointLongitudinalMeters = null,
     double? WheelBaseMeters = null,
     double? RollingResistanceNewtons = null,
-    double? AverageWheelDiameterMeters = null);
+    double? AverageWheelDiameterMeters = null,
+    RuntimeVehiclePhysicsInfo? Physics = null);
 
 public sealed record RuntimeVehicleInfo(
     string DisplayName,
