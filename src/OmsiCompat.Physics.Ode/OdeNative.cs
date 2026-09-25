@@ -72,4 +72,71 @@ internal static class OdeNative
     internal static extern int dWorldQuickStep(
         nint world,
         float stepSize);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nint dBodyCreate(
+        nint world);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodyDestroy(
+        nint body);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodySetMass(
+        nint body,
+        ref OdeMass mass);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodySetPosition(
+        nint body,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodySetLinearVel(
+        nint body,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nint dBodyGetPosition(
+        nint body);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nint dBodyGetLinearVel(
+        nint body);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodyAddForce(
+        nint body,
+        float x,
+        float y,
+        float z);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodyAddRelForce(
+        nint body,
+        float x,
+        float y,
+        float z);
 }
