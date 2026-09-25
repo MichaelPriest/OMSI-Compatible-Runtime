@@ -2065,8 +2065,7 @@ internal sealed class RuntimeDriveVehicle :
                 (float)camera.Z);
 
         var vehicleRotation =
-            Matrix4x4.CreateRotationY(
-                HeadingRadians);
+            CreateBodyRotationMatrix();
 
         return Vector3.Transform(
                    localEye,
@@ -2099,8 +2098,7 @@ internal sealed class RuntimeDriveVehicle :
                 MathF.Cos(HeadingRadians));
 
         var vehicleRotation =
-            Matrix4x4.CreateRotationY(
-                HeadingRadians);
+            CreateBodyRotationMatrix();
 
         var localCenter =
             outsideCenter is null
@@ -2181,8 +2179,7 @@ internal sealed class RuntimeDriveVehicle :
                 (float)camera.Z);
 
         var vehicleRotation =
-            Matrix4x4.CreateRotationY(
-                HeadingRadians);
+            CreateBodyRotationMatrix();
 
         var eye =
             Vector3.Transform(
@@ -2217,6 +2214,24 @@ internal sealed class RuntimeDriveVehicle :
                     localForward,
                     vehicleRotation));
 
+        var up =
+            Vector3.TransformNormal(
+                Vector3.UnitY,
+                vehicleRotation);
+
+        if (up.LengthSquared() <
+            0.000001f)
+        {
+            up =
+                Vector3.UnitY;
+        }
+        else
+        {
+            up =
+                Vector3.Normalize(
+                    up);
+        }
+
         var target =
             eye +
             forward *
@@ -2228,7 +2243,7 @@ internal sealed class RuntimeDriveVehicle :
             Matrix4x4.CreateLookAt(
                 eye,
                 target,
-                Vector3.UnitY);
+                up);
 
         var span =
             MathF.Max(
@@ -2419,15 +2434,18 @@ internal sealed class RuntimeDriveVehicle :
     public Matrix4x4 CreateWorldMatrix()
     {
         return
-            Matrix4x4.CreateRotationZ(
-                BodyRollRadians) *
-            Matrix4x4.CreateRotationX(
-                BodyPitchRadians) *
-            Matrix4x4.CreateRotationY(
-                HeadingRadians) *
+            CreateBodyRotationMatrix() *
             Matrix4x4.CreateTranslation(
                 Position);
     }
+
+    private Matrix4x4 CreateBodyRotationMatrix() =>
+        Matrix4x4.CreateRotationZ(
+            BodyRollRadians) *
+        Matrix4x4.CreateRotationX(
+            BodyPitchRadians) *
+        Matrix4x4.CreateRotationY(
+            HeadingRadians);
 
 
     private void InitializeOdeDynamics(
