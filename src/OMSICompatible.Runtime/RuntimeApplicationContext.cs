@@ -649,6 +649,57 @@ internal sealed class RuntimeApplicationContext :
                     lines.Add(
                         $"  script={script.DeclaredPath} | resolved={script.ResolvedPath ?? "<missing>"}");
                 }
+
+                try
+                {
+                    var catalog =
+                        OmsiScriptCatalogLoader.Load(
+                            _contentRoot,
+                            manifest);
+
+                    var keyVariables =
+                        new[]
+                        {
+                            "M_Wheel",
+                            "Brakeforce",
+                            "Axle_Brakeforce_0_L",
+                            "Axle_Brakeforce_0_R",
+                            "Axle_Brakeforce_1_L",
+                            "Axle_Brakeforce_1_R",
+                            "articulation_0_alpha",
+                            "articulation_0_beta",
+                            "engine_on",
+                            "elec_busbar_main",
+                            "Snd_OutsideVol"
+                        }
+                        .Where(
+                            catalog.NumericVariables.Contains)
+                        .ToArray();
+
+                    lines.Add(
+                        $"  catalogVars={catalog.NumericVariables.Count} | stringVars={catalog.StringVariables.Count} | triggers={catalog.Program.Triggers.Count} | frameBlocks={catalog.Program.FrameBlocks.Count} | initBlocks={catalog.Program.InitBlocks.Count}");
+
+                    lines.Add(
+                        $"  keyVars={(keyVariables.Length == 0 ? "<none>" : string.Join(",", keyVariables))}");
+
+                    if (catalog.Program.Triggers.Count > 0)
+                    {
+                        lines.Add(
+                            $"  triggerSample={string.Join(",", catalog.Program.Triggers.Keys.OrderBy(static name => name, StringComparer.OrdinalIgnoreCase).Take(40))}");
+                    }
+
+                    foreach (var diagnostic in
+                             catalog.Diagnostics.Take(40))
+                    {
+                        lines.Add(
+                            $"  diagnostic={diagnostic}");
+                    }
+                }
+                catch (Exception exception)
+                {
+                    lines.Add(
+                        $"  catalogError={exception.GetType().Name}: {exception.Message}");
+                }
             }
 
             lines.Add("");
