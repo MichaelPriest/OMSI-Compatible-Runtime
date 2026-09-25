@@ -25,6 +25,10 @@ internal sealed class RuntimeApplicationContext :
     private D3D11RenderWindow? _runtimeWindow;
     private OmsiVehicleAsset? _vehicleAsset;
     private WorldTrafficSimulation? _trafficSimulation;
+    private readonly Dictionary<string, OmsiVehicleAsset>
+        _trafficVehicleAssets =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private (int X, int Y)? _pendingStreamingCenter;
     private int _loadedCenterX;
     private int _loadedCenterY;
@@ -264,6 +268,9 @@ internal sealed class RuntimeApplicationContext :
                 CreateTrafficSimulation(
                     world);
 
+            await EnsureTrafficVehicleAssetsAsync(
+                _trafficSimulation);
+
             WriteTrafficDiagnostics(
                 world,
                 _trafficSimulation);
@@ -297,7 +304,8 @@ internal sealed class RuntimeApplicationContext :
                     world,
                     vehicle,
                     _entryPoint,
-                    _contentRoot.RootPath);
+                    _contentRoot.RootPath,
+                    _trafficVehicleAssets);
 
             OmsiScriptRuntime? scriptRuntime =
                 null;
@@ -919,6 +927,9 @@ internal sealed class RuntimeApplicationContext :
                     CreateTrafficSimulation(
                         streamedWorld);
 
+                await EnsureTrafficVehicleAssetsAsync(
+                    _trafficSimulation);
+
                 WriteTrafficDiagnostics(
                     streamedWorld,
                     _trafficSimulation);
@@ -928,7 +939,8 @@ internal sealed class RuntimeApplicationContext :
                         streamedWorld,
                         _vehicleAsset,
                         _entryPoint,
-                        _contentRoot.RootPath);
+                        _contentRoot.RootPath,
+                        _trafficVehicleAssets);
 
                 _runtimeWindow.ApplyStreamedWorld(
                     runtimeInfo);
@@ -952,6 +964,100 @@ internal sealed class RuntimeApplicationContext :
         {
             _streamingGate.Release();
         }
+    }
+
+    private async Task EnsureTrafficVehicleAssetsAsync(
+        WorldTrafficSimulation simulation)
+    {
+        var requestedPaths =
+            simulation
+                .Snapshot()
+                .Select(
+                    static agent =>
+                        agent.VehiclePath)
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Where(
+                    path =>
+                        !_trafficVehicleAssets.ContainsKey(
+                            path))
+                .ToArray();
+
+        if (requestedPaths.Length ==
+            0)
+        {
+            return;
+        }
+
+        var loaded =
+            await Task.Run(
+                () =>
+                {
+                    var result =
+                        new List<KeyValuePair<
+                            string,
+                            OmsiVehicleAsset>>();
+
+                    foreach (var path in
+                             requestedPaths)
+                    {
+                        try
+                        {
+                            if (!File.Exists(
+                                    path))
+                            {
+                                continue;
+                            }
+
+                            var vehicleInfo =
+                                OmsiBusReader.ReadFile(
+                                    _contentRoot.RootPath,
+                                    path);
+
+                            var asset =
+                                OmsiArticulatedVehicleAssetLoader.Load(
+                                    _contentRoot,
+                                    vehicleInfo);
+
+                            if (asset.RenderableMeshCount <=
+                                0)
+                            {
+                                Console.WriteLine(
+                                    $"[traffic-ai] Vehicle has no renderable meshes: {path}");
+                                continue;
+                            }
+
+                            result.Add(
+                                new KeyValuePair<
+                                    string,
+                                    OmsiVehicleAsset>(
+                                    path,
+                                    asset));
+                        }
+                        catch (Exception exception)
+                        {
+                            Console.WriteLine(
+                                $"[traffic-ai] Failed to load {path}: {exception.Message}");
+                        }
+                    }
+
+                    return result;
+                });
+
+        foreach (var pair in
+                 loaded)
+        {
+            _trafficVehicleAssets[
+                pair.Key] =
+                pair.Value;
+        }
+
+        Console.WriteLine(
+            $"[traffic-ai] cached={_trafficVehicleAssets.Count}; requested={requestedPaths.Length}; loaded={loaded.Count}");
     }
 
     private static WorldTrafficSimulation
@@ -1023,7 +1129,8 @@ internal sealed class RuntimeApplicationContext :
         WorldDefinition world,
         OmsiVehicleAsset? vehicle,
         OmsiMapEntryPoint entryPoint,
-        string contentRoot)
+        string contentRoot,
+        IReadOnlyDictionary<string, OmsiVehicleAsset> trafficVehicleAssets)
     {
         var runtimeTiles =
             world.Tiles
@@ -1246,6 +1353,16 @@ internal sealed class RuntimeApplicationContext :
                 world.TrafficPaths.TerminalEndpointCount,
                 world.TrafficPaths.UnmatchedEndpointCount);
 
+        var runtimeTrafficVehicleAssets =
+            trafficVehicleAssets
+                .ToDictionary(
+                    static pair =>
+                        pair.Key,
+                    static pair =>
+                        RuntimeVehicleInfoFactory.FromAsset(
+                            pair.Value),
+                    StringComparer.OrdinalIgnoreCase);
+
         var runtimeAiCatalog =
             new RuntimeAiCatalogInfo(
                 world.AiCatalog.MovingVehicles
@@ -1295,7 +1412,8 @@ internal sealed class RuntimeApplicationContext :
             runtimeTrafficPaths,
             runtimeAiCatalog,
             runtimeVehicle,
-            runtimeSpawn);
+            runtimeSpawn,
+            runtimeTrafficVehicleAssets);
     }
 
     private static RuntimeVehiclePhysicsInfo ConvertVehiclePhysics(

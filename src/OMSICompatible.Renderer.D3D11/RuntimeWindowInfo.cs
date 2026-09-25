@@ -416,7 +416,8 @@ public sealed record RuntimeVehiclePhysicsInfo(
     double? MomentOfInertiaX = null,
     double? MomentOfInertiaY = null,
     double? MomentOfInertiaZ = null,
-    IReadOnlyList<RuntimeVehicleAxleInfo>? Axles = null);
+    IReadOnlyList<RuntimeVehicleAxleInfo>? Axles = null,
+    double? AiDeltaHeightMeters = null);
 
 public sealed record RuntimeDriverPositionInfo(
     double X,
@@ -484,4 +485,5 @@ public sealed record RuntimeWindowInfo(
     RuntimeTrafficPathNetworkInfo TrafficPaths,
     RuntimeAiCatalogInfo AiCatalog,
     RuntimeVehicleInfo? Vehicle,
-    RuntimeSpawnInfo? Spawn);
+    RuntimeSpawnInfo? Spawn,
+    IReadOnlyDictionary<string, RuntimeVehicleInfo>? TrafficVehicleAssets = null);

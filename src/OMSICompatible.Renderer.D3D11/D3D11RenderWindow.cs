@@ -301,6 +301,14 @@ public sealed class D3D11RenderWindow : Form
         RuntimeObjectGeometry.Empty;
     private RuntimeObjectGeometry _vehicleInteriorGeometry =
         RuntimeObjectGeometry.Empty;
+    private readonly Dictionary<string, RuntimeObjectGeometry>
+        _trafficVehicleGeometries =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ID3D11Buffer>
+        _trafficVehicleVertexBuffers =
+            new(
+                StringComparer.OrdinalIgnoreCase);
 
     private const uint ReflectionTextureSize = 512;
     private readonly Dictionary<string, RuntimeReflectionTarget>
@@ -588,6 +596,8 @@ public sealed class D3D11RenderWindow : Form
 
         _windowInfo =
             windowInfo;
+
+        EnsureTrafficVehicleResources();
 
         _terrainSurfaceSampler =
             new RuntimeTerrainSampler(
@@ -1015,6 +1025,7 @@ public sealed class D3D11RenderWindow : Form
         CreateSplineResources();
         CreateObjectResources();
         CreateVehicleResources();
+        EnsureTrafficVehicleResources();
     }
 
     private static IDXGIAdapter1 GetHardwareAdapter(IDXGIFactory2 factory)
@@ -1819,6 +1830,55 @@ public sealed class D3D11RenderWindow : Form
 
         _objectVertexCount =
             (uint)_objectGeometry.Vertices.Length;
+    }
+
+    private void EnsureTrafficVehicleResources()
+    {
+        if (_device is null ||
+            _windowInfo.TrafficVehicleAssets is null ||
+            _windowInfo.TrafficVehicleAssets.Count ==
+                0)
+        {
+            return;
+        }
+
+        foreach (var pair in
+                 _windowInfo.TrafficVehicleAssets)
+        {
+            if (_trafficVehicleVertexBuffers.ContainsKey(
+                    pair.Key))
+            {
+                continue;
+            }
+
+            var geometry =
+                RuntimeVehicleGeometry.Build(
+                    pair.Value,
+                    viewpointBit:
+                        4);
+
+            if (geometry.Vertices.Length ==
+                0)
+            {
+                continue;
+            }
+
+            var buffer =
+                _device.CreateBuffer(
+                    geometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+
+            _trafficVehicleGeometries[
+                pair.Key] =
+                geometry;
+
+            _trafficVehicleVertexBuffers[
+                pair.Key] =
+                buffer;
+
+            Console.WriteLine(
+                $"[traffic-ai] GPU vehicle={Path.GetFileName(pair.Key)}; vertices={geometry.Vertices.Length}; meshes={geometry.RenderedMeshCount}");
+        }
     }
 
     private void CreateVehicleResources()
@@ -2982,6 +3042,7 @@ public sealed class D3D11RenderWindow : Form
             DrawTerrain();
             DrawSplines();
             DrawObjects();
+            DrawTrafficVehicles();
             DrawVehicle();
             DrawVehicleLights();
         }
@@ -3422,6 +3483,315 @@ public sealed class D3D11RenderWindow : Form
              not > 0 &&
          _windowInfo.Vehicle?.DriverCameras.Count is
              not > 0);
+
+    private void DrawTrafficVehicles()
+    {
+        if (_trafficAgents.Count ==
+                0 ||
+            _trafficVehicleGeometries.Count ==
+                0 ||
+            _deviceContext is null ||
+            _renderTargetView is null ||
+            _vehicleModelBuffer is null ||
+            _vehicleMaterialBuffer is null ||
+            _vehicleSkinBuffer is null ||
+            _vehicleVertexShader is null ||
+            _vehicleColorPixelShader is null ||
+            _vehicleTexturedPixelShader is null ||
+            _vehicleAlphaCutoutPixelShader is null ||
+            _vehicleAlphaBlendPixelShader is null ||
+            _vehicleAlphaCutoutTransMapPixelShader is null ||
+            _vehicleAlphaBlendTransMapPixelShader is null ||
+            _vehicleInputLayout is null ||
+            _vehicleSampler is null ||
+            _terrainCameraBuffer is null)
+        {
+            return;
+        }
+
+        Span<RuntimeModelConstants> model =
+            stackalloc RuntimeModelConstants[1];
+
+        Span<RuntimeVehicleMaterialConstants> materialConstants =
+            stackalloc RuntimeVehicleMaterialConstants[1];
+
+        Span<RuntimeVehicleSkinConstants> skinConstants =
+            stackalloc RuntimeVehicleSkinConstants[1];
+
+        skinConstants[0] =
+            new RuntimeVehicleSkinConstants
+            {
+                Bone0 = Matrix4x4.Identity,
+                Bone1 = Matrix4x4.Identity,
+                Bone2 = Matrix4x4.Identity,
+                Bone3 = Matrix4x4.Identity
+            };
+
+        _deviceContext.OMSetRenderTargets(
+            _renderTargetView,
+            _depthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            _vehicleInputLayout);
+
+        _deviceContext.VSSetShader(
+            _vehicleVertexShader);
+
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            1,
+            _vehicleModelBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            3,
+            _vehicleSkinBuffer);
+
+        _vehicleSkinBuffer.SetData(
+            _deviceContext,
+            skinConstants,
+            MapMode.WriteDiscard);
+
+        _deviceContext.PSSetSampler(
+            0,
+            _vehicleSampler);
+
+        _deviceContext.PSSetConstantBuffer(
+            2,
+            _vehicleMaterialBuffer);
+
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            if (!_trafficVehicleGeometries.TryGetValue(
+                    agent.VehiclePath,
+                    out var geometry) ||
+                !_trafficVehicleVertexBuffers.TryGetValue(
+                    agent.VehiclePath,
+                    out var vertexBuffer) ||
+                !_windowInfo.TrafficVehicleAssets!.TryGetValue(
+                    agent.VehiclePath,
+                    out var vehicleInfo))
+            {
+                continue;
+            }
+
+            _deviceContext.IASetVertexBuffer(
+                0,
+                vertexBuffer,
+                RuntimeObjectVertex.SizeInBytes);
+
+            var heightOffset =
+                (float)(
+                    vehicleInfo.Physics.AiDeltaHeightMeters ??
+                    0.0);
+
+            var vehicleWorld =
+                Matrix4x4.CreateRotationY(
+                    (float)agent.HeadingRadians) *
+                Matrix4x4.CreateTranslation(
+                    (float)agent.X,
+                    (float)agent.Y +
+                        heightOffset,
+                    (float)agent.Z);
+
+            foreach (var batch in
+                     geometry.Batches
+                         .Where(
+                             static batch =>
+                                 batch.VertexCount >
+                                     0)
+                         .OrderBy(
+                             static batch =>
+                                 batch.AlphaBlend
+                                     ? 1
+                                     : 0))
+            {
+                model[0] =
+                    new RuntimeModelConstants
+                    {
+                        World =
+                            vehicleWorld
+                    };
+
+                _vehicleModelBuffer.SetData(
+                    _deviceContext,
+                    model,
+                    MapMode.WriteDiscard);
+
+                materialConstants[0] =
+                    new RuntimeVehicleMaterialConstants
+                    {
+                        AlphaScale = 1.0f,
+                        LightMapStrength =
+                            _materialLightMapEnabled &&
+                            !string.IsNullOrWhiteSpace(
+                                batch.LightMapTexturePath)
+                                ? 1.0f
+                                : 0.0f,
+                        EnvMapStrength =
+                            ResolveVehicleEnvMapStrength(
+                                batch.EnvMapTexturePath,
+                                batch.EnvMapStrength),
+                        EnvMapMaskEnabled =
+                            ResolveVehicleEnvMapMaskEnabled(
+                                batch.EnvMapMaskTexturePath,
+                                batch.HasTransMapDirective &&
+                                string.IsNullOrWhiteSpace(
+                                    batch.TransMapTexturePath)),
+                        BumpMapStrength =
+                            ResolveVehicleBumpMapStrength(
+                                batch.BumpMapTexturePath,
+                                batch.BumpMapStrength),
+                        BaseEmissive =
+                            ResolveVehicleAllColorEmissive(
+                                batch.BaseAllColor)
+                    };
+
+                _vehicleMaterialBuffer.SetData(
+                    _deviceContext,
+                    materialConstants,
+                    MapMode.WriteDiscard);
+
+                _deviceContext.OMSetBlendState(
+                    batch.AlphaBlend
+                        ? _vehicleAlphaBlendState
+                        : null);
+
+                _deviceContext.OMSetDepthStencilState(
+                    batch.AlphaBlend
+                        ? _vehicleDepthReadState
+                        : batch.NoZCheck
+                            ? _vehicleDepthDisabledState
+                            : batch.NoZWrite
+                                ? _vehicleDepthReadState
+                                : null);
+
+                for (var slot = 0;
+                     slot <= 6;
+                     slot++)
+                {
+                    _deviceContext.PSUnsetShaderResource(
+                        (uint)slot);
+                }
+
+                if (_materialReflectionMapEnabled &&
+                    TryGetVehicleTextureView(
+                        batch.EnvMapTexturePath,
+                        out var envMapView))
+                {
+                    _deviceContext.PSSetShaderResource(
+                        4,
+                        envMapView!);
+                }
+
+                if (_materialReflectionMapEnabled &&
+                    TryGetVehicleTextureView(
+                        batch.EnvMapMaskTexturePath,
+                        out var envMapMaskView))
+                {
+                    _deviceContext.PSSetShaderResource(
+                        5,
+                        envMapMaskView!);
+                }
+
+                if (_materialBumpMapEnabled &&
+                    TryGetVehicleTextureView(
+                        batch.BumpMapTexturePath,
+                        out var bumpMapView))
+                {
+                    _deviceContext.PSSetShaderResource(
+                        6,
+                        bumpMapView!);
+                }
+
+                var hasDiffuseTexture =
+                    TryGetVehicleTextureView(
+                        batch.TexturePath,
+                        out var textureView);
+
+                if (hasDiffuseTexture)
+                {
+                    var hasTransMap =
+                        TryGetVehicleTextureView(
+                            batch.TransMapTexturePath,
+                            out var transMapView);
+
+                    if (hasTransMap)
+                    {
+                        _deviceContext.PSSetShaderResource(
+                            1,
+                            transMapView!);
+                    }
+
+                    if (_materialLightMapEnabled &&
+                        TryGetVehicleTextureView(
+                            batch.LightMapTexturePath,
+                            out var lightMapView))
+                    {
+                        _deviceContext.PSSetShaderResource(
+                            2,
+                            lightMapView!);
+                    }
+
+                    _deviceContext.PSSetShader(
+                        batch.AlphaCutout
+                            ? hasTransMap
+                                ? _vehicleAlphaCutoutTransMapPixelShader
+                                : _vehicleAlphaCutoutPixelShader
+                            : batch.AlphaBlend
+                                ? hasTransMap
+                                    ? _vehicleAlphaBlendTransMapPixelShader
+                                    : _vehicleAlphaBlendPixelShader
+                                : _vehicleTexturedPixelShader);
+
+                    _deviceContext.PSSetShaderResource(
+                        0,
+                        textureView!);
+                }
+                else
+                {
+                    if (batch.AlphaCutout ||
+                        batch.AlphaBlend)
+                    {
+                        continue;
+                    }
+
+                    _deviceContext.PSSetShader(
+                        _vehicleColorPixelShader);
+                }
+
+                _deviceContext.Draw(
+                    batch.VertexCount,
+                    batch.StartVertex);
+            }
+        }
+
+        _deviceContext.OMSetBlendState(
+            null);
+
+        _deviceContext.OMSetDepthStencilState(
+            null);
+
+        for (var slot = 0;
+             slot <= 6;
+             slot++)
+        {
+            _deviceContext.PSUnsetShaderResource(
+                (uint)slot);
+        }
+
+        _deviceContext.RSSetState(
+            null);
+    }
 
     private void DrawVehicle()
     {
@@ -11796,6 +12166,15 @@ public sealed class D3D11RenderWindow : Form
             _vehicleLightVertexBuffer?.Dispose();
             _vehicleInteriorVertexBuffer?.Dispose();
             _vehicleExteriorVertexBuffer?.Dispose();
+
+            foreach (var buffer in
+                     _trafficVehicleVertexBuffers.Values)
+            {
+                buffer.Dispose();
+            }
+
+            _trafficVehicleVertexBuffers.Clear();
+            _trafficVehicleGeometries.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();

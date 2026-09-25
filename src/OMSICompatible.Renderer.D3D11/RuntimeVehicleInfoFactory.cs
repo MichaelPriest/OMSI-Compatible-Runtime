@@ -356,7 +356,8 @@ public static class RuntimeVehicleInfoFactory
                                 axle.SpringRateKilonewtonsPerMeter,
                                 axle.MaximumForceKilonewtons,
                                 axle.DamperRateKilonewtonSecondsPerMeter))
-                    .ToArray());
+                    .ToArray(),
+                physics.AiDeltaHeightMeters);
 
     private static double? AverageAxleValue(
         IReadOnlyList<OmsiVehicleAxle> axles,
