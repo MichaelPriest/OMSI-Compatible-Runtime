@@ -43,6 +43,7 @@ internal sealed class RuntimeDriveVehicle :
     private readonly float _wheelRadiusMeters;
     private readonly float _drivenWheelRadiusMeters;
     private readonly RuntimeVehicleAxleInfo[] _axles;
+    private readonly float[] _axleStaticCompressionMeters;
     private readonly float _rollingResistanceNewtons;
     private readonly float _suspensionSpringNewtonsPerMeter;
     private readonly float _frontSuspensionSpringNewtonsPerMeter;
@@ -75,6 +76,11 @@ internal sealed class RuntimeDriveVehicle :
     private float _frontRightSpringFactor = 1.0f;
     private float _rearLeftSpringFactor = 1.0f;
     private float _rearRightSpringFactor = 1.0f;
+    private bool _odeSuspensionActive;
+    private float _odeFrontLeftSuspensionMeters;
+    private float _odeFrontRightSuspensionMeters;
+    private float _odeRearLeftSuspensionMeters;
+    private float _odeRearRightSuspensionMeters;
 
     public RuntimeDriveVehicle(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -427,6 +433,18 @@ internal sealed class RuntimeDriveVehicle :
                     _rearSuspensionSpringNewtonsPerMeter,
                 50_000.0f);
 
+        _axleStaticCompressionMeters =
+            BuildAxleStaticCompressions();
+
+        _odeFrontLeftSuspensionMeters =
+            _frontStaticSuspensionMeters;
+        _odeFrontRightSuspensionMeters =
+            _frontStaticSuspensionMeters;
+        _odeRearLeftSuspensionMeters =
+            _rearStaticSuspensionMeters;
+        _odeRearRightSuspensionMeters =
+            _rearStaticSuspensionMeters;
+
         var yawInertia =
             Math.Clamp(
                 (float)(physics?.MomentOfInertiaYawTonneSquareMeters ??
@@ -669,6 +687,15 @@ internal sealed class RuntimeDriveVehicle :
         _frontRightSpringFactor = 1.0f;
         _rearLeftSpringFactor = 1.0f;
         _rearRightSpringFactor = 1.0f;
+        _odeSuspensionActive = false;
+        _odeFrontLeftSuspensionMeters =
+            _frontStaticSuspensionMeters;
+        _odeFrontRightSuspensionMeters =
+            _frontStaticSuspensionMeters;
+        _odeRearLeftSuspensionMeters =
+            _rearStaticSuspensionMeters;
+        _odeRearRightSuspensionMeters =
+            _rearStaticSuspensionMeters;
 
         ElectricalSystemEnabled = false;
         EngineRunning = false;
@@ -676,6 +703,7 @@ internal sealed class RuntimeDriveVehicle :
         StopBrakeEngaged = false;
         Gear = RuntimeDriveGear.Neutral;
 
+        UpdateGroundAttitude();
         SynchronizeOdeBodyFromRuntime();
     }
 
@@ -1587,6 +1615,17 @@ internal sealed class RuntimeDriveVehicle :
         bool front,
         bool left)
     {
+        if (_odeSuspensionActive)
+        {
+            return front
+                ? left
+                    ? _odeFrontLeftSuspensionMeters
+                    : _odeFrontRightSuspensionMeters
+                : left
+                    ? _odeRearLeftSuspensionMeters
+                    : _odeRearRightSuspensionMeters;
+        }
+
         var axleLongitudinal =
             front
                 ? _frontAxleLongitudinalMeters
@@ -2077,17 +2116,15 @@ internal sealed class RuntimeDriveVehicle :
                         _massKilograms,
                         0.0f,
                         0.0f,
-                        _centerOfGravityHeightMeters,
+                        0.0f,
                         pitchInertia,
                         rollInertia,
                         resolvedYawInertia));
 
-            // Phase 1 is a road-plane rigid body. Terrain height, pitch and
-            // roll still come from the OMSI axle/suspension model while ODE
-            // owns X/Y translation and yaw. Gravity is therefore disabled
-            // on this body until wheel/contact constraints are introduced.
+            // The rigid-body origin is the OMSI center of gravity. Four
+            // suspension contact points now support the body against gravity.
             _odeBody.SetGravityEnabled(
-                false);
+                true);
         }
         catch (Exception exception)
             when (exception is
@@ -2133,6 +2170,33 @@ internal sealed class RuntimeDriveVehicle :
                     forward.Y,
                     -forward.X,
                     0.0f);
+
+            var orientationBeforeStep =
+                body.Orientation;
+
+            var suspensionContactCount =
+                ApplyOdeSuspensionForces(
+                    body,
+                    orientationBeforeStep);
+
+            if (suspensionContactCount == 0)
+            {
+                // Missing terrain must not make the vehicle fall forever
+                // while tiles are being streamed/replaced.
+                body.AddWorldForce(
+                    Vector3.UnitZ *
+                    _massKilograms *
+                    Gravity);
+
+                var unsupportedVelocity =
+                    body.LinearVelocity;
+
+                body.SetLinearVelocity(
+                    new Vector3(
+                        unsupportedVelocity.X,
+                        unsupportedVelocity.Y,
+                        0.0f));
+            }
 
             var velocity =
                 body.LinearVelocity;
@@ -2413,8 +2477,11 @@ internal sealed class RuntimeDriveVehicle :
             SpeedMetersPerSecond =
                 nextLongitudinalSpeed;
 
+            var angularVelocity =
+                body.AngularVelocity;
+
             _yawRateRadiansPerSecond =
-                -body.AngularVelocity.Z;
+                -angularVelocity.Z;
 
             _longitudinalAccelerationMetersPerSecondSquared =
                 (SpeedMetersPerSecond -
@@ -2446,49 +2513,112 @@ internal sealed class RuntimeDriveVehicle :
             var odePosition =
                 body.Position;
 
-            var groundHeight =
-                Position.Y;
+            var rotatedCenterOfGravity =
+                Vector3.Transform(
+                    new Vector3(
+                        0.0f,
+                        0.0f,
+                        _centerOfGravityHeightMeters),
+                    orientation);
 
-            if (_terrain.TrySample(
-                    odePosition.X,
-                    odePosition.Y,
-                    out var sampledHeight))
-            {
-                groundHeight =
-                    sampledHeight +
-                    ModelGroundPlaneOffsetMeters;
-            }
+            var modelOrigin =
+                odePosition -
+                rotatedCenterOfGravity;
 
             Position =
                 new Vector3(
-                    odePosition.X,
-                    groundHeight,
-                    odePosition.Y);
+                    modelOrigin.X,
+                    modelOrigin.Z,
+                    modelOrigin.Y);
 
-            // Road contact is currently represented by the sampled terrain
-            // plane. Keep the ODE body exactly on that plane and remove any
-            // vertical/angular components not yet backed by wheel contacts.
-            body.SetPosition(
+            var horizontalForward =
                 new Vector3(
-                    Position.X,
-                    Position.Z,
-                    Position.Y));
+                    MathF.Sin(
+                        HeadingRadians),
+                    MathF.Cos(
+                        HeadingRadians),
+                    0.0f);
+
+            var horizontalRight =
+                new Vector3(
+                    horizontalForward.Y,
+                    -horizontalForward.X,
+                    0.0f);
 
             body.SetLinearVelocity(
-                bodyForward *
+                horizontalForward *
                     nextLongitudinalSpeed +
-                bodyRight *
-                    nextLateralSpeed);
+                horizontalRight *
+                    nextLateralSpeed +
+                Vector3.UnitZ *
+                    nextVelocity.Z);
 
-            body.SetAngularVelocity(
-                new Vector3(
-                    0.0f,
-                    0.0f,
-                    -_yawRateRadiansPerSecond));
+            var maximumPhysicalYawRate =
+                3.5f;
+
+            if (Math.Abs(
+                    angularVelocity.Z) >
+                maximumPhysicalYawRate)
+            {
+                body.SetAngularVelocity(
+                    new Vector3(
+                        angularVelocity.X,
+                        angularVelocity.Y,
+                        Math.Clamp(
+                            angularVelocity.Z,
+                            -maximumPhysicalYawRate,
+                            maximumPhysicalYawRate)));
+
+                _yawRateRadiansPerSecond =
+                    -Math.Clamp(
+                        angularVelocity.Z,
+                        -maximumPhysicalYawRate,
+                        maximumPhysicalYawRate);
+            }
+
+            var absolutePitch =
+                MathF.Atan2(
+                    bodyForward.Z,
+                    MathF.Sqrt(
+                        bodyForward.X *
+                            bodyForward.X +
+                        bodyForward.Y *
+                            bodyForward.Y));
+
+            var bodyRight3D =
+                Vector3.Transform(
+                    Vector3.UnitX,
+                    orientation);
+
+            var bodyUp3D =
+                Vector3.Transform(
+                    Vector3.UnitZ,
+                    orientation);
+
+            var absoluteRoll =
+                MathF.Atan2(
+                    -bodyRight3D.Z,
+                    bodyUp3D.Z);
 
             UpdateGroundAttitude();
-            UpdateBodyDynamics(
-                deltaSeconds);
+
+            _bodyPitchRadians =
+                Math.Clamp(
+                    absolutePitch -
+                    _groundPitchRadians,
+                    DegreesToRadians(
+                        -12.0),
+                    DegreesToRadians(
+                        12.0));
+
+            _bodyRollRadians =
+                Math.Clamp(
+                    absoluteRoll -
+                    _groundRollRadians,
+                    DegreesToRadians(
+                        -12.0),
+                    DegreesToRadians(
+                        12.0));
 
             return true;
         }
@@ -2514,10 +2644,26 @@ internal sealed class RuntimeDriveVehicle :
             return;
         }
 
-        var orientation =
+        var yaw =
             Quaternion.CreateFromAxisAngle(
                 Vector3.UnitZ,
                 -HeadingRadians);
+
+        var pitch =
+            Quaternion.CreateFromAxisAngle(
+                Vector3.UnitX,
+                BodyPitchRadians);
+
+        var roll =
+            Quaternion.CreateFromAxisAngle(
+                Vector3.UnitY,
+                BodyRollRadians);
+
+        var orientation =
+            Quaternion.Normalize(
+                roll *
+                pitch *
+                yaw);
 
         var forward =
             new Vector3(
@@ -2527,11 +2673,23 @@ internal sealed class RuntimeDriveVehicle :
                     HeadingRadians),
                 0.0f);
 
-        body.SetPosition(
+        var modelOrigin =
             new Vector3(
                 Position.X,
                 Position.Z,
-                Position.Y));
+                Position.Y);
+
+        var centerOfGravityWorld =
+            modelOrigin +
+            Vector3.Transform(
+                new Vector3(
+                    0.0f,
+                    0.0f,
+                    _centerOfGravityHeightMeters),
+                orientation);
+
+        body.SetPosition(
+            centerOfGravityWorld);
 
         body.SetOrientation(
             orientation);
@@ -2545,6 +2703,414 @@ internal sealed class RuntimeDriveVehicle :
                 0.0f,
                 0.0f,
                 -_yawRateRadiansPerSecond));
+    }
+
+    private int ApplyOdeSuspensionForces(
+        OdeRigidBody body,
+        Quaternion orientation)
+    {
+        var bodyPosition =
+            body.Position;
+        var linearVelocity =
+            body.LinearVelocity;
+        var angularVelocity =
+            body.AngularVelocity;
+
+        var contactCount =
+            0;
+
+        if (_axles.Length == 0)
+        {
+            contactCount +=
+                ApplyOdeAxleSuspension(
+                    body,
+                    orientation,
+                    bodyPosition,
+                    linearVelocity,
+                    angularVelocity,
+                    _frontAxleLongitudinalMeters,
+                    _trackWidthMeters,
+                    _frontSuspensionSpringNewtonsPerMeter,
+                    _frontSuspensionDamperNewtonSecondsPerMeter,
+                    _frontMaximumSuspensionCompressionMeters,
+                    -_frontStaticSuspensionMeters,
+                    front: true);
+
+            contactCount +=
+                ApplyOdeAxleSuspension(
+                    body,
+                    orientation,
+                    bodyPosition,
+                    linearVelocity,
+                    angularVelocity,
+                    _rearAxleLongitudinalMeters,
+                    _trackWidthMeters,
+                    _rearSuspensionSpringNewtonsPerMeter,
+                    _rearSuspensionDamperNewtonSecondsPerMeter,
+                    _rearMaximumSuspensionCompressionMeters,
+                    -_rearStaticSuspensionMeters,
+                    front: false);
+
+            _odeSuspensionActive =
+                contactCount >
+                0;
+
+            return contactCount;
+        }
+
+        for (var axleIndex = 0;
+             axleIndex < _axles.Length;
+             axleIndex++)
+        {
+            var axle =
+                _axles[axleIndex];
+
+            var front =
+                Math.Abs(
+                    axle.LongitudinalPositionMeters -
+                    _frontAxleLongitudinalMeters) <=
+                Math.Abs(
+                    axle.LongitudinalPositionMeters -
+                    _rearAxleLongitudinalMeters);
+
+            var springRate =
+                Math.Clamp(
+                    (float)(axle.SpringRateKilonewtonsPerMeter ??
+                        (_suspensionSpringNewtonsPerMeter /
+                         1_000.0f)),
+                    25.0f,
+                    1_500.0f) *
+                1_000.0f;
+
+            var damperRate =
+                Math.Clamp(
+                    (float)(axle.DamperRateKilonewtonSecondsPerMeter ??
+                        (_frontSuspensionDamperNewtonSecondsPerMeter /
+                         1_000.0f)),
+                    2.0f,
+                    150.0f) *
+                1_000.0f;
+
+            var maximumCompression =
+                ResolveMaximumSuspensionCompression(
+                    axle,
+                    springRate);
+
+            var trackWidth =
+                Math.Clamp(
+                    (float)(axle.MaximumWidthMeters ??
+                        axle.MinimumWidthMeters ??
+                        _trackWidthMeters),
+                    1.2f,
+                    3.5f);
+
+            var staticCompression =
+                axleIndex <
+                    _axleStaticCompressionMeters.Length
+                    ? _axleStaticCompressionMeters[
+                        axleIndex]
+                    : front
+                        ? -_frontStaticSuspensionMeters
+                        : -_rearStaticSuspensionMeters;
+
+            contactCount +=
+                ApplyOdeAxleSuspension(
+                    body,
+                    orientation,
+                    bodyPosition,
+                    linearVelocity,
+                    angularVelocity,
+                    (float)axle.LongitudinalPositionMeters,
+                    trackWidth,
+                    springRate,
+                    damperRate,
+                    maximumCompression,
+                    staticCompression,
+                    front);
+        }
+
+        _odeSuspensionActive =
+            contactCount >
+            0;
+
+        return contactCount;
+    }
+
+    private int ApplyOdeAxleSuspension(
+        OdeRigidBody body,
+        Quaternion orientation,
+        Vector3 bodyPosition,
+        Vector3 linearVelocity,
+        Vector3 angularVelocity,
+        float longitudinalMeters,
+        float trackWidthMeters,
+        float springNewtonsPerMeter,
+        float damperNewtonSecondsPerMeter,
+        float maximumCompressionMeters,
+        float staticCompressionMeters,
+        bool front)
+    {
+        var contacts =
+            0;
+
+        for (var side = 0;
+             side < 2;
+             side++)
+        {
+            var left =
+                side == 0;
+
+            var lateral =
+                (left
+                    ? -0.5f
+                    : 0.5f) *
+                trackWidthMeters;
+
+            var localPoint =
+                new Vector3(
+                    lateral,
+                    longitudinalMeters,
+                    -_centerOfGravityHeightMeters);
+
+            var worldOffset =
+                Vector3.Transform(
+                    localPoint,
+                    orientation);
+
+            var worldPoint =
+                bodyPosition +
+                worldOffset;
+
+            if (!_terrain.TrySample(
+                    worldPoint.X,
+                    worldPoint.Y,
+                    out var groundHeight))
+            {
+                continue;
+            }
+
+            contacts++;
+
+            var springFactor =
+                front
+                    ? left
+                        ? _frontLeftSpringFactor
+                        : _frontRightSpringFactor
+                    : left
+                        ? _rearLeftSpringFactor
+                        : _rearRightSpringFactor;
+
+            springFactor =
+                Math.Clamp(
+                    springFactor,
+                    0.10f,
+                    5.0f);
+
+            var effectiveSpring =
+                springNewtonsPerMeter *
+                springFactor;
+
+            var compression =
+                staticCompressionMeters +
+                groundHeight +
+                ModelGroundPlaneOffsetMeters -
+                worldPoint.Z;
+
+            var pointVelocity =
+                linearVelocity +
+                Vector3.Cross(
+                    angularVelocity,
+                    worldOffset);
+
+            var springForce =
+                effectiveSpring *
+                Math.Max(
+                    compression,
+                    0.0f);
+
+            var damperForce =
+                -damperNewtonSecondsPerMeter *
+                pointVelocity.Z;
+
+            var maximumForce =
+                Math.Max(
+                    effectiveSpring *
+                    maximumCompressionMeters,
+                    _massKilograms *
+                    Gravity *
+                    0.25f);
+
+            var supportForce =
+                Math.Clamp(
+                    springForce +
+                    damperForce,
+                    0.0f,
+                    maximumForce);
+
+            body.AddWorldForceAtLocalPosition(
+                new Vector3(
+                    0.0f,
+                    0.0f,
+                    supportForce),
+                localPoint);
+
+            var suspensionMeters =
+                -Math.Clamp(
+                    compression,
+                    0.0f,
+                    maximumCompressionMeters);
+
+            if (front)
+            {
+                if (left)
+                {
+                    _odeFrontLeftSuspensionMeters =
+                        suspensionMeters;
+                }
+                else
+                {
+                    _odeFrontRightSuspensionMeters =
+                        suspensionMeters;
+                }
+            }
+            else
+            {
+                if (left)
+                {
+                    _odeRearLeftSuspensionMeters =
+                        suspensionMeters;
+                }
+                else
+                {
+                    _odeRearRightSuspensionMeters =
+                        suspensionMeters;
+                }
+            }
+        }
+
+        return contacts;
+    }
+
+    private float[] BuildAxleStaticCompressions()
+    {
+        if (_axles.Length == 0)
+        {
+            return [];
+        }
+
+        var axleStiffness =
+            new double[
+                _axles.Length];
+
+        double stiffnessSum =
+            0.0;
+        double weightedPositionSum =
+            0.0;
+        double weightedSquaredPositionSum =
+            0.0;
+
+        for (var index = 0;
+             index < _axles.Length;
+             index++)
+        {
+            var axle =
+                _axles[index];
+
+            var springPerSide =
+                Math.Clamp(
+                    axle.SpringRateKilonewtonsPerMeter ??
+                    (_suspensionSpringNewtonsPerMeter /
+                     1_000.0f),
+                    25.0,
+                    1_500.0) *
+                1_000.0;
+
+            var stiffness =
+                2.0 *
+                springPerSide;
+
+            axleStiffness[index] =
+                stiffness;
+
+            var longitudinal =
+                axle.LongitudinalPositionMeters;
+
+            stiffnessSum +=
+                stiffness;
+            weightedPositionSum +=
+                stiffness *
+                longitudinal;
+            weightedSquaredPositionSum +=
+                stiffness *
+                longitudinal *
+                longitudinal;
+        }
+
+        var result =
+            new float[
+                _axles.Length];
+
+        var weight =
+            _massKilograms *
+            Gravity;
+
+        var determinant =
+            stiffnessSum *
+                weightedSquaredPositionSum -
+            weightedPositionSum *
+                weightedPositionSum;
+
+        var fallbackCompression =
+            weight /
+            Math.Max(
+                stiffnessSum,
+                1.0);
+
+        var constantTerm =
+            Math.Abs(
+                determinant) >
+                0.000001
+                ? weight *
+                  weightedSquaredPositionSum /
+                  determinant
+                : fallbackCompression;
+
+        var slopeTerm =
+            Math.Abs(
+                determinant) >
+                0.000001
+                ? -weight *
+                  weightedPositionSum /
+                  determinant
+                : 0.0;
+
+        for (var index = 0;
+             index < _axles.Length;
+             index++)
+        {
+            var compression =
+                constantTerm +
+                slopeTerm *
+                _axles[index]
+                    .LongitudinalPositionMeters;
+
+            if (!double.IsFinite(
+                    compression) ||
+                compression <=
+                    0.0)
+            {
+                compression =
+                    fallbackCompression;
+            }
+
+            result[index] =
+                Math.Clamp(
+                    (float)compression,
+                    0.005f,
+                    0.50f);
+        }
+
+        return result;
     }
 
     private static float ResolveMaximumSuspensionCompression(

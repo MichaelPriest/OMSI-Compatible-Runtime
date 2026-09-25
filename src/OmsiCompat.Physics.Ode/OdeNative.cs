@@ -187,6 +187,18 @@ internal static class OdeNative
     [DllImport(
         LibraryName,
         CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dBodyAddForceAtRelPos(
+        nint body,
+        float forceX,
+        float forceY,
+        float forceZ,
+        float positionX,
+        float positionY,
+        float positionZ);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
     internal static extern void dBodyAddTorque(
         nint body,
         float x,

@@ -43,7 +43,7 @@ try
                     CenterOfMassY:
                         0.0f,
                     CenterOfMassZ:
-                        1.2f,
+                        0.0f,
                     InertiaXKilogramSquareMeters:
                         20_000.0f,
                     InertiaYKilogramSquareMeters:
@@ -86,6 +86,15 @@ try
                 8_000.0f,
                 0.0f,
                 0.0f));
+        odeBody.AddWorldForceAtLocalPosition(
+            new Vector3(
+                0.0f,
+                0.0f,
+                8_000.0f),
+            new Vector3(
+                1.0f,
+                0.0f,
+                0.0f));
         odeBody.AddWorldTorque(
             new Vector3(
                 0.0f,
@@ -100,12 +109,15 @@ try
         Require(
             odeBody.LinearVelocity.X >
                 0.0f &&
+            Math.Abs(
+                odeBody.AngularVelocity.Y) >
+                0.0001f &&
             odeBody.AngularVelocity.Z >
                 0.0f &&
             Math.Abs(
                 odeBody.Orientation.Z) >
                 0.01f,
-            "ODE rigid body force, torque or quaternion bridge is invalid.");
+            "ODE rigid body force-at-position, torque or quaternion bridge is invalid.");
 
         var frontSuspension =
             OdeSuspensionTuning.FromSpringDamper(

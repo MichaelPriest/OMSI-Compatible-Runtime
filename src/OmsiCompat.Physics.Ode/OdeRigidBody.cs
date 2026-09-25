@@ -32,6 +32,24 @@ public sealed class OdeRigidBody :
                 "Rigid body mass must be positive.");
         }
 
+        // ODE requires the body's assigned dMass center of mass to remain
+        // at the body origin. Vehicle CG height is represented by placing
+        // the rigid-body origin at the OMSI schwerpunkt instead.
+        if (Math.Abs(
+                parameters.CenterOfMassX) >
+                0.000001f ||
+            Math.Abs(
+                parameters.CenterOfMassY) >
+                0.000001f ||
+            Math.Abs(
+                parameters.CenterOfMassZ) >
+                0.000001f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(parameters),
+                "ODE dBodySetMass requires the center of mass at the body origin.");
+        }
+
         _body =
             OdeNative.dBodyCreate(
                 world.Handle);
@@ -212,6 +230,20 @@ public sealed class OdeRigidBody :
             forceNewtons.X,
             forceNewtons.Y,
             forceNewtons.Z);
+    }
+
+    public void AddWorldForceAtLocalPosition(
+        Vector3 forceNewtons,
+        Vector3 localPositionMeters)
+    {
+        OdeNative.dBodyAddForceAtRelPos(
+            RequireHandle(),
+            forceNewtons.X,
+            forceNewtons.Y,
+            forceNewtons.Z,
+            localPositionMeters.X,
+            localPositionMeters.Y,
+            localPositionMeters.Z);
     }
 
     public void AddWorldTorque(
