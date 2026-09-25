@@ -149,85 +149,94 @@ public sealed class WorldTrafficSimulation
             return;
         }
 
-        var step =
-            Math.Clamp(
-                deltaSeconds,
-                0.0,
-                0.25);
+        var simulationSeconds =
+            deltaSeconds;
 
-        foreach (var agent in
-                 _agents)
+        while (simulationSeconds >
+               0.000001)
         {
-            var remaining =
-                agent.SpeedMetersPerSecond *
-                step;
+            var step =
+                Math.Min(
+                    simulationSeconds,
+                    0.25);
 
-            var guard =
-                0;
-
-            while (remaining >
-                       0.0001 &&
-                   guard++ <
-                       32)
+            foreach (var agent in
+                     _agents)
             {
-                if (!_segmentsByIndex.TryGetValue(
-                        agent.SegmentIndex,
-                        out var segment))
-                {
-                    break;
-                }
+                var remaining =
+                    agent.SpeedMetersPerSecond *
+                    step;
 
-                var length =
-                    SegmentLength(
-                        segment);
+                var guard =
+                    0;
 
-                if (length <=
-                    0.0001)
+                while (remaining >
+                           0.0001 &&
+                       guard++ <
+                           32)
                 {
-                    if (!TryAdvanceSegment(
-                            agent,
-                            segment))
+                    if (!_segmentsByIndex.TryGetValue(
+                            agent.SegmentIndex,
+                            out var segment))
                     {
                         break;
                     }
 
-                    continue;
-                }
+                    var length =
+                        SegmentLength(
+                            segment);
 
-                var available =
-                    Math.Max(
-                        length -
-                            agent.DistanceMeters,
-                        0.0);
+                    if (length <=
+                        0.0001)
+                    {
+                        if (!TryAdvanceSegment(
+                                agent,
+                                segment))
+                        {
+                            break;
+                        }
 
-                if (remaining <=
-                    available)
-                {
-                    agent.DistanceMeters +=
-                        remaining;
+                        continue;
+                    }
 
-                    remaining =
-                        0.0;
+                    var available =
+                        Math.Max(
+                            length -
+                                agent.DistanceMeters,
+                            0.0);
 
-                    break;
-                }
+                    if (remaining <=
+                        available)
+                    {
+                        agent.DistanceMeters +=
+                            remaining;
 
-                remaining -=
-                    available;
+                        remaining =
+                            0.0;
 
-                agent.DistanceMeters =
-                    length;
+                        break;
+                    }
 
-                if (!TryAdvanceSegment(
-                        agent,
-                        segment))
-                {
-                    remaining =
-                        0.0;
+                    remaining -=
+                        available;
 
-                    break;
+                    agent.DistanceMeters =
+                        length;
+
+                    if (!TryAdvanceSegment(
+                            agent,
+                            segment))
+                    {
+                        remaining =
+                            0.0;
+
+                        break;
+                    }
                 }
             }
+
+            simulationSeconds -=
+                step;
         }
     }
 
