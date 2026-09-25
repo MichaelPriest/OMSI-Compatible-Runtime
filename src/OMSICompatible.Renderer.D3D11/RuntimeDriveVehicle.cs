@@ -58,7 +58,7 @@ internal sealed class RuntimeDriveVehicle
     private float _longitudinalAccelerationMetersPerSecondSquared;
     private float _wheelRotationRadians;
     private bool _omsiScriptDynamicsEnabled;
-    private float _omsiWheelTorqueKiloNewtonMeters;
+    private float _omsiWheelTorqueNewtonMeters;
     private float _omsiBrakeForceNewtons;
 
     public RuntimeDriveVehicle(
@@ -520,7 +520,7 @@ internal sealed class RuntimeDriveVehicle
         _longitudinalAccelerationMetersPerSecondSquared = 0.0f;
         _wheelRotationRadians = 0.0f;
         _omsiScriptDynamicsEnabled = false;
-        _omsiWheelTorqueKiloNewtonMeters = 0.0f;
+        _omsiWheelTorqueNewtonMeters = 0.0f;
         _omsiBrakeForceNewtons = 0.0f;
 
         ElectricalSystemEnabled = false;
@@ -602,20 +602,20 @@ internal sealed class RuntimeDriveVehicle
 
     public void SetOmsiScriptDynamics(
         bool enabled,
-        double wheelTorqueKiloNewtonMeters,
+        double wheelTorqueNewtonMeters,
         double brakeForceNewtons)
     {
         _omsiScriptDynamicsEnabled =
             enabled;
 
-        _omsiWheelTorqueKiloNewtonMeters =
+        _omsiWheelTorqueNewtonMeters =
             enabled &&
             double.IsFinite(
-                wheelTorqueKiloNewtonMeters)
+                wheelTorqueNewtonMeters)
                 ? Math.Clamp(
-                    (float)wheelTorqueKiloNewtonMeters,
-                    -250.0f,
-                    250.0f)
+                    (float)wheelTorqueNewtonMeters,
+                    -250_000.0f,
+                    250_000.0f)
                 : 0.0f;
 
         _omsiBrakeForceNewtons =
@@ -851,13 +851,13 @@ internal sealed class RuntimeDriveVehicle
 
         if (_omsiScriptDynamicsEnabled)
         {
-            // OMSI's predefined M_Wheel variable is the sum of wheel torque
-            // applied to all driven axles, in kNm. The executable converts
-            // that torque through the driven wheel radius; engine, gearbox,
-            // converter, retarder and reverse behaviour are script-owned.
+            // OMSI's predefined M_Wheel variable is wheel torque in N*m.
+            // The stock MAN scripts verify this themselves through the
+            // mechanical-power identity:
+            //   P[kW] = M_Wheel[N*m] * n_Wheel[rpm] * PI / 30000.
+            // Do not apply an extra x1000 conversion here.
             driveForceNewtons =
-                _omsiWheelTorqueKiloNewtonMeters *
-                1_000.0f /
+                _omsiWheelTorqueNewtonMeters /
                 Math.Max(
                     _wheelRadiusMeters,
                     0.05f);
