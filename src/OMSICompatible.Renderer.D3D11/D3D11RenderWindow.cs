@@ -7175,6 +7175,8 @@ public sealed class D3D11RenderWindow : Form
     {
         if (runtime is not null &&
             runtime.HasLocalVariable(
+                "engine_on") &&
+            runtime.WritesLocalVariable(
                 "engine_on"))
         {
             return runtime.GetLocal(
