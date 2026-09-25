@@ -329,4 +329,12 @@ internal static class OdeNative
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern float dJointGetUniversalAngle2Rate(
         nint joint);
+
+    [DllImport(
+        LibraryName,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void dJointAddUniversalTorques(
+        nint joint,
+        float torque1,
+        float torque2);
 }
