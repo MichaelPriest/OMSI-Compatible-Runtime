@@ -992,13 +992,18 @@ try
             [
                 new OmsiSignalRouteSection(
                     7,
-                    "entry",
+                    "signal",
                     1,
+                    ["7777", "0"]),
+                new OmsiSignalRouteSection(
+                    7,
+                    "entry",
+                    4,
                     ["7001", "0", "237", "6"]),
                 new OmsiSignalRouteSection(
                     7,
                     "entry",
-                    6,
+                    9,
                     ["7002", "0", "237", "7"])
             ]);
 
@@ -1018,6 +1023,22 @@ try
         railSignalRouteSimulation.Snapshot() is
             [{ SegmentIndex: 22 }],
         "OMSI rail traffic did not stay on the reserved signal-route path sequence.");
+
+    Require(
+        railSignalRouteSimulation.SignalRouteSnapshot() is
+            [
+                {
+                    RouteIndex: 7,
+                    Reserved: true,
+                    ReservedAgentIndex: 0,
+                    Signal:
+                    {
+                        ObjectId: 7777,
+                        ElementIndex: 0
+                    }
+                }
+            ],
+        "OMSI rail signal route state did not expose the reserved route owner and signal object reference.");
 
     var railTailClearanceNetwork =
         new WorldTrafficPathNetwork(
