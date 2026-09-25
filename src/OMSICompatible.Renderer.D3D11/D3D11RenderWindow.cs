@@ -7204,9 +7204,10 @@ public sealed class D3D11RenderWindow : Form
                 return true;
 
             case Keys.M:
-                if (DispatchDefaultScriptTriggerIfPresent(
+                if (DispatchFirstDefaultScriptTriggerIfPresent(
                         key,
-                        "kw_m_enginestart"))
+                        "kw_m_enginestart",
+                        "kw_m_engine_startbutton"))
                 {
                     SynchronizeHostVehicleStateFromScripts();
                 }
@@ -7220,6 +7221,24 @@ public sealed class D3D11RenderWindow : Form
             default:
                 return false;
         }
+    }
+
+    private bool DispatchFirstDefaultScriptTriggerIfPresent(
+        Keys key,
+        params string[] triggers)
+    {
+        foreach (var trigger in
+                 triggers)
+        {
+            if (DispatchDefaultScriptTriggerIfPresent(
+                    key,
+                    trigger))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool DispatchDefaultScriptTriggerIfPresent(
