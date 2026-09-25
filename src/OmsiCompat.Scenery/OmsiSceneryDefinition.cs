@@ -54,6 +54,33 @@ public sealed record OmsiSceneryTrafficLightProgram(
     IReadOnlyList<OmsiSceneryTrafficLightPhase> Phases,
     double ApproachDistanceMeters);
 
+public sealed record OmsiSceneryFileReference(
+    string DeclaredPath,
+    string? ResolvedPath)
+{
+    public bool Exists =>
+        ResolvedPath is not null;
+}
+
+public sealed record OmsiSceneryScriptManifest(
+    IReadOnlyList<OmsiSceneryFileReference> ScriptFiles,
+    IReadOnlyList<OmsiSceneryFileReference> VariableLists,
+    IReadOnlyList<OmsiSceneryFileReference> StringVariableLists,
+    IReadOnlyList<OmsiSceneryFileReference> ConstantFiles)
+{
+    public int RegisteredFileCount =>
+        ScriptFiles.Count +
+        VariableLists.Count +
+        StringVariableLists.Count +
+        ConstantFiles.Count;
+
+    public int MissingFileCount =>
+        ScriptFiles.Count(static file => !file.Exists) +
+        VariableLists.Count(static file => !file.Exists) +
+        StringVariableLists.Count(static file => !file.Exists) +
+        ConstantFiles.Count(static file => !file.Exists);
+}
+
 public sealed record OmsiSceneryPathDefinition(
     double X,
     double Y,
@@ -79,7 +106,8 @@ public sealed record OmsiSceneryDefinition(
     OmsiSceneryTreeDefinition? Tree,
     IReadOnlyList<OmsiSceneryPathDefinition> Paths,
     double? TrafficLightCycleSeconds = null,
-    IReadOnlyList<OmsiSceneryTrafficLightProgram>? TrafficLights = null)
+    IReadOnlyList<OmsiSceneryTrafficLightProgram>? TrafficLights = null,
+    OmsiSceneryScriptManifest? ScriptManifest = null)
 {
     public static OmsiSceneryDefinition Missing { get; } =
         new(
