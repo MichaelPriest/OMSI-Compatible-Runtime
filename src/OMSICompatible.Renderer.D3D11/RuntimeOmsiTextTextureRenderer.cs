@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Text;
+using OmsiCompat.Core;
 
 namespace OMSICompatible.Renderer.D3D11;
 
@@ -248,11 +248,59 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
             return null;
         }
 
+        var exactCandidates =
+            new[]
+            {
+                Path.Combine(
+                    _fontsDirectory,
+                    fontName +
+                    ".oft"),
+                Path.Combine(
+                    _fontsDirectory,
+                    "Fonts",
+                    fontName +
+                    ".oft"),
+                Path.Combine(
+                    _fontsDirectory,
+                    "backup",
+                    fontName +
+                    ".oft")
+            };
+
+        foreach (var candidate in
+                 exactCandidates)
+        {
+            if (!File.Exists(
+                    candidate))
+            {
+                continue;
+            }
+
+            var definition =
+                TryReadFont(
+                    candidate);
+
+            if (definition is null)
+            {
+                continue;
+            }
+
+            _fontDefinitions[
+                definition.Name] =
+                definition;
+
+            _fontDefinitions[
+                fontName] =
+                definition;
+
+            return definition;
+        }
+
         foreach (var path in
                  Directory.EnumerateFiles(
                      _fontsDirectory,
                      "*.oft",
-                     SearchOption.TopDirectoryOnly))
+                     SearchOption.AllDirectories))
         {
             var definition =
                 TryReadFont(
@@ -270,8 +318,17 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
             if (string.Equals(
                     definition.Name,
                     fontName,
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    Path.GetFileNameWithoutExtension(
+                        path),
+                    fontName,
                     StringComparison.OrdinalIgnoreCase))
             {
+                _fontDefinitions[
+                    fontName] =
+                    definition;
+
                 return definition;
             }
         }
@@ -290,9 +347,8 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
         try
         {
             var lines =
-                File.ReadAllLines(
-                    path,
-                    Encoding.Latin1);
+                OmsiText.ReadAllLines(
+                    path);
 
             string? name =
                 null;

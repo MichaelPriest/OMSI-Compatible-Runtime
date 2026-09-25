@@ -6528,6 +6528,7 @@ public sealed class D3D11RenderWindow : Form
         // established, exactly as the runtime frame path does.
         SynchronizeHostVehicleStateFromScripts();
         SynchronizeOmsiScriptDynamics();
+        AcknowledgeOmsiStringRefresh();
 
         WriteVehicleRuntimeStateDiagnostics();
     }
@@ -6915,6 +6916,7 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime.ExecuteFrame();
         SynchronizeHostVehicleStateFromScripts();
         SynchronizeOmsiScriptDynamics();
+        AcknowledgeOmsiStringRefresh();
 
         if (!_vehiclePanelAuditWritten &&
             absoluteSeconds >= 1.0)
@@ -6922,6 +6924,31 @@ public sealed class D3D11RenderWindow : Form
             WriteVehiclePanelDiagnostics();
             _vehiclePanelAuditWritten =
                 true;
+        }
+    }
+
+    private void AcknowledgeOmsiStringRefresh()
+    {
+        if (_scriptRuntime is null ||
+            !_scriptRuntime.HasLocalVariable(
+                "Refresh_Strings"))
+        {
+            return;
+        }
+
+        // OMSI resets this write-only refresh request after the host has
+        // consumed the current string-variable values. Text textures in
+        // this renderer already compare the live string value on every
+        // draw, so acknowledging the flag here preserves the script
+        // handshake without delaying the visual update.
+        if (Math.Abs(
+                _scriptRuntime.GetLocal(
+                    "Refresh_Strings")) >
+            0.000001)
+        {
+            _scriptRuntime.SetLocal(
+                "Refresh_Strings",
+                0.0);
         }
     }
 
