@@ -1493,7 +1493,7 @@ internal sealed class RuntimeApplicationContext :
                     new RuntimeRailSignalRouteStateInfo(
                         state.RouteIndex,
                         state.Signal!.ObjectId,
-                        state.Signal.ElementIndex,
+                        state.Signal.SignalState,
                         state.Reserved,
                         state.ReservedAgentIndex))
             .ToArray();
