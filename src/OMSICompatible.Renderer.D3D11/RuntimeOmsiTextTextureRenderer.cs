@@ -373,7 +373,7 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
                     null;
 
             for (var index = 0;
-                 index < lines.Length;
+                 index < lines.Count;
                  index++)
             {
                 var command =
