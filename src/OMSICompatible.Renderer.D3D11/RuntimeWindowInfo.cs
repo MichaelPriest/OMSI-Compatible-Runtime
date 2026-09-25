@@ -345,7 +345,11 @@ public sealed record RuntimeVehiclePhysicsInfo(
     double? RotationPointLongitudinalMeters = null,
     double? InverseMinimumTurnRadius = null,
     double? FrontAxleLongitudinalMeters = null,
-    double? RearAxleLongitudinalMeters = null);
+    double? RearAxleLongitudinalMeters = null,
+    double? FrontSuspensionSpringKilonewtonsPerMeter = null,
+    double? RearSuspensionSpringKilonewtonsPerMeter = null,
+    double? FrontSuspensionDamperKilonewtonSecondsPerMeter = null,
+    double? RearSuspensionDamperKilonewtonSecondsPerMeter = null);
 
 public sealed record RuntimeDriverPositionInfo(
     double X,
