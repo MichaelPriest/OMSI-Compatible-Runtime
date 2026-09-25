@@ -46,19 +46,19 @@ public sealed record OmsiMapAiCatalog(
 public static partial class OmsiMapAiCatalogReader
 {
     [GeneratedRegex(
-        @"^(?<path>.+?.(?:bus|ovh|zug))(?:s+(?<weight>[-+]?[0-9]+(?:[.,][0-9]+)?))?s*$",
+        @"^(?<path>.+?\\.(?:bus|ovh|zug))(?:\\s+(?<weight>[-+]?[0-9]+(?:[.,][0-9]+)?))?\\s*$",
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant)]
     private static partial Regex VehicleLineRegex();
 
     [GeneratedRegex(
-        @"^(?<path>.+?.hum)s*$",
+        @"^(?<path>.+?\\.hum)\\s*$",
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant)]
     private static partial Regex HumanLineRegex();
 
     [GeneratedRegex(
-        @"^(?<path>.+?.sco)(?:s+.*)?$",
+        @"^(?<path>.+?\\.sco)(?:\\s+.*)?$",
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant)]
     private static partial Regex SceneryLineRegex();
