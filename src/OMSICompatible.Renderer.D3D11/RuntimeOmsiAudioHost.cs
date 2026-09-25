@@ -130,6 +130,10 @@ internal sealed class RuntimeOmsiAudioHost :
 
         public float CurrentBalance { get; set; }
 
+        public float PlaybackSeconds { get; set; }
+
+        public bool WasAudible { get; set; }
+
         public void Dispose()
         {
             try
@@ -751,11 +755,44 @@ internal sealed class RuntimeOmsiAudioHost :
                 0.25f,
                 4.0f);
 
+        var audible =
+            volume >
+            0.0001f;
+
+        if (audible &&
+            !voice.WasAudible)
+        {
+            voice.PlaybackSeconds =
+                0.0f;
+        }
+
+        var playbackGain =
+            audible
+                ? EvaluatePlaybackTimeGain(
+                    sound,
+                    voice.PlaybackSeconds)
+                : 0.0f;
+
         var targetVolume =
             Math.Clamp(
-                volume,
+                volume *
+                    playbackGain,
                 0.0f,
                 1.0f);
+
+        if (audible)
+        {
+            voice.PlaybackSeconds +=
+                deltaSeconds;
+        }
+        else
+        {
+            voice.PlaybackSeconds =
+                0.0f;
+        }
+
+        voice.WasAudible =
+            audible;
 
         var targetBalance =
             Math.Clamp(
@@ -804,6 +841,29 @@ internal sealed class RuntimeOmsiAudioHost :
 
         voice.Volume.Volume =
             voice.CurrentVolume;
+    }
+
+    private static float EvaluatePlaybackTimeGain(
+        RuntimeOmsiSoundDefinition sound,
+        float playbackSeconds)
+    {
+        var playbackCurve =
+            sound.VolumeCurves
+                .FirstOrDefault(
+                    static curve =>
+                        curve.Variable ==
+                        "-1");
+
+        if (playbackCurve is null)
+        {
+            return 1.0f;
+        }
+
+        return (float)Math.Max(
+            EvaluateCurve(
+                playbackCurve,
+                playbackSeconds),
+            0.0);
     }
 
     private float ResolveControlDeltaSeconds()
