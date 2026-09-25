@@ -256,7 +256,27 @@ public static class RuntimeVehicleInfoFactory
                     ? vehicle.Bus.Physics.Axles.Min(
                         static axle =>
                             axle.LongitudinalPositionMeters)
-                    : null),
+                    : null,
+                AxleValueByPosition(
+                    vehicle.Bus.Physics.Axles,
+                    front: true,
+                    static axle =>
+                        axle.SpringRateKilonewtonsPerMeter),
+                AxleValueByPosition(
+                    vehicle.Bus.Physics.Axles,
+                    front: false,
+                    static axle =>
+                        axle.SpringRateKilonewtonsPerMeter),
+                AxleValueByPosition(
+                    vehicle.Bus.Physics.Axles,
+                    front: true,
+                    static axle =>
+                        axle.DamperRateKilonewtonSecondsPerMeter),
+                AxleValueByPosition(
+                    vehicle.Bus.Physics.Axles,
+                    front: false,
+                    static axle =>
+                        axle.DamperRateKilonewtonSecondsPerMeter)),
             vehicle.DriverPosition is null
                 ? null
                 : new RuntimeDriverPositionInfo(
@@ -329,6 +349,42 @@ public static class RuntimeVehicleInfoFactory
         return values.Length == 0
             ? null
             : values.Average();
+    }
+
+    private static double? AxleValueByPosition(
+        IReadOnlyList<OmsiVehicleAxle> axles,
+        bool front,
+        Func<OmsiVehicleAxle, double?> selector)
+    {
+        var candidates =
+            axles
+                .Where(
+                    axle =>
+                        double.IsFinite(
+                            axle.LongitudinalPositionMeters))
+                .OrderBy(
+                    axle =>
+                        front
+                            ? -axle.LongitudinalPositionMeters
+                            : axle.LongitudinalPositionMeters)
+                .ToArray();
+
+        foreach (var axle in
+                 candidates)
+        {
+            var value =
+                selector(
+                    axle);
+
+            if (value.HasValue &&
+                double.IsFinite(
+                    value.Value))
+            {
+                return value.Value;
+            }
+        }
+
+        return null;
     }
 
     private static RuntimeVehicleMaterialColorInfo?
