@@ -583,6 +583,133 @@ try
             0,
         "OMSI signal route entries did not resolve against rail source IDs and local path indices.");
 
+    var interlockingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    10,
+                    6100,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0)
+                    ],
+                    [],
+                    []),
+                new WorldTrafficPathSegment(
+                    11,
+                    6101,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            -10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [],
+                    []),
+                new WorldTrafficPathSegment(
+                    12,
+                    6102,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [],
+                    [])
+            ],
+            0,
+            0,
+            3,
+            0,
+            0,
+            0,
+            6,
+            0);
+
+    var interlocking =
+        new WorldRailSignalRouteInterlocking(
+            interlockingNetwork,
+            [
+                new WorldRailSignalRoute(
+                    0,
+                    [10],
+                    1,
+                    0),
+                new WorldRailSignalRoute(
+                    1,
+                    [11],
+                    1,
+                    0),
+                new WorldRailSignalRoute(
+                    2,
+                    [12],
+                    1,
+                    0)
+            ]);
+
+    Require(
+        interlocking.TryReserve(
+            0,
+            100) &&
+        !interlocking.TryReserve(
+            1,
+            200) &&
+        interlocking.TryReserve(
+            2,
+            300),
+        "OMSI rail interlocking did not block the geometrically conflicting signal route while allowing a clear parallel route.");
+
+    interlocking.Release(
+        0,
+        100);
+
+    Require(
+        interlocking.TryReserve(
+            1,
+            200),
+        "OMSI rail interlocking did not release a conflicting signal route after its owner cleared it.");
+
+    interlocking.ReleaseAll(
+        200);
+
+    Require(
+        !interlocking.TryReserve(
+            0,
+            100,
+            new Dictionary<int, int>
+            {
+                [10] =
+                    999
+            }),
+        "OMSI rail interlocking reserved an occupied signal route.");
+
     var railCatalog =
         new OmsiMapAiCatalog(
             [
