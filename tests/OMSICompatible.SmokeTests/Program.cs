@@ -2,6 +2,7 @@ using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Models;
+using OmsiCompat.Physics.Ode;
 using OmsiCompat.Vehicles;
 using OmsiCompat.Scripting;
 using OMSICompatible.World;
@@ -12,6 +13,30 @@ var root = Path.Combine(
 
 try
 {
+    if (string.Equals(
+            Environment.GetEnvironmentVariable(
+                "OMSI_REQUIRE_ODE"),
+            "1",
+            StringComparison.Ordinal))
+    {
+        var odeInfo =
+            OdeRuntime.Inspect();
+
+        Require(
+            odeInfo.Available &&
+            odeInfo.Is64BitProcess &&
+            odeInfo.SinglePrecision,
+            $"ODE x64 single-precision backend unavailable: {odeInfo.Error ?? odeInfo.Configuration}");
+
+        using var odeWorld =
+            new OdeWorld();
+
+        Require(
+            odeWorld.Step(
+                1.0f / 120.0f),
+            "ODE x64 QuickStep smoke test failed.");
+    }
+
     var mapDirectory = Path.Combine(root, "maps", "SyntheticMap");
     var sceneryDirectory = Path.Combine(root, "Sceneryobjects", "Synthetic");
     var splineDirectory = Path.Combine(root, "Splines", "Synthetic");
