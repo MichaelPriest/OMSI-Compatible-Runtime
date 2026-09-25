@@ -2981,6 +2981,218 @@ try
             0.0,
         "no_cars did not exclude a blocked route for the Taxi group.");
 
+    var defaultDisabledCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "Service",
+                    @"Vehicles\Synthetic\traffic.bus",
+                    syntheticAiVehiclePath,
+                    1.0)
+            ],
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "NormalCars",
+                    1),
+                new OmsiUnscheduledVehicleGroup(
+                    1,
+                    "Taxi",
+                    1),
+                new OmsiUnscheduledVehicleGroup(
+                    2,
+                    "Service",
+                    0)
+            ]);
+
+    var defaultDisabledSpawnNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8300,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8301,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [2] =
+                                1.0
+                        })
+            ],
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0);
+
+    var defaultDisabledSpawnSimulation =
+        new WorldTrafficSimulation(
+            defaultDisabledSpawnNetwork,
+            defaultDisabledCatalog,
+            maximumAgents:
+                1);
+
+    var defaultDisabledSpawnAgent =
+        defaultDisabledSpawnSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        defaultDisabledSpawnAgent.GroupIndex ==
+            2 &&
+        defaultDisabledSpawnAgent.SegmentIndex ==
+            1,
+        "Default-disabled OMSI unscheduled group spawned on a path without explicit trafficdensity.");
+
+    var defaultDisabledRoutingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8400,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    Array.Empty<int>(),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [2] =
+                                1.0
+                        }),
+                new WorldTrafficPathSegment(
+                    1,
+                    8401,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    2,
+                    8402,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [2] =
+                                0.5
+                        })
+            ],
+            3,
+            0,
+            0,
+            0,
+            1,
+            0,
+            2,
+            0);
+
+    var defaultDisabledRoutingSimulation =
+        new WorldTrafficSimulation(
+            defaultDisabledRoutingNetwork,
+            defaultDisabledCatalog,
+            maximumAgents:
+                1);
+
+    defaultDisabledRoutingSimulation.Step(
+        2.0);
+
+    var defaultDisabledRoutedAgent =
+        defaultDisabledRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        defaultDisabledRoutedAgent.GroupIndex ==
+            2 &&
+        defaultDisabledRoutedAgent.SegmentIndex ==
+            2 &&
+        defaultDisabledRoutedAgent.Position.X >
+            0.0,
+        "Default-disabled OMSI unscheduled group entered a path without explicit trafficdensity.");
+
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
             [

@@ -50,7 +50,7 @@ public sealed class WorldTrafficSimulation
                 static segment =>
                     segment.Index);
 
-        var groupIndices =
+        var groupDefinitions =
             (aiCatalog.UnscheduledVehicleGroups ??
              Array.Empty<OmsiUnscheduledVehicleGroup>())
                 .GroupBy(
@@ -61,7 +61,7 @@ public sealed class WorldTrafficSimulation
                     static group =>
                         group.Key,
                     static group =>
-                        group.First().Index,
+                        group.First(),
                     StringComparer.OrdinalIgnoreCase);
 
         var vehicles =
@@ -127,12 +127,18 @@ public sealed class WorldTrafficSimulation
                     vehicles,
                     index);
 
-            var groupIndex =
-                groupIndices.TryGetValue(
+            var groupDefinition =
+                groupDefinitions.TryGetValue(
                     vehicle.GroupName,
-                    out var resolvedGroupIndex)
-                    ? resolvedGroupIndex
-                    : (int?)null;
+                    out var resolvedGroupDefinition)
+                    ? resolvedGroupDefinition
+                    : null;
+
+            var groupIndex =
+                groupDefinition?.Index;
+
+            var defaultDensityClassIndex =
+                groupDefinition?.DefaultDensityClassIndex;
 
             var allowedSegments =
                 roadSegments
@@ -140,7 +146,8 @@ public sealed class WorldTrafficSimulation
                         segment =>
                             IsTrafficGroupAllowed(
                                 segment,
-                                groupIndex))
+                                groupIndex,
+                                defaultDensityClassIndex))
                     .ToArray();
 
             if (allowedSegments.Length ==
@@ -212,6 +219,7 @@ public sealed class WorldTrafficSimulation
                     initialSpeed,
                     vehicle.ResolvedPath!,
                     groupIndex,
+                    defaultDensityClassIndex,
                     vehicle.GroupName));
         }
     }
@@ -414,7 +422,8 @@ public sealed class WorldTrafficSimulation
                         candidate is not null &&
                         IsTrafficGroupAllowed(
                             candidate,
-                            agent.GroupIndex) &&
+                            agent.GroupIndex,
+                            agent.DefaultDensityClassIndex) &&
                         (agent.TravelForward
                             ? candidate.AllowsForward
                             : candidate.AllowsReverse))
@@ -427,7 +436,8 @@ public sealed class WorldTrafficSimulation
                             Weight =
                                 ResolveTrafficDensityWeight(
                                     candidate!,
-                                    agent.GroupIndex)
+                                    agent.GroupIndex,
+                                    agent.DefaultDensityClassIndex)
                         })
                 .Where(
                     static candidate =>
@@ -667,36 +677,62 @@ public sealed class WorldTrafficSimulation
 
     private static bool IsTrafficGroupAllowed(
         WorldTrafficPathSegment segment,
-        int? groupIndex)
+        int? groupIndex,
+        int? defaultDensityClassIndex)
     {
-        if (!groupIndex.HasValue ||
-            segment.BlockedUnscheduledGroupIndices is null)
+        if (!groupIndex.HasValue)
         {
             return true;
         }
 
-        return !segment.BlockedUnscheduledGroupIndices.Contains(
-            groupIndex.Value);
+        if (segment.BlockedUnscheduledGroupIndices is not null &&
+            segment.BlockedUnscheduledGroupIndices.Contains(
+                groupIndex.Value))
+        {
+            return false;
+        }
+
+        if (segment.TrafficDensityWeights is not null &&
+            segment.TrafficDensityWeights.TryGetValue(
+                groupIndex.Value,
+                out var explicitWeight) &&
+            double.IsFinite(
+                explicitWeight))
+        {
+            return explicitWeight >
+                0.0;
+        }
+
+        return defaultDensityClassIndex !=
+            0;
     }
 
     private static double ResolveTrafficDensityWeight(
         WorldTrafficPathSegment segment,
-        int? groupIndex)
+        int? groupIndex,
+        int? defaultDensityClassIndex)
     {
-        if (!groupIndex.HasValue ||
-            segment.TrafficDensityWeights is null ||
-            !segment.TrafficDensityWeights.TryGetValue(
-                groupIndex.Value,
-                out var value) ||
-            !double.IsFinite(
-                value))
+        if (!groupIndex.HasValue)
         {
             return 1.0;
         }
 
-        return Math.Max(
-            value,
-            0.0);
+        if (segment.TrafficDensityWeights is not null &&
+            segment.TrafficDensityWeights.TryGetValue(
+                groupIndex.Value,
+                out var value) &&
+            double.IsFinite(
+                value))
+        {
+            return Math.Max(
+                value,
+                0.0);
+        }
+
+        return defaultDensityClassIndex ==
+               0
+            ? 0.0
+            : 1.0;
     }
 
     private static double ResolveSegmentMaximumSpeed(
@@ -1049,6 +1085,7 @@ public sealed class WorldTrafficSimulation
         double initialSpeedMetersPerSecond,
         string vehiclePath,
         int? groupIndex,
+        int? defaultDensityClassIndex,
         string groupName)
     {
         public int AgentIndex { get; } =
@@ -1086,6 +1123,9 @@ public sealed class WorldTrafficSimulation
 
         public int? GroupIndex { get; } =
             groupIndex;
+
+        public int? DefaultDensityClassIndex { get; } =
+            defaultDensityClassIndex;
 
         public string GroupName { get; } =
             groupName;
