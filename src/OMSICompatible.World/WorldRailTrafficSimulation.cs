@@ -32,6 +32,10 @@ public sealed class WorldRailTrafficSimulation
         _signalRoutesByFirstSegment;
     private readonly WorldRailSignalRouteInterlocking?
         _interlocking;
+    private readonly Dictionary<string, double>
+        _consistTrailingDistances =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private readonly List<Agent> _agents;
 
     public WorldRailTrafficSimulation(
@@ -262,6 +266,35 @@ public sealed class WorldRailTrafficSimulation
             .Select(
                 CreateState)
             .ToArray();
+
+    public void SetConsistTrailingDistance(
+        string trainConsistPath,
+        double trailingDistanceMeters)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            trainConsistPath);
+
+        if (!double.IsFinite(
+                trailingDistanceMeters) ||
+            trailingDistanceMeters <
+                0.0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(trailingDistanceMeters));
+        }
+
+        _consistTrailingDistances[
+            trainConsistPath] =
+            trailingDistanceMeters;
+    }
+
+    public bool IsSignalRouteReservedBy(
+        int routeIndex,
+        int agentIndex) =>
+        _interlocking?.IsReservedBy(
+            routeIndex,
+            agentIndex) ??
+        false;
 
     public bool TrySampleBehind(
         int agentIndex,
@@ -514,6 +547,9 @@ public sealed class WorldRailTrafficSimulation
                         break;
                     }
                 }
+
+                ReleaseClearedSignalRoutes(
+                    agent);
             }
 
             remainingSeconds -=
@@ -600,8 +636,13 @@ public sealed class WorldRailTrafficSimulation
             if (routePosition <
                 0)
             {
-                ReleaseSignalRoute(
-                    agent);
+                MarkSignalRouteForTailClearance(
+                    agent,
+                    activeSignalRoute.RouteIndex);
+
+                agent.ReservedSignalRouteIndex =
+                    null;
+
                 activeSignalRoute =
                     null;
             }
@@ -742,9 +783,9 @@ public sealed class WorldRailTrafficSimulation
                 next.Index) <
                 0)
         {
-            _interlocking?.Release(
-                activeSignalRoute.RouteIndex,
-                agent.AgentIndex);
+            MarkSignalRouteForTailClearance(
+                agent,
+                activeSignalRoute.RouteIndex);
 
             if (previousSignalRouteIndex ==
                 activeSignalRoute.RouteIndex)
@@ -871,20 +912,62 @@ public sealed class WorldRailTrafficSimulation
                         .First()
                         .AgentIndex);
 
-    private void ReleaseSignalRoute(
-        Agent agent)
+    private void MarkSignalRouteForTailClearance(
+        Agent agent,
+        int routeIndex)
     {
-        if (!agent.ReservedSignalRouteIndex.HasValue)
+        if (agent.PendingSignalRouteClearanceOrigins
+            .ContainsKey(
+                routeIndex))
         {
             return;
         }
 
-        _interlocking?.Release(
-            agent.ReservedSignalRouteIndex.Value,
-            agent.AgentIndex);
+        agent.PendingSignalRouteClearanceOrigins[
+            routeIndex] =
+            agent.TraveledDistanceMeters;
+    }
 
-        agent.ReservedSignalRouteIndex =
-            null;
+    private void ReleaseClearedSignalRoutes(
+        Agent agent)
+    {
+        if (agent.PendingSignalRouteClearanceOrigins.Count ==
+            0)
+        {
+            return;
+        }
+
+        var trailingDistanceMeters =
+            _consistTrailingDistances.TryGetValue(
+                agent.TrainConsistPath,
+                out var configuredTrailingDistance)
+                ? Math.Max(
+                    configuredTrailingDistance,
+                    0.0)
+                : 0.0;
+
+        foreach (var pair in
+                 agent.PendingSignalRouteClearanceOrigins
+                     .ToArray())
+        {
+            var traveledSinceHeadExit =
+                agent.TraveledDistanceMeters -
+                pair.Value;
+
+            if (traveledSinceHeadExit +
+                    0.000001 <
+                trailingDistanceMeters)
+            {
+                continue;
+            }
+
+            _interlocking?.Release(
+                pair.Key,
+                agent.AgentIndex);
+
+            agent.PendingSignalRouteClearanceOrigins.Remove(
+                pair.Key);
+        }
     }
 
     private static void MoveAgentToSegment(
@@ -1313,6 +1396,13 @@ public sealed class WorldRailTrafficSimulation
             get;
             set;
         }
+
+        public Dictionary<int, double>
+            PendingSignalRouteClearanceOrigins
+        {
+            get;
+        } =
+            [];
 
         public double TraveledDistanceMeters
         {
