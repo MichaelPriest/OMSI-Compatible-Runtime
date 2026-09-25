@@ -339,6 +339,20 @@ public sealed class WorldRailTrafficSimulation
             trailingDistanceMeters;
         var distance =
             agent.DistanceMeters;
+
+        var historyIndex =
+            agent.SegmentHistory.Count -
+            1;
+
+        if (historyIndex <
+                0 ||
+            agent.SegmentHistory[
+                historyIndex] !=
+            agent.SegmentIndex)
+        {
+            return false;
+        }
+
         var guard =
             0;
 
@@ -398,12 +412,14 @@ public sealed class WorldRailTrafficSimulation
             remaining -=
                 progressedFromEntry;
 
-            var predecessor =
-                ResolvePredecessorSegment(
-                    segment.Index,
-                    agent.TravelForward);
+            historyIndex--;
 
-            if (predecessor is null)
+            if (historyIndex <
+                    0 ||
+                !_segmentsByIndex.TryGetValue(
+                    agent.SegmentHistory[
+                        historyIndex],
+                    out var predecessor))
             {
                 return false;
             }
@@ -557,26 +573,6 @@ public sealed class WorldRailTrafficSimulation
         }
     }
 
-    private WorldTrafficPathSegment? ResolvePredecessorSegment(
-        int segmentIndex,
-        bool travelForward) =>
-        _segmentsByIndex
-            .Values
-            .Where(
-                candidate =>
-                    (travelForward
-                        ? candidate.ForwardConnections
-                        : candidate.ReverseConnections)
-                    .Contains(
-                        segmentIndex) &&
-                    (travelForward
-                        ? candidate.AllowsForward
-                        : candidate.AllowsReverse))
-            .OrderBy(
-                static candidate =>
-                    candidate.Index)
-            .FirstOrDefault();
-
     private bool TryAdvanceSegment(
         Agent agent,
         WorldTrafficPathSegment segment)
@@ -613,6 +609,9 @@ public sealed class WorldRailTrafficSimulation
                     !_segmentsByIndex.TryGetValue(
                         expectedSegmentIndex,
                         out var expectedSegment) ||
+                    IsSegmentOccupiedByOtherAgent(
+                        expectedSegmentIndex,
+                        agent.AgentIndex) ||
                     !IsTrafficGroupAllowed(
                         expectedSegment,
                         agent.GroupIndex,
@@ -660,6 +659,9 @@ public sealed class WorldRailTrafficSimulation
                 .Where(
                     candidate =>
                         candidate is not null &&
+                        !IsSegmentOccupiedByOtherAgent(
+                            candidate.Index,
+                            agent.AgentIndex) &&
                         IsTrafficGroupAllowed(
                             candidate,
                             agent.GroupIndex,
@@ -893,27 +895,153 @@ public sealed class WorldRailTrafficSimulation
         return true;
     }
 
+    private bool IsSegmentOccupiedByOtherAgent(
+        int segmentIndex,
+        int excludedAgentIndex)
+    {
+        foreach (var agent in
+                 _agents)
+        {
+            if (agent.AgentIndex ==
+                excludedAgentIndex)
+            {
+                continue;
+            }
+
+            if (EnumerateOccupiedSegmentIndices(
+                    agent)
+                .Contains(
+                    segmentIndex))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private IReadOnlyDictionary<int, int>
         BuildOccupiedSegments(
-            int excludedAgentIndex) =>
-        _agents
-            .Where(
-                agent =>
-                    agent.AgentIndex !=
-                    excludedAgentIndex)
-            .GroupBy(
-                static agent =>
-                    agent.SegmentIndex)
-            .ToDictionary(
-                static group =>
-                    group.Key,
-                static group =>
-                    group
-                        .OrderBy(
-                            static agent =>
-                                agent.AgentIndex)
-                        .First()
-                        .AgentIndex);
+            int excludedAgentIndex)
+    {
+        var occupied =
+            new Dictionary<int, int>();
+
+        foreach (var agent in
+                 _agents
+                     .Where(
+                         agent =>
+                             agent.AgentIndex !=
+                             excludedAgentIndex)
+                     .OrderBy(
+                         static agent =>
+                             agent.AgentIndex))
+        {
+            foreach (var segmentIndex in
+                     EnumerateOccupiedSegmentIndices(
+                         agent))
+            {
+                occupied.TryAdd(
+                    segmentIndex,
+                    agent.AgentIndex);
+            }
+        }
+
+        return occupied;
+    }
+
+    private IEnumerable<int>
+        EnumerateOccupiedSegmentIndices(
+            Agent agent)
+    {
+        if (!_segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var segment))
+        {
+            yield break;
+        }
+
+        yield return segment.Index;
+
+        if (!_consistTrailingDistances.TryGetValue(
+                agent.TrainConsistPath,
+                out var trailingDistanceMeters) ||
+            !double.IsFinite(
+                trailingDistanceMeters) ||
+            trailingDistanceMeters <=
+                0.000001)
+        {
+            yield break;
+        }
+
+        var remaining =
+            trailingDistanceMeters;
+
+        var distance =
+            agent.DistanceMeters;
+
+        var historyIndex =
+            agent.SegmentHistory.Count -
+            1;
+
+        var guard =
+            0;
+
+        while (remaining >
+                   0.000001 &&
+               guard++ <
+                   128)
+        {
+            var length =
+                SegmentLength(
+                    segment);
+
+            var progressedFromEntry =
+                agent.TravelForward
+                    ? Math.Clamp(
+                        distance,
+                        0.0,
+                        length)
+                    : Math.Clamp(
+                        length -
+                            distance,
+                        0.0,
+                        length);
+
+            if (remaining <=
+                progressedFromEntry +
+                    0.000001)
+            {
+                yield break;
+            }
+
+            remaining -=
+                progressedFromEntry;
+
+            historyIndex--;
+
+            if (historyIndex <
+                    0 ||
+                !_segmentsByIndex.TryGetValue(
+                    agent.SegmentHistory[
+                        historyIndex],
+                    out segment))
+            {
+                yield break;
+            }
+
+            yield return segment.Index;
+
+            var predecessorLength =
+                SegmentLength(
+                    segment);
+
+            distance =
+                agent.TravelForward
+                    ? predecessorLength
+                    : 0.0;
+        }
+    }
 
     private void MarkSignalRouteForTailClearance(
         Agent agent,
@@ -977,6 +1105,9 @@ public sealed class WorldRailTrafficSimulation
         Agent agent,
         WorldTrafficPathSegment segment)
     {
+        agent.SegmentHistory.Add(
+            segment.Index);
+
         agent.SegmentIndex =
             segment.Index;
 
@@ -1393,6 +1524,12 @@ public sealed class WorldRailTrafficSimulation
 
         public string GroupName { get; } =
             groupName;
+
+        public List<int> SegmentHistory
+        {
+            get;
+        } =
+            [segmentIndex];
 
         public int? ReservedSignalRouteIndex
         {
