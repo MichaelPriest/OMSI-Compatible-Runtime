@@ -914,8 +914,7 @@ internal static class RuntimeOmsiKeyboardBindings
 
             lines.Add("");
             lines.Add(
-                "bindings:"
-                };
+                "bindings:");
 
             foreach (var binding in
                      bindings.OrderBy(
