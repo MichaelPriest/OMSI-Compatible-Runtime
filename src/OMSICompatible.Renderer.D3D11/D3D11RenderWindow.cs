@@ -7134,7 +7134,7 @@ public sealed class D3D11RenderWindow : Form
     {
         var start =
             Math.Max(
-                _windowInfo.Vehicle?.Physics?.Axles.Count ??
+                _windowInfo.Vehicle?.Physics?.Axles?.Count ??
                 0,
                 2);
 
@@ -7153,7 +7153,7 @@ public sealed class D3D11RenderWindow : Form
 
             start +=
                 Math.Max(
-                    section.Physics?.Axles.Count ??
+                    section.Physics?.Axles?.Count ??
                     0,
                     1);
         }
@@ -7252,7 +7252,7 @@ public sealed class D3D11RenderWindow : Form
 
         var localAxleCount =
             Math.Max(
-                section.Physics?.Axles.Count ??
+                section.Physics?.Axles?.Count ??
                 0,
                 1);
 
@@ -7272,15 +7272,24 @@ public sealed class D3D11RenderWindow : Form
                       axle
                     : -1;
 
+            var leftRotation =
+                0.0f;
+            var rightRotation =
+                0.0f;
+            var leftRpm =
+                0.0f;
+            var rightRpm =
+                0.0f;
+
             var hasWheel =
                 globalAxle >=
                     0 &&
                 _vehicle.TryGetOmsiWheelKinematics(
                     globalAxle,
-                    out var leftRotation,
-                    out var rightRotation,
-                    out var leftRpm,
-                    out var rightRpm);
+                    out leftRotation,
+                    out rightRotation,
+                    out leftRpm,
+                    out rightRpm);
 
             runtime.SetLocal(
                 $"Wheel_Rotation_{axle}_L",
@@ -7316,13 +7325,18 @@ public sealed class D3D11RenderWindow : Form
                 rpmSamples++;
             }
 
+            var leftSuspension =
+                0.0f;
+            var rightSuspension =
+                0.0f;
+
             var hasSuspension =
                 globalAxle >=
                     0 &&
                 _vehicle.TryGetOmsiAxleSuspension(
                     globalAxle,
-                    out var leftSuspension,
-                    out var rightSuspension);
+                    out leftSuspension,
+                    out rightSuspension);
 
             runtime.SetLocal(
                 $"Axle_Suspension_{axle}_L",
