@@ -130,11 +130,11 @@ public sealed class OmsiScriptRuntime
     private readonly Dictionary<string, double>
         _mapVariables =
             new(
-                StringComparer.Ordinal);
+                StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double>
         _systemVariables =
             new(
-                StringComparer.Ordinal);
+                StringComparer.OrdinalIgnoreCase);
     private readonly double[] _registers =
         new double[8];
 
@@ -150,13 +150,13 @@ public sealed class OmsiScriptRuntime
             catalog.NumericVariables.ToDictionary(
                 static name => name,
                 static _ => 0.0,
-                StringComparer.Ordinal);
+                StringComparer.OrdinalIgnoreCase);
 
         _stringLocals =
             catalog.StringVariables.ToDictionary(
                 static name => name,
                 static _ => string.Empty,
-                StringComparer.Ordinal);
+                StringComparer.OrdinalIgnoreCase);
     }
 
     public event Action<string>?
@@ -1118,7 +1118,7 @@ public sealed class OmsiScriptRuntime
             stringStack.Pop();
 
         var comparison =
-            StringComparer.Ordinal.Compare(
+            StringComparer.OrdinalIgnoreCase.Compare(
                 left,
                 right);
 
