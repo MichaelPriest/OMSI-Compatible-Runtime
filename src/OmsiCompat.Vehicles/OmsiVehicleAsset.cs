@@ -20,7 +20,8 @@ public sealed record OmsiVehicleMaterialChangeItem(
     string? BumpMapTexturePath,
     double BumpMapStrength,
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
-    int? TextTextureIndex);
+    int? TextTextureIndex,
+    bool MaterialChangeIsNightMap = false);
 
 public sealed record OmsiVehicleMaterialChangeSet(
     string VariableName,
@@ -52,7 +53,8 @@ public sealed record OmsiVehicleMaterial(
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
     int? TextTextureIndex,
     IReadOnlyList<OmsiVehicleMaterialChangeSet>? MaterialChangeSets = null,
-    bool HasTransMapDirective = false);
+    bool HasTransMapDirective = false,
+    bool MaterialChangeIsNightMap = false);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
