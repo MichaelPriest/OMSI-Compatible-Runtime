@@ -117,7 +117,7 @@ public sealed class WorldRailSignalRouteInterlocking
         owner ==
             agentIndex;
 
-    public bool TryReserve(
+    public bool CanReserve(
         int routeIndex,
         int agentIndex,
         IReadOnlyDictionary<int, int>? occupiedSegments =
@@ -174,6 +174,23 @@ public sealed class WorldRailSignalRouteInterlocking
                     return false;
                 }
             }
+        }
+
+        return true;
+    }
+
+    public bool TryReserve(
+        int routeIndex,
+        int agentIndex,
+        IReadOnlyDictionary<int, int>? occupiedSegments =
+            null)
+    {
+        if (!CanReserve(
+                routeIndex,
+                agentIndex,
+                occupiedSegments))
+        {
+            return false;
         }
 
         _reservations[
