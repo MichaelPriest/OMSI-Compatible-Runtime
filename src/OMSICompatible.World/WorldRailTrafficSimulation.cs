@@ -797,6 +797,9 @@ public sealed class WorldRailTrafficSimulation
 
         if (nextSignalRoute is not null)
         {
+            agent.PendingSignalRouteClearanceOrigins.Remove(
+                nextSignalRoute.RouteIndex);
+
             agent.ReservedSignalRouteIndex =
                 nextSignalRoute.RouteIndex;
         }
