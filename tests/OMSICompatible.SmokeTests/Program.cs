@@ -878,6 +878,138 @@ try
             [{ SegmentIndex: 2 }],
         "OMSI rail traffic ignored the unscheduled-group density routing weights.");
 
+    var railSignalRouteNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    20,
+                    7000,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [21],
+                    []),
+                new WorldTrafficPathSegment(
+                    21,
+                    7001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [22, 23],
+                    [20]),
+                new WorldTrafficPathSegment(
+                    22,
+                    7002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            30.0)
+                    ],
+                    [],
+                    [21],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 0.1
+                        }),
+                new WorldTrafficPathSegment(
+                    23,
+                    7003,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            30.0)
+                    ],
+                    [],
+                    [21],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 10.0
+                        })
+            ],
+            0,
+            0,
+            4,
+            0,
+            3,
+            0,
+            2,
+            0);
+
+    var railSignalRoutes =
+        new OmsiSignalRoutesFile(
+            "synthetic-signalroutes.cfg",
+            [
+                new OmsiSignalRouteSection(
+                    7,
+                    "entry",
+                    1,
+                    ["7001", "0", "237", "6"]),
+                new OmsiSignalRouteSection(
+                    7,
+                    "entry",
+                    6,
+                    ["7002", "0", "237", "7"])
+            ]);
+
+    var railSignalRouteSimulation =
+        new WorldRailTrafficSimulation(
+            railSignalRouteNetwork,
+            railCatalog,
+            maximumAgents:
+                1,
+            signalRoutes:
+                railSignalRoutes);
+
+    railSignalRouteSimulation.Step(
+        5.0);
+
+    Require(
+        railSignalRouteSimulation.Snapshot() is
+            [{ SegmentIndex: 22 }],
+        "OMSI rail traffic did not stay on the reserved signal-route path sequence.");
+
     File.WriteAllText(
         Path.Combine(
             root,
