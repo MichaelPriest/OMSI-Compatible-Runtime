@@ -2150,6 +2150,9 @@ try
             "unsched_vehgroups.txt"),
         Lines(
             "[group]",
+            "<aigroup-name>",
+            "<default density class>",
+            "[group]",
             "NormalCars",
             "1",
             "[group]",

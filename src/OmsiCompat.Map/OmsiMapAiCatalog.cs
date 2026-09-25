@@ -162,6 +162,14 @@ public static partial class OmsiMapAiCatalogReader
                 Clean(
                     lines[groupNameLine]);
 
+            if (groupName.StartsWith(
+                    '<') &&
+                groupName.EndsWith(
+                    '>'))
+            {
+                continue;
+            }
+
             var densityLine =
                 FindNextNonEmptyDataLineIndex(
                     lines,
