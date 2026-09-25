@@ -362,7 +362,9 @@ internal sealed class RuntimeApplicationContext :
                     sectionScriptRuntimes:
                         sectionScriptRuntimes,
                     masterVolumePercent:
-                        _options.MasterVolumePercent);
+                        _options.MasterVolumePercent,
+                    automaticSteeringCenter:
+                        _options.AutomaticSteeringCenter);
 
             if (_options.RuntimeBorderlessFullscreen)
             {

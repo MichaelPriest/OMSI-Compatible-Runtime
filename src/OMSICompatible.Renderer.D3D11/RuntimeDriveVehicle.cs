@@ -1295,6 +1295,7 @@ internal sealed class RuntimeDriveVehicle :
         bool brakeReleaseHeld,
         float steeringDirection,
         bool centerSteeringHeld,
+        bool automaticSteeringCenter,
         float deltaSeconds)
     {
         deltaSeconds = Math.Clamp(
@@ -1336,7 +1337,11 @@ internal sealed class RuntimeDriveVehicle :
                 : 0.0f,
             2.8f * deltaSeconds);
 
-        if (centerSteeringHeld)
+        if (centerSteeringHeld ||
+            (automaticSteeringCenter &&
+             Math.Abs(
+                 steeringDirection) <=
+             0.01f))
         {
             SteeringInput = MoveTowards(
                 SteeringInput,

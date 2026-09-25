@@ -108,6 +108,7 @@ public sealed class D3D11RenderWindow : Form
         _activeControllerHostActions =
             [];
     private readonly bool _gameControllerEnabled;
+    private readonly bool _automaticSteeringCenter;
     private RuntimeOmsiGameControllerHost? _omsiGameController;
     private RuntimeOmsiAudioHost? _omsiAudio;
     private readonly Dictionary<int, RuntimeOmsiAudioHost>
@@ -330,7 +331,8 @@ public sealed class D3D11RenderWindow : Form
         string? inputLanguage = null,
         bool gameControllerEnabled = true,
         IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null,
-        int masterVolumePercent = 100)
+        int masterVolumePercent = 100,
+        bool automaticSteeringCenter = false)
     {
         _windowInfo = windowInfo;
         _scriptRuntime = scriptRuntime;
@@ -361,6 +363,8 @@ public sealed class D3D11RenderWindow : Form
             vehiclePreviewMode;
         _gameControllerEnabled =
             gameControllerEnabled;
+        _automaticSteeringCenter =
+            automaticSteeringCenter;
         _omsiKeyboardBindings =
             _vehiclePreviewMode
                 ? Array.Empty<
@@ -5603,6 +5607,8 @@ public sealed class D3D11RenderWindow : Form
                         steeringDirection,
                     centerSteeringHeld:
                         centerSteeringHeld,
+                    automaticSteeringCenter:
+                        _automaticSteeringCenter,
                     deltaSeconds:
                         deltaSeconds);
             }
