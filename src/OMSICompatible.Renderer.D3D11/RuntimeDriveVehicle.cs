@@ -45,6 +45,8 @@ internal sealed class RuntimeDriveVehicle :
     private readonly float _drivenWheelRadiusMeters;
     private readonly int _primaryDrivenSectionIndex;
     private readonly RuntimeVehicleAxleInfo[] _axles;
+    private readonly RuntimeVehicleAxleInfo[] _wheelKinematicLeadingAxles;
+    private readonly int _primaryDrivenOmsiAxleIndex;
     private readonly float[] _axleStaticCompressionMeters;
     private readonly float _rollingResistanceNewtons;
     private readonly float _suspensionSpringNewtonsPerMeter;
@@ -84,6 +86,16 @@ internal sealed class RuntimeDriveVehicle :
         new float[16];
     private readonly float[] _omsiAxleSpringFactorRight =
         new float[16];
+    private readonly float[] _omsiWheelRotationLeft =
+        new float[16];
+    private readonly float[] _omsiWheelRotationRight =
+        new float[16];
+    private readonly float[] _omsiWheelRotationSpeedRpmLeft =
+        new float[16];
+    private readonly float[] _omsiWheelRotationSpeedRpmRight =
+        new float[16];
+    private readonly bool[] _omsiWheelKinematicsValid =
+        new bool[16];
     private float _frontLeftSpringFactor = 1.0f;
     private float _frontRightSpringFactor = 1.0f;
     private float _rearLeftSpringFactor = 1.0f;
@@ -231,6 +243,34 @@ internal sealed class RuntimeDriveVehicle :
                         axle.LongitudinalPositionMeters)
                 .ToArray();
 
+        _wheelKinematicLeadingAxles =
+            _axles.Length >
+                    0
+                ? _axles
+                :
+                [
+                    new RuntimeVehicleAxleInfo(
+                        _frontAxleLongitudinalMeters,
+                        physics?.AverageWheelDiameterMeters ??
+                            DefaultWheelDiameterMeters,
+                        null,
+                        _trackWidthMeters,
+                        null,
+                        physics?.FrontSuspensionSpringKilonewtonsPerMeter,
+                        null,
+                        physics?.FrontSuspensionDamperKilonewtonSecondsPerMeter),
+                    new RuntimeVehicleAxleInfo(
+                        _rearAxleLongitudinalMeters,
+                        physics?.AverageWheelDiameterMeters ??
+                            DefaultWheelDiameterMeters,
+                        null,
+                        _trackWidthMeters,
+                        null,
+                        physics?.RearSuspensionSpringKilonewtonsPerMeter,
+                        null,
+                        physics?.RearSuspensionDamperKilonewtonSecondsPerMeter)
+                ];
+
         _wheelRadiusMeters =
             Math.Clamp(
                 (float)(physics?.AverageWheelDiameterMeters ??
@@ -241,6 +281,9 @@ internal sealed class RuntimeDriveVehicle :
 
         _primaryDrivenSectionIndex =
             ResolvePrimaryDrivenSectionIndex();
+
+        _primaryDrivenOmsiAxleIndex =
+            ResolvePrimaryDrivenOmsiAxleIndex();
 
         _drivenWheelRadiusMeters =
             ResolveOmsiDrivenWheelRadius(
@@ -593,14 +636,10 @@ internal sealed class RuntimeDriveVehicle :
         _yawRateRadiansPerSecond;
 
     public float WheelRotationRadians =>
-        _wheelRotationRadians;
+        ResolveDrivenWheelRotationRadians();
 
     public float WheelRotationSpeedRpm =>
-        SpeedMetersPerSecond /
-        (2.0f *
-         MathF.PI *
-         _wheelRadiusMeters) *
-        60.0f;
+        ResolveDrivenWheelRotationSpeedRpm();
 
     public float FrontLeftSuspensionMeters =>
         ResolveSuspensionOffset(
@@ -621,6 +660,46 @@ internal sealed class RuntimeDriveVehicle :
         ResolveSuspensionOffset(
             front: false,
             left: false);
+
+    public bool TryGetOmsiWheelKinematics(
+        int axleIndex,
+        out float leftRotationRadians,
+        out float rightRotationRadians,
+        out float leftRotationSpeedRpm,
+        out float rightRotationSpeedRpm)
+    {
+        if (axleIndex < 0 ||
+            axleIndex >=
+                _omsiWheelKinematicsValid.Length ||
+            !_omsiWheelKinematicsValid[
+                axleIndex])
+        {
+            leftRotationRadians =
+                0.0f;
+            rightRotationRadians =
+                0.0f;
+            leftRotationSpeedRpm =
+                0.0f;
+            rightRotationSpeedRpm =
+                0.0f;
+            return false;
+        }
+
+        leftRotationRadians =
+            _omsiWheelRotationLeft[
+                axleIndex];
+        rightRotationRadians =
+            _omsiWheelRotationRight[
+                axleIndex];
+        leftRotationSpeedRpm =
+            _omsiWheelRotationSpeedRpmLeft[
+                axleIndex];
+        rightRotationSpeedRpm =
+            _omsiWheelRotationSpeedRpmRight[
+                axleIndex];
+
+        return true;
+    }
 
     public bool TryGetOmsiAxleSuspension(
         int axleIndex,
@@ -760,7 +839,11 @@ internal sealed class RuntimeDriveVehicle :
                 $"suspensionM=FL:{F(FrontLeftSuspensionMeters)},FR:{F(FrontRightSuspensionMeters)},RL:{F(RearLeftSuspensionMeters)},RR:{F(RearRightSuspensionMeters)}",
                 $"axleBrakeForcesN={string.Join(",", _omsiAxleBrakeForceNewtons.Select(F))}",
                 $"axleSpringFactorL={string.Join(",", _omsiAxleSpringFactorLeft.Select(F))}",
-                $"axleSpringFactorR={string.Join(",", _omsiAxleSpringFactorRight.Select(F))}"
+                $"axleSpringFactorR={string.Join(",", _omsiAxleSpringFactorRight.Select(F))}",
+                $"wheelRotationL={string.Join(",", _omsiWheelRotationLeft.Select(F))}",
+                $"wheelRotationR={string.Join(",", _omsiWheelRotationRight.Select(F))}",
+                $"wheelRpmL={string.Join(",", _omsiWheelRotationSpeedRpmLeft.Select(F))}",
+                $"wheelRpmR={string.Join(",", _omsiWheelRotationSpeedRpmRight.Select(F))}"
             };
 
         foreach (var section in
@@ -888,6 +971,16 @@ internal sealed class RuntimeDriveVehicle :
         _longitudinalAccelerationMetersPerSecondSquared = 0.0f;
         _verticalAccelerationMetersPerSecondSquared = 0.0f;
         _wheelRotationRadians = 0.0f;
+        Array.Clear(
+            _omsiWheelRotationLeft);
+        Array.Clear(
+            _omsiWheelRotationRight);
+        Array.Clear(
+            _omsiWheelRotationSpeedRpmLeft);
+        Array.Clear(
+            _omsiWheelRotationSpeedRpmRight);
+        Array.Clear(
+            _omsiWheelKinematicsValid);
         _omsiScriptDynamicsEnabled = false;
         _omsiWheelTorqueNewtonMeters = 0.0f;
         _omsiBrakeForceNewtons = 0.0f;
@@ -1633,22 +1726,6 @@ internal sealed class RuntimeDriveVehicle :
             nextForward *
             _rotationPointLongitudinalMeters;
 
-        _wheelRotationRadians +=
-            travelledMeters /
-            _wheelRadiusMeters;
-
-        if (Math.Abs(
-                _wheelRotationRadians) >
-            MathF.PI *
-            10_000.0f)
-        {
-            _wheelRotationRadians =
-                MathF.IEEERemainder(
-                    _wheelRotationRadians,
-                    MathF.PI *
-                    2.0f);
-        }
-
         if (_terrain.TrySample(
                 Position.X,
                 Position.Z,
@@ -1664,6 +1741,9 @@ internal sealed class RuntimeDriveVehicle :
 
         UpdateGroundAttitude();
         UpdateBodyDynamics(
+            deltaSeconds);
+
+        UpdateOmsiWheelKinematics(
             deltaSeconds);
     }
 
@@ -2805,28 +2885,6 @@ internal sealed class RuntimeDriveVehicle :
                  previousSpeed) /
                 deltaSeconds;
 
-            var travelledMeters =
-                (previousSpeed +
-                 SpeedMetersPerSecond) *
-                0.5f *
-                deltaSeconds;
-
-            _wheelRotationRadians +=
-                travelledMeters /
-                _wheelRadiusMeters;
-
-            if (Math.Abs(
-                    _wheelRotationRadians) >
-                MathF.PI *
-                10_000.0f)
-            {
-                _wheelRotationRadians =
-                    MathF.IEEERemainder(
-                        _wheelRotationRadians,
-                        MathF.PI *
-                        2.0f);
-            }
-
             var odePosition =
                 body.Position;
 
@@ -2936,6 +2994,9 @@ internal sealed class RuntimeDriveVehicle :
                         -12.0),
                     DegreesToRadians(
                         12.0));
+
+            UpdateOmsiWheelKinematics(
+                deltaSeconds);
 
             return true;
         }
@@ -3326,6 +3387,503 @@ internal sealed class RuntimeDriveVehicle :
             _massKilograms,
             _axles,
             _suspensionSpringNewtonsPerMeter);
+
+    private int ResolvePrimaryDrivenOmsiAxleIndex()
+    {
+        var leadingAxleCount =
+            Math.Max(
+                _wheelKinematicLeadingAxles.Length,
+                2);
+
+        if (_primaryDrivenSectionIndex ==
+            0)
+        {
+            var bestIndex =
+                -1;
+            var bestDriveFactor =
+                0.0;
+
+            for (var axle = 0;
+                 axle < _wheelKinematicLeadingAxles.Length;
+                 axle++)
+            {
+                var driveFactor =
+                    Math.Abs(
+                        _wheelKinematicLeadingAxles[
+                            axle]
+                            .DriveFactor ??
+                        0.0);
+
+                if (driveFactor >
+                    bestDriveFactor)
+                {
+                    bestDriveFactor =
+                        driveFactor;
+                    bestIndex =
+                        axle;
+                }
+            }
+
+            if (bestIndex >=
+                0)
+            {
+                return bestIndex;
+            }
+
+            var rearIndex =
+                Array.FindIndex(
+                    _wheelKinematicLeadingAxles,
+                    axle =>
+                        axle.LongitudinalPositionMeters ==
+                        _wheelKinematicLeadingAxles.Min(
+                            static item =>
+                                item.LongitudinalPositionMeters));
+
+            return rearIndex >=
+                    0
+                ? rearIndex
+                : Math.Min(
+                    1,
+                    leadingAxleCount -
+                    1);
+        }
+
+        var nextAxleIndex =
+            leadingAxleCount;
+
+        foreach (var section in
+                 _sections.OrderBy(
+                     static item =>
+                         item.Index))
+        {
+            var sectionAxles =
+                section.Physics?.Axles?
+                    .Where(
+                        static axle =>
+                            double.IsFinite(
+                                axle.LongitudinalPositionMeters))
+                    .OrderByDescending(
+                        static axle =>
+                            axle.LongitudinalPositionMeters)
+                    .ToArray() ??
+                [];
+
+            var sectionAxleCount =
+                Math.Max(
+                    sectionAxles.Length,
+                    1);
+
+            if (section.Index ==
+                _primaryDrivenSectionIndex)
+            {
+                var bestLocalIndex =
+                    -1;
+                var bestDriveFactor =
+                    0.0;
+
+                for (var axle = 0;
+                     axle < sectionAxles.Length;
+                     axle++)
+                {
+                    var driveFactor =
+                        Math.Abs(
+                            sectionAxles[
+                                axle]
+                                .DriveFactor ??
+                            0.0);
+
+                    if (driveFactor >
+                        bestDriveFactor)
+                    {
+                        bestDriveFactor =
+                            driveFactor;
+                        bestLocalIndex =
+                            axle;
+                    }
+                }
+
+                return nextAxleIndex +
+                       Math.Max(
+                           bestLocalIndex,
+                           0);
+            }
+
+            nextAxleIndex +=
+                sectionAxleCount;
+        }
+
+        return Math.Min(
+            leadingAxleCount -
+                1,
+            _omsiWheelKinematicsValid.Length -
+                1);
+    }
+
+    private float ResolveDrivenWheelRotationRadians()
+    {
+        var axleIndex =
+            Math.Clamp(
+                _primaryDrivenOmsiAxleIndex,
+                0,
+                _omsiWheelRotationLeft.Length -
+                    1);
+
+        if (_omsiWheelKinematicsValid[
+                axleIndex])
+        {
+            return (
+                _omsiWheelRotationLeft[
+                    axleIndex] +
+                _omsiWheelRotationRight[
+                    axleIndex]) *
+                0.5f;
+        }
+
+        return _wheelRotationRadians;
+    }
+
+    private float ResolveDrivenWheelRotationSpeedRpm()
+    {
+        var axleIndex =
+            Math.Clamp(
+                _primaryDrivenOmsiAxleIndex,
+                0,
+                _omsiWheelRotationSpeedRpmLeft.Length -
+                    1);
+
+        if (_omsiWheelKinematicsValid[
+                axleIndex])
+        {
+            return (
+                _omsiWheelRotationSpeedRpmLeft[
+                    axleIndex] +
+                _omsiWheelRotationSpeedRpmRight[
+                    axleIndex]) *
+                0.5f;
+        }
+
+        return SpeedMetersPerSecond /
+               (2.0f *
+                MathF.PI *
+                Math.Max(
+                    _drivenWheelRadiusMeters,
+                    0.05f)) *
+               60.0f;
+    }
+
+    private void UpdateOmsiWheelKinematics(
+        float deltaSeconds)
+    {
+        Array.Clear(
+            _omsiWheelRotationSpeedRpmLeft);
+        Array.Clear(
+            _omsiWheelRotationSpeedRpmRight);
+        Array.Clear(
+            _omsiWheelKinematicsValid);
+
+        if (_odeBody is
+            { } leadingBody)
+        {
+            UpdateOdeBodyWheelKinematics(
+                leadingBody,
+                _centerOfGravityHeightMeters,
+                _wheelKinematicLeadingAxles,
+                startAxleIndex:
+                    0,
+                fallbackTrackWidthMeters:
+                    _trackWidthMeters,
+                fallbackWheelRadiusMeters:
+                    _wheelRadiusMeters,
+                deltaSeconds);
+        }
+        else
+        {
+            UpdateFallbackLeadingWheelKinematics(
+                deltaSeconds);
+        }
+
+        foreach (var state in
+                 _odeArticulatedSections.Values)
+        {
+            UpdateOdeBodyWheelKinematics(
+                state.Body,
+                state.CenterOfGravityHeightMeters,
+                state.Axles,
+                state.OmsiAxleStartIndex,
+                fallbackTrackWidthMeters:
+                    DefaultTrackWidthMeters,
+                fallbackWheelRadiusMeters:
+                    _wheelRadiusMeters,
+                deltaSeconds);
+        }
+
+        _wheelRotationRadians =
+            ResolveDrivenWheelRotationRadians();
+    }
+
+    private void UpdateFallbackLeadingWheelKinematics(
+        float deltaSeconds)
+    {
+        for (var axle = 0;
+             axle < _wheelKinematicLeadingAxles.Length;
+             axle++)
+        {
+            var info =
+                _wheelKinematicLeadingAxles[
+                    axle];
+
+            var trackWidth =
+                ResolveAxleTrackWidth(
+                    info,
+                    _trackWidthMeters);
+
+            var radius =
+                ResolveAxleWheelRadius(
+                    info,
+                    _wheelRadiusMeters);
+
+            var halfTrack =
+                trackWidth *
+                0.5f;
+
+            var leftSpeed =
+                SpeedMetersPerSecond +
+                _yawRateRadiansPerSecond *
+                halfTrack;
+
+            var rightSpeed =
+                SpeedMetersPerSecond -
+                _yawRateRadiansPerSecond *
+                halfTrack;
+
+            SetOmsiWheelKinematics(
+                axle,
+                leftSpeed,
+                rightSpeed,
+                radius,
+                deltaSeconds);
+        }
+    }
+
+    private void UpdateOdeBodyWheelKinematics(
+        OdeRigidBody body,
+        float centerOfGravityHeightMeters,
+        IReadOnlyList<RuntimeVehicleAxleInfo> axles,
+        int startAxleIndex,
+        float fallbackTrackWidthMeters,
+        float fallbackWheelRadiusMeters,
+        float deltaSeconds)
+    {
+        var orientation =
+            body.Orientation;
+
+        var forward =
+            Vector3.Transform(
+                Vector3.UnitY,
+                orientation);
+
+        if (forward.LengthSquared() <
+            0.000001f)
+        {
+            return;
+        }
+
+        forward =
+            Vector3.Normalize(
+                forward);
+
+        var linearVelocity =
+            body.LinearVelocity;
+
+        var angularVelocity =
+            body.AngularVelocity;
+
+        for (var localAxleIndex = 0;
+             localAxleIndex < axles.Count;
+             localAxleIndex++)
+        {
+            var omsiAxleIndex =
+                startAxleIndex +
+                localAxleIndex;
+
+            if (omsiAxleIndex < 0 ||
+                omsiAxleIndex >=
+                    _omsiWheelKinematicsValid.Length)
+            {
+                break;
+            }
+
+            var axle =
+                axles[
+                    localAxleIndex];
+
+            var trackWidth =
+                ResolveAxleTrackWidth(
+                    axle,
+                    fallbackTrackWidthMeters);
+
+            var radius =
+                ResolveAxleWheelRadius(
+                    axle,
+                    fallbackWheelRadiusMeters);
+
+            var halfTrack =
+                trackWidth *
+                0.5f;
+
+            var leftLocalPoint =
+                new Vector3(
+                    -halfTrack,
+                    (float)axle.LongitudinalPositionMeters,
+                    -centerOfGravityHeightMeters);
+
+            var rightLocalPoint =
+                new Vector3(
+                    halfTrack,
+                    (float)axle.LongitudinalPositionMeters,
+                    -centerOfGravityHeightMeters);
+
+            var leftWorldOffset =
+                Vector3.Transform(
+                    leftLocalPoint,
+                    orientation);
+
+            var rightWorldOffset =
+                Vector3.Transform(
+                    rightLocalPoint,
+                    orientation);
+
+            var leftVelocity =
+                linearVelocity +
+                Vector3.Cross(
+                    angularVelocity,
+                    leftWorldOffset);
+
+            var rightVelocity =
+                linearVelocity +
+                Vector3.Cross(
+                    angularVelocity,
+                    rightWorldOffset);
+
+            var leftLongitudinalSpeed =
+                Vector3.Dot(
+                    leftVelocity,
+                    forward);
+
+            var rightLongitudinalSpeed =
+                Vector3.Dot(
+                    rightVelocity,
+                    forward);
+
+            SetOmsiWheelKinematics(
+                omsiAxleIndex,
+                leftLongitudinalSpeed,
+                rightLongitudinalSpeed,
+                radius,
+                deltaSeconds);
+        }
+    }
+
+    private void SetOmsiWheelKinematics(
+        int axleIndex,
+        float leftLongitudinalSpeedMetersPerSecond,
+        float rightLongitudinalSpeedMetersPerSecond,
+        float radiusMeters,
+        float deltaSeconds)
+    {
+        if (axleIndex < 0 ||
+            axleIndex >=
+                _omsiWheelKinematicsValid.Length)
+        {
+            return;
+        }
+
+        radiusMeters =
+            Math.Max(
+                radiusMeters,
+                0.05f);
+
+        var leftAngularSpeed =
+            leftLongitudinalSpeedMetersPerSecond /
+            radiusMeters;
+
+        var rightAngularSpeed =
+            rightLongitudinalSpeedMetersPerSecond /
+            radiusMeters;
+
+        _omsiWheelRotationSpeedRpmLeft[
+            axleIndex] =
+            leftAngularSpeed *
+            60.0f /
+            (2.0f *
+             MathF.PI);
+
+        _omsiWheelRotationSpeedRpmRight[
+            axleIndex] =
+            rightAngularSpeed *
+            60.0f /
+            (2.0f *
+             MathF.PI);
+
+        _omsiWheelRotationLeft[
+            axleIndex] =
+            WrapWheelRotation(
+                _omsiWheelRotationLeft[
+                    axleIndex] +
+                leftAngularSpeed *
+                deltaSeconds);
+
+        _omsiWheelRotationRight[
+            axleIndex] =
+            WrapWheelRotation(
+                _omsiWheelRotationRight[
+                    axleIndex] +
+                rightAngularSpeed *
+                deltaSeconds);
+
+        _omsiWheelKinematicsValid[
+            axleIndex] =
+            true;
+    }
+
+    private static float ResolveAxleTrackWidth(
+        RuntimeVehicleAxleInfo axle,
+        float fallbackTrackWidthMeters) =>
+        Math.Clamp(
+            (float)(axle.MaximumWidthMeters ??
+                axle.MinimumWidthMeters ??
+                fallbackTrackWidthMeters),
+            1.2f,
+            3.5f);
+
+    private static float ResolveAxleWheelRadius(
+        RuntimeVehicleAxleInfo axle,
+        float fallbackWheelRadiusMeters) =>
+        Math.Clamp(
+            (float)(axle.WheelDiameterMeters ??
+                (fallbackWheelRadiusMeters *
+                 2.0f)) *
+            0.5f,
+            0.20f,
+            0.80f);
+
+    private static float WrapWheelRotation(
+        float value)
+    {
+        if (Math.Abs(
+                value) >
+            MathF.PI *
+            10_000.0f)
+        {
+            value =
+                MathF.IEEERemainder(
+                    value,
+                    MathF.PI *
+                    2.0f);
+        }
+
+        return value;
+    }
 
     private int ResolvePrimaryDrivenSectionIndex()
     {
