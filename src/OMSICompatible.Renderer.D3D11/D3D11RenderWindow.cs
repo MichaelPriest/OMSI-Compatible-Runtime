@@ -8329,6 +8329,9 @@ public sealed class D3D11RenderWindow : Form
         var perWheelBrakeForce =
             0.0;
 
+        var axleBrakeForces =
+            new double[8];
+
         // OMSI counts axles continuously across articulated sections.
         // Axle_Brakeforce is Newton per wheel. Predefined variables may
         // exist even on buses that still use legacy Brakeforce, so do not
@@ -8349,11 +8352,18 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
-                perWheelBrakeForce +=
+                var wheelBrakeForce =
                     Math.Max(
                         0.0,
                         _scriptRuntime.GetLocal(
                             variable));
+
+                perWheelBrakeForce +=
+                    wheelBrakeForce;
+
+                axleBrakeForces[
+                    axle] +=
+                    wheelBrakeForce;
             }
         }
 
@@ -8375,7 +8385,8 @@ public sealed class D3D11RenderWindow : Form
         _vehicle.SetOmsiScriptDynamics(
             true,
             wheelTorque,
-            brakeForce);
+            brakeForce,
+            axleBrakeForces);
 
         _vehicle.SetOmsiSuspensionSpringFactors(
             ReadOmsiSpringFactor(

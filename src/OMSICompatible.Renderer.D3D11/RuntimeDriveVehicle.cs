@@ -43,6 +43,7 @@ internal sealed class RuntimeDriveVehicle :
     private readonly float _trackWidthMeters;
     private readonly float _wheelRadiusMeters;
     private readonly float _drivenWheelRadiusMeters;
+    private readonly int _primaryDrivenSectionIndex;
     private readonly RuntimeVehicleAxleInfo[] _axles;
     private readonly float[] _axleStaticCompressionMeters;
     private readonly float _rollingResistanceNewtons;
@@ -76,6 +77,8 @@ internal sealed class RuntimeDriveVehicle :
     private bool _omsiScriptDynamicsEnabled;
     private float _omsiWheelTorqueNewtonMeters;
     private float _omsiBrakeForceNewtons;
+    private readonly float[] _omsiAxleBrakeForceNewtons =
+        new float[16];
     private float _frontLeftSpringFactor = 1.0f;
     private float _frontRightSpringFactor = 1.0f;
     private float _rearLeftSpringFactor = 1.0f;
@@ -219,8 +222,16 @@ internal sealed class RuntimeDriveVehicle :
                 0.20f,
                 0.80f);
 
+        _primaryDrivenSectionIndex =
+            ResolvePrimaryDrivenSectionIndex();
+
         var drivenAxles =
             _axles
+                .Concat(
+                    _sections.SelectMany(
+                        static section =>
+                            section.Physics?.Axles ??
+                            Array.Empty<RuntimeVehicleAxleInfo>()))
                 .Where(
                     static axle =>
                         axle.DriveFactor is
@@ -763,6 +774,8 @@ internal sealed class RuntimeDriveVehicle :
         _omsiScriptDynamicsEnabled = false;
         _omsiWheelTorqueNewtonMeters = 0.0f;
         _omsiBrakeForceNewtons = 0.0f;
+        Array.Clear(
+            _omsiAxleBrakeForceNewtons);
         _frontLeftSpringFactor = 1.0f;
         _frontRightSpringFactor = 1.0f;
         _rearLeftSpringFactor = 1.0f;
@@ -881,7 +894,8 @@ internal sealed class RuntimeDriveVehicle :
     public void SetOmsiScriptDynamics(
         bool enabled,
         double wheelTorqueNewtonMeters,
-        double brakeForceNewtons)
+        double brakeForceNewtons,
+        IReadOnlyList<double>? axleBrakeForcesNewtons = null)
     {
         _omsiScriptDynamicsEnabled =
             enabled;
@@ -906,6 +920,36 @@ internal sealed class RuntimeDriveVehicle :
                     0.0f,
                     1_000_000.0f)
                 : 0.0f;
+
+        Array.Clear(
+            _omsiAxleBrakeForceNewtons);
+
+        if (enabled &&
+            axleBrakeForcesNewtons is not null)
+        {
+            var count =
+                Math.Min(
+                    axleBrakeForcesNewtons.Count,
+                    _omsiAxleBrakeForceNewtons.Length);
+
+            for (var index = 0;
+                 index < count;
+                 index++)
+            {
+                var value =
+                    axleBrakeForcesNewtons[index];
+
+                _omsiAxleBrakeForceNewtons[index] =
+                    double.IsFinite(
+                        value)
+                        ? Math.Clamp(
+                            Math.Abs(
+                                (float)value),
+                            0.0f,
+                            500_000.0f)
+                        : 0.0f;
+            }
+        }
     }
 
     public void UpdateOmsiControls(
@@ -2310,7 +2354,7 @@ internal sealed class RuntimeDriveVehicle :
             if (_omsiScriptDynamicsEnabled)
             {
                 serviceBrakeAcceleration =
-                    _omsiBrakeForceNewtons /
+                    ResolveLeadingOmsiBrakeForceNewtons() /
                     _massKilograms;
                 stopBrakeAcceleration =
                     0.0f;
@@ -2340,8 +2384,16 @@ internal sealed class RuntimeDriveVehicle :
                         stopBrakeAcceleration,
                     parkingBrakeAcceleration);
 
+            var leadingDriveForceNewtons =
+                _odeArticulatedSections.Count >
+                        0 &&
+                    _primaryDrivenSectionIndex >
+                        0
+                    ? 0.0f
+                    : driveForceNewtons;
+
             var propulsionForce =
-                driveForceNewtons +
+                leadingDriveForceNewtons +
                 gradeAcceleration *
                 _massKilograms;
 
@@ -2483,7 +2535,8 @@ internal sealed class RuntimeDriveVehicle :
                     _yawInertiaKilogramSquareMeters));
 
             ApplyOdeArticulatedForces(
-                deltaSeconds);
+                deltaSeconds,
+                driveForceNewtons);
 
             world.Step(
                 deltaSeconds);
@@ -3096,6 +3149,146 @@ internal sealed class RuntimeDriveVehicle :
             _axles,
             _suspensionSpringNewtonsPerMeter);
 
+    private int ResolvePrimaryDrivenSectionIndex()
+    {
+        var bestSectionIndex =
+            0;
+
+        var bestDriveFactor =
+            SumDriveFactors(
+                _axles);
+
+        foreach (var section in
+                 _sections)
+        {
+            var driveFactor =
+                SumDriveFactors(
+                    section.Physics?.Axles ??
+                    Array.Empty<RuntimeVehicleAxleInfo>());
+
+            if (driveFactor >
+                bestDriveFactor +
+                    0.0001)
+            {
+                bestDriveFactor =
+                    driveFactor;
+                bestSectionIndex =
+                    section.Index;
+            }
+        }
+
+        return bestSectionIndex;
+    }
+
+    private static double SumDriveFactors(
+        IEnumerable<RuntimeVehicleAxleInfo> axles) =>
+        axles.Sum(
+            static axle =>
+                axle.DriveFactor is
+                    { } drive &&
+                double.IsFinite(
+                    drive)
+                    ? Math.Abs(
+                        drive)
+                    : 0.0);
+
+    private bool HasDetailedOmsiBrakeForces() =>
+        _omsiAxleBrakeForceNewtons.Any(
+            static force =>
+                force >
+                0.001f);
+
+    private float ResolveLeadingOmsiBrakeForceNewtons()
+    {
+        if (HasDetailedOmsiBrakeForces())
+        {
+            var axleCount =
+                Math.Clamp(
+                    _axles.Length >
+                        0
+                        ? _axles.Length
+                        : 2,
+                    1,
+                    _omsiAxleBrakeForceNewtons.Length);
+
+            var total =
+                0.0f;
+
+            for (var index = 0;
+                 index < axleCount;
+                 index++)
+            {
+                total +=
+                    _omsiAxleBrakeForceNewtons[
+                        index];
+            }
+
+            return total;
+        }
+
+        if (_odeArticulatedSections.Count ==
+            0)
+        {
+            return _omsiBrakeForceNewtons;
+        }
+
+        var totalMass =
+            _massKilograms +
+            _odeArticulatedSections.Values.Sum(
+                static state =>
+                    state.MassKilograms);
+
+        return _omsiBrakeForceNewtons *
+               _massKilograms /
+               Math.Max(
+                   totalMass,
+                   1.0f);
+    }
+
+    private float ResolveSectionOmsiBrakeForceNewtons(
+        OdeArticulatedSectionState state)
+    {
+        if (HasDetailedOmsiBrakeForces())
+        {
+            var total =
+                0.0f;
+
+            for (var axle = 0;
+                 axle < state.Axles.Length;
+                 axle++)
+            {
+                var index =
+                    state.OmsiAxleStartIndex +
+                    axle;
+
+                if (index < 0 ||
+                    index >=
+                        _omsiAxleBrakeForceNewtons.Length)
+                {
+                    break;
+                }
+
+                total +=
+                    _omsiAxleBrakeForceNewtons[
+                        index];
+            }
+
+            return total;
+        }
+
+        var totalMass =
+            _massKilograms +
+            _odeArticulatedSections.Values.Sum(
+                static sectionState =>
+                    sectionState.MassKilograms);
+
+        return _omsiBrakeForceNewtons *
+               state.MassKilograms /
+               Math.Max(
+                   totalMass,
+                   1.0f);
+    }
+
     private void ResetOdeArticulatedSections()
     {
         DisposeOdeArticulatedSections();
@@ -3128,6 +3321,11 @@ internal sealed class RuntimeDriveVehicle :
                         0.0f,
                         _centerOfGravityHeightMeters),
                     leadingOrientation);
+
+            var nextOmsiAxleIndex =
+                Math.Max(
+                    _axles.Length,
+                    2);
 
             foreach (var section in
                      _sections)
@@ -3343,6 +3541,7 @@ internal sealed class RuntimeDriveVehicle :
                             0.0f,
                             15_000.0f),
                         yawInertia,
+                        nextOmsiAxleIndex,
                         axles,
                         staticCompressions,
                         averageSpring *
@@ -3360,6 +3559,11 @@ internal sealed class RuntimeDriveVehicle :
                 _odeArticulatedSections[
                     section.Index] =
                     state;
+
+                nextOmsiAxleIndex +=
+                    Math.Max(
+                        axles.Length,
+                        1);
             }
         }
         catch (Exception exception)
@@ -3375,7 +3579,8 @@ internal sealed class RuntimeDriveVehicle :
     }
 
     private void ApplyOdeArticulatedForces(
-        float deltaSeconds)
+        float deltaSeconds,
+        float driveForceNewtons)
     {
         foreach (var state in
                  _odeArticulatedSections.Values
@@ -3454,6 +3659,26 @@ internal sealed class RuntimeDriveVehicle :
                     velocity,
                     forward);
 
+            var sectionDriveForce =
+                state.Section.Index ==
+                    _primaryDrivenSectionIndex
+                    ? driveForceNewtons
+                    : 0.0f;
+
+            var sectionGradeAcceleration =
+                -forward3D.Z *
+                Gravity;
+
+            body.AddWorldForce(
+                forward *
+                (sectionDriveForce +
+                 sectionGradeAcceleration *
+                     state.MassKilograms));
+
+            var sectionBrakeForce =
+                ResolveSectionOmsiBrakeForceNewtons(
+                    state);
+
             if (Math.Abs(
                     longitudinalSpeed) >
                 0.01f)
@@ -3462,7 +3687,8 @@ internal sealed class RuntimeDriveVehicle :
                     forward *
                     (-Math.Sign(
                          longitudinalSpeed) *
-                     state.RollingResistanceNewtons));
+                     (state.RollingResistanceNewtons +
+                      sectionBrakeForce)));
             }
 
             var lateralSpeed =
@@ -4021,6 +4247,7 @@ internal sealed class RuntimeDriveVehicle :
             float centerOfGravityHeightMeters,
             float rollingResistanceNewtons,
             float yawInertiaKilogramSquareMeters,
+            int omsiAxleStartIndex,
             RuntimeVehicleAxleInfo[] axles,
             float[] staticCompressionMeters,
             float fallbackSpringNewtonsPerMeter,
@@ -4042,6 +4269,8 @@ internal sealed class RuntimeDriveVehicle :
                 rollingResistanceNewtons;
             YawInertiaKilogramSquareMeters =
                 yawInertiaKilogramSquareMeters;
+            OmsiAxleStartIndex =
+                omsiAxleStartIndex;
             Axles =
                 axles;
             StaticCompressionMeters =
@@ -4067,6 +4296,8 @@ internal sealed class RuntimeDriveVehicle :
         public float RollingResistanceNewtons { get; }
 
         public float YawInertiaKilogramSquareMeters { get; }
+
+        public int OmsiAxleStartIndex { get; }
 
         public RuntimeVehicleAxleInfo[] Axles { get; }
 
