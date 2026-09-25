@@ -744,6 +744,12 @@ try
             "(S.L.horn_timer)",
             "{endif}",
             "{end}",
+            "{frame_ai}",
+            "(L.L.ai_counter)",
+            "1",
+            "+",
+            "(S.L.ai_counter)",
+            "{end}",
             "{trigger:collision}",
             "(L.L.horn_timer)",
             "0",
@@ -775,7 +781,8 @@ try
             "mesh_visible",
             "mesh_alpha",
             "lights_stand",
-            "cockpit_light_test"),
+            "cockpit_light_test",
+            "ai_counter"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -1911,6 +1918,7 @@ try
     Require(
         scriptCatalog.Program.InitBlocks.Count == 1 &&
         scriptCatalog.Program.FrameBlocks.Count == 1 &&
+        scriptCatalog.Program.FrameAiBlocks.Count == 1 &&
         scriptCatalog.Program.Macros.ContainsKey(
             "HELPER") &&
         scriptCatalog.NumericVariables.Contains(
@@ -1934,6 +1942,11 @@ try
         scriptRuntime.WritesLocalVariable(
             "mesh_visible"),
         "OMSI script write analysis missed an init-block S.L. target.");
+
+    Require(
+        scriptRuntime.WritesLocalVariable(
+            "ai_counter"),
+        "OMSI script write analysis missed a frame_ai S.L. target.");
 
     Require(
         !scriptRuntime.WritesLocalVariable(
@@ -2048,6 +2061,16 @@ try
                 "parsed_number") -
             125.0) < 0.0001,
         "OMSI string-to-float conversion failed.");
+
+    scriptRuntime.ExecuteFrameAi();
+
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "ai_counter") -
+            1.0) <
+            0.0001,
+        "OMSI {frame_ai} execution failed.");
 
     var requestedSoundTriggers =
         new List<string>();

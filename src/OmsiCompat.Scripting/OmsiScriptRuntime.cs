@@ -212,6 +212,16 @@ public sealed class OmsiScriptRuntime
         }
     }
 
+    public void ExecuteFrameAi()
+    {
+        foreach (var block in
+                 _catalog.Program.FrameAiBlocks)
+        {
+            ExecuteEntryBlock(
+                block);
+        }
+    }
+
     public bool HasTrigger(
         string name) =>
         !string.IsNullOrWhiteSpace(
