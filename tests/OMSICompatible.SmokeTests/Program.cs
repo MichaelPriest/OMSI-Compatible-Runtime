@@ -486,6 +486,10 @@ try
             "future_extension",
             StringComparison.OrdinalIgnoreCase) &&
         signalRoutes.Sections[5].Lines
+            .Where(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line))
             .Single() ==
             "preserve-this-value",
         "OMSI signalroutes.cfg parser did not preserve route indices, known sections and unknown future data.");
