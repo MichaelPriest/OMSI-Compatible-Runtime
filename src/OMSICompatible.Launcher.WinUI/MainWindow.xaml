@@ -876,181 +876,51 @@
                   Grid.Column="1"
                   Visibility="Collapsed"
                   Background="#0A1420">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <Grid MaxWidth="1320"
-                          HorizontalAlignment="Center"
-                          Padding="28,24,28,32">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                <StackPanel Margin="28"
+                            Spacing="12">
+                    <TextBlock Text="Configurações"
+                               Foreground="White"
+                               FontSize="34"
+                               FontWeight="Bold"/>
+                    <TextBlock Text="Diagnóstico temporário da árvore XAML de configurações."
+                               Foreground="#92A4B8"
+                               FontSize="13"/>
 
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="5">
-                                <TextBlock Text="Configurações"
-                                           Foreground="White"
-                                           FontSize="34"
-                                           FontWeight="Bold"/>
-                                <TextBlock Text="Opções reais do runtime x64, salvas em runtime-options.json."
-                                           Foreground="#92A4B8"
-                                           FontSize="13"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <Button Content="Importar options.cfg"
-                                        Padding="14,9"
-                                        Click="ImportOmsiOptionsButton_Click"/>
-                                <Button Content="Salvar"
-                                        Background="#0B65F4"
-                                        Foreground="White"
-                                        Padding="18,9"
-                                        Click="SaveRuntimeOptionsButton_Click"/>
-                            </StackPanel>
-                        </Grid>
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Content="Importar options.cfg"
+                                Click="ImportOmsiOptionsButton_Click"/>
+                        <Button Content="Salvar"
+                                Click="SaveRuntimeOptionsButton_Click"/>
+                    </StackPanel>
 
-                        <Border Grid.Row="1"
-                                Margin="0,20,0,0"
-                                Background="#111E2D"
-                                BorderBrush="#233A50"
-                                BorderThickness="1"
-                                CornerRadius="14"
-                                Padding="18">
-                            <StackPanel Spacing="14">
-                                <TextBlock Text="Geral"
-                                           Foreground="White"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"/>
-                                <Grid ColumnSpacing="16" RowSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-
-                                    <TextBox x:Name="SettingsLanguageBox" Grid.Column="0" Header="Idioma"/>
-                                    <TextBox x:Name="SettingsTargetFpsBox" Grid.Column="1" Header="FPS alvo"/>
-                                    <TextBox x:Name="SettingsNeighborTilesBox" Grid.Column="2" Header="Tiles vizinhos"/>
-
-                                    <CheckBox x:Name="SettingsAutoSaveCheck" Grid.Row="1" Grid.Column="0" Content="Auto Save"/>
-                                    <CheckBox x:Name="SettingsCurrentTimeCheck" Grid.Row="1" Grid.Column="1" Content="Usar hora atual"/>
-                                    <CheckBox x:Name="SettingsCurrentDateCheck" Grid.Row="1" Grid.Column="2" Content="Usar data atual"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Row="2"
-                                Margin="0,12,0,0"
-                                Background="#111E2D"
-                                BorderBrush="#233A50"
-                                BorderThickness="1"
-                                CornerRadius="14"
-                                Padding="18">
-                            <StackPanel Spacing="14">
-                                <TextBlock Text="Gráficos"
-                                           Foreground="White"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"/>
-                                <Grid ColumnSpacing="16" RowSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-
-                                    <TextBox x:Name="SettingsObjectDistanceBox" Grid.Column="0" Header="Distância de objetos (m)"/>
-                                    <TextBox x:Name="SettingsTextureMemoryBox" Grid.Column="1" Header="Memória de textura (MB)"/>
-                                    <TextBox x:Name="SettingsAnisotropicBox" Grid.Column="2" Header="Filtro anisotrópico"/>
-
-                                    <CheckBox x:Name="SettingsShadowsCheck" Grid.Row="1" Grid.Column="0" Content="Sombras"/>
-                                    <CheckBox x:Name="SettingsNightMapCheck" Grid.Row="1" Grid.Column="1" Content="Night maps"/>
-                                    <CheckBox x:Name="SettingsLightMapCheck" Grid.Row="1" Grid.Column="2" Content="Light maps"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Row="3"
-                                Margin="0,12,0,0"
-                                Background="#111E2D"
-                                BorderBrush="#233A50"
-                                BorderThickness="1"
-                                CornerRadius="14"
-                                Padding="18">
-                            <StackPanel Spacing="14">
-                                <TextBlock Text="Som e IA"
-                                           Foreground="White"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"/>
-                                <Grid ColumnSpacing="16" RowSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-
-                                    <TextBox x:Name="SettingsMasterVolumeBox" Grid.Column="0" Header="Volume mestre (%)"/>
-                                    <TextBox x:Name="SettingsRoadTrafficBox" Grid.Column="1" Header="Tráfego rodoviário (%)"/>
-                                    <TextBox x:Name="SettingsPassengerFactorBox" Grid.Column="2" Header="Passageiros (%)"/>
-
-                                    <CheckBox x:Name="SettingsAiSoundsCheck" Grid.Row="1" Grid.Column="0" Content="Som dos veículos IA"/>
-                                    <CheckBox x:Name="SettingsScenerySoundsCheck" Grid.Row="1" Grid.Column="1" Content="Sons de cenário"/>
-                                    <CheckBox x:Name="SettingsGameControllerCheck" Grid.Row="1" Grid.Column="2" Content="Game Controller habilitado"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Row="4"
-                                Margin="0,12,0,0"
-                                Background="#111E2D"
-                                BorderBrush="#233A50"
-                                BorderThickness="1"
-                                CornerRadius="14"
-                                Padding="18">
-                            <StackPanel Spacing="14">
-                                <TextBlock Text="Runtime x64"
-                                           Foreground="White"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"/>
-                                <Grid ColumnSpacing="16" RowSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-
-                                    <TextBox x:Name="SettingsStreamingRadiusBox" Grid.Column="0" Header="Raio de streaming"/>
-                                    <CheckBox x:Name="SettingsVsyncCheck" Grid.Column="1" Content="VSync" VerticalAlignment="Bottom" Margin="0,0,0,8"/>
-                                    <CheckBox x:Name="SettingsBorderlessCheck" Grid.Column="2" Content="Fullscreen borderless" VerticalAlignment="Bottom" Margin="0,0,0,8"/>
-
-                                    <CheckBox x:Name="SettingsHardwareGpuCheck" Grid.Row="1" Grid.Column="0" Content="Preferir GPU dedicada"/>
-                                    <CheckBox x:Name="SettingsShowFpsCheck" Grid.Row="1" Grid.Column="1" Content="Mostrar FPS"/>
-                                    <CheckBox x:Name="SettingsDiagnosticsCheck" Grid.Row="1" Grid.Column="2" Content="Diagnóstico do runtime"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </ScrollViewer>
+                    <StackPanel Visibility="Collapsed">
+                        <TextBox x:Name="SettingsLanguageBox"/>
+                        <TextBox x:Name="SettingsTargetFpsBox"/>
+                        <TextBox x:Name="SettingsNeighborTilesBox"/>
+                        <CheckBox x:Name="SettingsAutoSaveCheck"/>
+                        <CheckBox x:Name="SettingsCurrentTimeCheck"/>
+                        <CheckBox x:Name="SettingsCurrentDateCheck"/>
+                        <TextBox x:Name="SettingsObjectDistanceBox"/>
+                        <TextBox x:Name="SettingsTextureMemoryBox"/>
+                        <TextBox x:Name="SettingsAnisotropicBox"/>
+                        <CheckBox x:Name="SettingsShadowsCheck"/>
+                        <CheckBox x:Name="SettingsNightMapCheck"/>
+                        <CheckBox x:Name="SettingsLightMapCheck"/>
+                        <TextBox x:Name="SettingsMasterVolumeBox"/>
+                        <TextBox x:Name="SettingsRoadTrafficBox"/>
+                        <TextBox x:Name="SettingsPassengerFactorBox"/>
+                        <CheckBox x:Name="SettingsAiSoundsCheck"/>
+                        <CheckBox x:Name="SettingsScenerySoundsCheck"/>
+                        <CheckBox x:Name="SettingsGameControllerCheck"/>
+                        <TextBox x:Name="SettingsStreamingRadiusBox"/>
+                        <CheckBox x:Name="SettingsVsyncCheck"/>
+                        <CheckBox x:Name="SettingsBorderlessCheck"/>
+                        <CheckBox x:Name="SettingsHardwareGpuCheck"/>
+                        <CheckBox x:Name="SettingsShowFpsCheck"/>
+                        <CheckBox x:Name="SettingsDiagnosticsCheck"/>
+                    </StackPanel>
+                </StackPanel>
             </Grid>
 
             <!-- COMPATIBILITY -->
