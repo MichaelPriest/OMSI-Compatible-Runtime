@@ -45,6 +45,9 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<int, TrafficScriptRuntimeState>
         _trafficScriptRuntimes =
             [];
+    private readonly Dictionary<long, OmsiScriptRuntime>
+        _railSignalScriptRuntimes =
+            [];
     private (int X, int Y)? _pendingStreamingCenter;
     private int _loadedCenterX;
     private int _loadedCenterY;
@@ -295,6 +298,9 @@ internal sealed class RuntimeApplicationContext :
 
             await EnsureRailTrafficAssetsAsync(
                 _railTrafficSimulation);
+
+            RebuildRailSignalScriptRuntimes(
+                world);
 
             WriteTrafficDiagnostics(
                 world,
@@ -970,6 +976,9 @@ internal sealed class RuntimeApplicationContext :
                 await EnsureRailTrafficAssetsAsync(
                     _railTrafficSimulation);
 
+                RebuildRailSignalScriptRuntimes(
+                    streamedWorld);
+
                 WriteTrafficDiagnostics(
                     streamedWorld,
                     _trafficSimulation);
@@ -1483,20 +1492,182 @@ internal sealed class RuntimeApplicationContext :
                 RuntimeRailSignalRouteStateInfo>();
         }
 
-        return simulation
-            .SignalRouteSnapshot()
-            .Where(
-                static state =>
-                    state.Signal is not null)
+        var states =
+            simulation
+                .SignalRouteSnapshot()
+                .Where(
+                    static state =>
+                        state.Signal is not null)
+                .ToArray();
+
+        var stateByObjectId =
+            states
+                .GroupBy(
+                    static state =>
+                        state.Signal!.ObjectId)
+                .ToDictionary(
+                    static group =>
+                        group.Key,
+                    static group =>
+                        group
+                            .OrderByDescending(
+                                static state =>
+                                    state.Reserved)
+                            .ThenBy(
+                                static state =>
+                                    state.RouteIndex)
+                            .First());
+
+        foreach (var pair in
+                 _railSignalScriptRuntimes)
+        {
+            var runtime =
+                pair.Value;
+
+            var signalState =
+                stateByObjectId.TryGetValue(
+                    pair.Key,
+                    out var state) &&
+                state.Reserved
+                    ? state.Signal!.SignalState
+                    : 0;
+
+            runtime.SetLocal(
+                "Signal",
+                signalState);
+
+            runtime.SetLocal(
+                "NextSignal",
+                signalState);
+
+            runtime.ExecuteFrame();
+        }
+
+        return states
             .Select(
-                static state =>
+                state =>
                     new RuntimeRailSignalRouteStateInfo(
                         state.RouteIndex,
                         state.Signal!.ObjectId,
                         state.Signal.SignalState,
                         state.Reserved,
-                        state.ReservedAgentIndex))
+                        state.ReservedAgentIndex,
+                        _railSignalScriptRuntimes.TryGetValue(
+                            state.Signal.ObjectId,
+                            out var runtime)
+                            ? runtime
+                            : null))
             .ToArray();
+    }
+
+    private void RebuildRailSignalScriptRuntimes(
+        WorldDefinition world)
+    {
+        _railSignalScriptRuntimes.Clear();
+
+        var signalObjectIds =
+            WorldRailSignalRouteResolver
+                .Resolve(
+                    world.TrafficPaths,
+                    world.SignalRoutes)
+                .Select(
+                    static route =>
+                        route.Signal?.ObjectId)
+                .Where(
+                    static objectId =>
+                        objectId.HasValue)
+                .Select(
+                    static objectId =>
+                        objectId!.Value)
+                .Distinct()
+                .ToHashSet();
+
+        if (signalObjectIds.Count ==
+            0)
+        {
+            return;
+        }
+
+        foreach (var placement in
+                 world.Objects.Where(
+                     placement =>
+                         signalObjectIds.Contains(
+                             placement.Id)))
+        {
+            if (!world.SceneryAssets.TryGetValue(
+                    placement.AssetPath,
+                    out var asset) ||
+                asset.ScriptManifest is not
+                    { RegisteredFileCount: > 0 } manifest)
+            {
+                continue;
+            }
+
+            try
+            {
+                var vehicleManifest =
+                    new OmsiVehicleScriptManifest(
+                        manifest.ScriptFiles
+                            .Select(
+                                static file =>
+                                    new OmsiVehicleFileReference(
+                                        file.DeclaredPath,
+                                        file.ResolvedPath))
+                            .ToArray(),
+                        manifest.VariableLists
+                            .Select(
+                                static file =>
+                                    new OmsiVehicleFileReference(
+                                        file.DeclaredPath,
+                                        file.ResolvedPath))
+                            .ToArray(),
+                        manifest.StringVariableLists
+                            .Select(
+                                static file =>
+                                    new OmsiVehicleFileReference(
+                                        file.DeclaredPath,
+                                        file.ResolvedPath))
+                            .ToArray(),
+                        manifest.ConstantFiles
+                            .Select(
+                                static file =>
+                                    new OmsiVehicleFileReference(
+                                        file.DeclaredPath,
+                                        file.ResolvedPath))
+                            .ToArray());
+
+                var catalog =
+                    OmsiScriptCatalogLoader.Load(
+                        _contentRoot,
+                        vehicleManifest);
+
+                var runtime =
+                    new OmsiScriptRuntime(
+                        catalog);
+
+                runtime.SetLocal(
+                    "Signal",
+                    0.0);
+
+                runtime.SetLocal(
+                    "NextSignal",
+                    0.0);
+
+                runtime.ExecuteInit();
+
+                _railSignalScriptRuntimes[
+                    placement.Id] =
+                    runtime;
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[rail-signal] Script runtime unavailable for object {placement.Id}: {exception.Message}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[rail-signal] scriptRuntimes={_railSignalScriptRuntimes.Count}; referencedObjects={signalObjectIds.Count}");
     }
 
     private IReadOnlyList<RuntimeTrafficAgentInfo>
