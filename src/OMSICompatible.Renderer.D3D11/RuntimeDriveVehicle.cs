@@ -598,10 +598,10 @@ internal sealed class RuntimeDriveVehicle :
 
     private void SnapRuntimePositionToDrivingSurface()
     {
-        if (!TrySampleDrivingSurface(
+        if (!TryResolveSpawnSurfaceHeight(
                 Position.X,
                 Position.Z,
-                Position.Y + 1.5f,
+                Position.Y,
                 out var groundHeight))
         {
             return;
@@ -613,6 +613,67 @@ internal sealed class RuntimeDriveVehicle :
                 groundHeight +
                     ModelGroundPlaneOffsetMeters,
                 Position.Z);
+    }
+
+    private bool TryResolveSpawnSurfaceHeight(
+        double worldX,
+        double worldZ,
+        float referenceHeight,
+        out float height)
+    {
+        // Some OMSI entrypoint_bus placements carry an old or approximate
+        // Z value even though the actual terrain/road was later raised.
+        // The normal driving sampler intentionally rejects surfaces above
+        // its maximum height (important for bridges/tunnels). Spawn
+        // resolution is different: establish the real terrain height first
+        // and then allow a road/spline surface a reasonable distance above
+        // that terrain. This prevents a stale entrypoint Z from putting the
+        // complete vehicle and its F3 camera underneath the map.
+        var hasTerrain =
+            _terrain.TrySample(
+                worldX,
+                worldZ,
+                out var terrainHeight);
+
+        var maximumSurfaceHeight =
+            referenceHeight +
+            1.5f;
+
+        if (hasTerrain)
+        {
+            maximumSurfaceHeight =
+                Math.Max(
+                    maximumSurfaceHeight,
+                    terrainHeight +
+                        8.0f);
+        }
+
+        if (_splineSurfaces.TrySampleBelow(
+                worldX,
+                worldZ,
+                maximumSurfaceHeight,
+                out var splineHeight))
+        {
+            height =
+                hasTerrain
+                    ? Math.Max(
+                        splineHeight,
+                        terrainHeight)
+                    : splineHeight;
+
+            return true;
+        }
+
+        if (hasTerrain)
+        {
+            height =
+                terrainHeight;
+            return true;
+        }
+
+        height =
+            referenceHeight;
+        return false;
     }
 
     private bool TrySampleDrivingSurface(
@@ -961,11 +1022,10 @@ internal sealed class RuntimeDriveVehicle :
         if (selectedSpawn is not null)
         {
             var y =
-                TrySampleDrivingSurface(
+                TryResolveSpawnSurfaceHeight(
                     selectedSpawn.X,
                     selectedSpawn.Z,
-                    (float)selectedSpawn.Y +
-                        1.5f,
+                    (float)selectedSpawn.Y,
                     out var sampled)
                     ? sampled + ModelGroundPlaneOffsetMeters
                     : (float)selectedSpawn.Y +
@@ -1000,11 +1060,10 @@ internal sealed class RuntimeDriveVehicle :
                     spawn.Z;
 
                 var y =
-                    TrySampleDrivingSurface(
+                    TryResolveSpawnSurfaceHeight(
                         x,
                         z,
-                        (float)spawn.Y +
-                            1.5f,
+                        (float)spawn.Y,
                         out var sampled)
                         ? sampled + ModelGroundPlaneOffsetMeters
                         : (float)spawn.Y +
