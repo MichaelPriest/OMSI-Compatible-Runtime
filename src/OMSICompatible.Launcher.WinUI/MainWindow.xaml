@@ -729,146 +729,39 @@
                   Grid.Column="1"
                   Visibility="Collapsed"
                   Background="#0A1420">
-                <Grid MaxWidth="1360"
-                      HorizontalAlignment="Center"
-                      Padding="28,24,28,28">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
+                <StackPanel Margin="28"
+                            Spacing="12">
+                    <TextBlock Text="Controles"
+                               Foreground="White"
+                               FontSize="34"
+                               FontWeight="Bold"/>
+                    <TextBlock x:Name="ControlsSubtitleText"
+                               Text="Leitura real de keyboard.cfg e gamectrler.cfg."
+                               Foreground="#92A4B8"
+                               FontSize="13"/>
+                    <Button Content="Atualizar"
+                            HorizontalAlignment="Left"
+                            Click="RefreshControlsButton_Click"/>
 
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="5">
-                            <TextBlock Text="Controles"
-                                       Foreground="White"
-                                       FontSize="34"
-                                       FontWeight="Bold"/>
-                            <TextBlock Text="Configuração real lida diretamente de Inputs\keyboard.cfg e Inputs\gamectrler.cfg."
-                                       Foreground="#92A4B8"
-                                       FontSize="13"/>
-                        </StackPanel>
-                        <Button Grid.Column="1"
-                                Content="Atualizar"
-                                Padding="16,9"
-                                Click="RefreshControlsButton_Click"
-                                VerticalAlignment="Center"/>
-                    </Grid>
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="16">
+                        <TextBlock x:Name="ControlsBindingCountText" Text="0"/>
+                        <TextBlock x:Name="ControlsKeyCountText" Text="0"/>
+                        <TextBlock x:Name="ControlsControllerCountText" Text="0"/>
+                        <TextBlock x:Name="ControlsControllerStateText" Text="OFF"/>
+                    </StackPanel>
 
-                    <Grid Grid.Row="1"
-                          Margin="0,20,0,0"
-                          ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
+                    <ListView x:Name="ControlsKeyboardList"
+                              Height="180"
+                              SelectionMode="None"/>
 
-                        <Border Grid.Column="0" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="Comandos de teclado" Foreground="#8FA2B7" FontSize="11"/>
-                                <TextBlock x:Name="ControlsKeyboardCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
-                                <TextBlock Text="entradas [entry]" Foreground="#6F8499" FontSize="10"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="1" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="Tabela de teclas" Foreground="#8FA2B7" FontSize="11"/>
-                                <TextBlock x:Name="ControlsKeyTableCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
-                                <TextBlock x:Name="ControlsKeyTableFileText" Text=".kyb" Foreground="#6F8499" FontSize="10" TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="2" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="Controladores" Foreground="#8FA2B7" FontSize="11"/>
-                                <TextBlock x:Name="ControlsControllerCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
-                                <TextBlock Text="blocos [ctrl]" Foreground="#6F8499" FontSize="10"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="3" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="Game Controller" Foreground="#8FA2B7" FontSize="11"/>
-                                <TextBlock x:Name="ControlsGameControllerStateText" Text="—" Foreground="White" FontSize="18" FontWeight="Bold"/>
-                                <TextBlock Text="runtime-options.json" Foreground="#6F8499" FontSize="10"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-
-                    <Grid Grid.Row="2"
-                          Margin="0,14,0,0"
-                          ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.25*"/>
-                            <ColumnDefinition Width="0.75*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Border Grid.Column="0"
-                                Background="#111E2D"
-                                BorderBrush="#233A50"
-                                BorderThickness="1"
-                                CornerRadius="14"
-                                Padding="16">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-                                <TextBlock Text="Mapeamento de teclado"
-                                           Foreground="White"
-                                           FontSize="17"
-                                           FontWeight="SemiBold"/>
-                                <ListView x:Name="ControlsKeyboardList"
-                                          Grid.Row="1"
-                                          Margin="0,12,0,0"
-                                          SelectionMode="None">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Padding="4,6">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="180"/>
-                                                    <ColumnDefinition Width="130"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Trigger}" Foreground="#DCE7F2" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding Key}" Foreground="#9FC8FF" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Grid.Column="2" Text="{Binding Flags}" Foreground="#788DA2" FontSize="11"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Column="1"
-                                Background="#111E2D"
-                                BorderBrush="#233A50"
-                                BorderThickness="1"
-                                CornerRadius="14"
-                                Padding="16">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="Arquivos OMSI"
-                                           Foreground="White"
-                                           FontSize="17"
-                                           FontWeight="SemiBold"/>
-                                <TextBlock x:Name="ControlsKeyboardPathText" Text="keyboard.cfg" Foreground="#AFC0D2" FontSize="11" TextWrapping="Wrap"/>
-                                <TextBlock x:Name="ControlsControllerPathText" Text="gamectrler.cfg" Foreground="#AFC0D2" FontSize="11" TextWrapping="Wrap"/>
-                                <TextBlock Text="A edição visual completa com captura de tecla, eixos, botões e FFScale será migrada preservando a mesma semântica do launcher atual."
-                                           Foreground="#75899E"
-                                           FontSize="11"
-                                           TextWrapping="Wrap"
-                                           Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </Grid>
+                    <TextBlock x:Name="ControlsKeyboardPathText"
+                               Text="keyboard.cfg"
+                               TextWrapping="Wrap"/>
+                    <TextBlock x:Name="ControlsControllerPathText"
+                               Text="gamectrler.cfg"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
             </Grid>
 
             <!-- SETTINGS -->
