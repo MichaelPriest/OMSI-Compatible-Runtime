@@ -15,6 +15,20 @@ namespace OMSICompatible.Launcher.WinUI;
 public sealed partial class MainWindow :
     Window
 {
+    private sealed record BusSkinSelection(
+        OmsiBusInfo Bus,
+        OmsiVehicleRepaint? Repaint)
+    {
+        public string Name =>
+            Repaint?.Name ??
+            Bus.Skin;
+
+        public string Detail =>
+            Repaint is null
+                ? $"{Bus.Carroceria} · Skin base: {Bus.Skin}"
+                : $"{Bus.Carroceria} · Repaint CTI: {Repaint.Name}";
+    }
+
     private readonly RuntimeProcessHost _runtime =
         new();
 
@@ -26,6 +40,13 @@ public sealed partial class MainWindow :
 
     private IReadOnlyList<OmsiBusInfo> _buses =
         Array.Empty<OmsiBusInfo>();
+
+    private readonly Dictionary<
+        string,
+        IReadOnlyList<OmsiVehicleRepaint>>
+        _repaintCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
 
     private IReadOnlyList<OmsiMapEntryPointGroup> _entryPoints =
         Array.Empty<OmsiMapEntryPointGroup>();
@@ -243,6 +264,8 @@ public sealed partial class MainWindow :
                 ClearSelections();
                 return;
             }
+
+            _repaintCache.Clear();
 
             SetStatus(
                 "Descobrindo mapas e ônibus...");
@@ -558,7 +581,7 @@ public sealed partial class MainWindow :
         string? modelo,
         OmsiBusInfo? preferredBus)
     {
-        var skins =
+        var buses =
             string.IsNullOrWhiteSpace(
                 carroceria) ||
             string.IsNullOrWhiteSpace(
@@ -585,17 +608,141 @@ public sealed partial class MainWindow :
                         StringComparer.OrdinalIgnoreCase)
                     .ToArray();
 
+        var selections =
+            new List<BusSkinSelection>();
+
+        foreach (var bus in buses)
+        {
+            selections.Add(
+                new BusSkinSelection(
+                    bus,
+                    null));
+
+            foreach (var repaint in
+                     GetRepaints(
+                         bus))
+            {
+                selections.Add(
+                    new BusSkinSelection(
+                        bus,
+                        repaint));
+            }
+        }
+
+        var visibleSelections =
+            selections
+                .GroupBy(
+                    static item =>
+                        item.Bus.RelativePath +
+                        "\n" +
+                        item.Name +
+                        "\n" +
+                        (item.Repaint?.RelativeCtiPath ??
+                         string.Empty),
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(
+                    static group =>
+                        group.First())
+                .OrderBy(
+                    static item =>
+                        item.Name,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
         SkinBox.ItemsSource =
-            skins;
+            visibleSelections;
+
+        BusSkinSelection? target =
+            null;
+
+        if (preferredBus is not null)
+        {
+            target =
+                visibleSelections.FirstOrDefault(
+                    item =>
+                        string.Equals(
+                            item.Bus.RelativePath,
+                            preferredBus.RelativePath,
+                            StringComparison.OrdinalIgnoreCase) &&
+                        RepaintMatchesSavedSelection(
+                            item.Repaint));
+        }
+
+        target ??=
+            visibleSelections.FirstOrDefault(
+                item =>
+                    preferredBus is not null &&
+                    string.Equals(
+                        item.Bus.RelativePath,
+                        preferredBus.RelativePath,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    item.Repaint is null);
+
+        target ??=
+            visibleSelections.FirstOrDefault();
 
         SkinBox.SelectedItem =
-            preferredBus is not null &&
-            skins.Contains(
-                preferredBus)
-                ? preferredBus
-                : skins.FirstOrDefault();
+            target;
 
         UpdateBusPreview();
+    }
+
+    private IReadOnlyList<OmsiVehicleRepaint> GetRepaints(
+        OmsiBusInfo bus)
+    {
+        if (_repaintCache.TryGetValue(
+                bus.RelativePath,
+                out var cached))
+        {
+            return cached;
+        }
+
+        var discovered =
+            OmsiVehicleRepaintCatalog.Discover(
+                bus);
+
+        _repaintCache[
+            bus.RelativePath] =
+            discovered;
+
+        return discovered;
+    }
+
+    private bool RepaintMatchesSavedSelection(
+        OmsiVehicleRepaint? repaint)
+    {
+        if (string.IsNullOrWhiteSpace(
+                _settings.RepaintName) &&
+            string.IsNullOrWhiteSpace(
+                _settings.RepaintCtiRelativePath))
+        {
+            return repaint is null;
+        }
+
+        if (repaint is null)
+        {
+            return false;
+        }
+
+        var nameMatches =
+            string.IsNullOrWhiteSpace(
+                _settings.RepaintName) ||
+            string.Equals(
+                repaint.Name,
+                _settings.RepaintName,
+                StringComparison.OrdinalIgnoreCase);
+
+        var ctiMatches =
+            string.IsNullOrWhiteSpace(
+                _settings.RepaintCtiRelativePath) ||
+            string.Equals(
+                repaint.RelativeCtiPath,
+                _settings.RepaintCtiRelativePath,
+                StringComparison.OrdinalIgnoreCase);
+
+        return
+            nameMatches &&
+            ctiMatches;
     }
 
     private void ApplyNoBusMode()
@@ -638,21 +785,26 @@ public sealed partial class MainWindow :
             return;
         }
 
+        var selection =
+            SelectedSkinSelection();
+
         var bus =
-            SelectedBus();
+            selection?.Bus;
 
         BusPreviewTitle.Text =
             bus?.Modelo ??
             "Nenhum ônibus selecionado";
 
         BusPreviewSubtitle.Text =
-            bus?.Carroceria ??
-            "Escolha carroceria e modelo";
+            selection?.Detail ??
+            "Escolha carroceria, modelo e skin/repaint";
 
         BusPreviewSkin.Text =
-            bus is null
+            selection is null
                 ? string.Empty
-                : $"Skin: {bus.Skin}";
+                : selection.Repaint is null
+                    ? $"Skin base: {bus!.Skin}"
+                    : $"Repaint CTI: {selection.Repaint.Name}";
 
         ApplyImage(
             BusPreviewImage,
@@ -723,6 +875,11 @@ public sealed partial class MainWindow :
         var bus =
             SelectedBus();
 
+        var repaint =
+            noBus
+                ? null
+                : SelectedRepaint();
+
         var spawn =
             SelectedSpawn();
 
@@ -759,7 +916,9 @@ public sealed partial class MainWindow :
                     noBus
                         ? null
                         : bus?.RelativePath,
-                    spawn.Name))
+                    spawn.Name,
+                    repaint?.Name,
+                    repaint?.RelativeCtiPath))
             {
                 throw new InvalidOperationException(
                     "O runtime não pôde ser iniciado.");
@@ -778,6 +937,10 @@ public sealed partial class MainWindow :
                         noBus
                             ? null
                             : bus?.Skin,
+                    LastSessionRepaintName =
+                        repaint?.Name,
+                    LastSessionRepaintCtiRelativePath =
+                        repaint?.RelativeCtiPath,
                     LastSessionEntryPointName =
                         spawn.Name,
                     LastSessionWithoutBus =
@@ -994,8 +1157,12 @@ public sealed partial class MainWindow :
                 ? "—"
                 : _settings.LastSessionWithoutBus
                     ? "Sem ônibus"
-                    : lastBus?.Modelo ??
-                      "Veículo indisponível";
+                    : lastBus is null
+                        ? "Veículo indisponível"
+                        : string.IsNullOrWhiteSpace(
+                              _settings.LastSessionRepaintName)
+                            ? lastBus.Modelo
+                            : $"{lastBus.Modelo} · {_settings.LastSessionRepaintName}";
 
         LastSpawnText.Text =
             hasLastSession
@@ -1131,9 +1298,15 @@ public sealed partial class MainWindow :
         MapBox.SelectedItem
             as OmsiMapInfo;
 
-    private OmsiBusInfo? SelectedBus() =>
+    private BusSkinSelection? SelectedSkinSelection() =>
         SkinBox.SelectedItem
-            as OmsiBusInfo;
+            as BusSkinSelection;
+
+    private OmsiBusInfo? SelectedBus() =>
+        SelectedSkinSelection()?.Bus;
+
+    private OmsiVehicleRepaint? SelectedRepaint() =>
+        SelectedSkinSelection()?.Repaint;
 
     private OmsiMapEntryPointGroup? SelectedSpawn() =>
         SpawnBox.SelectedItem
@@ -1149,6 +1322,8 @@ public sealed partial class MainWindow :
 
         _entryPoints =
             Array.Empty<OmsiMapEntryPointGroup>();
+
+        _repaintCache.Clear();
 
         MapBox.ItemsSource = null;
         CarroceriaBox.ItemsSource = null;
@@ -1180,6 +1355,10 @@ public sealed partial class MainWindow :
                     SelectedMap()?.FolderName,
                 BusRelativePath =
                     SelectedBus()?.RelativePath,
+                RepaintName =
+                    SelectedRepaint()?.Name,
+                RepaintCtiRelativePath =
+                    SelectedRepaint()?.RelativeCtiPath,
                 EntryPointName =
                     SelectedSpawn()?.Name,
                 StartWithoutBus =
