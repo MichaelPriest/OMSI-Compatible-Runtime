@@ -50,6 +50,10 @@ public sealed class WorldTrafficSimulation
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
     private readonly HashSet<long> _crossingSceneryObjectIds;
     private readonly List<Agent> _agents;
+    private readonly WorldTrafficPathSegment[] _roadSegments = [];
+    private readonly bool _runtimeRecyclingEnabled;
+    private readonly double _spawnIntervalSeconds = 2.0;
+    private readonly double _spawnExclusionRadiusMeters = 40.0;
     private WorldTrafficObstacleState? _externalObstacle;
     private double _simulationElapsedSeconds;
 
@@ -192,6 +196,17 @@ public sealed class WorldTrafficSimulation
                     0.25,
                     60.0)
                 : 2.0;
+
+        _runtimeRecyclingEnabled =
+            spawnExclusionCenter.HasValue;
+        _spawnIntervalSeconds =
+            activationIntervalSeconds;
+        _spawnExclusionRadiusMeters =
+            Math.Max(
+                spawnExclusionRadiusMeters,
+                0.0);
+        _roadSegments =
+            roadSegments;
 
         _agents =
             new List<Agent>(
@@ -722,6 +737,12 @@ public sealed class WorldTrafficSimulation
                 next.Value,
                 out var nextSegment))
         {
+            if (TryRecycleTerminalAgent(
+                    agent))
+            {
+                return false;
+            }
+
             agent.SpeedMetersPerSecond =
                 0.0;
             agent.BrakeLight =
@@ -753,6 +774,208 @@ public sealed class WorldTrafficSimulation
                     nextSegment);
 
         return true;
+    }
+
+    private bool TryRecycleTerminalAgent(
+        Agent agent)
+    {
+        if (!_runtimeRecyclingEnabled ||
+            _roadSegments.Length ==
+                0)
+        {
+            return false;
+        }
+
+        var candidates =
+            _roadSegments
+                .Where(
+                    segment =>
+                        IsTrafficGroupAllowed(
+                            segment,
+                            agent.GroupIndex,
+                            agent.DefaultDensityClassIndex))
+                .Select(
+                    segment =>
+                        (
+                            Segment: segment,
+                            Weight:
+                                ResolveTrafficDensityWeight(
+                                    segment,
+                                    agent.GroupIndex,
+                                    agent.DefaultDensityClassIndex)
+                        ))
+                .Where(
+                    static candidate =>
+                        candidate.Weight >
+                            0.0)
+                .ToArray();
+
+        if (candidates.Length ==
+            0)
+        {
+            return false;
+        }
+
+        var recycleEpoch =
+            Math.Max(
+                0,
+                (int)Math.Floor(
+                    _simulationElapsedSeconds /
+                    Math.Max(
+                        _spawnIntervalSeconds,
+                        0.25)));
+
+        for (var attempt = 0;
+             attempt <
+                 candidates.Length *
+                 3;
+             attempt++)
+        {
+            var selector =
+                ((agent.AgentIndex +
+                  1) *
+                 0.6180339887498949 +
+                 (recycleEpoch +
+                  attempt +
+                  1) *
+                 0.3819660112501051) %
+                1.0;
+
+            var segment =
+                SelectWeightedSpawnSegment(
+                    candidates,
+                    selector);
+
+            if (segment is null)
+            {
+                continue;
+            }
+
+            var length =
+                SegmentLength(
+                    segment);
+
+            if (length <=
+                1.0)
+            {
+                continue;
+            }
+
+            var travelForward =
+                segment.Direction switch
+                {
+                    1 =>
+                        false,
+                    2 =>
+                        ((agent.AgentIndex +
+                          recycleEpoch +
+                          attempt) &
+                         1) ==
+                        0,
+                    _ =>
+                        true
+                };
+
+            var offset =
+                Math.Clamp(
+                    length *
+                        (0.15 +
+                         0.70 *
+                         (((agent.AgentIndex +
+                            recycleEpoch +
+                            attempt +
+                            1) *
+                           0.4142135623730950) %
+                          1.0)),
+                    0.1,
+                    Math.Max(
+                        length -
+                            0.1,
+                        0.1));
+
+            var distance =
+                travelForward
+                    ? offset
+                    : Math.Max(
+                        length -
+                            offset,
+                        0.0);
+
+            SampleSegment(
+                segment,
+                distance,
+                out var spawnPosition,
+                out _);
+
+            var exclusionCenter =
+                _externalObstacle?.Position;
+
+            if (exclusionCenter.HasValue &&
+                _spawnExclusionRadiusMeters >
+                    0.0 &&
+                HorizontalDistance(
+                    spawnPosition,
+                    exclusionCenter.Value) <
+                    _spawnExclusionRadiusMeters)
+            {
+                continue;
+            }
+
+            var tooCloseToTraffic =
+                _agents.Any(
+                    other =>
+                    {
+                        if (ReferenceEquals(
+                                other,
+                                agent) ||
+                            other.ActivationTimeSeconds >
+                                _simulationElapsedSeconds ||
+                            !_segmentsByIndex.TryGetValue(
+                                other.SegmentIndex,
+                                out var otherSegment))
+                        {
+                            return false;
+                        }
+
+                        SampleSegment(
+                            otherSegment,
+                            other.DistanceMeters,
+                            out var otherPosition,
+                            out _);
+
+                        return HorizontalDistance(
+                                   spawnPosition,
+                                   otherPosition) <
+                               22.0;
+                    });
+
+            if (tooCloseToTraffic)
+            {
+                continue;
+            }
+
+            agent.SegmentIndex =
+                segment.Index;
+            agent.DistanceMeters =
+                distance;
+            agent.TravelForward =
+                travelForward;
+            agent.SpeedMetersPerSecond =
+                0.0;
+            agent.BrakeLight =
+                false;
+            agent.ActivationTimeSeconds =
+                _simulationElapsedSeconds +
+                _spawnIntervalSeconds *
+                (1.0 +
+                 (agent.AgentIndex %
+                  3) *
+                 0.35);
+
+            return true;
+        }
+
+        return false;
     }
 
     private bool CanEnterSegment(
@@ -2727,7 +2950,11 @@ public sealed class WorldTrafficSimulation
         } =
             distanceMeters;
 
-        public bool TravelForward { get; } =
+        public bool TravelForward
+        {
+            get;
+            set;
+        } =
             travelForward;
 
         public double CruiseSpeedMetersPerSecond { get; } =
@@ -2752,7 +2979,11 @@ public sealed class WorldTrafficSimulation
         public string GroupName { get; } =
             groupName;
 
-        public double ActivationTimeSeconds { get; } =
+        public double ActivationTimeSeconds
+        {
+            get;
+            set;
+        } =
             Math.Max(
                 activationTimeSeconds,
                 0.0);
