@@ -7792,10 +7792,10 @@ public sealed class D3D11RenderWindow : Form
                     aiForward.Y,
                     -aiForward.X);
 
-            const double aiHalfLength =
-                2.6;
-            const double aiHalfWidth =
-                1.15;
+            ResolveTrafficVehicleCollisionHalfExtents(
+                agent.VehiclePath,
+                out var aiHalfLength,
+                out var aiHalfWidth);
 
             if (!OrientedTrafficRectanglesOverlap(
                     delta,
@@ -7882,6 +7882,92 @@ public sealed class D3D11RenderWindow : Form
         {
             _activeTrafficCollisionAgents.Add(
                 id);
+        }
+    }
+
+    private void ResolveTrafficVehicleCollisionHalfExtents(
+        string vehiclePath,
+        out double halfLengthMeters,
+        out double halfWidthMeters)
+    {
+        halfLengthMeters =
+            2.6;
+        halfWidthMeters =
+            1.15;
+
+        if (string.IsNullOrWhiteSpace(
+                vehiclePath) ||
+            !_trafficVehicleGeometries.TryGetValue(
+                vehiclePath,
+                out var geometry) ||
+            geometry.Vertices.Length ==
+                0)
+        {
+            return;
+        }
+
+        var minimumX =
+            float.PositiveInfinity;
+        var maximumX =
+            float.NegativeInfinity;
+        var minimumZ =
+            float.PositiveInfinity;
+        var maximumZ =
+            float.NegativeInfinity;
+
+        foreach (var vertex in
+                 geometry.Vertices)
+        {
+            minimumX =
+                Math.Min(
+                    minimumX,
+                    vertex.Position.X);
+            maximumX =
+                Math.Max(
+                    maximumX,
+                    vertex.Position.X);
+            minimumZ =
+                Math.Min(
+                    minimumZ,
+                    vertex.Position.Z);
+            maximumZ =
+                Math.Max(
+                    maximumZ,
+                    vertex.Position.Z);
+        }
+
+        var meshWidth =
+            maximumX -
+            minimumX;
+
+        var meshLength =
+            maximumZ -
+            minimumZ;
+
+        if (float.IsFinite(
+                meshWidth) &&
+            meshWidth >
+                0.5f)
+        {
+            halfWidthMeters =
+                Math.Clamp(
+                    meshWidth *
+                        0.5,
+                    0.65,
+                    2.0);
+        }
+
+        if (float.IsFinite(
+                meshLength) &&
+            meshLength >
+                1.0f)
+        {
+            halfLengthMeters =
+                Math.Clamp(
+                    meshLength *
+                        0.5,
+                    1.5,
+                    15.0);
         }
     }
 
