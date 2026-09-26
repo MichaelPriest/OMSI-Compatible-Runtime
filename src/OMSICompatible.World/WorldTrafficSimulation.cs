@@ -39,6 +39,8 @@ public sealed class WorldTrafficSimulation
         1.5;
     private const double TrafficBrakingMetersPerSecondSquared =
         4.0;
+    private const double TrafficMaximumLateralAccelerationMetersPerSecondSquared =
+        2.0;
     private const double TrafficLookAheadMeters =
         120.0;
     private const double TrafficStopLineBufferMeters =
@@ -2261,6 +2263,31 @@ public sealed class WorldTrafficSimulation
 
         var targetSpeed =
             segmentMaximum;
+
+        if (segment is not null)
+        {
+            var curvature =
+                Math.Abs(
+                    ResolvePathCurvaturePerMeter(
+                        agent,
+                        segment));
+
+            if (double.IsFinite(
+                    curvature) &&
+                curvature >
+                    0.001)
+            {
+                var curveLimitedSpeed =
+                    Math.Sqrt(
+                        TrafficMaximumLateralAccelerationMetersPerSecondSquared /
+                        curvature);
+
+                targetSpeed =
+                    Math.Min(
+                        targetSpeed,
+                        curveLimitedSpeed);
+            }
+        }
 
         if (leading.HasValue)
         {
