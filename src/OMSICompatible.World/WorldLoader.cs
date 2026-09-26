@@ -805,9 +805,11 @@ public static class WorldLoader
                                             material.TextureName,
                                             texturePath,
                                             materialOverride?.AlphaMode ??
-                                                (material.DiffuseA < 0.999f
-                                                    ? 2
-                                                    : 0),
+                                                (requiresExternalTransMap
+                                                    ? 1
+                                                    : material.DiffuseA < 0.999f
+                                                        ? 2
+                                                        : 0),
                                             transMapTexturePath,
                                             materialOverride?.NoZWrite ??
                                                 false,
