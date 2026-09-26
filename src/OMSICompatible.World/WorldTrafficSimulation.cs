@@ -405,36 +405,55 @@ public sealed class WorldTrafficSimulation
                 distance =
                     0.0;
 
-                var attemptedPlacementSegments =
-                    new HashSet<int>();
+                var orderedPlacementSegments =
+                    weightedSegments
+                        .Select(
+                            candidate =>
+                            {
+                                var unitSelector =
+                                    ((index +
+                                      1) *
+                                     0.6180339887498949 +
+                                     (candidate.Segment.Index +
+                                      1) *
+                                     0.4142135623730950) %
+                                    1.0;
+
+                                unitSelector =
+                                    Math.Clamp(
+                                        unitSelector,
+                                        0.000001,
+                                        0.999999);
+
+                                return
+                                    (
+                                        candidate.Segment,
+                                        Rank:
+                                            -Math.Log(
+                                                unitSelector) /
+                                            Math.Max(
+                                                candidate.Weight,
+                                                0.000001)
+                                    );
+                            })
+                        .OrderBy(
+                            static candidate =>
+                                candidate.Rank)
+                        .ThenBy(
+                            static candidate =>
+                                candidate.Segment.Index)
+                        .ToArray();
 
                 for (var segmentAttempt = 0;
                      segmentAttempt <
-                         weightedSegments.Length *
-                         3 &&
+                         orderedPlacementSegments.Length &&
                      !placed;
                      segmentAttempt++)
                 {
-                    var segmentSelector =
-                        ((index +
-                          1) *
-                         0.6180339887498949 +
-                         (segmentAttempt +
-                          1) *
-                         0.3819660112501051) %
-                        1.0;
-
                     var placementSegment =
-                        SelectWeightedSpawnSegment(
-                            weightedSegments,
-                            segmentSelector);
-
-                    if (placementSegment is null ||
-                        !attemptedPlacementSegments.Add(
-                            placementSegment.Index))
-                    {
-                        continue;
-                    }
+                        orderedPlacementSegments[
+                            segmentAttempt]
+                            .Segment;
 
                     var placementLength =
                         SegmentLength(
