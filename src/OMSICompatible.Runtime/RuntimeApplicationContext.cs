@@ -2471,7 +2471,19 @@ internal sealed class RuntimeApplicationContext :
                                 segment.ForwardConnections,
                                 segment.ReverseConnections,
                                 segment.SpeedLimitKilometersPerHour,
-                                segment.TrafficPriority))
+                                segment.TrafficPriority,
+                                segment.TrafficSignal is null
+                                    ? null
+                                    : new RuntimeTrafficSignalProgramInfo(
+                                        segment.TrafficSignal.CycleSeconds,
+                                        segment.TrafficSignal.ApproachDistanceMeters,
+                                        segment.TrafficSignal.Phases
+                                            .Select(
+                                                static phase =>
+                                                    new RuntimeTrafficSignalPhaseInfo(
+                                                        phase.Phase,
+                                                        phase.DurationSeconds))
+                                            .ToArray())))
                     .ToArray(),
                 world.TrafficPaths.RoadVehicleSegmentCount,
                 world.TrafficPaths.PedestrianSegmentCount,
