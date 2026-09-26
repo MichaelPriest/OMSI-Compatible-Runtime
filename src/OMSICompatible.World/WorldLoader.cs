@@ -628,7 +628,8 @@ public static class WorldLoader
                             CreateMissingMesh(
                                 mesh.Path,
                                 mesh.Transform,
-                                "missingO3d"));
+                                "missingO3d",
+                                dynamicMesh));
 
                         continue;
                     }
@@ -883,7 +884,8 @@ public static class WorldLoader
     private static WorldSceneryMeshAsset CreateMissingMesh(
         string declaredPath,
         OmsiSceneryMeshTransform transform,
-        string errorCode) =>
+        string errorCode,
+        OmsiVehicleMeshReference? dynamicMesh = null) =>
         new(
             declaredPath,
             null,
@@ -895,7 +897,14 @@ public static class WorldLoader
             Array.Empty<float>(),
             Array.Empty<uint>(),
             Array.Empty<ushort>(),
-            Array.Empty<WorldO3dMaterial>());
+            Array.Empty<WorldO3dMaterial>(),
+            dynamicMesh?.VisibilityConditions,
+            dynamicMesh?.Animations,
+            dynamicMesh?.LightEffects,
+            dynamicMesh?.MeshIdentifier,
+            dynamicMesh?.AnimationParent,
+            dynamicMesh?.Ordinal ??
+                -1);
 
     private static string? ResolveTreeTexturePath(
         string contentRoot,
