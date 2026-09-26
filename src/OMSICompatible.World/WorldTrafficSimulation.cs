@@ -241,7 +241,9 @@ public sealed class WorldTrafficSimulation
                             IsTrafficGroupAllowed(
                                 segment,
                                 groupIndex,
-                                defaultDensityClassIndex))
+                                defaultDensityClassIndex) &&
+                            HasUsableTrafficExit(
+                                segment))
                     .ToArray();
 
             if (allowedSegments.Length ==
@@ -836,6 +838,8 @@ public sealed class WorldTrafficSimulation
                             segment,
                             agent.GroupIndex,
                             agent.DefaultDensityClassIndex) &&
+                        HasUsableTrafficExit(
+                            segment) &&
                         !IsCriticalRespawnApproach(
                             agent,
                             segment))
@@ -2183,6 +2187,23 @@ public sealed class WorldTrafficSimulation
                 agent.DistanceMeters,
                 0.0);
     }
+
+    private static bool HasUsableTrafficExit(
+        WorldTrafficPathSegment segment) =>
+        segment.Direction switch
+        {
+            1 =>
+                segment.ReverseConnections.Count >
+                    0,
+            2 =>
+                segment.ForwardConnections.Count >
+                    0 ||
+                segment.ReverseConnections.Count >
+                    0,
+            _ =>
+                segment.ForwardConnections.Count >
+                    0
+        };
 
     private static bool IsTrafficGroupAllowed(
         WorldTrafficPathSegment segment,
