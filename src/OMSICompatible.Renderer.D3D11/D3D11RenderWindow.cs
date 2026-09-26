@@ -7744,35 +7744,56 @@ public sealed class D3D11RenderWindow : Form
                     (float)(agent.Z -
                             player.Z));
 
-            var longitudinal =
-                Math.Abs(
-                    Vector2.Dot(
-                        delta,
-                        forward));
+            var aiHeading =
+                (float)agent.HeadingRadians;
 
-            var lateral =
-                Math.Abs(
-                    Vector2.Dot(
-                        delta,
-                        right));
+            var aiForward =
+                new Vector2(
+                    MathF.Sin(
+                        aiHeading),
+                    MathF.Cos(
+                        aiHeading));
+
+            var aiRight =
+                new Vector2(
+                    aiForward.Y,
+                    -aiForward.X);
 
             const double aiHalfLength =
                 2.6;
             const double aiHalfWidth =
                 1.15;
 
-            if (longitudinal >
-                    player.HalfLengthMeters +
-                        aiHalfLength ||
-                lateral >
-                    player.HalfWidthMeters +
-                        aiHalfWidth)
+            if (!OrientedTrafficRectanglesOverlap(
+                    delta,
+                    forward,
+                    right,
+                    player.HalfLengthMeters,
+                    player.HalfWidthMeters,
+                    aiForward,
+                    aiRight,
+                    aiHalfLength,
+                    aiHalfWidth))
             {
                 continue;
             }
 
             collided.Add(
                 agent.AgentIndex);
+
+            var playerVelocity =
+                forward *
+                (float)player.SpeedMetersPerSecond;
+
+            var aiVelocity =
+                aiForward *
+                (float)agent.SpeedMetersPerSecond;
+
+            var relativeImpactSpeedKph =
+                (playerVelocity -
+                 aiVelocity)
+                    .Length() *
+                3.6f;
 
             _vehicle
                 .ApplyTrafficCollisionResponse();
@@ -7783,7 +7804,7 @@ public sealed class D3D11RenderWindow : Form
                 _trafficCollisionCount++;
 
                 Console.WriteLine(
-                    $"[traffic-rule] vehicle collision #{_trafficCollisionCount}; ai={agent.AgentIndex}; speed={_vehicle.SpeedKph:0.0} km/h; t={nowSeconds:0.00}");
+                    $"[traffic-rule] vehicle collision #{_trafficCollisionCount}; ai={agent.AgentIndex}; speed={_vehicle.SpeedKph:0.0} km/h; relative={relativeImpactSpeedKph:0.0} km/h; t={nowSeconds:0.00}");
             }
         }
 
@@ -7799,6 +7820,87 @@ public sealed class D3D11RenderWindow : Form
             _activeTrafficCollisionAgents.Add(
                 id);
         }
+    }
+
+    private static bool OrientedTrafficRectanglesOverlap(
+        Vector2 centerDelta,
+        Vector2 firstForward,
+        Vector2 firstRight,
+        double firstHalfLength,
+        double firstHalfWidth,
+        Vector2 secondForward,
+        Vector2 secondRight,
+        double secondHalfLength,
+        double secondHalfWidth)
+    {
+        Span<Vector2> axes =
+        [
+            firstForward,
+            firstRight,
+            secondForward,
+            secondRight
+        ];
+
+        foreach (var axis in
+                 axes)
+        {
+            var axisLengthSquared =
+                axis.LengthSquared();
+
+            if (axisLengthSquared <
+                0.000001f)
+            {
+                continue;
+            }
+
+            var normalizedAxis =
+                axisLengthSquared >
+                    0.999f &&
+                axisLengthSquared <
+                    1.001f
+                    ? axis
+                    : Vector2.Normalize(
+                        axis);
+
+            var centerProjection =
+                Math.Abs(
+                    Vector2.Dot(
+                        centerDelta,
+                        normalizedAxis));
+
+            var firstRadius =
+                firstHalfLength *
+                    Math.Abs(
+                        Vector2.Dot(
+                            firstForward,
+                            normalizedAxis)) +
+                firstHalfWidth *
+                    Math.Abs(
+                        Vector2.Dot(
+                            firstRight,
+                            normalizedAxis));
+
+            var secondRadius =
+                secondHalfLength *
+                    Math.Abs(
+                        Vector2.Dot(
+                            secondForward,
+                            normalizedAxis)) +
+                secondHalfWidth *
+                    Math.Abs(
+                        Vector2.Dot(
+                            secondRight,
+                            normalizedAxis));
+
+            if (centerProjection >
+                firstRadius +
+                    secondRadius)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void UpdateRedLightRule(
