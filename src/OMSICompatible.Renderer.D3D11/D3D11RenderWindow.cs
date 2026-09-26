@@ -372,10 +372,14 @@ public sealed class D3D11RenderWindow : Form
     private int _trafficCollisionCount;
     private int _speedViolationCount;
     private int _redLightViolationCount;
+    private int _priorityViolationCount;
     private int _trafficPenaltyPoints;
     private int _trafficFineCredits;
     private int _lastRedLightSegmentIndex = -1;
     private double _lastRedLightViolationSeconds =
+        double.NegativeInfinity;
+    private long? _lastPriorityCrossingObjectId;
+    private double _lastPriorityViolationSeconds =
         double.NegativeInfinity;
     private double _trafficRuleSampleSeconds;
     private double _speedingSeconds;
@@ -7691,6 +7695,9 @@ public sealed class D3D11RenderWindow : Form
         UpdateRedLightRule(
             nowSeconds);
 
+        UpdatePriorityRule(
+            nowSeconds);
+
         var speedLimit =
             ResolveNearestRoadSpeedLimit();
 
@@ -8252,6 +8259,278 @@ public sealed class D3D11RenderWindow : Form
                 180,
             details:
                 $"signal-path={signalSegment.Index}; speed={_vehicle.SpeedKph:0.0} km/h");
+    }
+
+    private void UpdatePriorityRule(
+        double nowSeconds)
+    {
+        var playerSegment =
+            ResolveNearestRoadSegment(
+                out _);
+
+        if (playerSegment?.SceneryObjectId is
+                not long crossingObjectId ||
+            playerSegment.TrafficSignal is
+                not null ||
+            Math.Abs(
+                _vehicle.SpeedKph) <
+                5.0f)
+        {
+            _lastPriorityCrossingObjectId =
+                null;
+            return;
+        }
+
+        RuntimeTrafficPathSegmentInfo?
+            conflictingSegment =
+                null;
+
+        RuntimeTrafficAgentInfo?
+            conflictingAgent =
+                null;
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            if (agent.AgentIndex >=
+                    2_000_000 ||
+                agent.SpeedMetersPerSecond <=
+                    0.5)
+            {
+                continue;
+            }
+
+            var aiSegment =
+                _windowInfo
+                    .TrafficPaths
+                    .Segments
+                    .FirstOrDefault(
+                        segment =>
+                            segment.Index ==
+                            agent.SegmentIndex);
+
+            if (aiSegment is null ||
+                aiSegment.SceneryObjectId !=
+                    crossingObjectId ||
+                aiSegment.TrafficPriority <=
+                    playerSegment.TrafficPriority ||
+                !RuntimeTrafficPathsConflict(
+                    playerSegment,
+                    aiSegment))
+            {
+                continue;
+            }
+
+            conflictingSegment =
+                aiSegment;
+            conflictingAgent =
+                agent;
+            break;
+        }
+
+        if (conflictingSegment is null ||
+            conflictingAgent is null)
+        {
+            if (_lastPriorityCrossingObjectId ==
+                crossingObjectId)
+            {
+                _lastPriorityCrossingObjectId =
+                    null;
+            }
+
+            return;
+        }
+
+        if (_lastPriorityCrossingObjectId ==
+                crossingObjectId &&
+            nowSeconds -
+                _lastPriorityViolationSeconds <
+            8.0)
+        {
+            return;
+        }
+
+        _lastPriorityCrossingObjectId =
+            crossingObjectId;
+        _lastPriorityViolationSeconds =
+            nowSeconds;
+        _priorityViolationCount++;
+
+        RegisterTrafficViolation(
+            nowSeconds,
+            "priority",
+            penaltyPoints:
+                3,
+            fineCredits:
+                120,
+            details:
+                $"crossing={crossingObjectId}; playerPath={playerSegment.Index}; playerPriority={playerSegment.TrafficPriority}; ai={conflictingAgent.AgentIndex}; aiPath={conflictingSegment.Index}; aiPriority={conflictingSegment.TrafficPriority}; speed={_vehicle.SpeedKph:0.0} km/h");
+    }
+
+    private static bool RuntimeTrafficPathsConflict(
+        RuntimeTrafficPathSegmentInfo first,
+        RuntimeTrafficPathSegmentInfo second)
+    {
+        if (first.Index ==
+            second.Index)
+        {
+            return true;
+        }
+
+        if (!first.SceneryObjectId.HasValue ||
+            first.SceneryObjectId !=
+                second.SceneryObjectId ||
+            first.Points.Count <
+                2 ||
+            second.Points.Count <
+                2)
+        {
+            return false;
+        }
+
+        for (var firstIndex = 1;
+             firstIndex <
+                 first.Points.Count;
+             firstIndex++)
+        {
+            var firstStart =
+                first.Points[
+                    firstIndex -
+                    1];
+            var firstEnd =
+                first.Points[
+                    firstIndex];
+
+            for (var secondIndex = 1;
+                 secondIndex <
+                     second.Points.Count;
+                 secondIndex++)
+            {
+                var secondStart =
+                    second.Points[
+                        secondIndex -
+                        1];
+                var secondEnd =
+                    second.Points[
+                        secondIndex];
+
+                if (TrafficSegmentsIntersect2D(
+                        firstStart,
+                        firstEnd,
+                        secondStart,
+                        secondEnd))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TrafficSegmentsIntersect2D(
+        RuntimeTrafficPathPointInfo firstStart,
+        RuntimeTrafficPathPointInfo firstEnd,
+        RuntimeTrafficPathPointInfo secondStart,
+        RuntimeTrafficPathPointInfo secondEnd)
+    {
+        var firstX =
+            firstEnd.X -
+            firstStart.X;
+        var firstZ =
+            firstEnd.Z -
+            firstStart.Z;
+
+        var secondX =
+            secondEnd.X -
+            secondStart.X;
+        var secondZ =
+            secondEnd.Z -
+            secondStart.Z;
+
+        var offsetX =
+            secondStart.X -
+            firstStart.X;
+        var offsetZ =
+            secondStart.Z -
+            firstStart.Z;
+
+        var denominator =
+            firstX *
+                secondZ -
+            firstZ *
+                secondX;
+
+        const double epsilon =
+            0.000001;
+
+        if (Math.Abs(
+                denominator) >
+            epsilon)
+        {
+            var firstFactor =
+                (offsetX *
+                     secondZ -
+                 offsetZ *
+                     secondX) /
+                denominator;
+
+            var secondFactor =
+                (offsetX *
+                     firstZ -
+                 offsetZ *
+                     firstX) /
+                denominator;
+
+            return firstFactor >=
+                       0.0 &&
+                   firstFactor <=
+                       1.0 &&
+                   secondFactor >=
+                       0.0 &&
+                   secondFactor <=
+                       1.0;
+        }
+
+        const double toleranceMeters =
+            0.5;
+
+        var toleranceSquared =
+            toleranceMeters *
+            toleranceMeters;
+
+        return PointToSegmentDistanceSquared(
+                   firstStart.X,
+                   firstStart.Z,
+                   secondStart.X,
+                   secondStart.Z,
+                   secondEnd.X,
+                   secondEnd.Z) <=
+                   toleranceSquared ||
+               PointToSegmentDistanceSquared(
+                   firstEnd.X,
+                   firstEnd.Z,
+                   secondStart.X,
+                   secondStart.Z,
+                   secondEnd.X,
+                   secondEnd.Z) <=
+                   toleranceSquared ||
+               PointToSegmentDistanceSquared(
+                   secondStart.X,
+                   secondStart.Z,
+                   firstStart.X,
+                   firstStart.Z,
+                   firstEnd.X,
+                   firstEnd.Z) <=
+                   toleranceSquared ||
+               PointToSegmentDistanceSquared(
+                   secondEnd.X,
+                   secondEnd.Z,
+                   firstStart.X,
+                   firstStart.Z,
+                   firstEnd.X,
+                   firstEnd.Z) <=
+                   toleranceSquared;
     }
 
     private void RegisterTrafficViolation(
@@ -14628,12 +14907,13 @@ public sealed class D3D11RenderWindow : Form
         var totalInfractions =
             _trafficCollisionCount +
             _speedViolationCount +
-            _redLightViolationCount;
+            _redLightViolationCount +
+            _priorityViolationCount;
 
         var trafficRuleStatus =
             totalInfractions >
             0
-                ? $" · infrações {totalInfractions} (colisões {_trafficCollisionCount}, velocidade {_speedViolationCount}, vermelho {_redLightViolationCount}) · penalidade {_trafficPenaltyPoints} pts · multas {_trafficFineCredits} cr"
+                ? $" · infrações {totalInfractions} (colisões {_trafficCollisionCount}, velocidade {_speedViolationCount}, vermelho {_redLightViolationCount}, prioridade {_priorityViolationCount}) · penalidade {_trafficPenaltyPoints} pts · multas {_trafficFineCredits} cr"
                 : string.Empty;
 
         control +=
