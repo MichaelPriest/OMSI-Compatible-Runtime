@@ -3,6 +3,7 @@ using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Models;
+using OmsiCompat.Scenery;
 using OmsiCompat.Physics.Ode;
 using OmsiCompat.Vehicles;
 using OmsiCompat.Scripting;
@@ -588,7 +589,7 @@ try
         resolvedSignalRoutes[0].Signal is
             {
                 ObjectId: 195662,
-                ElementIndex: 0
+                SignalState: 0
             } &&
         resolvedSignalRoutes[1].RouteIndex ==
             1 &&
@@ -1038,7 +1039,7 @@ try
                     Signal:
                     {
                         ObjectId: 7777,
-                        ElementIndex: 0
+                        SignalState: 0
                     }
                 }
             ],
