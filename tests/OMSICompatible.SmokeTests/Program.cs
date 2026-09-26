@@ -1794,6 +1794,75 @@ try
             "(S.L.signal_lamp)"),
         Encoding.Unicode);
 
+    var collisionMetadataPath =
+        Path.Combine(
+            sceneryDirectory,
+            "collision_meta.sco");
+
+    File.WriteAllText(
+        collisionMetadataPath,
+        Lines(
+            "[friendlyname]",
+            "Synthetic Collision Metadata",
+            "[fixed]",
+            "[surface]",
+            "[collision_mesh]",
+            "collision_low.o3d",
+            "[boundingbox]",
+            "4",
+            "2",
+            "3",
+            "0.5",
+            "-0.25",
+            "1.5"),
+        Encoding.Unicode);
+
+    var collisionMetadataDefinition =
+        OmsiSceneryObjectReader.ReadFile(
+            collisionMetadataPath);
+
+    Require(
+        collisionMetadataDefinition.Fixed &&
+        collisionMetadataDefinition.Surface &&
+        !collisionMetadataDefinition.NoCollision &&
+        collisionMetadataDefinition.CollisionMeshSource ==
+            "collision_low.o3d" &&
+        collisionMetadataDefinition.BoundingBox is
+            {
+                LengthX: 4.0,
+                WidthY: 2.0,
+                HeightZ: 3.0,
+                CenterX: 0.5,
+                CenterY: -0.25,
+                CenterZ: 1.5
+            },
+        "OMSI scenery collision metadata was not parsed correctly.");
+
+    var noCollisionMetadataPath =
+        Path.Combine(
+            sceneryDirectory,
+            "collision_none.sco");
+
+    File.WriteAllText(
+        noCollisionMetadataPath,
+        Lines(
+            "[friendlyname]",
+            "Synthetic No Collision",
+            "[nocollision]"),
+        Encoding.Unicode);
+
+    var noCollisionMetadataDefinition =
+        OmsiSceneryObjectReader.ReadFile(
+            noCollisionMetadataPath);
+
+    Require(
+        noCollisionMetadataDefinition.NoCollision &&
+        !noCollisionMetadataDefinition.Fixed &&
+        !noCollisionMetadataDefinition.Surface &&
+        noCollisionMetadataDefinition.CollisionMeshSource is null &&
+        noCollisionMetadataDefinition.BoundingBox is null,
+        "OMSI [nocollision] metadata was not preserved independently.");
+
     var scenerySignalDefinition =
         OmsiSceneryObjectReader.ReadFile(
             Path.Combine(
