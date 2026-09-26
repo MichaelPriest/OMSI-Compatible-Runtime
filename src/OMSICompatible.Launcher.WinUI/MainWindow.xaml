@@ -299,7 +299,7 @@
                                     <TextBlock Text="Runtime x64" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE73E;" Foreground="#66E58D" FontSize="12"/>
-                                        <TextBlock Text="Ativo" Foreground="#66E58D" FontSize="12"/>
+                                        <TextBlock x:Name="RuntimeStatusText" Text="Verificando" Foreground="#66E58D" FontSize="12"/>
                                     </StackPanel>
                                     <TextBlock Text="Standalone" Foreground="#8194AA" FontSize="10"/>
                                 </StackPanel>
@@ -316,7 +316,7 @@
                                     <TextBlock Text="ODE" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE73E;" Foreground="#66E58D" FontSize="12"/>
-                                        <TextBlock Text="Funcional" Foreground="#66E58D" FontSize="12"/>
+                                        <TextBlock x:Name="OdeStatusText" Text="Verificando" Foreground="#66E58D" FontSize="12"/>
                                     </StackPanel>
                                     <TextBlock Text="Física e colisões" Foreground="#8194AA" FontSize="10"/>
                                 </StackPanel>
@@ -333,7 +333,7 @@
                                     <TextBlock Text="D3D11" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE73E;" Foreground="#66E58D" FontSize="12"/>
-                                        <TextBlock Text="Funcionando" Foreground="#66E58D" FontSize="12"/>
+                                        <TextBlock x:Name="D3D11StatusText" Text="Verificando" Foreground="#66E58D" FontSize="12"/>
                                     </StackPanel>
                                     <TextBlock Text="Renderização moderna" Foreground="#8194AA" FontSize="10"/>
                                 </StackPanel>
@@ -362,7 +362,7 @@
                                 </Border>
                                 <StackPanel Grid.Column="1" Spacing="4">
                                     <TextBlock Text="Atualizações" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
-                                    <TextBlock Text="Alpha atual" Foreground="#F3C35C" FontSize="12"/>
+                                    <TextBlock x:Name="UpdateStatusText" Text="Canal alpha" Foreground="#F3C35C" FontSize="12"/>
                                     <TextBlock Text="Canal de teste" Foreground="#8194AA" FontSize="10"/>
                                 </StackPanel>
                             </Grid>
@@ -591,9 +591,9 @@
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <Ellipse Width="8" Height="8" Fill="#54DE79"/>
-                <TextBlock Text="Pronto" Foreground="#E0E8F1" FontSize="11"/>
+                <TextBlock x:Name="FooterStatusTitle" Text="Pronto" Foreground="#E0E8F1" FontSize="11"/>
                 <TextBlock Text="|" Foreground="#506276"/>
-                <TextBlock Text="Runtime x64 inicializado com sucesso." Foreground="#93A4B7" FontSize="11"/>
+                <TextBlock x:Name="FooterStatusDetail" Text="Launcher pronto." Foreground="#93A4B7" FontSize="11"/>
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                 <TextBlock Foreground="#A9B8C8" FontSize="11"><Run Text="Mapas "/><Run x:Name="FooterMapCountText" Text="0"/></TextBlock>
