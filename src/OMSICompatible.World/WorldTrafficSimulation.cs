@@ -405,93 +405,161 @@ public sealed class WorldTrafficSimulation
                 distance =
                     0.0;
 
-                for (var placementAttempt = 0;
-                     placementAttempt <
-                         12;
-                     placementAttempt++)
+                var attemptedPlacementSegments =
+                    new HashSet<int>();
+
+                for (var segmentAttempt = 0;
+                     segmentAttempt <
+                         weightedSegments.Length *
+                         3 &&
+                     !placed;
+                     segmentAttempt++)
                 {
-                    var selector =
-                        (((index +
-                           1) *
-                          0.4142135623730950 +
-                          placementAttempt *
-                          0.2360679774997897) %
-                         1.0);
+                    var segmentSelector =
+                        ((index +
+                          1) *
+                         0.6180339887498949 +
+                         (segmentAttempt +
+                          1) *
+                         0.3819660112501051) %
+                        1.0;
 
-                    var offset =
-                        length >
-                                1.0
-                            ? Math.Clamp(
-                                length *
-                                    (0.10 +
-                                     0.80 *
-                                     selector),
-                                0.1,
-                                Math.Max(
-                                    length -
-                                        0.1,
-                                    0.1))
-                            : 0.0;
+                    var placementSegment =
+                        SelectWeightedSpawnSegment(
+                            weightedSegments,
+                            segmentSelector);
 
-                    var candidateDistance =
-                        travelForward
-                            ? offset
-                            : Math.Max(
-                                length -
-                                    offset,
-                                0.0);
-
-                    SampleSegment(
-                        segment,
-                        candidateDistance,
-                        out var spawnPosition,
-                        out _);
-
-                    if (_spawnExclusionRadiusMeters >
-                            0.0 &&
-                        HorizontalDistance(
-                            spawnPosition,
-                            spawnExclusionCenter.Value) <
-                        _spawnExclusionRadiusMeters)
+                    if (placementSegment is null ||
+                        !attemptedPlacementSegments.Add(
+                            placementSegment.Index))
                     {
                         continue;
                     }
 
-                    var tooCloseToExistingSpawn =
-                        _agents.Any(
-                            existing =>
-                            {
-                                if (!_segmentsByIndex.TryGetValue(
-                                        existing.SegmentIndex,
-                                        out var existingSegment))
+                    var placementLength =
+                        SegmentLength(
+                            placementSegment);
+
+                    if (placementLength <=
+                        0.0001)
+                    {
+                        continue;
+                    }
+
+                    var placementTravelForward =
+                        placementSegment.Direction switch
+                        {
+                            1 =>
+                                false,
+                            2 =>
+                                ((index +
+                                  segmentAttempt) &
+                                 1) ==
+                                0,
+                            _ =>
+                                true
+                        };
+
+                    for (var placementAttempt = 0;
+                         placementAttempt <
+                             12;
+                         placementAttempt++)
+                    {
+                        var selector =
+                            (((index +
+                               1) *
+                              0.4142135623730950 +
+                              (segmentAttempt +
+                               1) *
+                              0.1732050807568877 +
+                              placementAttempt *
+                              0.2360679774997897) %
+                             1.0);
+
+                        var offset =
+                            placementLength >
+                                    1.0
+                                ? Math.Clamp(
+                                    placementLength *
+                                        (0.10 +
+                                         0.80 *
+                                         selector),
+                                    0.1,
+                                    Math.Max(
+                                        placementLength -
+                                            0.1,
+                                        0.1))
+                                : 0.0;
+
+                        var candidateDistance =
+                            placementTravelForward
+                                ? offset
+                                : Math.Max(
+                                    placementLength -
+                                        offset,
+                                    0.0);
+
+                        SampleSegment(
+                            placementSegment,
+                            candidateDistance,
+                            out var spawnPosition,
+                            out _);
+
+                        if (_spawnExclusionRadiusMeters >
+                                0.0 &&
+                            HorizontalDistance(
+                                spawnPosition,
+                                spawnExclusionCenter.Value) <
+                            _spawnExclusionRadiusMeters)
+                        {
+                            continue;
+                        }
+
+                        var tooCloseToExistingSpawn =
+                            _agents.Any(
+                                existing =>
                                 {
-                                    return false;
-                                }
+                                    if (!_segmentsByIndex.TryGetValue(
+                                            existing.SegmentIndex,
+                                            out var existingSegment))
+                                    {
+                                        return false;
+                                    }
 
-                                SampleSegment(
-                                    existingSegment,
-                                    existing.DistanceMeters,
-                                    out var existingPosition,
-                                    out _);
+                                    SampleSegment(
+                                        existingSegment,
+                                        existing.DistanceMeters,
+                                        out var existingPosition,
+                                        out _);
 
-                                return HorizontalDistance(
-                                           spawnPosition,
-                                           existingPosition) <
-                                       22.0;
-                            });
+                                    return HorizontalDistance(
+                                               spawnPosition,
+                                               existingPosition) <
+                                           22.0;
+                                });
 
-                    if (tooCloseToExistingSpawn)
-                    {
-                        continue;
+                        if (tooCloseToExistingSpawn)
+                        {
+                            continue;
+                        }
+
+                        segment =
+                            placementSegment;
+
+                        length =
+                            placementLength;
+
+                        travelForward =
+                            placementTravelForward;
+
+                        distance =
+                            candidateDistance;
+
+                        placed =
+                            true;
+
+                        break;
                     }
-
-                    distance =
-                        candidateDistance;
-
-                    placed =
-                        true;
-
-                    break;
                 }
 
                 if (!placed)
