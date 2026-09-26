@@ -4535,6 +4535,39 @@ try
         curvedBrakingAgent.AiBrakeLight,
         "AI traffic did not brake progressively for upcoming road curvature.");
 
+    var preImpactSpeed =
+        curvedBrakingAgent.SpeedMetersPerSecond;
+
+    curvedSteeringSimulation.ApplyCollisionResponse(
+        curvedBrakingAgent.AgentIndex,
+        40.0);
+
+    var impactedTrafficAgent =
+        curvedSteeringSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        impactedTrafficAgent.SpeedMetersPerSecond <
+            preImpactSpeed &&
+        impactedTrafficAgent.AiBrakeLight,
+        "AI collision response did not reduce speed and engage braking.");
+
+    curvedSteeringSimulation.Step(
+        0.1);
+
+    var heldImpactAgent =
+        curvedSteeringSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        heldImpactAgent.SpeedMetersPerSecond <=
+            impactedTrafficAgent.SpeedMetersPerSecond +
+                0.0001 &&
+        heldImpactAgent.AiBrakeLight,
+        "AI collision hold allowed immediate re-acceleration after impact.");
+
     var defaultDisabledCatalog =
         new OmsiMapAiCatalog(
             [
