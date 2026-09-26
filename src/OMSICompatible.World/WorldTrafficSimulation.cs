@@ -1335,6 +1335,13 @@ public sealed class WorldTrafficSimulation
             return false;
         }
 
+        if (IsExternalObstacleBlockingCrossing(
+                agent,
+                nextSegment))
+        {
+            return false;
+        }
+
         foreach (var other in
                  _agents)
         {
@@ -1487,6 +1494,78 @@ public sealed class WorldTrafficSimulation
         }
 
         return true;
+    }
+
+    private bool IsExternalObstacleBlockingCrossing(
+        Agent agent,
+        WorldTrafficPathSegment crossingSegment)
+    {
+        if (_externalObstacle is not
+                { } obstacle ||
+            crossingSegment.Points.Count <
+                2)
+        {
+            return false;
+        }
+
+        var forwardX =
+            Math.Sin(
+                obstacle.HeadingRadians);
+
+        var forwardZ =
+            Math.Cos(
+                obstacle.HeadingRadians);
+
+        var obstacleStart =
+            new WorldVector3(
+                obstacle.Position.X -
+                    forwardX *
+                    obstacle.HalfLengthMeters,
+                obstacle.Position.Y,
+                obstacle.Position.Z -
+                    forwardZ *
+                    obstacle.HalfLengthMeters);
+
+        var obstacleEnd =
+            new WorldVector3(
+                obstacle.Position.X +
+                    forwardX *
+                    obstacle.HalfLengthMeters,
+                obstacle.Position.Y,
+                obstacle.Position.Z +
+                    forwardZ *
+                    obstacle.HalfLengthMeters);
+
+        var clearance =
+            obstacle.HalfWidthMeters +
+            EstimateTrafficVehicleHalfWidth(
+                agent.VehiclePath) +
+            0.15;
+
+        var clearanceSquared =
+            clearance *
+            clearance;
+
+        for (var index = 1;
+             index <
+                 crossingSegment.Points.Count;
+             index++)
+        {
+            if (SegmentDistanceSquared(
+                    crossingSegment.Points[
+                        index -
+                        1],
+                    crossingSegment.Points[
+                        index],
+                    obstacleStart,
+                    obstacleEnd) <=
+                clearanceSquared)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool IsCrossingExitBlocked(
@@ -2908,6 +2987,36 @@ public sealed class WorldTrafficSimulation
         }
 
         return FollowingTimeHeadwaySeconds;
+    }
+
+    private static double EstimateTrafficVehicleHalfWidth(
+        string? vehiclePath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                vehiclePath))
+        {
+            return 1.15;
+        }
+
+        var extension =
+            Path.GetExtension(
+                vehiclePath);
+
+        if (extension.Equals(
+                ".bus",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return 1.30;
+        }
+
+        if (extension.Equals(
+                ".ovh",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return 1.10;
+        }
+
+        return 1.15;
     }
 
     private static double EstimateTrafficVehicleHalfLength(
