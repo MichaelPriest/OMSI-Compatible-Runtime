@@ -1474,15 +1474,15 @@ internal sealed class RuntimeApplicationContext :
         CreateTrafficSimulation(
             WorldDefinition world)
     {
-        // Keep the active streamed window bounded while still honoring the
-        // OMSI random-traffic count/factor controls. With the stock default
-        // 100 @ 50%, this remains 12 agents in the active window instead of
-        // exploding to 50 simultaneous vehicles around a single tile group.
+        // Honor the OMSI random-traffic ceiling directly. The simulation
+        // now applies an additional active-road-length capacity and spacing
+        // filter, so large maps can use the configured population without
+        // flooding a small streamed window.
         var configuredMaximum =
             Math.Clamp(
                 _options.MaximumUnscheduledTraffic,
                 0,
-                24);
+                100);
 
         var configuredFactor =
             Math.Clamp(
