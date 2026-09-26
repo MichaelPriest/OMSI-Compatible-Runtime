@@ -7744,6 +7744,20 @@ public sealed class D3D11RenderWindow : Form
                         mesh.SectionIndex,
                         animation.VariableName);
 
+                // The physical steering sign is now correct. Stock OMSI
+                // steering-wheel meshes (e.g. MAN SD202 D87_lenkrad.o3d)
+                // use the opposite visual rotation sense for the cockpit
+                // wheel while the road-wheel Axle_Steering variables stay
+                // in physical steering direction. Invert only that cockpit
+                // animation target, never the driving/physics variable.
+                if (ShouldInvertCockpitSteeringWheelAnimation(
+                        mesh,
+                        animation))
+                {
+                    target =
+                        -target;
+                }
+
                 if (!double.IsFinite(
                         target))
                 {
@@ -7847,6 +7861,37 @@ public sealed class D3D11RenderWindow : Form
                         : target;
             }
         }
+    }
+
+    private static bool ShouldInvertCockpitSteeringWheelAnimation(
+        RuntimeObjectMeshInfo mesh,
+        RuntimeVehicleAnimationInfo animation)
+    {
+        if (animation.Kind !=
+                RuntimeVehicleAnimationKind.Rotation ||
+            !animation.VariableName.StartsWith(
+                "Axle_Steering_",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var path =
+            mesh.DeclaredPath ??
+            string.Empty;
+
+        return path.Contains(
+                   "lenkrad",
+                   StringComparison.OrdinalIgnoreCase) ||
+               path.Contains(
+                   "steeringwheel",
+                   StringComparison.OrdinalIgnoreCase) ||
+               path.Contains(
+                   "steering_wheel",
+                   StringComparison.OrdinalIgnoreCase) ||
+               path.Contains(
+                   "volante",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateVehicleLightStates(
@@ -9317,9 +9362,10 @@ public sealed class D3D11RenderWindow : Form
     {
         if (_scriptRuntime is not null)
         {
+            // Presence in the OMSI varlist is enough for engine audio state.
+            // Some stock scripts read/update these through macros in ways the
+            // static "writes variable" analysis cannot always prove.
             if (_scriptRuntime.HasLocalVariable(
-                    "engine_on") &&
-                _scriptRuntime.WritesLocalVariable(
                     "engine_on"))
             {
                 return _scriptRuntime.GetLocal(
@@ -9328,8 +9374,6 @@ public sealed class D3D11RenderWindow : Form
             }
 
             if (_scriptRuntime.HasLocalVariable(
-                    "engine_injection_on") &&
-                _scriptRuntime.WritesLocalVariable(
                     "engine_injection_on"))
             {
                 return _scriptRuntime.GetLocal(
