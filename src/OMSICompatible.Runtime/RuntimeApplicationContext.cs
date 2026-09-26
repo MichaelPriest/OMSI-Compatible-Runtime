@@ -2197,7 +2197,72 @@ internal sealed class RuntimeApplicationContext :
                                                             material.TransMapTexturePath,
                                                             material.NoZWrite,
                                                             material.NoZCheck))
-                                                .ToArray()))
+                                                .ToArray(),
+                                            0,
+                                            null,
+                                            mesh.VisibilityConditions?
+                                                .Select(
+                                                    static condition =>
+                                                        new RuntimeVehicleVisibilityConditionInfo(
+                                                            condition.VariableName,
+                                                            condition.Value))
+                                                .ToArray(),
+                                            mesh.Animations?
+                                                .Select(
+                                                    static animation =>
+                                                        new RuntimeVehicleAnimationInfo(
+                                                            animation.Kind ==
+                                                                OmsiVehicleAnimationKind.Translation
+                                                                    ? RuntimeVehicleAnimationKind.Translation
+                                                                    : RuntimeVehicleAnimationKind.Rotation,
+                                                            animation.VariableName,
+                                                            animation.Delta,
+                                                            animation.OriginFromMesh,
+                                                            animation.OriginX,
+                                                            animation.OriginY,
+                                                            animation.OriginZ,
+                                                            animation.OriginRotationX,
+                                                            animation.OriginRotationY,
+                                                            animation.OriginRotationZ,
+                                                            animation.Offset,
+                                                            animation.MaxSpeed,
+                                                            animation.Delay))
+                                                .ToArray(),
+                                            null,
+                                            mesh.LightEffects?
+                                                .Select(
+                                                    static light =>
+                                                        new RuntimeVehicleLightEffectInfo(
+                                                            light.PositionX,
+                                                            light.PositionY,
+                                                            light.PositionZ,
+                                                            light.DirectionX,
+                                                            light.DirectionY,
+                                                            light.DirectionZ,
+                                                            light.UpX,
+                                                            light.UpY,
+                                                            light.UpZ,
+                                                            light.Omni,
+                                                            light.Rotating,
+                                                            light.Red,
+                                                            light.Green,
+                                                            light.Blue,
+                                                            light.SizeMeters,
+                                                            light.InnerConeAngleDegrees,
+                                                            light.OuterConeAngleDegrees,
+                                                            light.BrightnessVariable,
+                                                            light.BrightnessFactor,
+                                                            light.CameraOffsetMeters,
+                                                            light.Parameters,
+                                                            light.ConeEffect,
+                                                            light.TimeConstantSeconds,
+                                                            light.BitmapSource,
+                                                            light.Enhanced))
+                                                .ToArray(),
+                                            mesh.MeshIdentifier,
+                                            mesh.AnimationParent,
+                                            0,
+                                            mesh.ModelOrdinal))
                                 .ToArray(),
                             pair.Value.Tree is null
                                 ? null
