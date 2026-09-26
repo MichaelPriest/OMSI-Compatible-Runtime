@@ -436,7 +436,9 @@ internal sealed class RuntimeApplicationContext :
                     trafficCollisionResponse:
                         ApplyTrafficCollisionResponse,
                     railSignalStateProvider:
-                        GetRailSignalRouteStates);
+                        GetRailSignalRouteStates,
+                    terrainCollisionsEnabled:
+                        _options.TerrainCollisions);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
