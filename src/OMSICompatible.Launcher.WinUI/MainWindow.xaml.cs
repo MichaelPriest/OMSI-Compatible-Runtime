@@ -41,8 +41,8 @@ public sealed partial class MainWindow :
 
         AppWindow.Resize(
             new SizeInt32(
-                1280,
-                850));
+                1600,
+                900));
 
         _runtime.OutputReceived +=
             RuntimeOutputReceived;
@@ -81,6 +81,48 @@ public sealed partial class MainWindow :
             await RefreshContentAsync(
                 _settings.MapName);
         }
+    }
+
+    private void HomeNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        HomeView.Visibility =
+            Visibility.Visible;
+
+        SessionView.Visibility =
+            Visibility.Collapsed;
+
+        UpdateHomeSummary();
+    }
+
+    private void NewSessionButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        HomeView.Visibility =
+            Visibility.Collapsed;
+
+        SessionView.Visibility =
+            Visibility.Visible;
+    }
+
+    private void ContinueButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (PlayButton.IsEnabled)
+        {
+            PlayButton_Click(
+                sender,
+                e);
+
+            return;
+        }
+
+        NewSessionButton_Click(
+            sender,
+            e);
     }
 
     private async void BrowseButton_Click(
@@ -162,9 +204,15 @@ public sealed partial class MainWindow :
                             BusDiscovery.Discover(
                                 contentRoot);
 
+                        var objectCount =
+                            CountSceneryObjects(
+                                contentRoot);
+
                         return (
                             Maps: maps,
-                            Buses: buses);
+                            Buses: buses,
+                            ObjectCount:
+                                objectCount);
                     });
 
             _maps =
@@ -182,6 +230,22 @@ public sealed partial class MainWindow :
 
             BusCountText.Text =
                 _buses.Count.ToString(
+                    "N0");
+
+            ObjectCountText.Text =
+                discovery.ObjectCount.ToString(
+                    "N0");
+
+            FooterMapCountText.Text =
+                _maps.Count.ToString(
+                    "N0");
+
+            FooterBusCountText.Text =
+                _buses.Count.ToString(
+                    "N0");
+
+            FooterObjectCountText.Text =
+                discovery.ObjectCount.ToString(
                     "N0");
 
             var map =
@@ -217,6 +281,7 @@ public sealed partial class MainWindow :
             }
 
             UpdatePlayAvailability();
+            UpdateHomeSummary();
 
             SetStatus(
                 $"{_maps.Count:N0} mapa(s) · {_buses.Count:N0} ônibus.");
@@ -267,6 +332,7 @@ public sealed partial class MainWindow :
         }
 
         UpdatePlayAvailability();
+        UpdateHomeSummary();
         SaveSettings();
     }
 
@@ -314,6 +380,7 @@ public sealed partial class MainWindow :
         }
 
         UpdatePlayAvailability();
+        UpdateHomeSummary();
         SaveSettings();
     }
 
@@ -329,6 +396,7 @@ public sealed partial class MainWindow :
         }
 
         UpdatePlayAvailability();
+        UpdateHomeSummary();
         SaveSettings();
     }
 
@@ -510,6 +578,8 @@ public sealed partial class MainWindow :
                 "Modo mapa";
             BusPreviewEmptyText.Visibility =
                 Visibility.Visible;
+
+            UpdateHomeSummary();
             return;
         }
 
@@ -541,6 +611,8 @@ public sealed partial class MainWindow :
                 bus?.PreviewImagePath)
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+
+        UpdateHomeSummary();
     }
 
     private async Task LoadEntryPointsAsync(
@@ -573,6 +645,8 @@ public sealed partial class MainWindow :
 
         SpawnBox.SelectedItem =
             spawn;
+
+        UpdateHomeSummary();
     }
 
     private void PlayButton_Click(
@@ -770,21 +844,94 @@ public sealed partial class MainWindow :
     private void UpdateHero(
         OmsiMapInfo? map)
     {
-        HeroTitle.Text =
+        UpdateHomeSummary();
+    }
+
+    private void UpdateHomeSummary()
+    {
+        var map =
+            SelectedMap();
+
+        var bus =
+            NoBusCheckBox.IsChecked ==
+                    true
+                ? null
+                : SelectedBus();
+
+        var spawn =
+            SelectedSpawn();
+
+        LastMapText.Text =
             map?.FolderName ??
-            "Escolha um mapa";
+            "Nenhum mapa selecionado";
 
-        HeroSubtitle.Text =
-            map is null
-                ? "Carregamento por tiles · ônibus OMSI · Direct3D 11"
-                : "Streaming por área · seleção de ônibus · entrypoint OMSI";
+        LastBusText.Text =
+            NoBusCheckBox.IsChecked ==
+                    true
+                ? "Sem ônibus"
+                : bus?.Modelo ??
+                  "Nenhum veículo selecionado";
 
-        ApplyImage(
-            HeroImage,
+        LastSpawnText.Text =
+            spawn?.Name ??
+            "Nenhum ponto inicial";
+
+        LastTimeText.Text =
+            DateTime.Now.ToString(
+                "HH:mm");
+
+        LastSessionDateText.Text =
+            DateTime.Now.ToString(
+                "dd MMM yyyy · HH:mm");
+
+        var mapImage =
             map is null
                 ? null
                 : ResolveMapImage(
-                    map.DirectoryPath));
+                    map.DirectoryPath);
+
+        var heroImage =
+            !string.IsNullOrWhiteSpace(
+                bus?.PreviewImagePath)
+                ? bus!.PreviewImagePath
+                : mapImage;
+
+        ApplyImage(
+            HeroImage,
+            heroImage);
+
+        ApplyImage(
+            LastSessionImage,
+            mapImage);
+
+        CompatibilityStatusText.Text =
+            _maps.Count ==
+                    0 &&
+                _buses.Count ==
+                    0
+                ? "Aguardando conteúdo"
+                : "Boa";
+    }
+
+    private static int CountSceneryObjects(
+        OmsiContentRoot contentRoot)
+    {
+        try
+        {
+            return Directory.Exists(
+                    contentRoot.SceneryObjectsPath)
+                ? Directory
+                    .EnumerateFiles(
+                        contentRoot.SceneryObjectsPath,
+                        "*.sco",
+                        SearchOption.AllDirectories)
+                    .Count()
+                : 0;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private static string? ResolveMapImage(
@@ -841,12 +988,18 @@ public sealed partial class MainWindow :
             NoBusCheckBox.IsChecked ==
             true;
 
-        PlayButton.IsEnabled =
+        var canPlay =
             !_runtime.IsRunning &&
             SelectedMap() is not null &&
             SelectedSpawn() is not null &&
             (noBus ||
              SelectedBus() is not null);
+
+        PlayButton.IsEnabled =
+            canPlay;
+
+        ContinueButton.IsEnabled =
+            canPlay;
     }
 
     private OmsiMapInfo? SelectedMap() =>
@@ -882,6 +1035,11 @@ public sealed partial class MainWindow :
 
         MapCountText.Text = "0";
         BusCountText.Text = "0";
+        ObjectCountText.Text = "0";
+
+        FooterMapCountText.Text = "0";
+        FooterBusCountText.Text = "0";
+        FooterObjectCountText.Text = "0";
 
         UpdateHero(null);
     }
