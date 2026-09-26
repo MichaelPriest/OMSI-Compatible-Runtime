@@ -8011,10 +8011,24 @@ public sealed class D3D11RenderWindow : Form
         out double halfLengthMeters,
         out double halfWidthMeters)
     {
+        var isBus =
+            !string.IsNullOrWhiteSpace(
+                vehiclePath) &&
+            Path.GetExtension(
+                    vehiclePath)
+                .Equals(
+                    ".bus",
+                    StringComparison.OrdinalIgnoreCase);
+
         halfLengthMeters =
-            2.6;
+            isBus
+                ? 6.0
+                : 2.6;
+
         halfWidthMeters =
-            1.15;
+            isBus
+                ? 1.30
+                : 1.15;
 
         if (string.IsNullOrWhiteSpace(
                 vehiclePath) ||
