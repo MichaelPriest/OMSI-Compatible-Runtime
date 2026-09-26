@@ -8779,6 +8779,36 @@ public sealed class D3D11RenderWindow : Form
                     Vector2.Normalize(
                         pathDirection);
 
+                var alignment =
+                    Vector2.Dot(
+                        vehicleForward,
+                        pathDirection);
+
+                var candidateTravelForward =
+                    alignment >=
+                    0.0f;
+
+                var directionAllowed =
+                    segment.Direction switch
+                    {
+                        0 =>
+                            candidateTravelForward,
+                        1 =>
+                            !candidateTravelForward,
+                        2 =>
+                            true,
+                        _ =>
+                            true
+                    };
+
+                if (!directionAllowed ||
+                    Math.Abs(
+                        alignment) <
+                    0.25f)
+                {
+                    continue;
+                }
+
                 nearestDistanceSquared =
                     distanceSquared;
 
@@ -8786,10 +8816,7 @@ public sealed class D3D11RenderWindow : Form
                     segment;
 
                 nearestDirection =
-                    Vector2.Dot(
-                        vehicleForward,
-                        pathDirection) >=
-                    0.0f;
+                    candidateTravelForward;
             }
         }
 
@@ -8896,81 +8923,21 @@ public sealed class D3D11RenderWindow : Form
 
     private double? ResolveNearestRoadSpeedLimit()
     {
-        var position =
-            _vehicle.Position;
+        var segment =
+            ResolveNearestRoadSegment(
+                out _);
 
-        var nearestDistanceSquared =
-            double.PositiveInfinity;
-
-        double? nearestLimit =
-            null;
-
-        foreach (var segment in
-                 _windowInfo
-                     .TrafficPaths
-                     .Segments)
+        if (segment?.SpeedLimitKilometersPerHour is
+                not double speedLimit ||
+            !double.IsFinite(
+                speedLimit) ||
+            speedLimit <=
+                0.0)
         {
-            if (segment.Type !=
-                    0 ||
-                !segment.SpeedLimitKilometersPerHour.HasValue ||
-                segment.SpeedLimitKilometersPerHour.Value <=
-                    0.0 ||
-                segment.Points.Count <
-                    2)
-            {
-                continue;
-            }
-
-            for (var index = 1;
-                 index <
-                     segment.Points.Count;
-                 index++)
-            {
-                var a =
-                    segment.Points[
-                        index -
-                        1];
-
-                var b =
-                    segment.Points[
-                        index];
-
-                if (Math.Abs(
-                        position.Y -
-                        (a.Y +
-                         b.Y) *
-                        0.5) >
-                    5.0)
-                {
-                    continue;
-                }
-
-                var distanceSquared =
-                    PointToSegmentDistanceSquared(
-                        position.X,
-                        position.Z,
-                        a.X,
-                        a.Z,
-                        b.X,
-                        b.Z);
-
-                if (distanceSquared <
-                    nearestDistanceSquared)
-                {
-                    nearestDistanceSquared =
-                        distanceSquared;
-
-                    nearestLimit =
-                        segment
-                            .SpeedLimitKilometersPerHour;
-                }
-            }
+            return null;
         }
 
-        return nearestDistanceSquared <=
-                   64.0
-            ? nearestLimit
-            : null;
+        return speedLimit;
     }
 
     private static double PointToSegmentDistanceSquared(
