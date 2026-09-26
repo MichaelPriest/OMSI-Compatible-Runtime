@@ -331,3 +331,79 @@ jobs:
           path: artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
           if-no-files-found: error
           compression-level: 6
+
+  publish-pr2-test-release:
+    name: Publish PR #2 Test Release
+    needs: build-x64
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 2 &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Download portable package
+        uses: actions/download-artifact@v4
+        with:
+          name: OMSI-Compatible-Runtime-alpha-ui-win-x64-portable
+          path: package
+
+      - name: Create or update stable Test Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+
+          tag="pr2-test-latest"
+          archive="OMSI-Compatible-Runtime-PR2-Test-win-x64.zip"
+
+          rm -f "$archive"
+          (
+            cd package
+            zip -qr "../$archive" .
+          )
+
+          git tag -f "$tag" "$HEAD_SHA"
+          git push --force origin "refs/tags/$tag"
+
+          cat > release-notes.md <<EOF
+          # OMSI Compatible Runtime — PR #2 Test Release
+
+          Build automático validado pelo CI antes da publicação.
+
+          - PR: #2 (DRAFT)
+          - Branch: fix/runtime-visual-controls-pass
+          - HEAD: $HEAD_SHA
+          - CI: #$RUN_NUMBER
+          - Plataforma: Windows x64
+          - Runtime: x64 standalone
+          - ODE: x64 single precision
+          - Smoke test: obrigatório
+
+          O ZIP contém:
+          - `OMSICompatible.Launcher.exe`: launcher funcional atual com prévia 3D D3D11;
+          - `Launcher-WinUI-Preview/OMSICompatible.Launcher.WinUI.exe`: novo launcher WinUI 3 em migração;
+          - `Runtime/OMSICompatible.Runtime.exe`: runtime x64;
+          - ODE e dependências necessárias.
+
+          O launcher WinUI é publicado lado a lado enquanto a prévia 3D real é migrada, para não remover funcionalidades existentes.
+          EOF
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$archive" --clobber
+            gh release edit "$tag"               --title "OMSI Compatible Runtime — PR #2 Test"               --notes-file release-notes.md               --prerelease
+          else
+            gh release create "$tag" "$archive"               --title "OMSI Compatible Runtime — PR #2 Test"               --notes-file release-notes.md               --prerelease
+          fi
+
