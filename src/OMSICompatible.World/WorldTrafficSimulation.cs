@@ -987,6 +987,7 @@ public sealed class WorldTrafficSimulation
                         if (ReferenceEquals(
                                 other,
                                 agent) ||
+                            other.PendingRespawn ||
                             other.ActivationTimeSeconds >
                                 _simulationElapsedSeconds ||
                             !_segmentsByIndex.TryGetValue(
@@ -1002,10 +1003,25 @@ public sealed class WorldTrafficSimulation
                             out var otherPosition,
                             out _);
 
-                        return HorizontalDistance(
-                                   spawnPosition,
-                                   otherPosition) <
-                               22.0;
+                        var horizontalDistance =
+                            HorizontalDistance(
+                                spawnPosition,
+                                otherPosition);
+
+                        if (horizontalDistance <
+                            22.0)
+                        {
+                            return true;
+                        }
+
+                        return other.SegmentIndex ==
+                                   segment.Index &&
+                               other.SpeedMetersPerSecond <=
+                                   2.5 &&
+                               Math.Abs(
+                                   other.DistanceMeters -
+                                   distance) <
+                                   35.0;
                     });
 
             if (tooCloseToTraffic)
