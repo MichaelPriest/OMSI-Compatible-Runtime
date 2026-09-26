@@ -365,6 +365,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly bool _aiVehicleSoundsEnabled;
     private readonly bool _vehicleToVehicleCollisionsEnabled;
     private readonly HashSet<int> _activeTrafficCollisionAgents = [];
+    private readonly Dictionary<int, double> _lastTrafficCollisionSeconds = [];
     private int _trafficCollisionCount;
     private int _speedViolationCount;
     private int _redLightViolationCount;
@@ -7729,6 +7730,7 @@ public sealed class D3D11RenderWindow : Form
                 { } player)
         {
             _activeTrafficCollisionAgents.Clear();
+            _lastTrafficCollisionSeconds.Clear();
             return;
         }
 
@@ -7830,8 +7832,18 @@ public sealed class D3D11RenderWindow : Form
                 .ApplyTrafficCollisionResponse();
 
             if (!_activeTrafficCollisionAgents.Contains(
-                    agent.AgentIndex))
+                    agent.AgentIndex) &&
+                (!_lastTrafficCollisionSeconds.TryGetValue(
+                     agent.AgentIndex,
+                     out var previousCollisionSeconds) ||
+                 nowSeconds -
+                     previousCollisionSeconds >=
+                 2.0))
             {
+                _lastTrafficCollisionSeconds[
+                    agent.AgentIndex] =
+                    nowSeconds;
+
                 _trafficCollisionCount++;
 
                 var collisionPenaltyPoints =
