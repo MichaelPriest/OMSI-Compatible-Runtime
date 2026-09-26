@@ -18,6 +18,13 @@ public sealed record WorldTrafficAgentState(
     double TraveledDistanceMeters = 0.0,
     double PathCurvaturePerMeter = 0.0);
 
+public sealed record WorldTrafficObstacleState(
+    WorldVector3 Position,
+    double HeadingRadians,
+    double SpeedMetersPerSecond,
+    double HalfLengthMeters = 6.0,
+    double HalfWidthMeters = 1.35);
+
 public sealed class WorldTrafficSimulation
 {
     private const double MinimumTrafficSeparationMeters =
@@ -39,12 +46,15 @@ public sealed class WorldTrafficSimulation
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
     private readonly HashSet<long> _crossingSceneryObjectIds;
     private readonly List<Agent> _agents;
+    private WorldTrafficObstacleState? _externalObstacle;
     private double _simulationElapsedSeconds;
 
     public WorldTrafficSimulation(
         WorldTrafficPathNetwork network,
         OmsiMapAiCatalog aiCatalog,
-        int maximumAgents = 12)
+        int maximumAgents = 12,
+        WorldVector3? spawnExclusionCenter = null,
+        double spawnExclusionRadiusMeters = 40.0)
     {
         _network =
             network ??
@@ -187,27 +197,102 @@ public sealed class WorldTrafficSimulation
                 continue;
             }
 
-            var segment =
-                allowedSegments[
-                    index %
-                    allowedSegments.Length];
+            WorldTrafficPathSegment? segment =
+                null;
+
+            // Spread initial AI across the active network instead of taking
+            // the first N segments in file/index order. The old placement
+            // made dense clusters around some entry points and looked like
+            // random mass spawning.
+            for (var attempt = 0;
+                 attempt <
+                     allowedSegments.Length;
+                 attempt++)
+            {
+                var selector =
+                    ((index +
+                      1) *
+                     0.6180339887498949 +
+                     attempt *
+                     0.3819660112501051) %
+                    1.0;
+
+                var candidateIndex =
+                    Math.Clamp(
+                        (int)Math.Floor(
+                            selector *
+                            allowedSegments.Length),
+                        0,
+                        allowedSegments.Length -
+                            1);
+
+                var candidate =
+                    allowedSegments[
+                        candidateIndex];
+
+                var candidateLength =
+                    SegmentLength(
+                        candidate);
+
+                if (candidateLength <=
+                    0.0001)
+                {
+                    continue;
+                }
+
+                if (spawnExclusionCenter.HasValue &&
+                    spawnExclusionRadiusMeters >
+                        0.0)
+                {
+                    SampleSegment(
+                        candidate,
+                        candidateLength *
+                            0.5,
+                        out var candidateMidpoint,
+                        out _);
+
+                    if (HorizontalDistance(
+                            candidateMidpoint,
+                            spawnExclusionCenter.Value) <
+                        spawnExclusionRadiusMeters)
+                    {
+                        continue;
+                    }
+                }
+
+                segment =
+                    candidate;
+                break;
+            }
+
+            if (segment is null)
+            {
+                continue;
+            }
 
             var length =
                 SegmentLength(
                     segment);
 
+            var offsetFraction =
+                0.10 +
+                0.80 *
+                (((index +
+                   1) *
+                  0.4142135623730950) %
+                 1.0);
+
             var offset =
                 length >
                     1.0
-                    ? Math.Min(
+                    ? Math.Clamp(
                         length *
-                            0.15 *
-                            (index %
-                                 5),
+                            offsetFraction,
+                        0.1,
                         Math.Max(
                             length -
                                 0.1,
-                            0.0))
+                            0.1))
                     : 0.0;
 
             var travelForward =
@@ -260,6 +345,13 @@ public sealed class WorldTrafficSimulation
             .Select(
                 CreateState)
             .ToArray();
+
+    public void SetExternalObstacle(
+        WorldTrafficObstacleState? obstacle)
+    {
+        _externalObstacle =
+            obstacle;
+    }
 
     public void Step(
         double deltaSeconds)
@@ -1166,10 +1258,123 @@ public sealed class WorldTrafficSimulation
             }
         }
 
+        var externalDistance =
+            FindExternalObstacleDistance(
+                agent);
+
+        if (externalDistance.HasValue &&
+            externalDistance.Value <
+                nearest)
+        {
+            nearest =
+                externalDistance.Value;
+        }
+
         return double.IsPositiveInfinity(
                    nearest)
             ? null
             : nearest;
+    }
+
+    private double? FindExternalObstacleDistance(
+        Agent agent)
+    {
+        if (_externalObstacle is not
+                { } obstacle ||
+            !_segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var segment))
+        {
+            return null;
+        }
+
+        SampleSegment(
+            segment,
+            agent.DistanceMeters,
+            out var agentPosition,
+            out var agentHeading);
+
+        if (!agent.TravelForward)
+        {
+            agentHeading =
+                ReverseHeading(
+                    agentHeading);
+        }
+
+        if (Math.Abs(
+                obstacle.Position.Y -
+                agentPosition.Y) >
+            3.5)
+        {
+            return null;
+        }
+
+        var deltaX =
+            obstacle.Position.X -
+            agentPosition.X;
+        var deltaZ =
+            obstacle.Position.Z -
+            agentPosition.Z;
+
+        var forwardX =
+            Math.Sin(
+                agentHeading);
+        var forwardZ =
+            Math.Cos(
+                agentHeading);
+
+        var rightX =
+            forwardZ;
+        var rightZ =
+            -forwardX;
+
+        var longitudinal =
+            deltaX *
+                forwardX +
+            deltaZ *
+                forwardZ;
+
+        if (longitudinal <=
+                0.0 ||
+            longitudinal >
+                TrafficLookAheadMeters)
+        {
+            return null;
+        }
+
+        var lateral =
+            Math.Abs(
+                deltaX *
+                    rightX +
+                deltaZ *
+                    rightZ);
+
+        var pathHalfWidth =
+            Math.Max(
+                Math.Abs(
+                    segment.WidthMeters) *
+                    0.5,
+                1.1);
+
+        var maximumLateral =
+            pathHalfWidth +
+            Math.Max(
+                obstacle.HalfWidthMeters *
+                    0.35,
+                0.45);
+
+        if (lateral >
+            maximumLateral)
+        {
+            return null;
+        }
+
+        return Math.Max(
+            longitudinal -
+                Math.Max(
+                    obstacle.HalfLengthMeters,
+                    2.0),
+            0.0);
     }
 
     private double? DistanceAlongRoute(
@@ -2077,6 +2282,25 @@ public sealed class WorldTrafficSimulation
                 (b.Z -
                  a.Z) *
                 t);
+
+    private static double HorizontalDistance(
+        WorldVector3 a,
+        WorldVector3 b)
+    {
+        var x =
+            a.X -
+            b.X;
+
+        var z =
+            a.Z -
+            b.Z;
+
+        return Math.Sqrt(
+            x *
+                x +
+            z *
+                z);
+    }
 
     private static double Distance(
         WorldVector3 a,
