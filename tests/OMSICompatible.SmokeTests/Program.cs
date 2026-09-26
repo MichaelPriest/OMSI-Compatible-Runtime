@@ -5795,6 +5795,41 @@ try
             3,
         "Equal-priority OMSI crossing traffic did not yield to the vehicle approaching from the right.");
 
+    var stalledRightPrioritySimulation =
+        new WorldTrafficSimulation(
+            rightBeforeLeftNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                2);
+
+    stalledRightPrioritySimulation.ApplyCollisionResponse(
+        1,
+        80.0);
+
+    stalledRightPrioritySimulation.ApplyCollisionResponse(
+        1,
+        80.0);
+
+    stalledRightPrioritySimulation.Step(
+        0.5);
+
+    var stalledRightPriorityAgents =
+        stalledRightPrioritySimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        stalledRightPriorityAgents.Length ==
+            2 &&
+        stalledRightPriorityAgents[0].SegmentIndex ==
+            2 &&
+        stalledRightPriorityAgents[1].SegmentIndex ==
+            1,
+        "A stalled equal-priority approach from the right incorrectly reserved the crossing.");
+
     var signalProgram =
         new WorldTrafficSignalProgram(
             "Main",
