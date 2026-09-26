@@ -3767,12 +3767,25 @@ public sealed class D3D11RenderWindow : Form
                 RuntimeGpuTexture? transMap =
                     null;
 
-                var hasTransMap =
+                var requiresExternalTransMap =
                     !string.IsNullOrWhiteSpace(
-                        batch.TransMapTexturePath) &&
+                        batch.TransMapTexturePath);
+
+                var hasTransMap =
+                    requiresExternalTransMap &&
                     _objectTextureCache.TryGetValue(
-                        batch.TransMapTexturePath,
+                        batch.TransMapTexturePath!,
                         out transMap);
+
+                if (requiresExternalTransMap &&
+                    !hasTransMap)
+                {
+                    // Native OMSI treats an external [matl_transmap] as the
+                    // authoritative transparency source. Falling back to the
+                    // diffuse texture alpha when that mask failed to load
+                    // turns signs, arrows and decals into opaque rectangles.
+                    continue;
+                }
 
                 if (hasTransMap)
                 {
@@ -4137,10 +4150,20 @@ public sealed class D3D11RenderWindow : Form
 
                 if (hasDiffuseTexture)
                 {
+                    var requiresExternalTransMap =
+                        !string.IsNullOrWhiteSpace(
+                            batch.TransMapTexturePath);
+
                     var hasTransMap =
                         TryGetVehicleTextureView(
                             batch.TransMapTexturePath,
                             out var transMapView);
+
+                    if (requiresExternalTransMap &&
+                        !hasTransMap)
+                    {
+                        continue;
+                    }
 
                     if (hasTransMap)
                     {
@@ -4866,10 +4889,20 @@ public sealed class D3D11RenderWindow : Form
 
             if (hasDiffuseTexture)
             {
+                var requiresExternalTransMap =
+                    !string.IsNullOrWhiteSpace(
+                        materialState.TransMapTexturePath);
+
                 var hasTransMap =
                     TryGetVehicleTextureView(
                         materialState.TransMapTexturePath,
                         out var transMapView);
+
+                if (requiresExternalTransMap &&
+                    !hasTransMap)
+                {
+                    continue;
+                }
 
                 if (hasTransMap)
                 {
