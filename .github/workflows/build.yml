@@ -114,6 +114,15 @@ jobs:
           -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
 
+      - name: Create primary WinUI launcher alias
+        shell: pwsh
+        run: |
+          $root = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64"
+          $source = Join-Path $root "OMSICompatible.Launcher.WinUI.exe"
+          $target = Join-Path $root "OMSICompatible.Launcher.exe"
+          if (-not (Test-Path $source)) { throw "WinUI launcher apphost was not published." }
+          Copy-Item $source $target -Force
+
       - name: Publish Runtime x64
         run: >
           dotnet publish src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj
