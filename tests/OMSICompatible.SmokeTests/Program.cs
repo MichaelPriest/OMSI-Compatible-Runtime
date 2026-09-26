@@ -1614,6 +1614,18 @@ try
             "tree.tga",
             "12",
             "1",
+            "[object]",
+            "0",
+            @"Sceneryobjects\Synthetic\masked.sco",
+            "1003",
+            "20",
+            "30",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "",
             "[spline]",
             "0",
             @"Splines\Synthetic\road.sli",
@@ -1725,6 +1737,39 @@ try
             "1",
             "[use_traffic_light]",
             "0"),
+        Encoding.Unicode);
+
+    WriteSyntheticO3d(
+        Path.Combine(
+            sceneryDirectory,
+            "masked.o3d"));
+
+    File.WriteAllBytes(
+        Path.Combine(
+            sceneryDirectory,
+            "regen.tga"),
+        [0x00]);
+
+    File.WriteAllBytes(
+        Path.Combine(
+            sceneryDirectory,
+            "mask.bmp"),
+        [0x42, 0x4D, 0x00, 0x00]);
+
+    File.WriteAllText(
+        Path.Combine(
+            sceneryDirectory,
+            "masked.sco"),
+        Lines(
+            "[friendlyname]",
+            "Synthetic Masked Object",
+            "[mesh]",
+            "masked.o3d",
+            "[matl]",
+            "regen.tga",
+            "0",
+            "[matl_transmap]",
+            "mask.bmp"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -3421,14 +3466,31 @@ try
         world.Tiles.Count == 1,
         $"Expected 1 active tile, found {world.Tiles.Count}.");
     Require(
-        world.Objects.Count == 2,
-        $"Expected 2 objects, found {world.Objects.Count}.");
+        world.Objects.Count == 3,
+        $"Expected 3 objects, found {world.Objects.Count}.");
     Require(
         world.Splines.Count == 2,
         $"Expected 2 splines, found {world.Splines.Count}.");
     Require(
         world.PlacementParseIssueCount == 0,
         "Synthetic placements should parse without issues.");
+
+    Require(
+        world.SceneryAssets.TryGetValue(
+            @"Sceneryobjects\Synthetic\masked.sco",
+            out var maskedAsset) &&
+        maskedAsset.IsRenderable &&
+        maskedAsset.Meshes is
+            [{ Materials.Count: 1 }] &&
+        maskedAsset.Meshes[0].Materials[0].RequiresExternalTransMap &&
+        maskedAsset.Meshes[0].Materials[0].AlphaMode ==
+            1 &&
+        !string.IsNullOrWhiteSpace(
+            maskedAsset.Meshes[0].Materials[0].TransMapTexturePath) &&
+        Path.GetFileName(
+            maskedAsset.Meshes[0].Materials[0].TransMapTexturePath!) ==
+            "mask.bmp",
+        "Bare scenery [matl_transmap] did not resolve its mask and imply alpha cutout.");
 
     var worldObject = world.Objects[0];
     Require(worldObject.Id == 1001, "Object ID was not preserved.");
