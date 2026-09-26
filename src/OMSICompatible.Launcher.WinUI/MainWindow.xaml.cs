@@ -82,9 +82,15 @@ public sealed partial class MainWindow :
 
     private bool _refreshing;
 
-    public MainWindow()
+    public MainWindow(
+        bool xamlSmokeOnly = false)
     {
         InitializeComponent();
+
+        if (xamlSmokeOnly)
+        {
+            return;
+        }
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
