@@ -32,7 +32,7 @@ public sealed class WorldTrafficSimulation
         double SpeedMetersPerSecond);
 
     private const double MinimumTrafficSeparationMeters =
-        6.0;
+        2.0;
     private const double FollowingTimeHeadwaySeconds =
         1.25;
     private const double TrafficAccelerationMetersPerSecondSquared =
@@ -1748,19 +1748,28 @@ public sealed class WorldTrafficSimulation
                     agent,
                     candidate);
 
-            if (distance.HasValue &&
-                distance.Value >
-                    0.0001 &&
-                (!nearest.HasValue ||
-                 distance.Value <
-                    nearest.Value.DistanceMeters))
+            if (distance.HasValue)
             {
-                nearest =
-                    new TrafficLead(
-                        distance.Value,
-                        Math.Max(
-                            candidate.SpeedMetersPerSecond,
-                            0.0));
+                var bumperClearance =
+                    distance.Value -
+                    EstimateTrafficVehicleHalfLength(
+                        agent.VehiclePath) -
+                    EstimateTrafficVehicleHalfLength(
+                        candidate.VehiclePath);
+
+                if (bumperClearance >
+                        0.0001 &&
+                    (!nearest.HasValue ||
+                     bumperClearance <
+                        nearest.Value.DistanceMeters))
+                {
+                    nearest =
+                        new TrafficLead(
+                            bumperClearance,
+                            Math.Max(
+                                candidate.SpeedMetersPerSecond,
+                                0.0));
+                }
             }
         }
 
@@ -1955,7 +1964,9 @@ public sealed class WorldTrafficSimulation
                 longitudinal -
                     Math.Max(
                         obstacleLongitudinalExtent,
-                        2.0),
+                        2.0) -
+                    EstimateTrafficVehicleHalfLength(
+                        agent.VehiclePath),
                 0.0),
             projectedObstacleSpeed);
     }
@@ -2488,6 +2499,36 @@ public sealed class WorldTrafficSimulation
         }
 
         return vehicles[^1];
+    }
+
+    private static double EstimateTrafficVehicleHalfLength(
+        string? vehiclePath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                vehiclePath))
+        {
+            return 2.6;
+        }
+
+        var extension =
+            Path.GetExtension(
+                vehiclePath);
+
+        if (extension.Equals(
+                ".bus",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return 5.5;
+        }
+
+        if (extension.Equals(
+                ".ovh",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return 2.4;
+        }
+
+        return 2.6;
     }
 
     private static double ResolveCruiseSpeed(
