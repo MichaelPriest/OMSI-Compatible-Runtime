@@ -2185,6 +2185,11 @@ try
             "0",
             "[mesh]",
             "triangle.o3d",
+            "[matl]",
+            "regen.tga",
+            "0",
+            "[matl_transmap]",
+            "panel_mask.bmp",
             "[animparent]",
             "steering_parent",
             "[viewpoint]",
@@ -2765,6 +2770,12 @@ try
             vehicleAsset.Meshes[0].Materials[0].BumpMapTexturePath!) ==
             "bump.bmp" &&
         vehicleAsset.Meshes[1].Animations.Count == 0 &&
+        vehicleAsset.Meshes[1].Materials.Count == 1 &&
+        vehicleAsset.Meshes[1].Materials[0].HasTransMapDirective &&
+        vehicleAsset.Meshes[1].Materials[0].AlphaMode == 1 &&
+        Path.GetFileName(
+            vehicleAsset.Meshes[1].Materials[0].TransMapTexturePath!) ==
+            "panel_mask.bmp" &&
         Math.Abs(
             vehicleAsset.Meshes[0].SourceTransform.M41 -
             1.25f) < 0.0001 &&
