@@ -91,7 +91,8 @@ public sealed record RuntimeTrafficPathSegmentInfo(
     IReadOnlyList<int> ReverseConnections,
     double? SpeedLimitKilometersPerHour = null,
     int TrafficPriority = 128,
-    RuntimeTrafficSignalProgramInfo? TrafficSignal = null);
+    RuntimeTrafficSignalProgramInfo? TrafficSignal = null,
+    long? SceneryObjectId = null);
 
 public sealed record RuntimeTrafficPathNetworkInfo(
     IReadOnlyList<RuntimeTrafficPathSegmentInfo> Segments,
