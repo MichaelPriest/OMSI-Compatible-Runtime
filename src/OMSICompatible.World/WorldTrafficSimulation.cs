@@ -971,6 +971,15 @@ public sealed class WorldTrafficSimulation
                 continue;
             }
 
+            if (_externalObstacle is
+                    { } playerObstacle &&
+                IsVisibleRespawnPop(
+                    spawnPosition,
+                    playerObstacle))
+            {
+                continue;
+            }
+
             var tooCloseToTraffic =
                 _agents.Any(
                     other =>
@@ -1021,6 +1030,58 @@ public sealed class WorldTrafficSimulation
         }
 
         return false;
+    }
+
+    private static bool IsVisibleRespawnPop(
+        WorldVector3 spawnPosition,
+        WorldTrafficObstacleState player)
+    {
+        var dx =
+            spawnPosition.X -
+            player.Position.X;
+        var dz =
+            spawnPosition.Z -
+            player.Position.Z;
+
+        var distanceSquared =
+            dx *
+                dx +
+            dz *
+                dz;
+
+        const double visibleRespawnDistanceMeters =
+            120.0;
+
+        if (distanceSquared <=
+                0.0001 ||
+            distanceSquared >
+                visibleRespawnDistanceMeters *
+                visibleRespawnDistanceMeters)
+        {
+            return false;
+        }
+
+        var distance =
+            Math.Sqrt(
+                distanceSquared);
+
+        var forwardX =
+            Math.Sin(
+                player.HeadingRadians);
+        var forwardZ =
+            Math.Cos(
+                player.HeadingRadians);
+
+        var forwardProjection =
+            (dx *
+                 forwardX +
+             dz *
+                 forwardZ) /
+            distance;
+
+        // Keep the forward 120-degree field clear from visible pop-in.
+        return forwardProjection >=
+            0.5;
     }
 
     private bool IsCriticalRespawnApproach(
