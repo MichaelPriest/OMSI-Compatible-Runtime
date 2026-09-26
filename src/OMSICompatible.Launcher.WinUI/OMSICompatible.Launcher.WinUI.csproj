@@ -8,7 +8,7 @@
     <EnableMsixTooling>false</EnableMsixTooling>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>OMSICompatible.Launcher</AssemblyName>
+    <AssemblyName>OMSICompatible.Launcher.WinUI</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
