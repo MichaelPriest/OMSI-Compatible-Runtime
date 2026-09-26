@@ -420,7 +420,8 @@ public sealed class D3D11RenderWindow : Form
             IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
             railSignalStateProvider = null,
         Action<int, float>?
-            trafficCollisionResponse = null)
+            trafficCollisionResponse = null,
+        bool terrainCollisionsEnabled = true)
     {
         _windowInfo = windowInfo;
         _trafficStep =
@@ -559,7 +560,8 @@ public sealed class D3D11RenderWindow : Form
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
             windowInfo.Vehicle?.Physics,
-            windowInfo.Vehicle?.Sections);
+            windowInfo.Vehicle?.Sections,
+            terrainCollisionsEnabled);
         _driveMode =
             windowInfo.Vehicle is not null &&
             !_vehiclePreviewMode;
