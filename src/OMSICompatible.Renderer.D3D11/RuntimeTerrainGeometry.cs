@@ -595,10 +595,15 @@ internal static class RuntimeTerrainGeometryBuilder
                 ? repeating
                 : 1.0;
 
+        // Runtime world X is mirrored relative to OMSI source X to keep
+        // the renderer ground plane right-handed. Sample terrain textures
+        // from the corresponding source-side U coordinate so lightmaps,
+        // masks and base/detail textures remain in the same place as OMSI.
         return new Vector2(
             (float)(
-                localX /
-                TileSizeMeters *
+                (1.0 -
+                 localX /
+                     TileSizeMeters) *
                 safeRepeating),
             (float)(
                 localZ /
@@ -611,8 +616,9 @@ internal static class RuntimeTerrainGeometryBuilder
         double localZ) =>
         new(
             (float)(
+                1.0 -
                 localX /
-                TileSizeMeters),
+                    TileSizeMeters),
             (float)(
                 localZ /
                 TileSizeMeters));
