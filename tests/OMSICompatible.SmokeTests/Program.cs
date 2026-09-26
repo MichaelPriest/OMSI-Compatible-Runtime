@@ -3949,6 +3949,146 @@ try
             crossedBusInitial.SpeedMetersPerSecond,
         "Traffic AI ignored the oriented footprint of a player bus crossing the lane.");
 
+    var playerOccupiedJunctionNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    9300,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [1],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [3],
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9301),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            7.5),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            7.5)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9301),
+                new WorldTrafficPathSegment(
+                    3,
+                    9302,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>())
+            ],
+            4,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var playerOccupiedJunctionSimulation =
+        new WorldTrafficSimulation(
+            playerOccupiedJunctionNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    playerOccupiedJunctionSimulation.SetExternalObstacle(
+        new WorldTrafficObstacleState(
+            new WorldVector3(
+                0.0,
+                0.0,
+                7.5),
+            Math.PI /
+                2.0,
+            0.0,
+            HalfLengthMeters:
+                6.0,
+            HalfWidthMeters:
+                1.35));
+
+    playerOccupiedJunctionSimulation.Step(
+        2.0);
+
+    var playerOccupiedJunctionAgent =
+        playerOccupiedJunctionSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        playerOccupiedJunctionAgent.SegmentIndex ==
+            0 &&
+        playerOccupiedJunctionAgent.Position.Z <
+            5.0 &&
+        playerOccupiedJunctionAgent.AiBrakeLight,
+        "AI traffic entered an OMSI junction while the player bus occupied the conflicting crossing path.");
+
     var staggeredTraffic =
         new WorldTrafficSimulation(
             trafficPaths,
