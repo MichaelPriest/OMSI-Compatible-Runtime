@@ -45,6 +45,14 @@ public sealed record OmsiSceneryMaterialOverride(
     bool NoZWrite,
     bool NoZCheck);
 
+public sealed record OmsiSceneryBoundingBox(
+    double LengthX,
+    double WidthY,
+    double HeightZ,
+    double CenterX,
+    double CenterY,
+    double CenterZ);
+
 public sealed record OmsiSceneryTrafficLightPhase(
     int Phase,
     double DurationSeconds);
@@ -107,7 +115,12 @@ public sealed record OmsiSceneryDefinition(
     IReadOnlyList<OmsiSceneryPathDefinition> Paths,
     double? TrafficLightCycleSeconds = null,
     IReadOnlyList<OmsiSceneryTrafficLightProgram>? TrafficLights = null,
-    OmsiSceneryScriptManifest? ScriptManifest = null)
+    OmsiSceneryScriptManifest? ScriptManifest = null,
+    bool NoCollision = false,
+    bool Fixed = false,
+    bool Surface = false,
+    string? CollisionMeshSource = null,
+    OmsiSceneryBoundingBox? BoundingBox = null)
 {
     public static OmsiSceneryDefinition Missing { get; } =
         new(
