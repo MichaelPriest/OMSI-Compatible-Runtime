@@ -768,6 +768,31 @@ public static class WorldLoader
                                                         transMapTexturePath =
                                                             resolvedTransMap;
                                                     }
+                                                    else if (!string.IsNullOrWhiteSpace(
+                                                                 transMapLeafName) &&
+                                                             !string.IsNullOrWhiteSpace(
+                                                                 texturePath))
+                                                    {
+                                                        var diffuseDirectory =
+                                                            Path.GetDirectoryName(
+                                                                texturePath);
+
+                                                        if (!string.IsNullOrWhiteSpace(
+                                                                diffuseDirectory))
+                                                        {
+                                                            var siblingMaskPath =
+                                                                Path.Combine(
+                                                                    diffuseDirectory,
+                                                                    transMapLeafName);
+
+                                                            if (File.Exists(
+                                                                    siblingMaskPath))
+                                                            {
+                                                                transMapTexturePath =
+                                                                    siblingMaskPath;
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
