@@ -31,6 +31,7 @@ internal sealed record RuntimeOmsiSoundDefinition(
     IReadOnlyList<RuntimeOmsiSoundCurve> VolumeCurves,
     string? PitchVariable = null,
     double PitchReferenceValue = 1.0,
+    int? DeclaredSampleRate = null,
     double? SourceX = null,
     double? SourceY = null,
     double? SourceZ = null,
@@ -63,6 +64,8 @@ internal sealed class RuntimeOmsiAudioHost :
         public double PitchReferenceValue { get; set; } =
             1.0;
 
+        public int? DeclaredSampleRate { get; set; }
+
         public double? SourceX { get; set; }
 
         public double? SourceY { get; set; }
@@ -86,6 +89,7 @@ internal sealed class RuntimeOmsiAudioHost :
                 VolumeCurves.ToArray(),
                 PitchVariable,
                 PitchReferenceValue,
+                DeclaredSampleRate,
                 SourceX,
                 SourceY,
                 SourceZ,
@@ -103,7 +107,8 @@ internal sealed class RuntimeOmsiAudioHost :
             AudioFileReader reader,
             SmbPitchShiftingSampleProvider pitch,
             StereoPanSampleProvider spatial,
-            VolumeSampleProvider volume)
+            VolumeSampleProvider volume,
+            float configuredSampleRateFactor)
         {
             _mixer =
                 mixer;
@@ -115,9 +120,13 @@ internal sealed class RuntimeOmsiAudioHost :
                 spatial;
             Volume =
                 volume;
+            ConfiguredSampleRateFactor =
+                configuredSampleRateFactor;
         }
 
         public SmbPitchShiftingSampleProvider Pitch { get; }
+
+        public float ConfiguredSampleRateFactor { get; }
 
         public StereoPanSampleProvider Spatial { get; }
 
@@ -813,11 +822,17 @@ internal sealed class RuntimeOmsiAudioHost :
                 voice;
         }
 
+        // OMSI treats the sample-rate line in [loopsound] as part of the
+        // playback definition. Third-party buses intentionally use values
+        // different from the WAV header to tune the base engine pitch.
+        // AudioFileReader honours the WAV header, so compensate explicitly
+        // to reproduce the rate declared by sound.cfg.
         var targetPitch =
             Math.Clamp(
-                pitchFactor,
-                0.25f,
-                4.0f);
+                pitchFactor *
+                    voice.ConfiguredSampleRateFactor,
+                0.125f,
+                8.0f);
 
         var audible =
             volume >
@@ -1040,12 +1055,27 @@ internal sealed class RuntimeOmsiAudioHost :
             _mixer.AddMixerInput(
                 volume);
 
+            var configuredSampleRateFactor =
+                sound.DeclaredSampleRate is
+                    { } declaredRate &&
+                declaredRate >
+                    0 &&
+                reader.WaveFormat.SampleRate >
+                    0
+                    ? Math.Clamp(
+                        declaredRate /
+                        (float)reader.WaveFormat.SampleRate,
+                        0.125f,
+                        8.0f)
+                    : 1.0f;
+
             return new LoopVoice(
                 _mixer,
                 reader,
                 pitch,
                 spatial,
-                volume);
+                volume,
+                configuredSampleRateFactor);
         }
         catch (Exception ex)
         {
@@ -1693,12 +1723,29 @@ internal sealed class RuntimeOmsiAudioHost :
                     null;
                 var pitchReference =
                     1.0;
+                int? declaredSampleRate =
+                    null;
 
                 if (loop)
                 {
-                    // OMSI SDK [loopsound]:
-                    // file, nominal sample rate, pitch variable,
+                    // OMSI [loopsound]:
+                    // file, declared sample rate, pitch variable,
                     // variable value for original pitch, base volume.
+                    // The declared sample rate affects playback pitch and
+                    // may intentionally differ from the WAV header.
+                    if (values.Count >= 2 &&
+                        int.TryParse(
+                            values[1],
+                            NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,
+                            out var parsedSampleRate) &&
+                        parsedSampleRate >
+                            0)
+                    {
+                        declaredSampleRate =
+                            parsedSampleRate;
+                    }
+
                     if (values.Count >= 3)
                     {
                         pitchVariable =
@@ -1760,7 +1807,9 @@ internal sealed class RuntimeOmsiAudioHost :
                         PitchVariable =
                             pitchVariable,
                         PitchReferenceValue =
-                            pitchReference
+                            pitchReference,
+                        DeclaredSampleRate =
+                            declaredSampleRate
                     };
 
                 builders.Add(
