@@ -938,8 +938,8 @@
                                     </Grid.RowDefinitions>
 
                                     <TextBox x:Name="SettingsLanguageBox" Grid.Column="0" Header="Idioma"/>
-                                    <NumberBox x:Name="SettingsTargetFpsBox" Grid.Column="1" Header="FPS alvo" Minimum="15" Maximum="240" SpinButtonPlacementMode="Compact"/>
-                                    <NumberBox x:Name="SettingsNeighborTilesBox" Grid.Column="2" Header="Tiles vizinhos" Minimum="0" Maximum="8" SpinButtonPlacementMode="Compact"/>
+                                    <TextBox x:Name="SettingsTargetFpsBox" Grid.Column="1" Header="FPS alvo"/>
+                                    <TextBox x:Name="SettingsNeighborTilesBox" Grid.Column="2" Header="Tiles vizinhos"/>
 
                                     <CheckBox x:Name="SettingsAutoSaveCheck" Grid.Row="1" Grid.Column="0" Content="Auto Save"/>
                                     <CheckBox x:Name="SettingsCurrentTimeCheck" Grid.Row="1" Grid.Column="1" Content="Usar hora atual"/>
@@ -971,9 +971,9 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <NumberBox x:Name="SettingsObjectDistanceBox" Grid.Column="0" Header="Distância de objetos (m)" Minimum="100" Maximum="10000" SpinButtonPlacementMode="Compact"/>
-                                    <NumberBox x:Name="SettingsTextureMemoryBox" Grid.Column="1" Header="Memória de textura (MB)" Minimum="128" Maximum="32768" SpinButtonPlacementMode="Compact"/>
-                                    <NumberBox x:Name="SettingsAnisotropicBox" Grid.Column="2" Header="Filtro anisotrópico" Minimum="1" Maximum="16" SpinButtonPlacementMode="Compact"/>
+                                    <TextBox x:Name="SettingsObjectDistanceBox" Grid.Column="0" Header="Distância de objetos (m)"/>
+                                    <TextBox x:Name="SettingsTextureMemoryBox" Grid.Column="1" Header="Memória de textura (MB)"/>
+                                    <TextBox x:Name="SettingsAnisotropicBox" Grid.Column="2" Header="Filtro anisotrópico"/>
 
                                     <CheckBox x:Name="SettingsShadowsCheck" Grid.Row="1" Grid.Column="0" Content="Sombras"/>
                                     <CheckBox x:Name="SettingsNightMapCheck" Grid.Row="1" Grid.Column="1" Content="Night maps"/>
@@ -1005,9 +1005,9 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <NumberBox x:Name="SettingsMasterVolumeBox" Grid.Column="0" Header="Volume mestre (%)" Minimum="0" Maximum="100" SpinButtonPlacementMode="Compact"/>
-                                    <NumberBox x:Name="SettingsRoadTrafficBox" Grid.Column="1" Header="Tráfego rodoviário (%)" Minimum="0" Maximum="500" SpinButtonPlacementMode="Compact"/>
-                                    <NumberBox x:Name="SettingsPassengerFactorBox" Grid.Column="2" Header="Passageiros (%)" Minimum="0" Maximum="500" SpinButtonPlacementMode="Compact"/>
+                                    <TextBox x:Name="SettingsMasterVolumeBox" Grid.Column="0" Header="Volume mestre (%)"/>
+                                    <TextBox x:Name="SettingsRoadTrafficBox" Grid.Column="1" Header="Tráfego rodoviário (%)"/>
+                                    <TextBox x:Name="SettingsPassengerFactorBox" Grid.Column="2" Header="Passageiros (%)"/>
 
                                     <CheckBox x:Name="SettingsAiSoundsCheck" Grid.Row="1" Grid.Column="0" Content="Som dos veículos IA"/>
                                     <CheckBox x:Name="SettingsScenerySoundsCheck" Grid.Row="1" Grid.Column="1" Content="Sons de cenário"/>
@@ -1039,7 +1039,7 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <NumberBox x:Name="SettingsStreamingRadiusBox" Grid.Column="0" Header="Raio de streaming" Minimum="1" Maximum="8" SpinButtonPlacementMode="Compact"/>
+                                    <TextBox x:Name="SettingsStreamingRadiusBox" Grid.Column="0" Header="Raio de streaming"/>
                                     <CheckBox x:Name="SettingsVsyncCheck" Grid.Column="1" Content="VSync" VerticalAlignment="Bottom" Margin="0,0,0,8"/>
                                     <CheckBox x:Name="SettingsBorderlessCheck" Grid.Column="2" Content="Fullscreen borderless" VerticalAlignment="Bottom" Margin="0,0,0,8"/>
 
