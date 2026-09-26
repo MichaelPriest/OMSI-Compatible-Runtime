@@ -70,6 +70,15 @@ public sealed record RuntimeTrafficPathPointInfo(
     double Y,
     double Z);
 
+public sealed record RuntimeTrafficSignalPhaseInfo(
+    int Phase,
+    double DurationSeconds);
+
+public sealed record RuntimeTrafficSignalProgramInfo(
+    double CycleSeconds,
+    double ApproachDistanceMeters,
+    IReadOnlyList<RuntimeTrafficSignalPhaseInfo> Phases);
+
 public sealed record RuntimeTrafficPathSegmentInfo(
     int Index,
     long SplineId,
@@ -81,7 +90,8 @@ public sealed record RuntimeTrafficPathSegmentInfo(
     IReadOnlyList<int> ForwardConnections,
     IReadOnlyList<int> ReverseConnections,
     double? SpeedLimitKilometersPerHour = null,
-    int TrafficPriority = 128);
+    int TrafficPriority = 128,
+    RuntimeTrafficSignalProgramInfo? TrafficSignal = null);
 
 public sealed record RuntimeTrafficPathNetworkInfo(
     IReadOnlyList<RuntimeTrafficPathSegmentInfo> Segments,
