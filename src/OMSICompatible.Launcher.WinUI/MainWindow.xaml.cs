@@ -405,7 +405,7 @@ public sealed partial class MainWindow :
                                 contentRoot);
 
                         var buses =
-                            BusDiscovery.Discover(
+                            BusDiscovery.DiscoverPlayerSelectable(
                                 contentRoot);
 
                         var objectCount =
