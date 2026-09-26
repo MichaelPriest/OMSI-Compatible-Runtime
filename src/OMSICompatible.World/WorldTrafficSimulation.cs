@@ -1535,8 +1535,15 @@ public sealed class WorldTrafficSimulation
                             other.DistanceMeters,
                         0.0);
 
+            var requiredExitClearance =
+                4.0 +
+                EstimateTrafficVehicleHalfLength(
+                    agent.VehiclePath) +
+                EstimateTrafficVehicleHalfLength(
+                    other.VehiclePath);
+
             if (distanceFromEntry <=
-                    14.0 &&
+                    requiredExitClearance &&
                 other.SpeedMetersPerSecond <=
                     2.5)
             {
