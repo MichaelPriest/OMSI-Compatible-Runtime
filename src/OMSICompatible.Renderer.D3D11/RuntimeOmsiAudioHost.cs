@@ -1056,7 +1056,63 @@ internal sealed class RuntimeOmsiAudioHost :
         sound.Conditions.Any(
             static condition =>
                 IsEngineAudioVariable(
-                    condition.Variable));
+                    condition.Variable)) ||
+        LooksLikeEngineLoopFile(
+            sound.FilePath);
+
+    private static bool LooksLikeEngineLoopFile(
+        string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                filePath))
+        {
+            return false;
+        }
+
+        var name =
+            Path.GetFileNameWithoutExtension(
+                    filePath)
+                .Replace(
+                    '-',
+                    '_')
+                .Replace(
+                    ' ',
+                    '_');
+
+        // A few OMSI AI sound.cfg files contain constant propulsion loops
+        // without engine_n/engine_M curves. Those used to bypass the
+        // engineRunning gate and could sound like the player's engine had
+        // already started. Filename classification is intentionally narrow
+        // and keeps starter/crank loops exempt.
+        if (name.Contains(
+                "starter",
+                StringComparison.OrdinalIgnoreCase) ||
+            name.Contains(
+                "anlass",
+                StringComparison.OrdinalIgnoreCase) ||
+            name.Contains(
+                "crank",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return name.Contains(
+                   "engine",
+                   StringComparison.OrdinalIgnoreCase) ||
+               name.Contains(
+                   "motor",
+                   StringComparison.OrdinalIgnoreCase) ||
+               name.Contains(
+                   "diesel",
+                   StringComparison.OrdinalIgnoreCase) ||
+               name.Contains(
+                   "idle",
+                   StringComparison.OrdinalIgnoreCase) ||
+               name.Contains(
+                   "leerlauf",
+                   StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsEngineAudioVariable(
         string? variable)
