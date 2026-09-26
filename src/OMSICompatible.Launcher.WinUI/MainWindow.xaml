@@ -128,7 +128,13 @@
                             </StackPanel>
                         </Button>
 
-                        <Button Height="48" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <Button x:Name="CompatibilityNavButton"
+                                Height="48"
+                                HorizontalContentAlignment="Stretch"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CornerRadius="10"
+                                Click="CompatibilityNavButton_Click">
                             <StackPanel Orientation="Horizontal" Spacing="14">
                                 <FontIcon Glyph="&#xE73E;" Foreground="#C8D4E2" FontSize="20"/>
                                 <TextBlock Text="Compatibilidade" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
@@ -149,7 +155,13 @@
                             </StackPanel>
                         </Button>
 
-                        <Button Height="48" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <Button x:Name="DiagnosticsNavButton"
+                                Height="48"
+                                HorizontalContentAlignment="Stretch"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CornerRadius="10"
+                                Click="DiagnosticsNavButton_Click">
                             <StackPanel Orientation="Horizontal" Spacing="14">
                                 <FontIcon Glyph="&#xE9D9;" Foreground="#C8D4E2" FontSize="20"/>
                                 <TextBlock Text="Diagnóstico" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
@@ -697,6 +709,182 @@
                             </DataTemplate>
                         </GridView.ItemTemplate>
                     </GridView>
+                </Grid>
+            </Grid>
+
+            <!-- COMPATIBILITY -->
+            <Grid x:Name="CompatibilityView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid MaxWidth="1320"
+                          HorizontalAlignment="Center"
+                          Padding="28,24,28,28">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="Compatibilidade"
+                                       Foreground="White"
+                                       FontSize="34"
+                                       FontWeight="Bold"/>
+                            <TextBlock Text="Leitura direta da biblioteca OMSI e dos componentes do runtime."
+                                       Foreground="#92A4B8"
+                                       FontSize="13"/>
+                        </StackPanel>
+
+                        <Grid Grid.Row="1"
+                              Margin="0,22,0,0"
+                              ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Mapas" Foreground="#8FA2B7" FontSize="11"/>
+                                    <TextBlock x:Name="CompatibilityMapCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
+                                    <TextBlock Text="global.cfg detectado" Foreground="#6F8499" FontSize="10"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="1" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Veículos" Foreground="#8FA2B7" FontSize="11"/>
+                                    <TextBlock x:Name="CompatibilityVehicleCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
+                                    <TextBlock Text=".bus lidos pelo parser" Foreground="#6F8499" FontSize="10"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="2" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Objetos" Foreground="#8FA2B7" FontSize="11"/>
+                                    <TextBlock x:Name="CompatibilityObjectCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
+                                    <TextBlock Text=".sco encontrados" Foreground="#6F8499" FontSize="10"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="3" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Scripts ausentes" Foreground="#8FA2B7" FontSize="11"/>
+                                    <TextBlock x:Name="CompatibilityMissingScriptsText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
+                                    <TextBlock Text="referências registradas" Foreground="#6F8499" FontSize="10"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border Grid.Row="2"
+                                Margin="0,14,0,0"
+                                Background="#111E2D"
+                                BorderBrush="#233A50"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="18">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Verificações reais"
+                                           Foreground="White"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock x:Name="CompatibilityContentRootText" Text="Biblioteca: não configurada" Foreground="#C7D4E1" FontSize="12"/>
+                                <TextBlock x:Name="CompatibilityRuntimeText" Text="Runtime: verificando" Foreground="#C7D4E1" FontSize="12"/>
+                                <TextBlock x:Name="CompatibilityOdeText" Text="ODE: verificando" Foreground="#C7D4E1" FontSize="12"/>
+                                <TextBlock x:Name="CompatibilityRendererText" Text="D3D11: verificando" Foreground="#C7D4E1" FontSize="12"/>
+                                <TextBlock x:Name="CompatibilityModelText" Text="model.cfg: aguardando biblioteca" Foreground="#C7D4E1" FontSize="12"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- DIAGNOSTICS -->
+            <Grid x:Name="DiagnosticsView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <Grid MaxWidth="1320"
+                      HorizontalAlignment="Center"
+                      Padding="28,24,28,28">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="Diagnóstico"
+                                       Foreground="White"
+                                       FontSize="34"
+                                       FontWeight="Bold"/>
+                            <TextBlock Text="Estado do launcher, runtime e conteúdo carregado."
+                                       Foreground="#92A4B8"
+                                       FontSize="13"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Content="Copiar diagnóstico"
+                                    Padding="14,9"
+                                    Click="CopyDiagnosticsButton_Click"/>
+                            <Button Content="Gerar relatório"
+                                    Padding="14,9"
+                                    Click="GenerateDiagnosticsReportButton_Click"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Grid.Row="1"
+                            Margin="0,20,0,0"
+                            Background="#111E2D"
+                            BorderBrush="#233A50"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="16">
+                        <Grid ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Spacing="5">
+                                <TextBlock Text="Runtime" Foreground="#8FA2B7" FontSize="11"/>
+                                <TextBlock x:Name="DiagnosticsRuntimeText" Text="Verificando..." Foreground="White" FontSize="14" FontWeight="SemiBold"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="5">
+                                <TextBlock Text="Biblioteca OMSI" Foreground="#8FA2B7" FontSize="11"/>
+                                <TextBlock x:Name="DiagnosticsContentText" Text="Não configurada" Foreground="White" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="5">
+                                <TextBlock Text="Relatório" Foreground="#8FA2B7" FontSize="11"/>
+                                <TextBlock x:Name="DiagnosticsReportPathText" Text="Ainda não gerado" Foreground="White" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TextBox x:Name="DiagnosticsTextBox"
+                             Grid.Row="2"
+                             Margin="0,14,0,0"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="Consolas"
+                             FontSize="12"
+                             Background="#08121D"
+                             Foreground="#C8D4E2"
+                             BorderBrush="#233A50"
+                             BorderThickness="1"
+                             Padding="14"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"/>
                 </Grid>
             </Grid>
 
