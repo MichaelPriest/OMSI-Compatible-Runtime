@@ -4113,13 +4113,31 @@ try
             spawnExclusionRadiusMeters:
                 0.0);
 
+    var initialStaggeredAgent =
+        staggeredTraffic
+            .Snapshot()
+            .Single();
+
     Require(
-        staggeredTraffic.Snapshot().Count ==
-            1,
-        "Runtime traffic did not stagger initial AI activation.");
+        initialStaggeredAgent.SpeedMetersPerSecond ==
+            0.0,
+        "Runtime traffic did not spawn the initial AI from rest.");
 
     staggeredTraffic.Step(
-        2.1);
+        0.5);
+
+    var acceleratingStaggeredAgent =
+        staggeredTraffic
+            .Snapshot()
+            .Single();
+
+    Require(
+        acceleratingStaggeredAgent.SpeedMetersPerSecond >
+            initialStaggeredAgent.SpeedMetersPerSecond,
+        "Runtime traffic did not accelerate progressively after spawn.");
+
+    staggeredTraffic.Step(
+        1.6);
 
     Require(
         staggeredTraffic.Snapshot().Count >=
