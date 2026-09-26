@@ -367,6 +367,10 @@ public sealed class D3D11RenderWindow : Form
     private readonly HashSet<int> _activeTrafficCollisionAgents = [];
     private int _trafficCollisionCount;
     private int _speedViolationCount;
+    private int _redLightViolationCount;
+    private int _lastRedLightSegmentIndex = -1;
+    private double _lastRedLightViolationSeconds =
+        double.NegativeInfinity;
     private double _trafficRuleSampleSeconds;
     private double _speedingSeconds;
     private double _lastSpeedViolationSeconds =
@@ -7555,6 +7559,9 @@ public sealed class D3D11RenderWindow : Form
         _trafficRuleSampleSeconds =
             0.0;
 
+        UpdateRedLightRule(
+            nowSeconds);
+
         var speedLimit =
             ResolveNearestRoadSpeedLimit();
 
@@ -7710,6 +7717,369 @@ public sealed class D3D11RenderWindow : Form
             _activeTrafficCollisionAgents.Add(
                 id);
         }
+    }
+
+    private void UpdateRedLightRule(
+        double nowSeconds)
+    {
+        var segment =
+            ResolveNearestRoadSegment(
+                out var travelForward);
+
+        if (segment is null)
+        {
+            _lastRedLightSegmentIndex =
+                -1;
+            return;
+        }
+
+        var connectionIndices =
+            travelForward
+                ? segment.ForwardConnections
+                : segment.ReverseConnections;
+
+        RuntimeTrafficPathSegmentInfo?
+            signalSegment =
+                null;
+
+        foreach (var connectionIndex in
+                 connectionIndices)
+        {
+            var candidate =
+                _windowInfo
+                    .TrafficPaths
+                    .Segments
+                    .FirstOrDefault(
+                        item =>
+                            item.Index ==
+                            connectionIndex);
+
+            if (candidate?.TrafficSignal is
+                not null)
+            {
+                signalSegment =
+                    candidate;
+                break;
+            }
+        }
+
+        if (signalSegment?.TrafficSignal is
+            not { } signal)
+        {
+            _lastRedLightSegmentIndex =
+                -1;
+            return;
+        }
+
+        var stopPoint =
+            travelForward
+                ? segment.Points[^1]
+                : segment.Points[0];
+
+        var dx =
+            _vehicle.Position.X -
+            stopPoint.X;
+        var dz =
+            _vehicle.Position.Z -
+            stopPoint.Z;
+
+        var distance =
+            Math.Sqrt(
+                dx *
+                    dx +
+                dz *
+                    dz);
+
+        var approachDistance =
+            Math.Clamp(
+                signal.ApproachDistanceMeters,
+                3.0,
+                60.0);
+
+        if (distance >
+            approachDistance +
+                5.0)
+        {
+            if (_lastRedLightSegmentIndex ==
+                signalSegment.Index)
+            {
+                _lastRedLightSegmentIndex =
+                    -1;
+            }
+
+            return;
+        }
+
+        if (IsRuntimeTrafficSignalGreen(
+                signal,
+                nowSeconds))
+        {
+            if (_lastRedLightSegmentIndex ==
+                signalSegment.Index)
+            {
+                _lastRedLightSegmentIndex =
+                    -1;
+            }
+
+            return;
+        }
+
+        var speedMetersPerSecond =
+            Math.Abs(
+                _vehicle.SpeedMetersPerSecond);
+
+        // At normal frame cadence, reaching the stop line while still
+        // moving faster than walking pace means the front of the bus is
+        // crossing the controlled entry. A stopped/creeping bus at the
+        // line is not penalized.
+        var crossingThreshold =
+            Math.Clamp(
+                0.75 +
+                speedMetersPerSecond *
+                    0.20,
+                1.0,
+                3.0);
+
+        if (distance >
+                crossingThreshold ||
+            speedMetersPerSecond <
+                1.5)
+        {
+            return;
+        }
+
+        if (_lastRedLightSegmentIndex ==
+                signalSegment.Index &&
+            nowSeconds -
+                _lastRedLightViolationSeconds <
+            8.0)
+        {
+            return;
+        }
+
+        _lastRedLightSegmentIndex =
+            signalSegment.Index;
+
+        _lastRedLightViolationSeconds =
+            nowSeconds;
+
+        _redLightViolationCount++;
+
+        Console.WriteLine(
+            $"[traffic-rule] red-light violation #{_redLightViolationCount}; signal-path={signalSegment.Index}; speed={_vehicle.SpeedKph:0.0} km/h");
+    }
+
+    private RuntimeTrafficPathSegmentInfo?
+        ResolveNearestRoadSegment(
+            out bool travelForward)
+    {
+        travelForward =
+            true;
+
+        var position =
+            _vehicle.Position;
+
+        var vehicleForward =
+            new Vector2(
+                MathF.Sin(
+                    _vehicle.HeadingRadians),
+                MathF.Cos(
+                    _vehicle.HeadingRadians));
+
+        var nearestDistanceSquared =
+            double.PositiveInfinity;
+
+        RuntimeTrafficPathSegmentInfo?
+            nearestSegment =
+                null;
+
+        var nearestDirection =
+            true;
+
+        foreach (var segment in
+                 _windowInfo
+                     .TrafficPaths
+                     .Segments)
+        {
+            if (segment.Type !=
+                    0 ||
+                segment.Points.Count <
+                    2)
+            {
+                continue;
+            }
+
+            for (var index = 1;
+                 index <
+                     segment.Points.Count;
+                 index++)
+            {
+                var a =
+                    segment.Points[
+                        index -
+                        1];
+
+                var b =
+                    segment.Points[
+                        index];
+
+                if (Math.Abs(
+                        position.Y -
+                        (a.Y +
+                         b.Y) *
+                        0.5) >
+                    5.0)
+                {
+                    continue;
+                }
+
+                var distanceSquared =
+                    PointToSegmentDistanceSquared(
+                        position.X,
+                        position.Z,
+                        a.X,
+                        a.Z,
+                        b.X,
+                        b.Z);
+
+                if (distanceSquared >=
+                    nearestDistanceSquared)
+                {
+                    continue;
+                }
+
+                var pathDirection =
+                    new Vector2(
+                        (float)(
+                            b.X -
+                            a.X),
+                        (float)(
+                            b.Z -
+                            a.Z));
+
+                if (pathDirection.LengthSquared() <
+                    0.000001f)
+                {
+                    continue;
+                }
+
+                pathDirection =
+                    Vector2.Normalize(
+                        pathDirection);
+
+                nearestDistanceSquared =
+                    distanceSquared;
+
+                nearestSegment =
+                    segment;
+
+                nearestDirection =
+                    Vector2.Dot(
+                        vehicleForward,
+                        pathDirection) >=
+                    0.0f;
+            }
+        }
+
+        if (nearestDistanceSquared >
+            64.0)
+        {
+            return null;
+        }
+
+        travelForward =
+            nearestDirection;
+
+        return nearestSegment;
+    }
+
+    private static bool IsRuntimeTrafficSignalGreen(
+        RuntimeTrafficSignalProgramInfo signal,
+        double elapsedSeconds)
+    {
+        if (signal.Phases.Count ==
+                0 ||
+            !double.IsFinite(
+                elapsedSeconds))
+        {
+            return true;
+        }
+
+        var phaseDuration =
+            signal.Phases
+                .Where(
+                    static phase =>
+                        phase.DurationSeconds >
+                            0.0 &&
+                        double.IsFinite(
+                            phase.DurationSeconds))
+                .Sum(
+                    static phase =>
+                        phase.DurationSeconds);
+
+        var cycleSeconds =
+            signal.CycleSeconds;
+
+        if (!double.IsFinite(
+                cycleSeconds) ||
+            cycleSeconds <=
+                0.0)
+        {
+            cycleSeconds =
+                phaseDuration;
+        }
+
+        if (cycleSeconds <=
+                0.0 ||
+            phaseDuration <=
+                0.0)
+        {
+            return true;
+        }
+
+        var position =
+            elapsedSeconds %
+            cycleSeconds;
+
+        if (position <
+            0.0)
+        {
+            position +=
+                cycleSeconds;
+        }
+
+        RuntimeTrafficSignalPhaseInfo?
+            lastPhase =
+                null;
+
+        foreach (var phase in
+                 signal.Phases)
+        {
+            if (phase.DurationSeconds <=
+                    0.0 ||
+                !double.IsFinite(
+                    phase.DurationSeconds))
+            {
+                continue;
+            }
+
+            lastPhase =
+                phase;
+
+            if (position <
+                phase.DurationSeconds)
+            {
+                return phase.Phase is
+                    >= 6 and <= 8;
+            }
+
+            position -=
+                phase.DurationSeconds;
+        }
+
+        return lastPhase is not null &&
+               lastPhase.Phase is
+                   >= 6 and <= 8;
     }
 
     private double? ResolveNearestRoadSpeedLimit()
@@ -13825,11 +14195,15 @@ public sealed class D3D11RenderWindow : Form
               $"{driveInputMode} · RMB drag look/orbit · F3 wheel zoom · S views · F1/F2/F3/F4 cameras · ←/→ perspectives · C/Space reset · P pause · D/N/R · E/M · Tab clutch"
             : $"{pauseState}FREE CAM · RMB look · MMB pan · wheel zoom · Ctrl+wheel speed · S views · F1/F2/F3/F4 cameras · C reset · O:{(_mouseDriveMode ? "LOCKED" : "OFF")}";
 
-        var trafficRuleStatus =
+        var totalInfractions =
             _trafficCollisionCount +
-                _speedViolationCount >
+            _speedViolationCount +
+            _redLightViolationCount;
+
+        var trafficRuleStatus =
+            totalInfractions >
             0
-                ? $" · infrações {_trafficCollisionCount + _speedViolationCount} (colisões {_trafficCollisionCount}, velocidade {_speedViolationCount})"
+                ? $" · infrações {totalInfractions} (colisões {_trafficCollisionCount}, velocidade {_speedViolationCount}, vermelho {_redLightViolationCount})"
                 : string.Empty;
 
         control +=
