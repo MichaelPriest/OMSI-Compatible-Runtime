@@ -339,6 +339,10 @@ try
 
     Directory.CreateDirectory(mapDirectory);
     Directory.CreateDirectory(sceneryDirectory);
+    Directory.CreateDirectory(
+        Path.Combine(
+            sceneryDirectory,
+            "script"));
     Directory.CreateDirectory(splineDirectory);
     Directory.CreateDirectory(vehicleDirectory);
     Directory.CreateDirectory(vehicleScriptDirectory);
@@ -1681,6 +1685,12 @@ try
         Lines(
             "[friendlyname]",
             "Synthetic Object",
+            "[script]",
+            "1",
+            @"script\signal.osc",
+            "[varnamelist]",
+            "1",
+            @"script\signal_varlist.txt",
             "[onlyeditor]",
             "[traffic_lights_group]",
             "8",
@@ -1710,6 +1720,45 @@ try
             "[use_traffic_light]",
             "0"),
         Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            sceneryDirectory,
+            "script",
+            "signal_varlist.txt"),
+        Lines(
+            "Signal",
+            "NextSignal",
+            "signal_lamp"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            sceneryDirectory,
+            "script",
+            "signal.osc"),
+        Lines(
+            "{frame}",
+            "(L.L.Signal)",
+            "(S.L.signal_lamp)"),
+        Encoding.Unicode);
+
+    var scenerySignalDefinition =
+        OmsiSceneryObjectReader.ReadFile(
+            Path.Combine(
+                sceneryDirectory,
+                "object.sco"));
+
+    Require(
+        scenerySignalDefinition.ScriptManifest is
+            { RegisteredFileCount: 2, MissingFileCount: 0 } &&
+        scenerySignalDefinition.ScriptManifest.ScriptFiles
+            .Single()
+            .Exists &&
+        scenerySignalDefinition.ScriptManifest.VariableLists
+            .Single()
+            .Exists,
+        "OMSI scenery script manifest did not resolve script/varnamelist files.");
 
     Directory.CreateDirectory(
         Path.Combine(
