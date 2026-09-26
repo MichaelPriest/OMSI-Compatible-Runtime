@@ -3581,19 +3581,6 @@ public sealed class WorldTrafficSimulation
             return;
         }
 
-        var nextIndex =
-            ResolveNextSegmentIndex(
-                agent,
-                segment);
-
-        if (!nextIndex.HasValue ||
-            !_segmentsByIndex.TryGetValue(
-                nextIndex.Value,
-                out var nextSegment))
-        {
-            return;
-        }
-
         var currentSampleDistance =
             agent.TravelForward
                 ? currentLength
@@ -3612,26 +3599,18 @@ public sealed class WorldTrafficSimulation
                     currentHeading);
         }
 
-        var nextLength =
-            SegmentLength(
-                nextSegment);
+        var indicatorLookAheadMeters =
+            distanceToExit +
+            12.0;
 
-        var nextSampleDistance =
-            agent.TravelForward
-                ? 0.0
-                : nextLength;
-
-        SampleSegment(
-            nextSegment,
-            nextSampleDistance,
-            out _,
-            out var nextHeading);
-
-        if (!agent.TravelForward)
+        if (!TrySampleRouteHeadingAhead(
+                agent,
+                segment,
+                indicatorLookAheadMeters,
+                out var nextHeading,
+                out _) )
         {
-            nextHeading =
-                ReverseHeading(
-                    nextHeading);
+            return;
         }
 
         var delta =
