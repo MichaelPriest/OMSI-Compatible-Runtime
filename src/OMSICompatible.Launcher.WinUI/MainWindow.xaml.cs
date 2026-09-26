@@ -70,6 +70,8 @@ public sealed partial class MainWindow :
     private IReadOnlyList<OmsiMapEntryPointGroup> _entryPoints =
         Array.Empty<OmsiMapEntryPointGroup>();
 
+    private int _sceneryObjectCount;
+
     private bool _refreshing;
 
     public MainWindow()
@@ -168,6 +170,28 @@ public sealed partial class MainWindow :
             VehiclesNavButton);
     }
 
+    private void CompatibilityNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        UpdateCompatibilityAndDiagnostics();
+
+        ShowView(
+            CompatibilityView,
+            CompatibilityNavButton);
+    }
+
+    private void DiagnosticsNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        UpdateCompatibilityAndDiagnostics();
+
+        ShowView(
+            DiagnosticsView,
+            DiagnosticsNavButton);
+    }
+
     private void ShowView(
         FrameworkElement visibleView,
         Button selectedButton)
@@ -177,7 +201,9 @@ public sealed partial class MainWindow :
             HomeView,
             SessionView,
             MapsView,
-            VehiclesView
+            VehiclesView,
+            CompatibilityView,
+            DiagnosticsView
         ];
 
         foreach (var view in views)
@@ -202,7 +228,9 @@ public sealed partial class MainWindow :
             HomeNavButton,
             PlayNavButton,
             MapsNavButton,
-            VehiclesNavButton
+            VehiclesNavButton,
+            CompatibilityNavButton,
+            DiagnosticsNavButton
         ];
 
         foreach (var button in primaryButtons)
@@ -358,6 +386,9 @@ public sealed partial class MainWindow :
             _buses =
                 discovery.Buses;
 
+            _sceneryObjectCount =
+                discovery.ObjectCount;
+
             RebuildLibraryCards();
             UpdateLibraryViews();
 
@@ -422,6 +453,7 @@ public sealed partial class MainWindow :
 
             UpdatePlayAvailability();
             UpdateHomeSummary();
+            UpdateCompatibilityAndDiagnostics();
 
             SetStatus(
                 $"{_maps.Count:N0} mapa(s) · {_buses.Count:N0} ônibus.");
@@ -1391,6 +1423,8 @@ public sealed partial class MainWindow :
         _entryPoints =
             Array.Empty<OmsiMapEntryPointGroup>();
 
+        _sceneryObjectCount = 0;
+
         _repaintCache.Clear();
 
         MapBox.ItemsSource = null;
@@ -1411,6 +1445,7 @@ public sealed partial class MainWindow :
 
         UpdateLibraryViews();
         UpdateHero(null);
+        UpdateCompatibilityAndDiagnostics();
     }
 
     private void RebuildLibraryCards()
@@ -1615,6 +1650,242 @@ public sealed partial class MainWindow :
         }
     }
 
+    private void UpdateCompatibilityAndDiagnostics()
+    {
+        var runtimePath =
+            _runtime.ResolveRuntimePath();
+
+        var runtimeExists =
+            File.Exists(
+                runtimePath);
+
+        var runtimeDirectory =
+            Path.GetDirectoryName(
+                runtimePath) ??
+            AppContext.BaseDirectory;
+
+        var odeAvailable =
+            ContainsRuntimeFile(
+                runtimeDirectory,
+                "ode_single.dll");
+
+        var rendererAvailable =
+            ContainsRuntimeFile(
+                runtimeDirectory,
+                "OMSICompatible.Renderer.D3D11.dll");
+
+        var missingScripts =
+            _buses.Sum(
+                static bus =>
+                    bus.ScriptManifest.MissingFileCount);
+
+        var missingModels =
+            _buses.Count(
+                static bus =>
+                    string.IsNullOrWhiteSpace(
+                        bus.ModelConfigPath) ||
+                    !File.Exists(
+                        bus.ModelConfigPath));
+
+        CompatibilityMapCountText.Text =
+            _maps.Count.ToString(
+                "N0");
+
+        CompatibilityVehicleCountText.Text =
+            _buses.Count.ToString(
+                "N0");
+
+        CompatibilityObjectCountText.Text =
+            _sceneryObjectCount.ToString(
+                "N0");
+
+        CompatibilityMissingScriptsText.Text =
+            missingScripts.ToString(
+                "N0");
+
+        var contentPath =
+            ContentPathBox.Text
+                ?.Trim();
+
+        var contentExists =
+            !string.IsNullOrWhiteSpace(
+                contentPath) &&
+            Directory.Exists(
+                contentPath);
+
+        CompatibilityContentRootText.Text =
+            contentExists
+                ? $"Biblioteca: {contentPath}"
+                : "Biblioteca: não configurada ou indisponível";
+
+        CompatibilityRuntimeText.Text =
+            runtimeExists
+                ? $"Runtime: disponível · {runtimePath}"
+                : $"Runtime: não encontrado · {runtimePath}";
+
+        CompatibilityOdeText.Text =
+            odeAvailable
+                ? "ODE: ode_single.dll disponível"
+                : "ODE: ode_single.dll não encontrado";
+
+        CompatibilityRendererText.Text =
+            rendererAvailable
+                ? "D3D11: renderer disponível"
+                : "D3D11: renderer não encontrado";
+
+        CompatibilityModelText.Text =
+            _buses.Count == 0
+                ? "model.cfg: aguardando biblioteca de veículos"
+                : missingModels == 0
+                    ? $"model.cfg: {_buses.Count:N0}/{_buses.Count:N0} veículos com modelo"
+                    : $"model.cfg: {missingModels:N0} veículo(s) sem modelo renderizável";
+
+        DiagnosticsRuntimeText.Text =
+            _runtime.IsRunning
+                ? "Runtime em execução"
+                : runtimeExists
+                    ? "Runtime pronto"
+                    : "Runtime não encontrado";
+
+        DiagnosticsContentText.Text =
+            contentExists
+                ? contentPath!
+                : "Não configurada";
+
+        DiagnosticsTextBox.Text =
+            BuildDiagnosticsText(
+                runtimePath,
+                runtimeExists,
+                odeAvailable,
+                rendererAvailable,
+                missingScripts,
+                missingModels,
+                contentPath,
+                contentExists);
+    }
+
+    private string BuildDiagnosticsText(
+        string runtimePath,
+        bool runtimeExists,
+        bool odeAvailable,
+        bool rendererAvailable,
+        int missingScripts,
+        int missingModels,
+        string? contentPath,
+        bool contentExists)
+    {
+        var lines =
+            new List<string>
+            {
+                "OMSI Compatible Runtime - Diagnóstico",
+                $"Gerado: {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}",
+                $"Launcher: WinUI 3 x64",
+                $"Runtime em execução: {_runtime.IsRunning}",
+                $"Runtime path: {runtimePath}",
+                $"Runtime disponível: {runtimeExists}",
+                $"ODE x64 single precision disponível: {odeAvailable}",
+                $"Renderer D3D11 disponível: {rendererAvailable}",
+                $"Biblioteca OMSI: {(contentExists ? contentPath : "indisponível")}",
+                $"Mapas detectados: {_maps.Count:N0}",
+                $"Veículos .bus detectados: {_buses.Count:N0}",
+                $"Objetos .sco detectados: {_sceneryObjectCount:N0}",
+                $"Referências de script ausentes: {missingScripts:N0}",
+                $"Veículos sem model.cfg renderizável: {missingModels:N0}",
+                $"PR de desenvolvimento: #2 / fix/runtime-visual-controls-pass"
+            };
+
+        if (_buses.Count > 0)
+        {
+            lines.Add(
+                string.Empty);
+
+            lines.Add(
+                "Veículos com referências de script ausentes:");
+
+            foreach (var bus in
+                     _buses
+                         .Where(
+                             static item =>
+                                 item.ScriptManifest.MissingFileCount >
+                                 0)
+                         .OrderByDescending(
+                             static item =>
+                                 item.ScriptManifest.MissingFileCount)
+                         .ThenBy(
+                             static item =>
+                                 item.SelectionLabel,
+                             StringComparer.OrdinalIgnoreCase)
+                         .Take(100))
+            {
+                lines.Add(
+                    $"- {bus.SelectionLabel}: {bus.ScriptManifest.MissingFileCount:N0} ausente(s)");
+            }
+        }
+
+        return string.Join(
+            Environment.NewLine,
+            lines);
+    }
+
+    private void CopyDiagnosticsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        UpdateCompatibilityAndDiagnostics();
+
+        var package =
+            new Windows.ApplicationModel.DataTransfer.DataPackage();
+
+        package.SetText(
+            DiagnosticsTextBox.Text);
+
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(
+            package);
+
+        SetStatus(
+            "Diagnóstico copiado para a área de transferência.");
+    }
+
+    private void GenerateDiagnosticsReportButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        UpdateCompatibilityAndDiagnostics();
+
+        try
+        {
+            var directory =
+                Path.Combine(
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.LocalApplicationData),
+                    "OMSI-Compatible-Runtime",
+                    "Reports");
+
+            Directory.CreateDirectory(
+                directory);
+
+            var path =
+                Path.Combine(
+                    directory,
+                    $"diagnostic-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+
+            File.WriteAllText(
+                path,
+                DiagnosticsTextBox.Text);
+
+            DiagnosticsReportPathText.Text =
+                path;
+
+            SetStatus(
+                $"Relatório gerado: {path}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                $"Falha ao gerar relatório: {ex.Message}");
+        }
+    }
+
     private void SaveSettings()
     {
         _settings =
@@ -1677,6 +1948,12 @@ public sealed partial class MainWindow :
 
         UpdateStatusText.Text =
             "Canal alpha";
+
+        if (DiagnosticsView is not null &&
+            CompatibilityView is not null)
+        {
+            UpdateCompatibilityAndDiagnostics();
+        }
     }
 
     private static bool ContainsRuntimeFile(
