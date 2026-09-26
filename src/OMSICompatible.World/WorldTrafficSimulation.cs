@@ -846,18 +846,82 @@ public sealed class WorldTrafficSimulation
             }
 
             if (otherSegment.TrafficPriority ==
-                    currentSegment.TrafficPriority &&
-                ApproachesFromRight(
-                    currentSegment,
-                    agent.TravelForward,
-                    otherSegment,
-                    other.TravelForward))
+                currentSegment.TrafficPriority)
             {
-                return false;
+                var currentArrival =
+                    EstimateApproachArrivalSeconds(
+                        agent,
+                        currentSegment);
+
+                var otherArrival =
+                    EstimateApproachArrivalSeconds(
+                        other,
+                        otherSegment);
+
+                // Vehicles that are materially closer to the conflict reserve
+                // it first. For near-simultaneous arrivals, preserve OMSI-like
+                // right-hand priority and finally use a stable agent-id tie
+                // breaker so two approaches cannot both decide to enter.
+                if (otherArrival +
+                        0.75 <
+                    currentArrival)
+                {
+                    return false;
+                }
+
+                if (Math.Abs(
+                        otherArrival -
+                        currentArrival) <=
+                        0.75 &&
+                    ApproachesFromRight(
+                        currentSegment,
+                        agent.TravelForward,
+                        otherSegment,
+                        other.TravelForward))
+                {
+                    return false;
+                }
+
+                if (Math.Abs(
+                        otherArrival -
+                        currentArrival) <=
+                        0.10 &&
+                    other.AgentIndex <
+                        agent.AgentIndex)
+                {
+                    return false;
+                }
             }
         }
 
         return true;
+    }
+
+    private static double EstimateApproachArrivalSeconds(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
+        var segmentLength =
+            SegmentLength(
+                segment);
+
+        var remainingDistance =
+            agent.TravelForward
+                ? Math.Max(
+                    segmentLength -
+                        agent.DistanceMeters,
+                    0.0)
+                : Math.Max(
+                    agent.DistanceMeters,
+                    0.0);
+
+        var approachSpeed =
+            Math.Max(
+                agent.SpeedMetersPerSecond,
+                1.0);
+
+        return remainingDistance /
+               approachSpeed;
     }
 
     private static bool ApproachesFromRight(
