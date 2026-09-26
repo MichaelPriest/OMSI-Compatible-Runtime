@@ -27,6 +27,10 @@ public sealed record WorldTrafficObstacleState(
 
 public sealed class WorldTrafficSimulation
 {
+    private readonly record struct TrafficLead(
+        double DistanceMeters,
+        double SpeedMetersPerSecond);
+
     private const double MinimumTrafficSeparationMeters =
         6.0;
     private const double FollowingTimeHeadwaySeconds =
@@ -456,8 +460,8 @@ public sealed class WorldTrafficSimulation
                     continue;
                 }
 
-                var leadingDistance =
-                    FindLeadingDistance(
+                var leading =
+                    FindLeadingObservation(
                         agent);
 
                 double? blockedEntryDistance =
@@ -476,7 +480,7 @@ public sealed class WorldTrafficSimulation
                 var targetSpeed =
                     ResolveTargetSpeed(
                         agent,
-                        leadingDistance,
+                        leading,
                         blockedEntryDistance);
 
                 var previousSpeed =
@@ -500,13 +504,13 @@ public sealed class WorldTrafficSimulation
                     agent.SpeedMetersPerSecond *
                     step;
 
-                if (leadingDistance.HasValue)
+                if (leading.HasValue)
                 {
                     remaining =
                         Math.Min(
                             remaining,
                             Math.Max(
-                                leadingDistance.Value -
+                                leading.Value.DistanceMeters -
                                     MinimumTrafficSeparationMeters,
                                 0.0));
                 }
@@ -1302,11 +1306,11 @@ public sealed class WorldTrafficSimulation
             .Index;
     }
 
-    private double? FindLeadingDistance(
+    private TrafficLead? FindLeadingObservation(
         Agent agent)
     {
-        var nearest =
-            double.PositiveInfinity;
+        TrafficLead? nearest =
+            null;
 
         foreach (var candidate in
                  _agents)
@@ -1330,33 +1334,36 @@ public sealed class WorldTrafficSimulation
             if (distance.HasValue &&
                 distance.Value >
                     0.0001 &&
-                distance.Value <
-                    nearest)
+                (!nearest.HasValue ||
+                 distance.Value <
+                    nearest.Value.DistanceMeters))
             {
                 nearest =
-                    distance.Value;
+                    new TrafficLead(
+                        distance.Value,
+                        Math.Max(
+                            candidate.SpeedMetersPerSecond,
+                            0.0));
             }
         }
 
-        var externalDistance =
-            FindExternalObstacleDistance(
+        var externalLead =
+            FindExternalObstacleLead(
                 agent);
 
-        if (externalDistance.HasValue &&
-            externalDistance.Value <
-                nearest)
+        if (externalLead.HasValue &&
+            (!nearest.HasValue ||
+             externalLead.Value.DistanceMeters <
+                nearest.Value.DistanceMeters))
         {
             nearest =
-                externalDistance.Value;
+                externalLead;
         }
 
-        return double.IsPositiveInfinity(
-                   nearest)
-            ? null
-            : nearest;
+        return nearest;
     }
 
-    private double? FindExternalObstacleDistance(
+    private TrafficLead? FindExternalObstacleLead(
         Agent agent)
     {
         if (_externalObstacle is not
@@ -1488,11 +1495,14 @@ public sealed class WorldTrafficSimulation
             return null;
         }
 
+        var headingDelta =
+            NormalizeHeadingDelta(
+                obstacle.HeadingRadians -
+                agentHeading);
+
         var obstacleHeadingDelta =
             Math.Abs(
-                NormalizeHeadingDelta(
-                    obstacle.HeadingRadians -
-                    agentHeading));
+                headingDelta);
 
         var obstacleCrossesLane =
             obstacleHeadingDelta >=
@@ -1500,7 +1510,7 @@ public sealed class WorldTrafficSimulation
                     4.0 &&
             obstacleHeadingDelta <=
                 3.0 *
-                Math.PI /
+                    Math.PI /
                     4.0 &&
             lateral <=
                 maximumLateral;
@@ -1508,19 +1518,29 @@ public sealed class WorldTrafficSimulation
         if (obstacleCrossesLane)
         {
             // A long vehicle already crossing the AI corridor is not a
-            // conventional lead vehicle: letting the AI consume a normal
-            // following distance still allows it to enter the player's
-            // oriented footprint. Treat the occupied corridor as an
-            // immediate hard block and brake before any further advance.
-            return 0.0;
+            // conventional lead vehicle. Hold before its oriented footprint
+            // instead of allowing a following-distance approximation to
+            // enter the occupied lane.
+            return new TrafficLead(
+                0.0,
+                0.0);
         }
 
-        return Math.Max(
-            longitudinal -
-                Math.Max(
-                    obstacleLongitudinalExtent,
-                    2.0),
-            0.0);
+        var projectedObstacleSpeed =
+            Math.Max(
+                obstacle.SpeedMetersPerSecond *
+                    Math.Cos(
+                        headingDelta),
+                0.0);
+
+        return new TrafficLead(
+            Math.Max(
+                longitudinal -
+                    Math.Max(
+                        obstacleLongitudinalExtent,
+                        2.0),
+                0.0),
+            projectedObstacleSpeed);
     }
 
     private double? DistanceAlongRoute(
@@ -1633,7 +1653,7 @@ public sealed class WorldTrafficSimulation
 
     private double ResolveTargetSpeed(
         Agent agent,
-        double? leadingDistance,
+        TrafficLead? leading,
         double? blockedEntryDistance)
     {
         var segmentMaximum =
@@ -1648,17 +1668,44 @@ public sealed class WorldTrafficSimulation
         var targetSpeed =
             segmentMaximum;
 
-        if (leadingDistance.HasValue)
+        if (leading.HasValue)
         {
             var usableDistance =
                 Math.Max(
-                    leadingDistance.Value -
+                    leading.Value.DistanceMeters -
                         MinimumTrafficSeparationMeters,
                     0.0);
 
-            var followingSpeed =
-                usableDistance /
+            var leaderSpeed =
+                Math.Max(
+                    leading.Value.SpeedMetersPerSecond,
+                    0.0);
+
+            // Keep a time headway while also accounting for the distance
+            // the vehicle ahead can cover before stopping. This avoids the
+            // old distance-only controller's stop/go behavior in queues and
+            // gives progressive braking when the lead vehicle slows.
+            var leaderStoppingDistance =
+                leaderSpeed *
+                leaderSpeed /
+                (2.0 *
+                 TrafficBrakingMetersPerSecondSquared);
+
+            var headwayBrakingTerm =
+                TrafficBrakingMetersPerSecondSquared *
                 FollowingTimeHeadwaySeconds;
+
+            var followingSpeed =
+                Math.Max(
+                    -headwayBrakingTerm +
+                    Math.Sqrt(
+                        headwayBrakingTerm *
+                            headwayBrakingTerm +
+                        2.0 *
+                            TrafficBrakingMetersPerSecondSquared *
+                            (usableDistance +
+                             leaderStoppingDistance)),
+                    0.0);
 
             targetSpeed =
                 Math.Min(
