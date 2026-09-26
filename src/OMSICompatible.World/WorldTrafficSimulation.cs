@@ -1563,15 +1563,27 @@ public sealed class WorldTrafficSimulation
                         other,
                         otherSegment);
 
-                // Higher-priority traffic only reserves the conflict while it
-                // is actually close enough to matter. Without this arrival
-                // window, one distant vehicle on a long priority approach can
-                // hold a lower-priority queue indefinitely.
-                if (otherArrival <=
-                        4.0 ||
-                    otherArrival <=
-                        currentArrival +
-                        2.0)
+                var otherRemainingDistance =
+                    ResolveApproachRemainingDistance(
+                        other,
+                        otherSegment);
+
+                var otherApproachIsActive =
+                    other.SpeedMetersPerSecond >
+                        0.75 ||
+                    otherRemainingDistance <=
+                        2.0;
+
+                // A stopped queue on a priority road must not reserve the
+                // conflict indefinitely. Reserve only for an approach that is
+                // actually moving, or already at the immediate stop-line
+                // area and therefore about to enter when space opens.
+                if (otherApproachIsActive &&
+                    (otherArrival <=
+                         4.0 ||
+                     otherArrival <=
+                         currentArrival +
+                         2.0))
                 {
                     return false;
                 }
@@ -1766,6 +1778,24 @@ public sealed class WorldTrafficSimulation
         }
 
         return false;
+    }
+
+    private static double ResolveApproachRemainingDistance(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
+        var segmentLength =
+            SegmentLength(
+                segment);
+
+        return agent.TravelForward
+            ? Math.Max(
+                segmentLength -
+                    agent.DistanceMeters,
+                0.0)
+            : Math.Max(
+                agent.DistanceMeters,
+                0.0);
     }
 
     private static double EstimateApproachArrivalSeconds(
