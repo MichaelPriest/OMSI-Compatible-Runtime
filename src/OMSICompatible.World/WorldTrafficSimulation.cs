@@ -343,25 +343,6 @@ public sealed class WorldTrafficSimulation
                         continue;
                     }
 
-                    if (spawnExclusionRadiusMeters >
-                            0.0)
-                    {
-                        SampleSegment(
-                            candidate,
-                            candidateLength *
-                                0.5,
-                            out var candidateMidpoint,
-                            out _);
-
-                        if (HorizontalDistance(
-                                candidateMidpoint,
-                                spawnExclusionCenter.Value) <
-                            spawnExclusionRadiusMeters)
-                        {
-                            continue;
-                        }
-                    }
-
                     segment =
                         candidate;
                     break;
@@ -377,37 +358,6 @@ public sealed class WorldTrafficSimulation
                 SegmentLength(
                     segment);
 
-            var offset =
-                !spawnExclusionCenter.HasValue
-                    ? length >
-                            1.0
-                        ? Math.Min(
-                            length *
-                                0.15 *
-                                (index %
-                                     5),
-                            Math.Max(
-                                length -
-                                    0.1,
-                                0.0))
-                        : 0.0
-                    : length >
-                            1.0
-                        ? Math.Clamp(
-                            length *
-                                (0.10 +
-                                 0.80 *
-                                 (((index +
-                                    1) *
-                                   0.4142135623730950) %
-                                  1.0)),
-                            0.1,
-                            Math.Max(
-                                length -
-                                    0.1,
-                                0.1))
-                        : 0.0;
-
             var travelForward =
                 segment.Direction switch
                 {
@@ -421,13 +371,134 @@ public sealed class WorldTrafficSimulation
                         true
                 };
 
-            var distance =
-                travelForward
-                    ? offset
-                    : Math.Max(
-                        length -
-                            offset,
-                        0.0);
+            double distance;
+
+            if (!spawnExclusionCenter.HasValue)
+            {
+                var offset =
+                    length >
+                            1.0
+                        ? Math.Min(
+                            length *
+                                0.15 *
+                                (index %
+                                     5),
+                            Math.Max(
+                                length -
+                                    0.1,
+                                0.0))
+                        : 0.0;
+
+                distance =
+                    travelForward
+                        ? offset
+                        : Math.Max(
+                            length -
+                                offset,
+                            0.0);
+            }
+            else
+            {
+                var placed =
+                    false;
+
+                distance =
+                    0.0;
+
+                for (var placementAttempt = 0;
+                     placementAttempt <
+                         12;
+                     placementAttempt++)
+                {
+                    var selector =
+                        (((index +
+                           1) *
+                          0.4142135623730950 +
+                          placementAttempt *
+                          0.2360679774997897) %
+                         1.0);
+
+                    var offset =
+                        length >
+                                1.0
+                            ? Math.Clamp(
+                                length *
+                                    (0.10 +
+                                     0.80 *
+                                     selector),
+                                0.1,
+                                Math.Max(
+                                    length -
+                                        0.1,
+                                    0.1))
+                            : 0.0;
+
+                    var candidateDistance =
+                        travelForward
+                            ? offset
+                            : Math.Max(
+                                length -
+                                    offset,
+                                0.0);
+
+                    SampleSegment(
+                        segment,
+                        candidateDistance,
+                        out var spawnPosition,
+                        out _);
+
+                    if (_spawnExclusionRadiusMeters >
+                            0.0 &&
+                        HorizontalDistance(
+                            spawnPosition,
+                            spawnExclusionCenter.Value) <
+                        _spawnExclusionRadiusMeters)
+                    {
+                        continue;
+                    }
+
+                    var tooCloseToExistingSpawn =
+                        _agents.Any(
+                            existing =>
+                            {
+                                if (!_segmentsByIndex.TryGetValue(
+                                        existing.SegmentIndex,
+                                        out var existingSegment))
+                                {
+                                    return false;
+                                }
+
+                                SampleSegment(
+                                    existingSegment,
+                                    existing.DistanceMeters,
+                                    out var existingPosition,
+                                    out _);
+
+                                return HorizontalDistance(
+                                           spawnPosition,
+                                           existingPosition) <
+                                       22.0;
+                            });
+
+                    if (tooCloseToExistingSpawn)
+                    {
+                        continue;
+                    }
+
+                    distance =
+                        candidateDistance;
+
+                    placed =
+                        true;
+
+                    break;
+                }
+
+                if (!placed)
+                {
+                    continue;
+                }
+            }
 
             var cruiseSpeed =
                 ResolveCruiseSpeed(
@@ -437,43 +508,6 @@ public sealed class WorldTrafficSimulation
                 ResolveSegmentMaximumSpeed(
                     segment,
                     cruiseSpeed);
-
-            if (spawnExclusionCenter.HasValue)
-            {
-                SampleSegment(
-                    segment,
-                    distance,
-                    out var spawnPosition,
-                    out _);
-
-                var tooCloseToExistingSpawn =
-                    _agents.Any(
-                        existing =>
-                        {
-                            if (!_segmentsByIndex.TryGetValue(
-                                    existing.SegmentIndex,
-                                    out var existingSegment))
-                            {
-                                return false;
-                            }
-
-                            SampleSegment(
-                                existingSegment,
-                                existing.DistanceMeters,
-                                out var existingPosition,
-                                out _);
-
-                            return HorizontalDistance(
-                                       spawnPosition,
-                                       existingPosition) <
-                                   22.0;
-                        });
-
-                if (tooCloseToExistingSpawn)
-                {
-                    continue;
-                }
-            }
 
             var activationTimeSeconds =
                 spawnExclusionCenter.HasValue
