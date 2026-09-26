@@ -315,12 +315,25 @@ public sealed record RuntimeTreeInfo(
     double MinimumAspect,
     double MaximumAspect);
 
+public sealed record RuntimeSceneryBoundingBoxInfo(
+    double LengthX,
+    double WidthY,
+    double HeightZ,
+    double CenterX,
+    double CenterY,
+    double CenterZ);
+
 public sealed record RuntimeSceneryAssetInfo(
     bool UsesAbsoluteHeight,
     bool OnlyEditor,
     string? RenderType,
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
-    RuntimeTreeInfo? Tree);
+    RuntimeTreeInfo? Tree,
+    bool NoCollision = false,
+    bool Fixed = false,
+    bool Surface = false,
+    string? CollisionMeshSource = null,
+    RuntimeSceneryBoundingBoxInfo? BoundingBox = null);
 
 public sealed record RuntimeRailSignalRouteStateInfo(
     int RouteIndex,
