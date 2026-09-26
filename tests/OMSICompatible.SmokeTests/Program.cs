@@ -4459,6 +4459,20 @@ try
             curvedSteeringAgent.PathCurvaturePerMeter),
         "AI path curvature was not derived from the upcoming right-hand bend.");
 
+    curvedSteeringSimulation.Step(
+        0.5);
+
+    var curvedBrakingAgent =
+        curvedSteeringSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        curvedBrakingAgent.SpeedMetersPerSecond <
+            curvedSteeringAgent.SpeedMetersPerSecond &&
+        curvedBrakingAgent.AiBrakeLight,
+        "AI traffic did not brake progressively for upcoming road curvature.");
+
     var defaultDisabledCatalog =
         new OmsiMapAiCatalog(
             [
