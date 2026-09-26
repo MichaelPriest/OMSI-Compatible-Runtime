@@ -2499,7 +2499,8 @@ internal sealed class RuntimeApplicationContext :
                                                     new RuntimeTrafficSignalPhaseInfo(
                                                         phase.Phase,
                                                         phase.DurationSeconds))
-                                            .ToArray())))
+                                            .ToArray()),
+                                segment.SceneryObjectId))
                     .ToArray(),
                 world.TrafficPaths.RoadVehicleSegmentCount,
                 world.TrafficPaths.PedestrianSegmentCount,
