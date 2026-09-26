@@ -1482,6 +1482,7 @@ public sealed class WorldTrafficSimulation
             if (ReferenceEquals(
                     other,
                     agent) ||
+                other.PendingRespawn ||
                 other.ActivationTimeSeconds >
                     _simulationElapsedSeconds ||
                 !_segmentsByIndex.TryGetValue(
@@ -2314,6 +2315,7 @@ public sealed class WorldTrafficSimulation
             if (ReferenceEquals(
                     candidate,
                     agent) ||
+                candidate.PendingRespawn ||
                 candidate.ActivationTimeSeconds >
                     _simulationElapsedSeconds ||
                 candidate.TravelForward !=
