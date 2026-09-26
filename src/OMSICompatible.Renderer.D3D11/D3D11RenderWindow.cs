@@ -8563,7 +8563,9 @@ public sealed class D3D11RenderWindow : Form
                     direction);
 
             if (alignment >
-                bestAlignment)
+                    0.25f &&
+                alignment >
+                    bestAlignment)
             {
                 bestAlignment =
                     alignment;
