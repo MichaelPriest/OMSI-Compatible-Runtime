@@ -2189,7 +2189,7 @@ try
             "regen.tga",
             "0",
             "[matl_transmap]",
-            "panel_mask.bmp",
+            @"\legacy\panel_mask.bmp",
             "[animparent]",
             "steering_parent",
             "[viewpoint]",
