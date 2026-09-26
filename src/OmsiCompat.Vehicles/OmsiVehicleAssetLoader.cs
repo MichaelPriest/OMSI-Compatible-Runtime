@@ -316,7 +316,11 @@ public static class OmsiVehicleAssetLoader
                     // body/interior translucent on its own.
                     var alphaMode =
                         materialOverride?.AlphaMode ??
-                        0;
+                        (materialOverride?.HasTransMapDirective == true &&
+                         !string.IsNullOrWhiteSpace(
+                             transMapSource)
+                            ? 1
+                            : 0);
 
                     if (materialOverride?.HasTransMapDirective == true &&
                         string.IsNullOrWhiteSpace(
