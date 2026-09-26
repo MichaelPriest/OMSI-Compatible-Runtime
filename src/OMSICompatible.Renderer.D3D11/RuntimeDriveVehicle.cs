@@ -50,6 +50,8 @@ internal sealed class RuntimeDriveVehicle :
     private readonly RuntimeVehicleAxleInfo[] _wheelKinematicLeadingAxles;
     private readonly int _primaryDrivenOmsiAxleIndex;
     private readonly float[] _axleStaticCompressionMeters;
+    private readonly float[] _odeLeadingSuspensionLeftMeters;
+    private readonly float[] _odeLeadingSuspensionRightMeters;
     private readonly float _rollingResistanceNewtons;
     private readonly float _suspensionSpringNewtonsPerMeter;
     private readonly float _frontSuspensionSpringNewtonsPerMeter;
@@ -520,6 +522,21 @@ internal sealed class RuntimeDriveVehicle :
         _axleStaticCompressionMeters =
             BuildAxleStaticCompressions();
 
+        var leadingVisualAxleCount =
+            Math.Max(
+                _axles.Length,
+                2);
+
+        _odeLeadingSuspensionLeftMeters =
+            new float[
+                leadingVisualAxleCount];
+
+        _odeLeadingSuspensionRightMeters =
+            new float[
+                leadingVisualAxleCount];
+
+        ResetLeadingAxleSuspensionState();
+
         _odeFrontLeftSuspensionMeters =
             _frontStaticSuspensionMeters;
         _odeFrontRightSuspensionMeters =
@@ -790,27 +807,18 @@ internal sealed class RuntimeDriveVehicle :
         }
 
         var leadingAxleCount =
-            Math.Max(
-                _axles.Length,
-                2);
+            _odeLeadingSuspensionLeftMeters.Length;
 
         if (axleIndex <
             leadingAxleCount)
         {
-            if (axleIndex == 0)
-            {
-                leftMeters =
-                    FrontLeftSuspensionMeters;
-                rightMeters =
-                    FrontRightSuspensionMeters;
-            }
-            else
-            {
-                leftMeters =
-                    RearLeftSuspensionMeters;
-                rightMeters =
-                    RearRightSuspensionMeters;
-            }
+            leftMeters =
+                _odeLeadingSuspensionLeftMeters[
+                    axleIndex];
+
+            rightMeters =
+                _odeLeadingSuspensionRightMeters[
+                    axleIndex];
 
             return true;
         }
@@ -1084,6 +1092,8 @@ internal sealed class RuntimeDriveVehicle :
             _rearStaticSuspensionMeters;
         _odeRearRightSuspensionMeters =
             _rearStaticSuspensionMeters;
+
+        ResetLeadingAxleSuspensionState();
 
         ElectricalSystemEnabled = false;
         EngineRunning = false;
@@ -3244,7 +3254,8 @@ internal sealed class RuntimeDriveVehicle :
                     _frontSuspensionSpringNewtonsPerMeter *
                         _frontMaximumSuspensionCompressionMeters,
                     -_frontStaticSuspensionMeters,
-                    front: true);
+                    front: true,
+                    leadingAxleIndex: 0);
 
             contactCount +=
                 ApplyOdeAxleSuspension(
@@ -3261,7 +3272,8 @@ internal sealed class RuntimeDriveVehicle :
                     _rearSuspensionSpringNewtonsPerMeter *
                         _rearMaximumSuspensionCompressionMeters,
                     -_rearStaticSuspensionMeters,
-                    front: false);
+                    front: false,
+                    leadingAxleIndex: 1);
 
             _odeSuspensionActive =
                 contactCount >
@@ -3352,7 +3364,9 @@ internal sealed class RuntimeDriveVehicle :
                     maximumCompression,
                     maximumForce,
                     staticCompression,
-                    front);
+                    front,
+                    leadingAxleIndex:
+                        axleIndex);
         }
 
         _odeSuspensionActive =
@@ -3375,7 +3389,8 @@ internal sealed class RuntimeDriveVehicle :
         float maximumCompressionMeters,
         float maximumForceNewtons,
         float staticCompressionMeters,
-        bool front)
+        bool front,
+        int leadingAxleIndex)
     {
         var contacts =
             0;
@@ -3484,6 +3499,28 @@ internal sealed class RuntimeDriveVehicle :
                     0.0f,
                     maximumCompressionMeters);
 
+            if (leadingAxleIndex >=
+                    0 &&
+                leadingAxleIndex <
+                    _odeLeadingSuspensionLeftMeters.Length)
+            {
+                if (left)
+                {
+                    _odeLeadingSuspensionLeftMeters[
+                        leadingAxleIndex] =
+                        suspensionMeters;
+                }
+                else
+                {
+                    _odeLeadingSuspensionRightMeters[
+                        leadingAxleIndex] =
+                        suspensionMeters;
+                }
+            }
+
+            // Keep the original front/rear aggregate values for body-level
+            // diagnostics and the two-axle fallback path. They no longer
+            // act as the visual source for every axle on a multi-axle bus.
             if (front)
             {
                 if (left)
@@ -3513,6 +3550,43 @@ internal sealed class RuntimeDriveVehicle :
         }
 
         return contacts;
+    }
+
+    private void ResetLeadingAxleSuspensionState()
+    {
+        for (var axleIndex = 0;
+             axleIndex <
+                 _odeLeadingSuspensionLeftMeters.Length;
+             axleIndex++)
+        {
+            float neutral;
+
+            if (_axles.Length >
+                    0 &&
+                axleIndex <
+                    _axleStaticCompressionMeters.Length)
+            {
+                neutral =
+                    -_axleStaticCompressionMeters[
+                        axleIndex];
+            }
+            else
+            {
+                neutral =
+                    axleIndex ==
+                        0
+                        ? _frontStaticSuspensionMeters
+                        : _rearStaticSuspensionMeters;
+            }
+
+            _odeLeadingSuspensionLeftMeters[
+                axleIndex] =
+                neutral;
+
+            _odeLeadingSuspensionRightMeters[
+                axleIndex] =
+                neutral;
+        }
     }
 
     private float[] BuildAxleStaticCompressions() =>
