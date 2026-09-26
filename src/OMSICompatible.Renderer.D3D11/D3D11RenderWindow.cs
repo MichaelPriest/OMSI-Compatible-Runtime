@@ -7515,13 +7515,16 @@ public sealed class D3D11RenderWindow : Form
                     $"[traffic-ai] audio agent={agent.AgentIndex}; vehicle={Path.GetFileName(agent.VehiclePath)}; sounds={audio.ExistingFileCount}/{audio.SoundCount}");
             }
 
+            var engineRunning =
+                ResolveTrafficEngineRunning(
+                    agent.ScriptRuntime);
+
             state.Audio.Update(
                 agent.ScriptRuntime,
                 interiorView:
                     false,
                 engineRunning:
-                    ResolveTrafficEngineRunning(
-                        agent.ScriptRuntime),
+                    engineRunning,
                 listenerPosition,
                 new Vector3(
                     (float)agent.X,
@@ -7530,6 +7533,45 @@ public sealed class D3D11RenderWindow : Form
                 (float)agent.HeadingRadians,
                 forceVehicleSpatial:
                     true);
+
+            var activeLoops =
+                state.Audio
+                    .BuildActiveLoopDiagnostics();
+
+            var diagnosticSignature =
+                $"engineRunning={engineRunning};activeLoops={(activeLoops.Count == 0 ? "<none>" : string.Join(",", activeLoops))}";
+
+            if (!string.Equals(
+                    state.LastDiagnosticSignature,
+                    diagnosticSignature,
+                    StringComparison.Ordinal))
+            {
+                state.LastDiagnosticSignature =
+                    diagnosticSignature;
+
+                WriteTrafficAudioDiagnostics(
+                    agent,
+                    diagnosticSignature);
+            }
+        }
+    }
+
+    private static void WriteTrafficAudioDiagnostics(
+        RuntimeTrafficAgentInfo agent,
+        string diagnosticSignature)
+    {
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "traffic-audio.log"),
+                $"{DateTimeOffset.Now:O}|agent={agent.AgentIndex}|vehicle={Path.GetFileName(agent.VehiclePath)}|{diagnosticSignature}{Environment.NewLine}");
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[traffic-ai] unable to append audio diagnostics: {exception.Message}");
         }
     }
 
@@ -14272,7 +14314,14 @@ public sealed class D3D11RenderWindow : Form
 
     private sealed record TrafficOmsiAudioState(
         string VehiclePath,
-        RuntimeOmsiAudioHost Audio);
+        RuntimeOmsiAudioHost Audio)
+    {
+        public string? LastDiagnosticSignature
+        {
+            get;
+            set;
+        }
+    }
 
     protected override void Dispose(bool disposing)
     {

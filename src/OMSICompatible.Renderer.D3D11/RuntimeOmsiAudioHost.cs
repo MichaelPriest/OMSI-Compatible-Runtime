@@ -658,6 +658,25 @@ internal sealed class RuntimeOmsiAudioHost :
         return lines;
     }
 
+    public IReadOnlyList<string> BuildActiveLoopDiagnostics() =>
+        _sounds
+            .Where(
+                sound =>
+                    sound.Loop &&
+                    _loopVoices.TryGetValue(
+                        sound.Id,
+                        out var voice) &&
+                    voice.WasAudible &&
+                    voice.Volume.Volume >
+                        0.0001f)
+            .OrderBy(
+                static sound =>
+                    sound.Id)
+            .Select(
+                sound =>
+                    $"loop#{sound.Id}:{Path.GetFileName(sound.FilePath)}:{(IsEngineRelatedLoop(sound) ? "engine" : "other")}")
+            .ToArray();
+
     public static RuntimeOmsiAudioHost?
         TryCreate(
             string? soundConfigPath,
