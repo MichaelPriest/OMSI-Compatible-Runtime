@@ -1208,7 +1208,7 @@ internal sealed class LauncherForm : Form
                 contentRoot);
 
         _buses =
-            BusDiscovery.Discover(
+            BusDiscovery.DiscoverPlayerSelectable(
                 contentRoot);
 
         var selectedBus =
