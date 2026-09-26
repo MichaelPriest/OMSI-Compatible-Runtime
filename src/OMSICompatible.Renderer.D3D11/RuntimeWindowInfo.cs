@@ -313,7 +313,8 @@ public sealed record RuntimeRailSignalRouteStateInfo(
     long SignalObjectId,
     int SignalState,
     bool Reserved,
-    int? ReservedAgentIndex);
+    int? ReservedAgentIndex,
+    OmsiScriptRuntime? ScriptRuntime = null);
 
 public sealed record RuntimeTrafficAgentInfo(
     int AgentIndex,
