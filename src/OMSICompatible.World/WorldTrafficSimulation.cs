@@ -1141,7 +1141,30 @@ public sealed class WorldTrafficSimulation
             if (otherSegment.TrafficPriority >
                 currentSegment.TrafficPriority)
             {
-                return false;
+                var currentArrival =
+                    EstimateApproachArrivalSeconds(
+                        agent,
+                        currentSegment);
+
+                var otherArrival =
+                    EstimateApproachArrivalSeconds(
+                        other,
+                        otherSegment);
+
+                // Higher-priority traffic only reserves the conflict while it
+                // is actually close enough to matter. Without this arrival
+                // window, one distant vehicle on a long priority approach can
+                // hold a lower-priority queue indefinitely.
+                if (otherArrival <=
+                        4.0 ||
+                    otherArrival <=
+                        currentArrival +
+                        2.0)
+                {
+                    return false;
+                }
+
+                continue;
             }
 
             if (otherSegment.TrafficPriority ==
