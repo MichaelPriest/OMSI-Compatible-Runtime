@@ -3719,6 +3719,103 @@ try
             syntheticAiVehiclePath,
         "Zero-weight AI entry must not be selected for unscheduled traffic.");
 
+    var longRoadNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8400,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            1000.0)
+                    ],
+                    [1],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8401,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            1000.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            2000.0)
+                    ],
+                    Array.Empty<int>(),
+                    [0])
+            ],
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0);
+
+    var longRoadSimulation =
+        new WorldTrafficSimulation(
+            longRoadNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                5,
+            spawnExclusionCenter:
+                new WorldVector3(
+                    5000.0,
+                    0.0,
+                    5000.0),
+            spawnExclusionRadiusMeters:
+                45.0,
+            spawnIntervalSeconds:
+                0.25);
+
+    longRoadSimulation.Step(
+        2.0);
+
+    var longRoadAgents =
+        longRoadSimulation
+            .Snapshot()
+            .ToArray();
+
+    Require(
+        longRoadAgents.Length ==
+            5 &&
+        longRoadAgents
+            .Select(
+                static agent =>
+                    agent.DistanceMeters)
+            .Distinct()
+            .Count() ==
+            5,
+        "Runtime traffic remained capped by OMSI path count instead of available road length.");
+
     var obstacleSimulation =
         new WorldTrafficSimulation(
             trafficPaths,
