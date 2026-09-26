@@ -3986,6 +3986,129 @@ try
             2,
         "Runtime traffic did not activate the next AI after its stagger delay.");
 
+    var crossPathRetryNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    9100,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            100.0)
+                    ],
+                    [1],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    9101,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            100.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            200.0)
+                    ],
+                    Array.Empty<int>(),
+                    [0]),
+                new WorldTrafficPathSegment(
+                    2,
+                    9200,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            500.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            500.0,
+                            0.0,
+                            100.0)
+                    ],
+                    [3],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    3,
+                    9201,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            500.0,
+                            0.0,
+                            100.0),
+                        new WorldVector3(
+                            500.0,
+                            0.0,
+                            200.0)
+                    ],
+                    Array.Empty<int>(),
+                    [2])
+            ],
+            4,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var crossPathRetrySimulation =
+        new WorldTrafficSimulation(
+            crossPathRetryNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1,
+            spawnExclusionCenter:
+                new WorldVector3(
+                    0.0,
+                    0.0,
+                    50.0),
+            spawnExclusionRadiusMeters:
+                100.0);
+
+    var crossPathRetryAgent =
+        crossPathRetrySimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        crossPathRetryAgent.SegmentIndex ==
+            2,
+        "Runtime initial AI placement did not retry a different allowed path after the first path was excluded.");
+
     trafficSimulation.Step(
         20.0);
 
