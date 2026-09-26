@@ -6,317 +6,160 @@
 
     <Grid x:Name="RootGrid" Background="#08111C">
         <Grid.RowDefinitions>
-            <RowDefinition Height="60"/>
+            <RowDefinition Height="56"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="32"/>
         </Grid.RowDefinitions>
 
-        <!-- Custom title bar -->
-        <Grid
-            x:Name="AppTitleBar"
-            Grid.Row="0"
-            Background="#0B1725"
-            BorderBrush="#1C3045"
-            BorderThickness="0,0,0,1"
-            Padding="18,0">
+        <Grid x:Name="AppTitleBar"
+              Grid.Row="0"
+              Background="#0B1725"
+              Padding="18,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
-                <Border Width="34" Height="34" CornerRadius="8" Background="#F58B22">
-                    <FontIcon Glyph="&#xE806;" FontSize="18" Foreground="#07111C"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Spacing="10">
+                <Border Width="30"
+                        Height="30"
+                        Background="#F58B22">
+                    <TextBlock Text="O"
+                               Foreground="#08111C"
+                               FontWeight="Bold"
+                               FontSize="16"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
                 </Border>
                 <TextBlock Text="OMSI Compatible Runtime"
-                           Foreground="#F7FAFD"
+                           Foreground="White"
                            FontSize="15"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"/>
             </StackPanel>
-
-            <StackPanel Grid.Column="1"
-                        Orientation="Horizontal"
-                        Spacing="10"
-                        VerticalAlignment="Center">
-                <Button Background="Transparent" BorderThickness="0" Width="38" Height="38">
-                    <FontIcon Glyph="&#xEA8F;" Foreground="#C4D0DD" FontSize="15"/>
-                </Button>
-                <Border Width="32" Height="32" CornerRadius="16" Background="#243A53">
-                    <FontIcon Glyph="&#xE77B;" Foreground="#BFD7F0" FontSize="15"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-            </StackPanel>
+            <TextBlock Grid.Column="1"
+                       Text="Runtime x64 · Alpha"
+                       Foreground="#8297AC"
+                       FontSize="11"
+                       VerticalAlignment="Center"/>
         </Grid>
 
-        <!-- Main shell -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="220"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Sidebar -->
             <Border Grid.Column="0"
-                    Background="#091522"
-                    BorderBrush="#1B2D40"
-                    BorderThickness="0,0,1,0">
-                <Grid Padding="14,20,14,18">
+                    Background="#091522">
+                <Grid Padding="14">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <StackPanel Spacing="8">
+                    <StackPanel Spacing="6">
                         <Button x:Name="HomeNavButton"
-                                Height="52"
-                                HorizontalContentAlignment="Stretch"
-                                Background="#174799"
-                                BorderBrush="#2457AF"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Click="HomeNavButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xE80F;" Foreground="#9CC8FF" FontSize="20"/>
-                                <TextBlock Text="Início" Foreground="White" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
+                                Content="Início"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="HomeNavButton_Click"/>
                         <Button x:Name="PlayNavButton"
-                                Height="48"
-                                HorizontalContentAlignment="Stretch"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Click="NewSessionButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xE768;" Foreground="#C8D4E2" FontSize="20"/>
-                                <TextBlock Text="Jogar" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
+                                Content="Jogar"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="NewSessionButton_Click"/>
                         <Button x:Name="MapsNavButton"
-                                Height="48"
-                                HorizontalContentAlignment="Stretch"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                CornerRadius="10"
-                                Click="MapsNavButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xE707;" Foreground="#C8D4E2" FontSize="20"/>
-                                <TextBlock Text="Mapas" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
+                                Content="Mapas"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="MapsNavButton_Click"/>
                         <Button x:Name="VehiclesNavButton"
-                                Height="48"
-                                HorizontalContentAlignment="Stretch"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                CornerRadius="10"
-                                Click="VehiclesNavButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xE7C0;" Foreground="#C8D4E2" FontSize="20"/>
-                                <TextBlock Text="Veículos" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <Button Height="48" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xF0E2;" Foreground="#C8D4E2" FontSize="20"/>
-                                <TextBlock Text="Add-ons" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
+                                Content="Veículos"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="VehiclesNavButton_Click"/>
+                        <Button Content="Add-ons"
+                                Height="46"
+                                HorizontalContentAlignment="Left"/>
                         <Button x:Name="CompatibilityNavButton"
-                                Height="48"
-                                HorizontalContentAlignment="Stretch"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                CornerRadius="10"
-                                Click="CompatibilityNavButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xE73E;" Foreground="#C8D4E2" FontSize="20"/>
-                                <TextBlock Text="Compatibilidade" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
+                                Content="Compatibilidade"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="CompatibilityNavButton_Click"/>
                         <Button x:Name="ControlsNavButton"
-                                Height="48"
-                                HorizontalContentAlignment="Stretch"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                CornerRadius="10"
-                                Click="ControlsNavButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xE7FC;" Foreground="#C8D4E2" FontSize="20"/>
-                                <TextBlock Text="Controles" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
+                                Content="Controles"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="ControlsNavButton_Click"/>
                         <Button x:Name="SettingsNavButton"
-                                Height="48"
-                                HorizontalContentAlignment="Stretch"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                CornerRadius="10"
-                                Click="SettingsNavButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xE713;" Foreground="#C8D4E2" FontSize="20"/>
-                                <TextBlock Text="Configurações" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
+                                Content="Configurações"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="SettingsNavButton_Click"/>
                         <Button x:Name="DiagnosticsNavButton"
-                                Height="48"
-                                HorizontalContentAlignment="Stretch"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                CornerRadius="10"
-                                Click="DiagnosticsNavButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <FontIcon Glyph="&#xE9D9;" Foreground="#C8D4E2" FontSize="20"/>
-                                <TextBlock Text="Diagnóstico" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
+                                Content="Diagnóstico"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="DiagnosticsNavButton_Click"/>
                     </StackPanel>
 
-                    <StackPanel Grid.Row="1" Spacing="5" Margin="10,0,0,0">
-                        <Rectangle Height="1" Fill="#304052" Margin="0,0,0,10"/>
+                    <StackPanel Grid.Row="1" Spacing="3">
                         <TextBlock Text="Versão Alpha"
                                    Foreground="#AFC0D2"
                                    FontSize="12"/>
-                        <TextBlock Text="Runtime x64 · WinUI 3"
+                        <TextBlock Text="WinUI 3 · D3D11 · ODE x64"
                                    Foreground="#718398"
-                                   FontSize="11"/>
+                                   FontSize="10"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- HOME -->
             <ScrollViewer x:Name="HomeView"
                           Grid.Column="1"
-                          HorizontalScrollMode="Disabled"
                           VerticalScrollBarVisibility="Auto">
-                <Grid MaxWidth="1440"
-                      HorizontalAlignment="Center"
-                      Padding="14,14,14,18">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="360"/>
-                        <RowDefinition Height="116"/>
-                        <RowDefinition Height="230"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- Hero -->
-                    <Border Grid.Row="0"
-                            CornerRadius="14"
-                            Background="#121C29"
-                            BorderBrush="#20364C"
-                            BorderThickness="1"
-                           >
+                <StackPanel Margin="28"
+                            Spacing="16">
+                    <Border Background="#111E2D"
+                            Padding="24">
                         <Grid>
-                            <Image x:Name="HeroImage"
-                                   Stretch="UniformToFill"
-                                   Opacity="0.96"/>
-                            <Rectangle>
-                                <Rectangle.Fill>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                        <GradientStop Color="#F20A111B" Offset="0"/>
-                                        <GradientStop Color="#D50A111B" Offset="0.34"/>
-                                        <GradientStop Color="#780A111B" Offset="0.62"/>
-                                        <GradientStop Color="#110A111B" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Rectangle.Fill>
-                            </Rectangle>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="360"/>
+                            </Grid.ColumnDefinitions>
 
-                            <Grid Margin="48,34">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Text="SIMULAÇÃO   •   COMPATIBILIDADE   •   LIBERDADE"
-                                           Foreground="#CFD8E2"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           CharacterSpacing="200"/>
-
-                                <StackPanel Grid.Row="1"
-                                            MaxWidth="560"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Center"
+                            <StackPanel Spacing="10"
+                                        VerticalAlignment="Center">
+                                <TextBlock x:Name="HeroTitle"
+                                           Text="OMSI Compatible Runtime"
+                                           Foreground="White"
+                                           FontSize="40"
+                                           FontWeight="Bold"/>
+                                <TextBlock x:Name="HeroSubtitle"
+                                           Text="Runtime x64 compatível com conteúdo OMSI"
+                                           Foreground="#B8C7D7"
+                                           FontSize="15"/>
+                                <StackPanel Orientation="Horizontal"
                                             Spacing="10">
-                                    <TextBlock x:Name="HeroTitle"
-                                               Text="OMSI&#x0a;Compatible Runtime"
-                                               Foreground="White"
-                                               FontSize="48"
-                                               FontWeight="Bold"
-                                               LineHeight="50"/>
-                                    <TextBlock x:Name="HeroSubtitle"
-                                               Text="Runtime x64 compatível com conteúdo OMSI"
-                                               Foreground="#D8E0E9"
-                                               FontSize="17"/>
-                                    <TextBlock Text="Execute seus mapas, veículos e add-ons do OMSI com mais estabilidade, compatibilidade e desempenho em sistemas modernos."
-                                               Foreground="#D3DCE6"
-                                               FontSize="14"
-                                               TextWrapping="Wrap"
-                                               MaxWidth="520"
-                                               LineHeight="22"/>
-                                </StackPanel>
-
-                                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="14">
                                     <Button x:Name="ContinueButton"
-                                            Width="190"
-                                            Height="54"
-                                            Background="#0B65F4"
-                                            BorderBrush="#2A80FF"
-                                            BorderThickness="1"
-                                            CornerRadius="10"
-                                            Click="ContinueButton_Click">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
-                                            <FontIcon Glyph="&#xE768;" Foreground="White" FontSize="18"/>
-                                            <TextBlock Text="Continuar" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
-                                        </StackPanel>
-                                    </Button>
-
-                                    <Button Width="210"
-                                            Height="54"
-                                            Background="#182333"
-                                            BorderBrush="#33465B"
-                                            BorderThickness="1"
-                                            CornerRadius="10"
-                                            Click="NewSessionButton_Click">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
-                                            <FontIcon Glyph="&#xE710;" Foreground="White" FontSize="18"/>
-                                            <TextBlock Text="Nova sessão" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
-                                        </StackPanel>
-                                    </Button>
+                                            Content="Continuar"
+                                            Click="ContinueButton_Click"/>
+                                    <Button Content="Nova sessão"
+                                            Click="NewSessionButton_Click"/>
                                 </StackPanel>
+                            </StackPanel>
 
-                                <Border HorizontalAlignment="Right"
-                                        VerticalAlignment="Top"
-                                        Width="240"
-                                        Background="#A7273749"
-                                        BorderBrush="#4A6888"
-                                        BorderThickness="1"
-                                        CornerRadius="10"
-                                        Padding="16,10">
-                                    <StackPanel>
-                                        <TextBlock Text="Mais que um launcher."
-                                                   Foreground="#D7E5F3"
-                                                   FontSize="12"/>
-                                        <TextBlock Text="Uma ponte para novos horizontes."
-                                                   Foreground="#AFC1D5"
-                                                   FontSize="11"/>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
+                            <Border Grid.Column="1"
+                                    Background="#0A1420"
+                                    Height="190">
+                                <Image x:Name="HeroImage"
+                                       Stretch="UniformToFill"/>
+                            </Border>
                         </Grid>
                     </Border>
 
-                    <!-- Status cards -->
-                    <Grid Grid.Row="1" Margin="0,12,0,0" ColumnSpacing="10">
+                    <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
@@ -324,863 +167,447 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-
-                        <Border Grid.Column="0" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="15">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Border Width="44" Height="44" CornerRadius="9" Background="#18334F">
-                                    <FontIcon Glyph="&#xE713;" Foreground="#79B8FF" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <StackPanel Grid.Column="1" Spacing="4">
-                                    <TextBlock Text="Runtime x64" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <FontIcon Glyph="&#xE73E;" Foreground="#66E58D" FontSize="12"/>
-                                        <TextBlock x:Name="RuntimeStatusText" Text="Verificando" Foreground="#66E58D" FontSize="12"/>
-                                    </StackPanel>
-                                    <TextBlock Text="Standalone" Foreground="#8194AA" FontSize="10"/>
-                                </StackPanel>
-                            </Grid>
+                        <Border Grid.Column="0" Margin="0,0,6,0" Background="#111E2D" Padding="12">
+                            <StackPanel><TextBlock Text="Runtime x64" Foreground="#8FA2B7"/><TextBlock x:Name="RuntimeStatusText" Text="Verificando" Foreground="White"/></StackPanel>
                         </Border>
-
-                        <Border Grid.Column="1" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="15">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Border Width="44" Height="44" CornerRadius="9" Background="#18334F">
-                                    <FontIcon Glyph="&#xF0E2;" Foreground="#79B8FF" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <StackPanel Grid.Column="1" Spacing="4">
-                                    <TextBlock Text="ODE" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <FontIcon Glyph="&#xE73E;" Foreground="#66E58D" FontSize="12"/>
-                                        <TextBlock x:Name="OdeStatusText" Text="Verificando" Foreground="#66E58D" FontSize="12"/>
-                                    </StackPanel>
-                                    <TextBlock Text="Física e colisões" Foreground="#8194AA" FontSize="10"/>
-                                </StackPanel>
-                            </Grid>
+                        <Border Grid.Column="1" Margin="3,0" Background="#111E2D" Padding="12">
+                            <StackPanel><TextBlock Text="ODE" Foreground="#8FA2B7"/><TextBlock x:Name="OdeStatusText" Text="Verificando" Foreground="White"/></StackPanel>
                         </Border>
-
-                        <Border Grid.Column="2" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="15">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Border Width="44" Height="44" CornerRadius="9" Background="#18334F">
-                                    <FontIcon Glyph="&#xE7F4;" Foreground="#79B8FF" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <StackPanel Grid.Column="1" Spacing="4">
-                                    <TextBlock Text="D3D11" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <FontIcon Glyph="&#xE73E;" Foreground="#66E58D" FontSize="12"/>
-                                        <TextBlock x:Name="D3D11StatusText" Text="Verificando" Foreground="#66E58D" FontSize="12"/>
-                                    </StackPanel>
-                                    <TextBlock Text="Renderização moderna" Foreground="#8194AA" FontSize="10"/>
-                                </StackPanel>
-                            </Grid>
+                        <Border Grid.Column="2" Margin="3,0" Background="#111E2D" Padding="12">
+                            <StackPanel><TextBlock Text="D3D11" Foreground="#8FA2B7"/><TextBlock x:Name="D3D11StatusText" Text="Verificando" Foreground="White"/></StackPanel>
                         </Border>
-
-                        <Border Grid.Column="3" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="15">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Border Width="44" Height="44" CornerRadius="9" Background="#18334F">
-                                    <FontIcon Glyph="&#xE73E;" Foreground="#79B8FF" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <StackPanel Grid.Column="1" Spacing="4">
-                                    <TextBlock Text="Compatibilidade" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
-                                    <TextBlock x:Name="CompatibilityStatusText" Text="Boa" Foreground="#66E58D" FontSize="12"/>
-                                    <TextBlock Text="Conteúdo OMSI" Foreground="#8194AA" FontSize="10"/>
-                                </StackPanel>
-                            </Grid>
+                        <Border Grid.Column="3" Margin="3,0" Background="#111E2D" Padding="12">
+                            <StackPanel><TextBlock Text="Conteúdo" Foreground="#8FA2B7"/><TextBlock x:Name="CompatibilityStatusText" Text="Aguardando" Foreground="White"/></StackPanel>
                         </Border>
-
-                        <Border Grid.Column="4" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="15">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Border Width="44" Height="44" CornerRadius="9" Background="#18334F">
-                                    <FontIcon Glyph="&#xE895;" Foreground="#79B8FF" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <StackPanel Grid.Column="1" Spacing="4">
-                                    <TextBlock Text="Atualizações" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
-                                    <TextBlock x:Name="UpdateStatusText" Text="Canal alpha" Foreground="#F3C35C" FontSize="12"/>
-                                    <TextBlock Text="Canal de teste" Foreground="#8194AA" FontSize="10"/>
-                                </StackPanel>
-                            </Grid>
+                        <Border Grid.Column="4" Margin="6,0,0,0" Background="#111E2D" Padding="12">
+                            <StackPanel><TextBlock Text="Canal" Foreground="#8FA2B7"/><TextBlock x:Name="UpdateStatusText" Text="Alpha" Foreground="White"/></StackPanel>
                         </Border>
                     </Grid>
 
-                    <!-- Last session + library -->
-                    <Grid Grid.Row="2" Margin="0,12,0,0" ColumnSpacing="12">
+                    <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.55*"/>
-                            <ColumnDefinition Width="1*"/>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0" Background="#101C2A" BorderBrush="#24384E" BorderThickness="1" CornerRadius="12" Padding="16">
+                        <Border Grid.Column="0"
+                                Margin="0,0,8,0"
+                                Background="#111E2D"
+                                Padding="16">
                             <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="34"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-                                <Grid>
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <StackPanel Orientation="Horizontal" Spacing="9">
-                                        <FontIcon Glyph="&#xE823;" Foreground="White" FontSize="18"/>
-                                        <TextBlock Text="Última sessão" Foreground="White" FontSize="14" FontWeight="SemiBold"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="LastSessionDateText" Grid.Column="1" Text="—" Foreground="#8598AD" FontSize="11"/>
-                                </Grid>
-
-                                <Grid Grid.Row="1" ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="300"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <Border CornerRadius="8" Background="#0A1420">
-                                        <Image x:Name="LastSessionImage" Stretch="UniformToFill"/>
-                                    </Border>
-
-                                    <Grid Grid.Column="1">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="*"/>
-                                            <RowDefinition Height="*"/>
-                                            <RowDefinition Height="*"/>
-                                            <RowDefinition Height="*"/>
-                                        </Grid.RowDefinitions>
-                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="Mapa" Foreground="#8EA0B5" FontSize="12" Width="56"/>
-                                            <TextBlock x:Name="LastMapText" Text="—" Foreground="White" FontSize="12" FontWeight="SemiBold"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="Ônibus" Foreground="#8EA0B5" FontSize="12" Width="56"/>
-                                            <TextBlock x:Name="LastBusText" Text="—" Foreground="White" FontSize="12" FontWeight="SemiBold"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="Ponto" Foreground="#8EA0B5" FontSize="12" Width="56"/>
-                                            <TextBlock x:Name="LastSpawnText" Text="—" Foreground="#D8E3EE" FontSize="12"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="Horário" Foreground="#8EA0B5" FontSize="12" Width="56"/>
-                                            <TextBlock x:Name="LastTimeText" Text="—" Foreground="#D8E3EE" FontSize="12"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="220"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Image x:Name="LastSessionImage"
+                                       Height="140"
+                                       Stretch="UniformToFill"/>
+                                <StackPanel Grid.Column="1"
+                                            Margin="16,0,0,0"
+                                            Spacing="7">
+                                    <TextBlock Text="Última sessão"
+                                               Foreground="White"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="LastSessionDateText" Text="Nenhuma sessão" Foreground="#8FA2B7"/>
+                                    <TextBlock x:Name="LastMapText" Text="—" Foreground="White"/>
+                                    <TextBlock x:Name="LastBusText" Text="—" Foreground="#C9D5E1"/>
+                                    <TextBlock x:Name="LastSpawnText" Text="—" Foreground="#9EAFBF"/>
+                                    <TextBlock x:Name="LastTimeText" Text="—" Foreground="#9EAFBF"/>
+                                </StackPanel>
                             </Grid>
                         </Border>
 
-                        <Border Grid.Column="1" Background="#101C2A" BorderBrush="#24384E" BorderThickness="1" CornerRadius="12" Padding="16">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="34"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Spacing="9">
-                                    <FontIcon Glyph="&#xE9D2;" Foreground="White" FontSize="18"/>
-                                    <TextBlock Text="Estatísticas da biblioteca" Foreground="White" FontSize="14" FontWeight="SemiBold"/>
-                                </StackPanel>
-                                <Grid Grid.Row="1" ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <Border Grid.Column="0" Background="#172B41" CornerRadius="10" Padding="12">
-                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
-                                            <FontIcon Glyph="&#xE707;" Foreground="#428CFF" FontSize="25"/>
-                                            <TextBlock x:Name="MapCountText" Text="0" Foreground="White" FontSize="27" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="mapas" Foreground="#D5DFE9" FontSize="12"/>
-                                            <TextBlock Text="Instalados" Foreground="#8FA2B7" FontSize="10"/>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Border Grid.Column="1" Background="#172B41" CornerRadius="10" Padding="12">
-                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
-                                            <FontIcon Glyph="&#xE7C0;" Foreground="#62B3FF" FontSize="25"/>
-                                            <TextBlock x:Name="BusCountText" Text="0" Foreground="White" FontSize="27" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="veículos" Foreground="#D5DFE9" FontSize="12"/>
-                                            <TextBlock Text="Disponíveis" Foreground="#8FA2B7" FontSize="10"/>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Border Grid.Column="2" Background="#172B41" CornerRadius="10" Padding="12">
-                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
-                                            <FontIcon Glyph="&#xF0E2;" Foreground="#75B8FF" FontSize="25"/>
-                                            <TextBlock x:Name="ObjectCountText" Text="—" Foreground="White" FontSize="27" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="objetos" Foreground="#D5DFE9" FontSize="12"/>
-                                            <TextBlock Text="Na biblioteca" Foreground="#8FA2B7" FontSize="10"/>
-                                        </StackPanel>
-                                    </Border>
-                                </Grid>
-                            </Grid>
+                        <Border Grid.Column="1"
+                                Margin="8,0,0,0"
+                                Background="#111E2D"
+                                Padding="16">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Biblioteca"
+                                           Foreground="White"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock Text="Mapas" Foreground="#8FA2B7"/>
+                                <TextBlock x:Name="MapCountText" Text="0" Foreground="White" FontSize="24"/>
+                                <TextBlock Text="Veículos" Foreground="#8FA2B7"/>
+                                <TextBlock x:Name="BusCountText" Text="0" Foreground="White" FontSize="24"/>
+                                <TextBlock Text="Objetos" Foreground="#8FA2B7"/>
+                                <TextBlock x:Name="ObjectCountText" Text="0" Foreground="White" FontSize="24"/>
+                            </StackPanel>
                         </Border>
                     </Grid>
-                </Grid>
+                </StackPanel>
             </ScrollViewer>
 
-            <!-- NEW SESSION / existing real controls -->
             <Grid x:Name="SessionView"
                   Grid.Column="1"
                   Visibility="Collapsed"
                   Background="#0A1420">
-                <ScrollViewer HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
-                    <Grid MaxWidth="1240" HorizontalAlignment="Center" Padding="28">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="28"
+                                Spacing="14">
+                        <TextBlock Text="Nova sessão"
+                                   Foreground="White"
+                                   FontSize="32"
+                                   FontWeight="Bold"/>
+                        <TextBox x:Name="ContentPathBox"
+                                 Header="Biblioteca OMSI"
+                                 PlaceholderText="Pasta raiz do OMSI"/>
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8">
+                            <Button Content="Procurar pasta"
+                                    Click="BrowseButton_Click"/>
+                            <Button Content="Atualizar conteúdo"
+                                    Click="RefreshButton_Click"/>
+                        </StackPanel>
+                        <ComboBox x:Name="MapBox"
+                                  Header="Mapa"
+                                  DisplayMemberPath="FolderName"
+                                  SelectionChanged="MapBox_SelectionChanged"/>
+                        <ComboBox x:Name="SpawnBox"
+                                  Header="Ponto inicial"
+                                  DisplayMemberPath="Name"
+                                  SelectionChanged="SelectionChanged"/>
+                        <CheckBox x:Name="NoBusCheckBox"
+                                  Content="Iniciar sem ônibus"
+                                  Checked="NoBusModeChanged"
+                                  Unchecked="NoBusModeChanged"/>
 
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="Nova sessão" Foreground="White" FontSize="38" FontWeight="Bold"/>
-                                <TextBlock Text="Configure mapa, ônibus e ponto inicial antes de entrar no simulador."
-                                           Foreground="#92A4B8" FontSize="14"/>
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    Content="Voltar ao início"
-                                    Padding="16,10"
-                                    Click="HomeNavButton_Click"/>
+                            <ComboBox x:Name="CarroceriaBox"
+                                      Grid.Column="0"
+                                      Margin="0,0,6,0"
+                                      Header="Carroceria"
+                                      SelectionChanged="CarroceriaBox_SelectionChanged"/>
+                            <ComboBox x:Name="ModeloBox"
+                                      Grid.Column="1"
+                                      Margin="3,0"
+                                      Header="Modelo"
+                                      SelectionChanged="ModeloBox_SelectionChanged"/>
+                            <ComboBox x:Name="SkinBox"
+                                      Grid.Column="2"
+                                      Margin="6,0,0,0"
+                                      Header="Skin / repaint"
+                                      DisplayMemberPath="Name"
+                                      SelectionChanged="SkinBox_SelectionChanged"/>
                         </Grid>
 
-                        <Grid Grid.Row="1" Margin="0,24,0,0" ColumnSpacing="18">
+                        <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="0.9*"/>
-                                <ColumnDefinition Width="1.1*"/>
+                                <ColumnDefinition Width="300"/>
+                                <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-
-                            <Border Grid.Column="0" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="14" Padding="18">
-                                <StackPanel Spacing="13">
-                                    <TextBlock Text="Mundo" Foreground="White" FontSize="20" FontWeight="SemiBold"/>
-                                    <TextBox x:Name="ContentPathBox" Header="Biblioteca OMSI" PlaceholderText="Pasta raiz do OMSI"/>
-                                    <Grid ColumnSpacing="8">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Button Grid.Column="0" Content="Procurar pasta" Click="BrowseButton_Click"/>
-                                        <Button Grid.Column="1" Content="Atualizar conteúdo" Click="RefreshButton_Click"/>
-                                    </Grid>
-                                    <ComboBox x:Name="MapBox" Header="Mapa" DisplayMemberPath="FolderName"
-                                              SelectionChanged="MapBox_SelectionChanged"/>
-                                    <ComboBox x:Name="SpawnBox" Header="Ponto inicial" DisplayMemberPath="Name"
-                                              SelectionChanged="SelectionChanged"/>
-                                    <CheckBox x:Name="NoBusCheckBox" Content="Iniciar sem ônibus"
-                                              Checked="NoBusModeChanged" Unchecked="NoBusModeChanged"/>
-                                </StackPanel>
+                            <Border Background="#111E2D"
+                                    Height="190">
+                                <Grid>
+                                    <Image x:Name="BusPreviewImage"
+                                           Stretch="UniformToFill"/>
+                                    <TextBlock x:Name="BusPreviewEmptyText"
+                                               Text="Sem imagem de prévia"
+                                               Foreground="#71869B"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
                             </Border>
-
-                            <Border Grid.Column="1" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="14" Padding="18">
-                                <StackPanel Spacing="13">
-                                    <TextBlock Text="Veículo" Foreground="White" FontSize="20" FontWeight="SemiBold"/>
-                                    <Grid ColumnSpacing="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <ComboBox x:Name="CarroceriaBox" Grid.Column="0" Header="Carroceria"
-                                                  SelectionChanged="CarroceriaBox_SelectionChanged"/>
-                                        <ComboBox x:Name="ModeloBox" Grid.Column="1" Header="Modelo"
-                                                  SelectionChanged="ModeloBox_SelectionChanged"/>
-                                        <ComboBox x:Name="SkinBox" Grid.Column="2" Header="Skin / repaint" DisplayMemberPath="Name"
-                                                  SelectionChanged="SkinBox_SelectionChanged"/>
-                                    </Grid>
-
-                                    <Grid ColumnSpacing="16">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="240"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Border Height="180" Background="#09121E" CornerRadius="10">
-                                            <Grid>
-                                                <Image x:Name="BusPreviewImage" Stretch="UniformToFill"/>
-                                                <TextBlock x:Name="BusPreviewEmptyText" Text="Sem imagem de prévia"
-                                                           Foreground="#71869B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </Border>
-                                        <StackPanel Grid.Column="1" Spacing="7">
-                                            <TextBlock x:Name="BusPreviewTitle" Text="Nenhum ônibus selecionado"
-                                                       Foreground="White" FontSize="22" FontWeight="SemiBold"/>
-                                            <TextBlock x:Name="BusPreviewSubtitle" Text="" Foreground="#9EB0C3" FontSize="13"/>
-                                            <TextBlock x:Name="BusPreviewSkin" Text="" Foreground="#7F94AA" FontSize="12"/>
-                                            <Button x:Name="PlayButton" Height="54" Margin="0,18,0,0"
-                                                    Content="▶  INICIAR SIMULAÇÃO"
-                                                    Background="#0B65F4"
-                                                    Foreground="White"
-                                                    FontWeight="Bold"
-                                                    Click="PlayButton_Click"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
+                            <StackPanel Grid.Column="1"
+                                        Margin="16,0,0,0"
+                                        Spacing="8">
+                                <TextBlock x:Name="BusPreviewTitle"
+                                           Text="Nenhum ônibus selecionado"
+                                           Foreground="White"
+                                           FontSize="22"/>
+                                <TextBlock x:Name="BusPreviewSubtitle" Text="" Foreground="#AFC0D2"/>
+                                <TextBlock x:Name="BusPreviewSkin" Text="" Foreground="#879AAD"/>
+                                <Button x:Name="PlayButton"
+                                        Content="INICIAR SIMULAÇÃO"
+                                        Height="50"
+                                        Click="PlayButton_Click"/>
+                            </StackPanel>
                         </Grid>
-                    </Grid>
+                    </StackPanel>
                 </ScrollViewer>
             </Grid>
 
-            <!-- MAP LIBRARY -->
             <Grid x:Name="MapsView"
                   Grid.Column="1"
                   Visibility="Collapsed"
                   Background="#0A1420">
-                <Grid MaxWidth="1440"
-                      HorizontalAlignment="Center"
-                      Padding="28,24,28,20">
+                <Grid Margin="28">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-
-                    <Grid>
+                    <TextBlock Text="Mapas"
+                               Foreground="White"
+                               FontSize="32"
+                               FontWeight="Bold"/>
+                    <Grid Grid.Row="1" Margin="0,12,0,12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="5">
-                            <TextBlock Text="Mapas"
-                                       Foreground="White"
-                                       FontSize="34"
-                                       FontWeight="Bold"/>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="Biblioteca OMSI detectada no conteúdo configurado."
-                                           Foreground="#92A4B8"
-                                           FontSize="13"/>
-                                <TextBlock Text="•" Foreground="#52677D"/>
-                                <TextBlock x:Name="MapsResultCountText"
-                                           Text="0 mapas"
-                                           Foreground="#76B9FF"
-                                           FontSize="13"/>
-                            </StackPanel>
-                        </StackPanel>
-
                         <TextBox x:Name="MapsSearchBox"
-                                 Grid.Column="1"
-                                 Width="330"
-                                 Height="42"
-                                 PlaceholderText="Buscar mapa..."
-                                 TextChanged="MapsSearchBox_TextChanged"
-                                 VerticalAlignment="Center"/>
+                                 PlaceholderText="Pesquisar mapas"
+                                 TextChanged="MapsSearchBox_TextChanged"/>
+                        <TextBlock x:Name="MapsResultCountText"
+                                   Grid.Column="1"
+                                   Margin="12,0,0,0"
+                                   Text="0 mapas"
+                                   Foreground="#8FA2B7"
+                                   VerticalAlignment="Center"/>
                     </Grid>
-
                     <GridView x:Name="MapsGrid"
-                              Grid.Row="1"
-                              Margin="0,20,0,0"
-                              SelectionMode="None"
+                              Grid.Row="2"
                               IsItemClickEnabled="True"
-                              ItemClick="MapLibraryItem_Click"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto">
-                        <GridView.ItemTemplate>
-                            <DataTemplate>
-                                <Border Width="326"
-                                        Height="270"
-                                        Margin="0,0,12,12"
-                                        Background="#111E2D"
-                                        BorderBrush="#233A50"
-                                        BorderThickness="1"
-                                        CornerRadius="14">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="156"/>
-                                            <RowDefinition Height="*"/>
-                                        </Grid.RowDefinitions>
-                                        <Grid Background="#08121D">
-                                            <FontIcon Glyph="&#xE707;"
-                                                      Foreground="#31516D"
-                                                      FontSize="40"
-                                                      HorizontalAlignment="Center"
-                                                      VerticalAlignment="Center"/>
-                                            <Image Source="{Binding Preview}"
-                                                   Stretch="UniformToFill"/>
-                                        </Grid>
-                                        <Grid Grid.Row="1" Padding="15,12">
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="*"/>
-                                            </Grid.RowDefinitions>
-                                            <TextBlock Text="{Binding Title}"
-                                                       Foreground="White"
-                                                       FontSize="16"
-                                                       FontWeight="SemiBold"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Grid.Row="1"
-                                                       Text="{Binding Detail}"
-                                                       Foreground="#8FA2B7"
-                                                       FontSize="11"
-                                                       Margin="0,5,0,0"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                            <StackPanel Grid.Row="2"
-                                                        Orientation="Horizontal"
-                                                        Spacing="7"
-                                                        VerticalAlignment="Bottom">
-                                                <FontIcon Glyph="&#xE768;"
-                                                          Foreground="#5EA4FF"
-                                                          FontSize="13"/>
-                                                <TextBlock Text="Abrir na Nova sessão"
-                                                           Foreground="#9FC8FF"
-                                                           FontSize="11"/>
-                                            </StackPanel>
-                                        </Grid>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </GridView.ItemTemplate>
-                    </GridView>
+                              SelectionMode="None"
+                              ItemClick="MapLibraryItem_Click"/>
                 </Grid>
             </Grid>
 
-            <!-- CONTROLS -->
-            <Grid x:Name="ControlsView"
-                  Grid.Column="1"
-                  Visibility="Collapsed"
-                  Background="#0A1420">
-                <StackPanel Margin="28"
-                            Spacing="12">
-                    <TextBlock Text="Controles"
-                               Foreground="White"
-                               FontSize="34"
-                               FontWeight="Bold"/>
-                    <TextBlock x:Name="ControlsSubtitleText"
-                               Text="Leitura real de keyboard.cfg e gamectrler.cfg."
-                               Foreground="#92A4B8"
-                               FontSize="13"/>
-                    <Button Content="Atualizar"
-                            HorizontalAlignment="Left"
-                            Click="RefreshControlsButton_Click"/>
-
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="16">
-                        <TextBlock x:Name="ControlsBindingCountText" Text="0"/>
-                        <TextBlock x:Name="ControlsKeyCountText" Text="0"/>
-                        <TextBlock x:Name="ControlsControllerCountText" Text="0"/>
-                        <TextBlock x:Name="ControlsControllerStateText" Text="OFF"/>
-                    </StackPanel>
-
-                    <ListView x:Name="ControlsKeyboardList"
-                              Height="180"
-                              SelectionMode="None"/>
-
-                    <TextBlock x:Name="ControlsKeyboardPathText"
-                               Text="keyboard.cfg"
-                               TextWrapping="Wrap"/>
-                    <TextBlock x:Name="ControlsControllerPathText"
-                               Text="gamectrler.cfg"
-                               TextWrapping="Wrap"/>
-
-                    <StackPanel Visibility="Collapsed">
-                        <TextBlock x:Name="ControlsKeyboardCountText" Text="0"/>
-                        <TextBlock x:Name="ControlsKeyTableCountText" Text="0"/>
-                        <TextBlock x:Name="ControlsKeyTableFileText" Text=""/>
-                        <TextBlock x:Name="ControlsGameControllerStateText" Text=""/>
-                    </StackPanel>
-                </StackPanel>
-            </Grid>
-
-            <!-- SETTINGS -->
-            <Grid x:Name="SettingsView"
-                  Grid.Column="1"
-                  Visibility="Collapsed"
-                  Background="#0A1420">
-                <StackPanel Margin="28"
-                            Spacing="12">
-                    <TextBlock Text="Configurações"
-                               Foreground="White"
-                               FontSize="34"
-                               FontWeight="Bold"/>
-                    <TextBlock Text="Diagnóstico temporário da árvore XAML de configurações."
-                               Foreground="#92A4B8"
-                               FontSize="13"/>
-
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="8">
-                        <Button Content="Importar options.cfg"
-                                Click="ImportOmsiOptionsButton_Click"/>
-                        <Button Content="Salvar"
-                                Click="SaveRuntimeOptionsButton_Click"/>
-                    </StackPanel>
-
-                    <StackPanel Visibility="Collapsed">
-                        <TextBox x:Name="SettingsLanguageBox"/>
-                        <TextBox x:Name="SettingsTargetFpsBox"/>
-                        <TextBox x:Name="SettingsNeighborTilesBox"/>
-                        <CheckBox x:Name="SettingsAutoSaveCheck"/>
-                        <CheckBox x:Name="SettingsCurrentTimeCheck"/>
-                        <CheckBox x:Name="SettingsCurrentDateCheck"/>
-                        <TextBox x:Name="SettingsObjectDistanceBox"/>
-                        <TextBox x:Name="SettingsTextureMemoryBox"/>
-                        <TextBox x:Name="SettingsAnisotropicBox"/>
-                        <CheckBox x:Name="SettingsShadowsCheck"/>
-                        <CheckBox x:Name="SettingsNightMapCheck"/>
-                        <CheckBox x:Name="SettingsLightMapCheck"/>
-                        <TextBox x:Name="SettingsMasterVolumeBox"/>
-                        <TextBox x:Name="SettingsRoadTrafficBox"/>
-                        <TextBox x:Name="SettingsPassengerFactorBox"/>
-                        <CheckBox x:Name="SettingsAiSoundsCheck"/>
-                        <CheckBox x:Name="SettingsScenerySoundsCheck"/>
-                        <CheckBox x:Name="SettingsGameControllerCheck"/>
-                        <TextBox x:Name="SettingsStreamingRadiusBox"/>
-                        <CheckBox x:Name="SettingsVsyncCheck"/>
-                        <CheckBox x:Name="SettingsBorderlessCheck"/>
-                        <CheckBox x:Name="SettingsHardwareGpuCheck"/>
-                        <CheckBox x:Name="SettingsShowFpsCheck"/>
-                        <CheckBox x:Name="SettingsDiagnosticsCheck"/>
-                    </StackPanel>
-                </StackPanel>
-            </Grid>
-
-            <!-- COMPATIBILITY -->
-            <Grid x:Name="CompatibilityView"
-                  Grid.Column="1"
-                  Visibility="Collapsed"
-                  Background="#0A1420">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <Grid MaxWidth="1320"
-                          HorizontalAlignment="Center"
-                          Padding="28,24,28,28">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <StackPanel Spacing="5">
-                            <TextBlock Text="Compatibilidade"
-                                       Foreground="White"
-                                       FontSize="34"
-                                       FontWeight="Bold"/>
-                            <TextBlock Text="Leitura direta da biblioteca OMSI e dos componentes do runtime."
-                                       Foreground="#92A4B8"
-                                       FontSize="13"/>
-                        </StackPanel>
-
-                        <Grid Grid.Row="1"
-                              Margin="0,22,0,0"
-                              ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-
-                            <Border Grid.Column="0" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="Mapas" Foreground="#8FA2B7" FontSize="11"/>
-                                    <TextBlock x:Name="CompatibilityMapCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
-                                    <TextBlock Text="global.cfg detectado" Foreground="#6F8499" FontSize="10"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Column="1" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="Veículos" Foreground="#8FA2B7" FontSize="11"/>
-                                    <TextBlock x:Name="CompatibilityVehicleCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
-                                    <TextBlock Text=".bus lidos pelo parser" Foreground="#6F8499" FontSize="10"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Column="2" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="Objetos" Foreground="#8FA2B7" FontSize="11"/>
-                                    <TextBlock x:Name="CompatibilityObjectCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
-                                    <TextBlock Text=".sco encontrados" Foreground="#6F8499" FontSize="10"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Column="3" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="Scripts ausentes" Foreground="#8FA2B7" FontSize="11"/>
-                                    <TextBlock x:Name="CompatibilityMissingScriptsText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
-                                    <TextBlock Text="referências registradas" Foreground="#6F8499" FontSize="10"/>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-
-                        <Border Grid.Row="2"
-                                Margin="0,14,0,0"
-                                Background="#111E2D"
-                                BorderBrush="#233A50"
-                                BorderThickness="1"
-                                CornerRadius="14"
-                                Padding="18">
-                            <StackPanel Spacing="12">
-                                <TextBlock Text="Verificações reais"
-                                           Foreground="White"
-                                           FontSize="17"
-                                           FontWeight="SemiBold"/>
-                                <TextBlock x:Name="CompatibilityContentRootText" Text="Biblioteca: não configurada" Foreground="#C7D4E1" FontSize="12"/>
-                                <TextBlock x:Name="CompatibilityRuntimeText" Text="Runtime: verificando" Foreground="#C7D4E1" FontSize="12"/>
-                                <TextBlock x:Name="CompatibilityOdeText" Text="ODE: verificando" Foreground="#C7D4E1" FontSize="12"/>
-                                <TextBlock x:Name="CompatibilityRendererText" Text="D3D11: verificando" Foreground="#C7D4E1" FontSize="12"/>
-                                <TextBlock x:Name="CompatibilityModelText" Text="model.cfg: aguardando biblioteca" Foreground="#C7D4E1" FontSize="12"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </ScrollViewer>
-            </Grid>
-
-            <!-- DIAGNOSTICS -->
-            <Grid x:Name="DiagnosticsView"
-                  Grid.Column="1"
-                  Visibility="Collapsed"
-                  Background="#0A1420">
-                <Grid MaxWidth="1320"
-                      HorizontalAlignment="Center"
-                      Padding="28,24,28,28">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="5">
-                            <TextBlock Text="Diagnóstico"
-                                       Foreground="White"
-                                       FontSize="34"
-                                       FontWeight="Bold"/>
-                            <TextBlock Text="Estado do launcher, runtime e conteúdo carregado."
-                                       Foreground="#92A4B8"
-                                       FontSize="13"/>
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <Button Content="Copiar diagnóstico"
-                                    Padding="14,9"
-                                    Click="CopyDiagnosticsButton_Click"/>
-                            <Button Content="Gerar relatório"
-                                    Padding="14,9"
-                                    Click="GenerateDiagnosticsReportButton_Click"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <Border Grid.Row="1"
-                            Margin="0,20,0,0"
-                            Background="#111E2D"
-                            BorderBrush="#233A50"
-                            BorderThickness="1"
-                            CornerRadius="12"
-                            Padding="16">
-                        <Grid ColumnSpacing="18">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Spacing="5">
-                                <TextBlock Text="Runtime" Foreground="#8FA2B7" FontSize="11"/>
-                                <TextBlock x:Name="DiagnosticsRuntimeText" Text="Verificando..." Foreground="White" FontSize="14" FontWeight="SemiBold"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="5">
-                                <TextBlock Text="Biblioteca OMSI" Foreground="#8FA2B7" FontSize="11"/>
-                                <TextBlock x:Name="DiagnosticsContentText" Text="Não configurada" Foreground="White" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2" Spacing="5">
-                                <TextBlock Text="Relatório" Foreground="#8FA2B7" FontSize="11"/>
-                                <TextBlock x:Name="DiagnosticsReportPathText" Text="Ainda não gerado" Foreground="White" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <TextBox x:Name="DiagnosticsTextBox"
-                             Grid.Row="2"
-                             Margin="0,14,0,0"
-                             IsReadOnly="True"
-                             AcceptsReturn="True"
-                             TextWrapping="NoWrap"
-                             FontFamily="Consolas"
-                             FontSize="12"
-                             Background="#08121D"
-                             Foreground="#C8D4E2"
-                             BorderBrush="#233A50"
-                             BorderThickness="1"
-                             Padding="14"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                             ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
-                </Grid>
-            </Grid>
-
-            <!-- VEHICLE LIBRARY -->
             <Grid x:Name="VehiclesView"
                   Grid.Column="1"
                   Visibility="Collapsed"
                   Background="#0A1420">
-                <Grid MaxWidth="1440"
-                      HorizontalAlignment="Center"
-                      Padding="28,24,28,20">
+                <Grid Margin="28">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-
-                    <Grid>
+                    <TextBlock Text="Veículos"
+                               Foreground="White"
+                               FontSize="32"
+                               FontWeight="Bold"/>
+                    <Grid Grid.Row="1" Margin="0,12,0,12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="5">
-                            <TextBlock Text="Biblioteca de veículos"
-                                       Foreground="White"
-                                       FontSize="34"
-                                       FontWeight="Bold"/>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="Veículos .bus encontrados na biblioteca OMSI."
-                                           Foreground="#92A4B8"
-                                           FontSize="13"/>
-                                <TextBlock Text="•" Foreground="#52677D"/>
-                                <TextBlock x:Name="VehiclesResultCountText"
-                                           Text="0 veículos"
-                                           Foreground="#76B9FF"
-                                           FontSize="13"/>
-                            </StackPanel>
+                        <TextBox x:Name="VehiclesSearchBox"
+                                 PlaceholderText="Pesquisar veículos"
+                                 TextChanged="VehiclesSearchBox_TextChanged"/>
+                        <TextBlock x:Name="VehiclesResultCountText"
+                                   Grid.Column="1"
+                                   Margin="12,0,0,0"
+                                   Text="0 veículos"
+                                   Foreground="#8FA2B7"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                    <GridView x:Name="VehiclesGrid"
+                              Grid.Row="2"
+                              IsItemClickEnabled="True"
+                              SelectionMode="None"
+                              ItemClick="VehicleLibraryItem_Click"/>
+                </Grid>
+            </Grid>
+
+            <Grid x:Name="ControlsView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <Grid Margin="28">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="Controles" Foreground="White" FontSize="32" FontWeight="Bold"/>
+                        <TextBlock x:Name="ControlsSubtitleText" Text="Arquivos reais de entrada OMSI" Foreground="#8FA2B7"/>
+                    </StackPanel>
+                    <StackPanel Grid.Row="1"
+                                Margin="0,12,0,12"
+                                Orientation="Horizontal"
+                                Spacing="12">
+                        <Button Content="Atualizar" Click="RefreshControlsButton_Click"/>
+                        <TextBlock x:Name="ControlsBindingCountText" Text="0" Foreground="White"/>
+                        <TextBlock x:Name="ControlsKeyCountText" Text="0" Foreground="White"/>
+                        <TextBlock x:Name="ControlsControllerCountText" Text="0" Foreground="White"/>
+                        <TextBlock x:Name="ControlsControllerStateText" Text="OFF" Foreground="White"/>
+                    </StackPanel>
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ListView x:Name="ControlsKeyboardList"
+                                  SelectionMode="None"/>
+                        <StackPanel Grid.Column="1"
+                                    Margin="14,0,0,0"
+                                    Spacing="8">
+                            <TextBlock x:Name="ControlsKeyboardPathText" Text="keyboard.cfg" TextWrapping="Wrap" Foreground="#AFC0D2"/>
+                            <TextBlock x:Name="ControlsControllerPathText" Text="gamectrler.cfg" TextWrapping="Wrap" Foreground="#AFC0D2"/>
+                            <TextBlock x:Name="ControlsKeyboardCountText" Text="0" Foreground="#AFC0D2"/>
+                            <TextBlock x:Name="ControlsKeyTableCountText" Text="0" Foreground="#AFC0D2"/>
+                            <TextBlock x:Name="ControlsKeyTableFileText" Text="" TextWrapping="Wrap" Foreground="#AFC0D2"/>
+                            <TextBlock x:Name="ControlsGameControllerStateText" Text="" Foreground="#AFC0D2"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <Grid x:Name="SettingsView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="28"
+                                Spacing="10">
+                        <TextBlock Text="Configurações"
+                                   Foreground="White"
+                                   FontSize="32"
+                                   FontWeight="Bold"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Importar options.cfg" Click="ImportOmsiOptionsButton_Click"/>
+                            <Button Content="Salvar" Click="SaveRuntimeOptionsButton_Click"/>
                         </StackPanel>
 
-                        <TextBox x:Name="VehiclesSearchBox"
-                                 Grid.Column="1"
-                                 Width="330"
-                                 Height="42"
-                                 PlaceholderText="Buscar fabricante, modelo ou skin..."
-                                 TextChanged="VehiclesSearchBox_TextChanged"
-                                 VerticalAlignment="Center"/>
-                    </Grid>
+                        <TextBox x:Name="SettingsLanguageBox" Header="Idioma"/>
+                        <TextBox x:Name="SettingsTargetFpsBox" Header="FPS alvo"/>
+                        <TextBox x:Name="SettingsNeighborTilesBox" Header="Tiles vizinhos"/>
+                        <CheckBox x:Name="SettingsAutoSaveCheck" Content="Auto Save"/>
+                        <CheckBox x:Name="SettingsCurrentTimeCheck" Content="Usar hora atual"/>
+                        <CheckBox x:Name="SettingsCurrentDateCheck" Content="Usar data atual"/>
+                        <TextBox x:Name="SettingsObjectDistanceBox" Header="Distância de objetos (m)"/>
+                        <TextBox x:Name="SettingsTextureMemoryBox" Header="Memória de textura (MB)"/>
+                        <TextBox x:Name="SettingsAnisotropicBox" Header="Filtro anisotrópico"/>
+                        <CheckBox x:Name="SettingsShadowsCheck" Content="Sombras"/>
+                        <CheckBox x:Name="SettingsNightMapCheck" Content="Night maps"/>
+                        <CheckBox x:Name="SettingsLightMapCheck" Content="Light maps"/>
+                        <TextBox x:Name="SettingsMasterVolumeBox" Header="Volume mestre (%)"/>
+                        <TextBox x:Name="SettingsRoadTrafficBox" Header="Tráfego rodoviário (%)"/>
+                        <TextBox x:Name="SettingsPassengerFactorBox" Header="Passageiros (%)"/>
+                        <CheckBox x:Name="SettingsAiSoundsCheck" Content="Som dos veículos IA"/>
+                        <CheckBox x:Name="SettingsScenerySoundsCheck" Content="Sons de cenário"/>
+                        <CheckBox x:Name="SettingsGameControllerCheck" Content="Game Controller"/>
+                        <TextBox x:Name="SettingsStreamingRadiusBox" Header="Raio de streaming"/>
+                        <CheckBox x:Name="SettingsVsyncCheck" Content="VSync"/>
+                        <CheckBox x:Name="SettingsBorderlessCheck" Content="Fullscreen borderless"/>
+                        <CheckBox x:Name="SettingsHardwareGpuCheck" Content="Preferir GPU dedicada"/>
+                        <CheckBox x:Name="SettingsShowFpsCheck" Content="Mostrar FPS"/>
+                        <CheckBox x:Name="SettingsDiagnosticsCheck" Content="Diagnóstico do runtime"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
 
-                    <GridView x:Name="VehiclesGrid"
-                              Grid.Row="1"
-                              Margin="0,20,0,0"
-                              SelectionMode="None"
-                              IsItemClickEnabled="True"
-                              ItemClick="VehicleLibraryItem_Click"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto">
-                        <GridView.ItemTemplate>
-                            <DataTemplate>
-                                <Border Width="326"
-                                        Height="300"
-                                        Margin="0,0,12,12"
-                                        Background="#111E2D"
-                                        BorderBrush="#233A50"
-                                        BorderThickness="1"
-                                        CornerRadius="14">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="170"/>
-                                            <RowDefinition Height="*"/>
-                                        </Grid.RowDefinitions>
-                                        <Grid Background="#08121D">
-                                            <FontIcon Glyph="&#xE7C0;"
-                                                      Foreground="#31516D"
-                                                      FontSize="42"
-                                                      HorizontalAlignment="Center"
-                                                      VerticalAlignment="Center"/>
-                                            <Image Source="{Binding Preview}"
-                                                   Stretch="UniformToFill"/>
-                                        </Grid>
-                                        <Grid Grid.Row="1" Padding="15,12">
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="*"/>
-                                            </Grid.RowDefinitions>
-                                            <TextBlock Text="{Binding Title}"
-                                                       Foreground="White"
-                                                       FontSize="16"
-                                                       FontWeight="SemiBold"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Grid.Row="1"
-                                                       Text="{Binding Subtitle}"
-                                                       Foreground="#AFC0D2"
-                                                       FontSize="12"
-                                                       Margin="0,4,0,0"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Grid.Row="2"
-                                                       Text="{Binding Detail}"
-                                                       Foreground="#75899E"
-                                                       FontSize="10"
-                                                       Margin="0,5,0,0"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                            <StackPanel Grid.Row="3"
-                                                        Orientation="Horizontal"
-                                                        Spacing="7"
-                                                        VerticalAlignment="Bottom">
-                                                <FontIcon Glyph="&#xE768;"
-                                                          Foreground="#5EA4FF"
-                                                          FontSize="13"/>
-                                                <TextBlock Text="Selecionar para Nova sessão"
-                                                           Foreground="#9FC8FF"
-                                                           FontSize="11"/>
-                                            </StackPanel>
-                                        </Grid>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </GridView.ItemTemplate>
-                    </GridView>
+            <Grid x:Name="CompatibilityView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <StackPanel Margin="28"
+                            Spacing="10">
+                    <TextBlock Text="Compatibilidade"
+                               Foreground="White"
+                               FontSize="32"
+                               FontWeight="Bold"/>
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <TextBlock x:Name="CompatibilityMapCountText" Text="0" Foreground="White"/>
+                        <TextBlock x:Name="CompatibilityVehicleCountText" Text="0" Foreground="White"/>
+                        <TextBlock x:Name="CompatibilityObjectCountText" Text="0" Foreground="White"/>
+                        <TextBlock x:Name="CompatibilityMissingScriptsText" Text="0" Foreground="White"/>
+                    </StackPanel>
+                    <TextBlock x:Name="CompatibilityContentRootText" Text="Biblioteca: não configurada" TextWrapping="Wrap" Foreground="#AFC0D2"/>
+                    <TextBlock x:Name="CompatibilityRuntimeText" Text="Runtime: verificando" TextWrapping="Wrap" Foreground="#AFC0D2"/>
+                    <TextBlock x:Name="CompatibilityOdeText" Text="ODE: verificando" TextWrapping="Wrap" Foreground="#AFC0D2"/>
+                    <TextBlock x:Name="CompatibilityRendererText" Text="D3D11: verificando" TextWrapping="Wrap" Foreground="#AFC0D2"/>
+                    <TextBlock x:Name="CompatibilityModelText" Text="model.cfg: aguardando" TextWrapping="Wrap" Foreground="#AFC0D2"/>
+                </StackPanel>
+            </Grid>
+
+            <Grid x:Name="DiagnosticsView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <Grid Margin="28">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Diagnóstico"
+                               Foreground="White"
+                               FontSize="32"
+                               FontWeight="Bold"/>
+                    <StackPanel Grid.Row="1" Margin="0,10,0,10" Spacing="5">
+                        <TextBlock x:Name="DiagnosticsRuntimeText" Text="Runtime" Foreground="#AFC0D2"/>
+                        <TextBlock x:Name="DiagnosticsContentText" Text="Conteúdo" Foreground="#AFC0D2"/>
+                        <TextBlock x:Name="DiagnosticsReportPathText" Text="" TextWrapping="Wrap" Foreground="#7F94AA"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Copiar" Click="CopyDiagnosticsButton_Click"/>
+                            <Button Content="Gerar relatório" Click="GenerateDiagnosticsReportButton_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBox x:Name="DiagnosticsTextBox"
+                             Grid.Row="2"
+                             AcceptsReturn="True"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"/>
                 </Grid>
             </Grid>
         </Grid>
 
-        <!-- bottom status bar -->
         <Grid Grid.Row="2"
               Background="#091522"
-              BorderBrush="#1D3044"
-              BorderThickness="0,1,0,0"
-              Padding="18,0">
+              Padding="14,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Ellipse Width="8" Height="8" Fill="#54DE79"/>
-                <TextBlock x:Name="FooterStatusTitle" Text="Pronto" Foreground="#E0E8F1" FontSize="11"/>
-                <TextBlock Text="|" Foreground="#506276"/>
-                <TextBlock x:Name="FooterStatusDetail" Text="Launcher pronto." Foreground="#93A4B7" FontSize="11"/>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                <TextBlock x:Name="FooterStatusTitle" Text="Launcher" Foreground="White"/>
+                <TextBlock x:Name="FooterStatusDetail" Text="Pronto." Foreground="#93A4B7"/>
             </StackPanel>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                <TextBlock Foreground="#A9B8C8" FontSize="11"><Run Text="Mapas "/><Run x:Name="FooterMapCountText" Text="0"/></TextBlock>
-                <TextBlock Foreground="#A9B8C8" FontSize="11"><Run Text="Veículos "/><Run x:Name="FooterBusCountText" Text="0"/></TextBlock>
-                <TextBlock Foreground="#A9B8C8" FontSize="11"><Run Text="Objetos "/><Run x:Name="FooterObjectCountText" Text="—"/></TextBlock>
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="12"
+                        VerticalAlignment="Center">
+                <TextBlock Text="Mapas" Foreground="#8194AA"/>
+                <TextBlock x:Name="FooterMapCountText" Text="0" Foreground="White"/>
+                <TextBlock Text="Veículos" Foreground="#8194AA"/>
+                <TextBlock x:Name="FooterBusCountText" Text="0" Foreground="White"/>
+                <TextBlock Text="Objetos" Foreground="#8194AA"/>
+                <TextBlock x:Name="FooterObjectCountText" Text="0" Foreground="White"/>
             </StackPanel>
         </Grid>
 
-        <!-- hidden diagnostics box retained for current logging -->
-        <TextBox x:Name="LogBox" Visibility="Collapsed"/>
+        <TextBox x:Name="LogBox"
+                 Visibility="Collapsed"/>
 
-        <!-- loading overlay -->
         <Grid x:Name="LoadingOverlay"
               Grid.RowSpan="3"
-              Background="#E8070D15"
-              Visibility="Collapsed">
-            <Border Width="720"
+              Visibility="Collapsed"
+              Background="#E008111C">
+            <Border Width="620"
+                    Padding="24"
+                    Background="#111E2D"
                     HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Background="#101B29"
-                    BorderBrush="#2C435B"
-                    BorderThickness="1"
-                    CornerRadius="18"
-                    Padding="24">
-                <Grid ColumnSpacing="22">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="300"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Border Height="220" Background="#08111B" CornerRadius="12">
-                        <Image x:Name="LoadingImage" Stretch="UniformToFill"/>
-                    </Border>
-
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="10">
-                        <TextBlock Text="Carregando sessão" Foreground="White" FontSize="26" FontWeight="Bold"/>
-                        <TextBlock x:Name="LoadingMapText" Text="Mapa" Foreground="#C7D4E1" FontSize="14"/>
-                        <TextBlock x:Name="LoadingBusText" Text="Ônibus" Foreground="#92A6BA" FontSize="12"/>
-                        <ProgressBar x:Name="LoadingProgress" Minimum="0" Maximum="100" Height="7"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock x:Name="LoadingStageText" Text="Inicializando" Foreground="#D7E1EB" FontSize="12"/>
-                            <TextBlock x:Name="LoadingPercentText" Grid.Column="1" Text="0%" Foreground="#76B9FF" FontSize="12"/>
-                        </Grid>
-                        <TextBlock x:Name="LoadingDetailText" Text="" Foreground="#7E92A8" FontSize="11" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Grid>
+                    VerticalAlignment="Center">
+                <StackPanel Spacing="10">
+                    <Image x:Name="LoadingImage"
+                           Height="180"
+                           Stretch="UniformToFill"/>
+                    <TextBlock x:Name="LoadingMapText" Text="Mapa" Foreground="White" FontSize="20"/>
+                    <TextBlock x:Name="LoadingBusText" Text="Ônibus" Foreground="#AFC0D2"/>
+                    <ProgressBar x:Name="LoadingProgress" Minimum="0" Maximum="100"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="LoadingStageText" Text="Inicializando" Foreground="#AFC0D2"/>
+                        <TextBlock x:Name="LoadingPercentText" Grid.Column="1" Text="0%" Foreground="White"/>
+                    </Grid>
+                    <TextBlock x:Name="LoadingDetailText" Text="" TextWrapping="Wrap" Foreground="#8194AA"/>
+                </StackPanel>
             </Border>
         </Grid>
     </Grid>
