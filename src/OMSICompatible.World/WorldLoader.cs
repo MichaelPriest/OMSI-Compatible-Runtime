@@ -882,7 +882,12 @@ public static class WorldLoader
                                             .ToArray(),
                                         trafficLight.ApproachDistanceMeters))
                             .ToArray(),
-                        definition.ScriptManifest);
+                        definition.ScriptManifest,
+                        definition.NoCollision,
+                        definition.Fixed,
+                        definition.Surface,
+                        definition.CollisionMeshSource,
+                        definition.BoundingBox);
             }
             catch (Exception ex) when (
                 ex is IOException or
