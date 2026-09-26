@@ -368,6 +368,8 @@ public sealed class D3D11RenderWindow : Form
     private int _trafficCollisionCount;
     private int _speedViolationCount;
     private int _redLightViolationCount;
+    private int _trafficPenaltyPoints;
+    private int _trafficFineCredits;
     private int _lastRedLightSegmentIndex = -1;
     private double _lastRedLightViolationSeconds =
         double.NegativeInfinity;
@@ -7676,8 +7678,37 @@ public sealed class D3D11RenderWindow : Form
 
                 _speedViolationCount++;
 
-                Console.WriteLine(
-                    $"[traffic-rule] speeding violation #{_speedViolationCount}; speed={speedKph:0.0} km/h; limit={speedLimit.Value:0.0} km/h");
+                var speedOverLimit =
+                    Math.Max(
+                        speedKph -
+                            speedLimit.Value,
+                        0.0);
+
+                var penaltyPoints =
+                    speedOverLimit >=
+                            30.0
+                        ? 5
+                        : speedOverLimit >=
+                                20.0
+                            ? 4
+                            : speedOverLimit >=
+                                    10.0
+                                ? 2
+                                : 1;
+
+                var fineCredits =
+                    Math.Max(
+                        25,
+                        (int)Math.Ceiling(
+                            speedOverLimit *
+                            5.0));
+
+                RegisterTrafficViolation(
+                    nowSeconds,
+                    "speeding",
+                    penaltyPoints,
+                    fineCredits,
+                    $"speed={speedKph:0.0} km/h; limit={speedLimit.Value:0.0} km/h; over={speedOverLimit:0.0} km/h");
 
                 _speedingSeconds =
                     0.0;
@@ -7803,8 +7834,28 @@ public sealed class D3D11RenderWindow : Form
             {
                 _trafficCollisionCount++;
 
-                Console.WriteLine(
-                    $"[traffic-rule] vehicle collision #{_trafficCollisionCount}; ai={agent.AgentIndex}; speed={_vehicle.SpeedKph:0.0} km/h; relative={relativeImpactSpeedKph:0.0} km/h; t={nowSeconds:0.00}");
+                var collisionPenaltyPoints =
+                    relativeImpactSpeedKph >=
+                            40.0f
+                        ? 5
+                        : relativeImpactSpeedKph >=
+                                20.0f
+                            ? 3
+                            : 1;
+
+                var collisionFineCredits =
+                    Math.Max(
+                        50,
+                        (int)Math.Ceiling(
+                            relativeImpactSpeedKph *
+                            6.0f));
+
+                RegisterTrafficViolation(
+                    nowSeconds,
+                    "collision",
+                    collisionPenaltyPoints,
+                    collisionFineCredits,
+                    $"ai={agent.AgentIndex}; speed={_vehicle.SpeedKph:0.0} km/h; relative={relativeImpactSpeedKph:0.0} km/h");
             }
         }
 
@@ -8049,8 +8100,60 @@ public sealed class D3D11RenderWindow : Form
 
         _redLightViolationCount++;
 
+        RegisterTrafficViolation(
+            nowSeconds,
+            "red-light",
+            penaltyPoints:
+                4,
+            fineCredits:
+                180,
+            details:
+                $"signal-path={signalSegment.Index}; speed={_vehicle.SpeedKph:0.0} km/h");
+    }
+
+    private void RegisterTrafficViolation(
+        double nowSeconds,
+        string kind,
+        int penaltyPoints,
+        int fineCredits,
+        string details)
+    {
+        var normalizedPoints =
+            Math.Max(
+                penaltyPoints,
+                0);
+
+        var normalizedFine =
+            Math.Max(
+                fineCredits,
+                0);
+
+        _trafficPenaltyPoints +=
+            normalizedPoints;
+
+        _trafficFineCredits +=
+            normalizedFine;
+
+        var line =
+            $"{DateTimeOffset.Now:O}|sim={nowSeconds:0.000}|kind={kind}|points={normalizedPoints}|fineCredits={normalizedFine}|totalPoints={_trafficPenaltyPoints}|totalFineCredits={_trafficFineCredits}|{details}";
+
         Console.WriteLine(
-            $"[traffic-rule] red-light violation #{_redLightViolationCount}; signal-path={signalSegment.Index}; speed={_vehicle.SpeedKph:0.0} km/h");
+            $"[traffic-rule] {line}");
+
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "traffic-violations.log"),
+                line +
+                Environment.NewLine);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[traffic-rule] unable to append violation log: {exception.Message}");
+        }
     }
 
     private RuntimeTrafficPathSegmentInfo?
@@ -14387,7 +14490,7 @@ public sealed class D3D11RenderWindow : Form
         var trafficRuleStatus =
             totalInfractions >
             0
-                ? $" · infrações {totalInfractions} (colisões {_trafficCollisionCount}, velocidade {_speedViolationCount}, vermelho {_redLightViolationCount})"
+                ? $" · infrações {totalInfractions} (colisões {_trafficCollisionCount}, velocidade {_speedViolationCount}, vermelho {_redLightViolationCount}) · penalidade {_trafficPenaltyPoints} pts · multas {_trafficFineCredits} cr"
                 : string.Empty;
 
         control +=
