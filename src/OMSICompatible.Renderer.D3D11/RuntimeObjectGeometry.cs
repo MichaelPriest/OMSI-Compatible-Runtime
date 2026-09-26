@@ -114,7 +114,8 @@ internal static class RuntimeObjectGeometryBuilder
         IReadOnlyList<RuntimeObjectInfo> objects,
         IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> assets,
         bool useNativeOmsiModelSpace = false,
-        IReadOnlySet<long>? isolatedObjectIds = null)
+        IReadOnlySet<long>? isolatedObjectIds = null,
+        bool forceMaterialAlphaOpaque = false)
     {
         if (objects.Count == 0 ||
             assets.Count == 0)
@@ -284,6 +285,7 @@ internal static class RuntimeObjectGeometryBuilder
                             useNativeOmsiModelSpace,
                             batchObjectId,
                             asset.RenderType,
+                            forceMaterialAlphaOpaque,
                             batches,
                             batchOrder,
                             ref totalVertices);
@@ -424,6 +426,7 @@ internal static class RuntimeObjectGeometryBuilder
         bool useNativeOmsiModelSpace,
         long objectId,
         string? renderType,
+        bool forceMaterialAlphaOpaque,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
         ref int totalVertices)
@@ -474,7 +477,9 @@ internal static class RuntimeObjectGeometryBuilder
                     triangle);
 
             var color =
-                MaterialColor(material);
+                MaterialColor(
+                    material,
+                    forceMaterialAlphaOpaque);
 
             var key =
                 new BatchKey(
@@ -574,7 +579,8 @@ internal static class RuntimeObjectGeometryBuilder
     }
 
     private static Color4 MaterialColor(
-        RuntimeO3dMaterialInfo? material)
+        RuntimeO3dMaterialInfo? material,
+        bool forceAlphaOpaque)
     {
         if (material is null)
         {
@@ -604,11 +610,13 @@ internal static class RuntimeObjectGeometryBuilder
                     material.DiffuseB),
                 0.0f,
                 1.0f),
-            Math.Clamp(
-                (float)(allColor?.DiffuseA ??
-                    material.DiffuseA),
-                0.0f,
-                1.0f));
+            forceAlphaOpaque
+                ? 1.0f
+                : Math.Clamp(
+                    (float)(allColor?.DiffuseA ??
+                        material.DiffuseA),
+                    0.0f,
+                    1.0f));
     }
 
     private static void AddVertex(
