@@ -347,6 +347,12 @@ public sealed class WorldTrafficSimulation
                     segment,
                     cruiseSpeed);
 
+            var activationTimeSeconds =
+                spawnExclusionCenter.HasValue
+                    ? index *
+                      2.0
+                    : 0.0;
+
             _agents.Add(
                 new Agent(
                     index,
@@ -358,12 +364,17 @@ public sealed class WorldTrafficSimulation
                     vehicle.ResolvedPath!,
                     groupIndex,
                     defaultDensityClassIndex,
-                    vehicle.GroupName));
+                    vehicle.GroupName,
+                    activationTimeSeconds));
         }
     }
 
     public IReadOnlyList<WorldTrafficAgentState> Snapshot() =>
         _agents
+            .Where(
+                agent =>
+                    agent.ActivationTimeSeconds <=
+                    _simulationElapsedSeconds)
             .Select(
                 CreateState)
             .ToArray();
@@ -402,6 +413,12 @@ public sealed class WorldTrafficSimulation
             foreach (var agent in
                      _agents)
             {
+                if (agent.ActivationTimeSeconds >
+                    _simulationElapsedSeconds)
+                {
+                    continue;
+                }
+
                 var leadingDistance =
                     FindLeadingDistance(
                         agent);
@@ -663,6 +680,8 @@ public sealed class WorldTrafficSimulation
             if (ReferenceEquals(
                     other,
                     agent) ||
+                other.ActivationTimeSeconds >
+                    _simulationElapsedSeconds ||
                 !_segmentsByIndex.TryGetValue(
                     other.SegmentIndex,
                     out var otherSegment))
@@ -1258,6 +1277,8 @@ public sealed class WorldTrafficSimulation
             if (ReferenceEquals(
                     candidate,
                     agent) ||
+                candidate.ActivationTimeSeconds >
+                    _simulationElapsedSeconds ||
                 candidate.TravelForward !=
                     agent.TravelForward)
             {
@@ -1371,6 +1392,46 @@ public sealed class WorldTrafficSimulation
                 deltaZ *
                     rightZ);
 
+        var obstacleForwardX =
+            Math.Sin(
+                obstacle.HeadingRadians);
+        var obstacleForwardZ =
+            Math.Cos(
+                obstacle.HeadingRadians);
+
+        var obstacleRightX =
+            obstacleForwardZ;
+        var obstacleRightZ =
+            -obstacleForwardX;
+
+        var obstacleLateralExtent =
+            Math.Abs(
+                obstacleForwardX *
+                    rightX +
+                obstacleForwardZ *
+                    rightZ) *
+                obstacle.HalfLengthMeters +
+            Math.Abs(
+                obstacleRightX *
+                    rightX +
+                obstacleRightZ *
+                    rightZ) *
+                obstacle.HalfWidthMeters;
+
+        var obstacleLongitudinalExtent =
+            Math.Abs(
+                obstacleForwardX *
+                    forwardX +
+                obstacleForwardZ *
+                    forwardZ) *
+                obstacle.HalfLengthMeters +
+            Math.Abs(
+                obstacleRightX *
+                    forwardX +
+                obstacleRightZ *
+                    forwardZ) *
+                obstacle.HalfWidthMeters;
+
         var pathHalfWidth =
             Math.Max(
                 Math.Abs(
@@ -1381,8 +1442,7 @@ public sealed class WorldTrafficSimulation
         var maximumLateral =
             pathHalfWidth +
             Math.Max(
-                obstacle.HalfWidthMeters *
-                    0.35,
+                obstacleLateralExtent,
                 0.45);
 
         if (lateral >
@@ -1394,7 +1454,7 @@ public sealed class WorldTrafficSimulation
         return Math.Max(
             longitudinal -
                 Math.Max(
-                    obstacle.HalfLengthMeters,
+                    obstacleLongitudinalExtent,
                     2.0),
             0.0);
     }
@@ -2359,7 +2419,8 @@ public sealed class WorldTrafficSimulation
         string vehiclePath,
         int? groupIndex,
         int? defaultDensityClassIndex,
-        string groupName)
+        string groupName,
+        double activationTimeSeconds)
     {
         public int AgentIndex { get; } =
             agentIndex;
@@ -2402,6 +2463,11 @@ public sealed class WorldTrafficSimulation
 
         public string GroupName { get; } =
             groupName;
+
+        public double ActivationTimeSeconds { get; } =
+            Math.Max(
+                activationTimeSeconds,
+                0.0);
 
         public bool BrakeLight
         {
