@@ -716,6 +716,32 @@ public sealed class WorldTrafficSimulation
                     continue;
                 }
 
+                if (_runtimeRecyclingEnabled &&
+                    !agent.ActivationPlacementValidated)
+                {
+                    if (NeedsActivationRelocation(
+                            agent))
+                    {
+                        agent.PendingRespawn =
+                            true;
+
+                        if (!TryPlaceRecycledAgent(
+                                agent))
+                        {
+                            agent.ActivationTimeSeconds =
+                                _simulationElapsedSeconds +
+                                _spawnIntervalSeconds;
+                            continue;
+                        }
+
+                        agent.PendingRespawn =
+                            false;
+                    }
+
+                    agent.ActivationPlacementValidated =
+                        true;
+                }
+
                 if (agent.PendingRespawn)
                 {
                     if (!TryPlaceRecycledAgent(
@@ -974,6 +1000,77 @@ public sealed class WorldTrafficSimulation
                     nextSegment);
 
         return true;
+    }
+
+    private bool NeedsActivationRelocation(
+        Agent agent)
+    {
+        if (!_segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var segment))
+        {
+            return true;
+        }
+
+        SampleSegment(
+            segment,
+            agent.DistanceMeters,
+            out var position,
+            out _);
+
+        if (_externalObstacle is
+                { } obstacle)
+        {
+            if (_spawnExclusionRadiusMeters >
+                    0.0 &&
+                HorizontalDistance(
+                    position,
+                    obstacle.Position) <
+                _spawnExclusionRadiusMeters)
+            {
+                return true;
+            }
+
+            if (IsVisibleRespawnPop(
+                    position,
+                    obstacle))
+            {
+                return true;
+            }
+        }
+
+        foreach (var other in
+                 _agents)
+        {
+            if (ReferenceEquals(
+                    other,
+                    agent) ||
+                other.PendingRespawn ||
+                other.ActivationTimeSeconds >
+                    _simulationElapsedSeconds ||
+                !_segmentsByIndex.TryGetValue(
+                    other.SegmentIndex,
+                    out var otherSegment))
+            {
+                continue;
+            }
+
+            SampleSegment(
+                otherSegment,
+                other.DistanceMeters,
+                out var otherPosition,
+                out _);
+
+            if (HorizontalDistance(
+                    position,
+                    otherPosition) <
+                22.0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool TryRecycleTerminalAgent(
@@ -3643,6 +3740,14 @@ public sealed class WorldTrafficSimulation
             get;
             set;
         }
+
+        public bool ActivationPlacementValidated
+        {
+            get;
+            set;
+        } =
+            activationTimeSeconds <=
+            0.0;
 
         public double CollisionHoldUntilSeconds
         {
