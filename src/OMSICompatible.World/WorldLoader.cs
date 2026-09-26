@@ -785,7 +785,8 @@ public static class WorldLoader
                                                         phase.DurationSeconds))
                                             .ToArray(),
                                         trafficLight.ApproachDistanceMeters))
-                            .ToArray());
+                            .ToArray(),
+                        definition.ScriptManifest);
             }
             catch (Exception ex) when (
                 ex is IOException or
