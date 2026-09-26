@@ -120,9 +120,11 @@ jobs:
           $root = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64"
           $source = Join-Path $root "OMSICompatible.Launcher.WinUI.exe"
           $assembly = Join-Path $root "OMSICompatible.Launcher.WinUI.dll"
+          $pri = Join-Path $root "OMSICompatible.Launcher.WinUI.pri"
           $target = Join-Path $root "OMSICompatible.Launcher.exe"
           if (-not (Test-Path $source)) { throw "WinUI launcher apphost was not published." }
           if (-not (Test-Path $assembly)) { throw "WinUI launcher managed assembly was not published." }
+          if (-not (Test-Path $pri)) { throw "WinUI application PRI is missing from publish output." }
           Copy-Item $source $target -Force
           if (-not (Test-Path $target)) { throw "Primary WinUI launcher alias was not created." }
 
