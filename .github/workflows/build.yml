@@ -100,6 +100,20 @@ jobs:
           -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
 
+      - name: Publish WinUI Launcher preview x64
+        run: >
+          dotnet publish src/OMSICompatible.Launcher.WinUI/OMSICompatible.Launcher.WinUI.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:Platform=x64
+          -p:WindowsAppSDKSelfContained=true
+          -p:PublishSingleFile=false
+          -p:UseAppHost=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Launcher-WinUI-Preview
+
       - name: Publish Runtime x64
         run: >
           dotnet publish src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj
@@ -130,10 +144,20 @@ jobs:
           Extraia TODO o conteúdo do ZIP antes de executar.
           Não execute o EXE de dentro do ZIP.
 
-          Abra:
+          Launcher funcional atual:
             OMSICompatible.Launcher.exe
 
-          No launcher:
+          NOVO LAUNCHER WINUI 3 (PREVIEW DA INTERFACE APROVADA)
+          =====================================================
+          Abra:
+            Launcher-WinUI-Preview\OMSICompatible.Launcher.WinUI.exe
+
+          O WinUI preview contém o novo shell/sidebar e a nova Home.
+          O launcher funcional atual permanece na raiz deste pacote enquanto
+          a prévia 3D D3D11 e as demais telas são migradas sem regressão.
+          Não removemos nem simulamos a funcionalidade 3D existente.
+
+          No launcher funcional atual:
           1. Clique em Procurar.
           2. Selecione a pasta raiz do conteúdo OMSI.
              Exemplo: G:\Games\OMSI 2 Steam Edition
