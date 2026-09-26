@@ -833,6 +833,22 @@ internal sealed class RuntimeDriveVehicle :
         }
     }
 
+    public void HoldTrafficCollisionContact()
+    {
+        AcceleratorLevel =
+            0.0f;
+
+        BrakeLevel =
+            Math.Max(
+                BrakeLevel,
+                0.55f);
+
+        _longitudinalAccelerationMetersPerSecondSquared =
+            Math.Min(
+                _longitudinalAccelerationMetersPerSecondSquared,
+                -2.5f);
+    }
+
     public float LongitudinalAccelerationMetersPerSecondSquared =>
         _longitudinalAccelerationMetersPerSecondSquared;
 
