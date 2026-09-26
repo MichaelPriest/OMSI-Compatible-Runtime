@@ -200,69 +200,81 @@ public sealed class WorldTrafficSimulation
             WorldTrafficPathSegment? segment =
                 null;
 
-            // Spread initial AI across the active network instead of taking
-            // the first N segments in file/index order. The old placement
-            // made dense clusters around some entry points and looked like
-            // random mass spawning.
-            for (var attempt = 0;
-                 attempt <
-                     allowedSegments.Length;
-                 attempt++)
+            if (!spawnExclusionCenter.HasValue)
             {
-                var selector =
-                    ((index +
-                      1) *
-                     0.6180339887498949 +
-                     attempt *
-                     0.3819660112501051) %
-                    1.0;
-
-                var candidateIndex =
-                    Math.Clamp(
-                        (int)Math.Floor(
-                            selector *
-                            allowedSegments.Length),
-                        0,
-                        allowedSegments.Length -
-                            1);
-
-                var candidate =
+                // Preserve the public simulation's deterministic historical
+                // placement when it is used without a runtime/player spawn
+                // context. RuntimeApplicationContext supplies a spawn center
+                // and therefore uses the distributed branch below.
+                segment =
                     allowedSegments[
-                        candidateIndex];
-
-                var candidateLength =
-                    SegmentLength(
-                        candidate);
-
-                if (candidateLength <=
-                    0.0001)
+                        index %
+                        allowedSegments.Length];
+            }
+            else
+            {
+                // Spread initial AI across the active network instead of
+                // taking the first N segments in file/index order. This
+                // avoids dense clusters around the player's entrypoint.
+                for (var attempt = 0;
+                     attempt <
+                         allowedSegments.Length;
+                     attempt++)
                 {
-                    continue;
-                }
+                    var selector =
+                        ((index +
+                          1) *
+                         0.6180339887498949 +
+                         attempt *
+                         0.3819660112501051) %
+                        1.0;
 
-                if (spawnExclusionCenter.HasValue &&
-                    spawnExclusionRadiusMeters >
-                        0.0)
-                {
-                    SampleSegment(
-                        candidate,
-                        candidateLength *
-                            0.5,
-                        out var candidateMidpoint,
-                        out _);
+                    var candidateIndex =
+                        Math.Clamp(
+                            (int)Math.Floor(
+                                selector *
+                                allowedSegments.Length),
+                            0,
+                            allowedSegments.Length -
+                                1);
 
-                    if (HorizontalDistance(
-                            candidateMidpoint,
-                            spawnExclusionCenter.Value) <
-                        spawnExclusionRadiusMeters)
+                    var candidate =
+                        allowedSegments[
+                            candidateIndex];
+
+                    var candidateLength =
+                        SegmentLength(
+                            candidate);
+
+                    if (candidateLength <=
+                        0.0001)
                     {
                         continue;
                     }
-                }
 
-                segment =
-                    candidate;
-                break;
+                    if (spawnExclusionRadiusMeters >
+                            0.0)
+                    {
+                        SampleSegment(
+                            candidate,
+                            candidateLength *
+                                0.5,
+                            out var candidateMidpoint,
+                            out _);
+
+                        if (HorizontalDistance(
+                                candidateMidpoint,
+                                spawnExclusionCenter.Value) <
+                            spawnExclusionRadiusMeters)
+                        {
+                            continue;
+                        }
+                    }
+
+                    segment =
+                        candidate;
+                    break;
+                }
             }
 
             if (segment is null)
@@ -274,26 +286,36 @@ public sealed class WorldTrafficSimulation
                 SegmentLength(
                     segment);
 
-            var offsetFraction =
-                0.10 +
-                0.80 *
-                (((index +
-                   1) *
-                  0.4142135623730950) %
-                 1.0);
-
             var offset =
-                length >
-                    1.0
-                    ? Math.Clamp(
-                        length *
-                            offsetFraction,
-                        0.1,
-                        Math.Max(
-                            length -
-                                0.1,
-                            0.1))
-                    : 0.0;
+                !spawnExclusionCenter.HasValue
+                    ? length >
+                            1.0
+                        ? Math.Min(
+                            length *
+                                0.15 *
+                                (index %
+                                     5),
+                            Math.Max(
+                                length -
+                                    0.1,
+                                0.0))
+                        : 0.0
+                    : length >
+                            1.0
+                        ? Math.Clamp(
+                            length *
+                                (0.10 +
+                                 0.80 *
+                                 (((index +
+                                    1) *
+                                   0.4142135623730950) %
+                                  1.0)),
+                            0.1,
+                            Math.Max(
+                                length -
+                                    0.1,
+                                0.1))
+                        : 0.0;
 
             var travelForward =
                 segment.Direction switch
