@@ -925,6 +925,32 @@ public sealed class D3D11RenderWindow : Form
         {
             Console.WriteLine(
                 $"[audio] lead: {_omsiAudio.ExistingFileCount}/{_omsiAudio.SoundCount} OMSI sound files resolved.");
+
+            try
+            {
+                var lines =
+                    new List<string>
+                    {
+                        $"timestamp={DateTimeOffset.Now:O}",
+                        $"vehicle={_windowInfo.Vehicle?.DisplayName ?? "<none>"}",
+                        $"soundConfig={_windowInfo.Vehicle?.SoundConfigPath ?? "<none>"}",
+                        ""
+                    };
+
+                lines.AddRange(
+                    _omsiAudio.BuildConfigurationDiagnostics());
+
+                File.WriteAllLines(
+                    Path.Combine(
+                        AppContext.BaseDirectory,
+                        "vehicle-audio-config.log"),
+                    lines);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[audio] unable to write vehicle-audio-config.log: {exception.Message}");
+            }
         }
 
         _articulatedOmsiAudio.Clear();
@@ -956,6 +982,33 @@ public sealed class D3D11RenderWindow : Form
 
             Console.WriteLine(
                 $"[audio] section={section.Index}: {audio.ExistingFileCount}/{audio.SoundCount} OMSI sound files resolved from {Path.GetFileName(section.SoundConfigPath)}.");
+
+            try
+            {
+                var sectionLines =
+                    new List<string>
+                    {
+                        $"timestamp={DateTimeOffset.Now:O}",
+                        $"vehicle={_windowInfo.Vehicle?.DisplayName ?? "<none>"}",
+                        $"section={section.Index}",
+                        $"soundConfig={section.SoundConfigPath}",
+                        ""
+                    };
+
+                sectionLines.AddRange(
+                    audio.BuildConfigurationDiagnostics());
+
+                File.WriteAllLines(
+                    Path.Combine(
+                        AppContext.BaseDirectory,
+                        $"vehicle-audio-section-{section.Index}.log"),
+                    sectionLines);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[audio] unable to write section audio diagnostics: {exception.Message}");
+            }
         }
     }
 
