@@ -2287,7 +2287,8 @@ public sealed class WorldTrafficSimulation
 
             var headwayBrakingTerm =
                 TrafficBrakingMetersPerSecondSquared *
-                FollowingTimeHeadwaySeconds;
+                ResolveFollowingTimeHeadwaySeconds(
+                    agent);
 
             var followingSpeed =
                 Math.Max(
@@ -2665,6 +2666,23 @@ public sealed class WorldTrafficSimulation
         }
 
         return vehicles[^1];
+    }
+
+    private static double ResolveFollowingTimeHeadwaySeconds(
+        Agent agent)
+    {
+        var extension =
+            Path.GetExtension(
+                agent.VehiclePath);
+
+        if (extension.Equals(
+                ".bus",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return 1.60;
+        }
+
+        return FollowingTimeHeadwaySeconds;
     }
 
     private static double EstimateTrafficVehicleHalfLength(
