@@ -345,6 +345,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11DepthStencilView? _activeDepthStencilView;
     private Matrix4x4? _viewProjectionOverride;
     private Vector3? _cameraPositionOverride;
+    private Vector4? _skyViewParametersOverride;
     private bool _reflectionRenderingEnabled;
     private readonly bool _vehiclePreviewMode;
     private float _previewYaw = 0.62f;
@@ -1389,15 +1390,16 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
-        return new Vector4(
-            yaw,
-            pitch,
-            MathF.Tan(
-                verticalFieldOfViewRadians *
-                0.5f),
-            MathF.Max(
-                aspect,
-                0.1f));
+        return _skyViewParametersOverride ??
+            new Vector4(
+                yaw,
+                pitch,
+                MathF.Tan(
+                    verticalFieldOfViewRadians *
+                    0.5f),
+                MathF.Max(
+                    aspect,
+                    0.1f));
     }
 
     private void DrawSky()
@@ -3248,6 +3250,25 @@ public sealed class D3D11RenderWindow : Form
                             target.Camera.HeadingDegrees,
                             target.Camera.PitchDegrees));
 
+                var reflectionFovRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            target.Camera.FieldOfViewDegrees,
+                            18.0,
+                            120.0));
+
+                _skyViewParametersOverride =
+                    new Vector4(
+                        _vehicle.HeadingRadians +
+                        DegreesToRadians(
+                            target.Camera.HeadingDegrees),
+                        DegreesToRadians(
+                            target.Camera.PitchDegrees),
+                        MathF.Tan(
+                            reflectionFovRadians *
+                            0.5f),
+                        1.0f);
+
                 _deviceContext.OMSetRenderTargets(
                     target.RenderTargetView,
                     _reflectionDepthStencilView);
@@ -3302,6 +3323,7 @@ public sealed class D3D11RenderWindow : Form
             _activeDepthStencilView = null;
             _viewProjectionOverride = null;
             _cameraPositionOverride = null;
+            _skyViewParametersOverride = null;
         }
     }
 
