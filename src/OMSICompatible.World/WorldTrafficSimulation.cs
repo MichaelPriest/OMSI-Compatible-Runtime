@@ -347,6 +347,43 @@ public sealed class WorldTrafficSimulation
                     segment,
                     cruiseSpeed);
 
+            if (spawnExclusionCenter.HasValue)
+            {
+                SampleSegment(
+                    segment,
+                    distance,
+                    out var spawnPosition,
+                    out _);
+
+                var tooCloseToExistingSpawn =
+                    _agents.Any(
+                        existing =>
+                        {
+                            if (!_segmentsByIndex.TryGetValue(
+                                    existing.SegmentIndex,
+                                    out var existingSegment))
+                            {
+                                return false;
+                            }
+
+                            SampleSegment(
+                                existingSegment,
+                                existing.DistanceMeters,
+                                out var existingPosition,
+                                out _);
+
+                            return HorizontalDistance(
+                                       spawnPosition,
+                                       existingPosition) <
+                                   22.0;
+                        });
+
+                if (tooCloseToExistingSpawn)
+                {
+                    continue;
+                }
+            }
+
             var activationTimeSeconds =
                 spawnExclusionCenter.HasValue
                     ? index *
