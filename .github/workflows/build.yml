@@ -114,14 +114,17 @@ jobs:
           -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
 
-      - name: Verify primary WinUI launcher
+      - name: Create and verify primary WinUI launcher alias
         shell: pwsh
         run: |
           $root = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64"
-          $launcher = Join-Path $root "OMSICompatible.Launcher.exe"
-          $assembly = Join-Path $root "OMSICompatible.Launcher.dll"
-          if (-not (Test-Path $launcher)) { throw "WinUI launcher apphost was not published with its final identity." }
-          if (-not (Test-Path $assembly)) { throw "WinUI launcher managed assembly was not published with its final identity." }
+          $source = Join-Path $root "OMSICompatible.Launcher.WinUI.exe"
+          $assembly = Join-Path $root "OMSICompatible.Launcher.WinUI.dll"
+          $target = Join-Path $root "OMSICompatible.Launcher.exe"
+          if (-not (Test-Path $source)) { throw "WinUI launcher apphost was not published." }
+          if (-not (Test-Path $assembly)) { throw "WinUI launcher managed assembly was not published." }
+          Copy-Item $source $target -Force
+          if (-not (Test-Path $target)) { throw "Primary WinUI launcher alias was not created." }
 
       - name: Publish Runtime x64
         run: >
