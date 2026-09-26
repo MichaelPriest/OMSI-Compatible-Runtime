@@ -344,6 +344,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11RenderTargetView? _activeRenderTargetView;
     private ID3D11DepthStencilView? _activeDepthStencilView;
     private Matrix4x4? _viewProjectionOverride;
+    private Vector3? _cameraPositionOverride;
     private bool _reflectionRenderingEnabled;
     private readonly bool _vehiclePreviewMode;
     private float _previewYaw = 0.62f;
@@ -3236,6 +3237,17 @@ public sealed class D3D11RenderWindow : Form
                         1.0f,
                         _terrainGeometry);
 
+                _cameraPositionOverride =
+                    _vehicle.GetDriverCameraPosition(
+                        new RuntimeDriverCameraInfo(
+                            target.Camera.X,
+                            target.Camera.Y,
+                            target.Camera.Z,
+                            target.Camera.EyeDistance,
+                            target.Camera.FieldOfViewDegrees,
+                            target.Camera.HeadingDegrees,
+                            target.Camera.PitchDegrees));
+
                 _deviceContext.OMSetRenderTargets(
                     target.RenderTargetView,
                     _reflectionDepthStencilView);
@@ -3289,6 +3301,7 @@ public sealed class D3D11RenderWindow : Form
             _activeRenderTargetView = null;
             _activeDepthStencilView = null;
             _viewProjectionOverride = null;
+            _cameraPositionOverride = null;
         }
     }
 
@@ -3301,6 +3314,10 @@ public sealed class D3D11RenderWindow : Form
         CurrentDepthStencilView =>
             _activeDepthStencilView ??
             _depthStencilView;
+
+    private Vector3 CurrentCameraPosition =>
+        _cameraPositionOverride ??
+        ResolveActiveCameraPosition();
 
     private bool CanDrawTerrain() =>
         _terrainVertexBuffer is not null &&
@@ -3360,7 +3377,7 @@ public sealed class D3D11RenderWindow : Form
                 ViewProjection =
                     CreateViewProjection(),
                 CameraPosition =
-                    ResolveActiveCameraPosition(),
+                    CurrentCameraPosition,
                 CameraPadding =
                     0.0f
             };
@@ -3772,7 +3789,8 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleGeometries.Count ==
                 0 ||
             _deviceContext is null ||
-            _renderTargetView is null ||
+            CurrentRenderTargetView is null ||
+            CurrentDepthStencilView is null ||
             _vehicleModelBuffer is null ||
             _vehicleMaterialBuffer is null ||
             _vehicleSkinBuffer is null ||
@@ -3809,8 +3827,8 @@ public sealed class D3D11RenderWindow : Form
             };
 
         _deviceContext.OMSetRenderTargets(
-            _renderTargetView,
-            _depthStencilView);
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
 
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
@@ -4085,8 +4103,8 @@ public sealed class D3D11RenderWindow : Form
             _windowInfo.TrafficVehicleAssets is null ||
             _vehicleLightVertexBuffer is null ||
             _deviceContext is null ||
-            _renderTargetView is null ||
-            _depthStencilView is null ||
+            CurrentRenderTargetView is null ||
+            CurrentDepthStencilView is null ||
             _vehicleModelBuffer is null ||
             _vehicleMaterialBuffer is null ||
             _vehicleSkinBuffer is null ||
@@ -4124,8 +4142,8 @@ public sealed class D3D11RenderWindow : Form
             MapMode.WriteDiscard);
 
         _deviceContext.OMSetRenderTargets(
-            _renderTargetView,
-            _depthStencilView);
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
 
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
@@ -4170,7 +4188,7 @@ public sealed class D3D11RenderWindow : Form
             _terrainRasterizerState);
 
         var cameraPosition =
-            ResolveActiveCameraPosition();
+            CurrentCameraPosition;
 
         foreach (var agent in
                  _trafficAgents)
