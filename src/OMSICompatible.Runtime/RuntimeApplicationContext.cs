@@ -2446,7 +2446,20 @@ internal sealed class RuntimeApplicationContext :
                                     pair.Value.Tree.MinimumHeight,
                                     pair.Value.Tree.MaximumHeight,
                                     pair.Value.Tree.MinimumAspect,
-                                    pair.Value.Tree.MaximumAspect)),
+                                    pair.Value.Tree.MaximumAspect),
+                            pair.Value.NoCollision,
+                            pair.Value.Fixed,
+                            pair.Value.Surface,
+                            pair.Value.CollisionMeshSource,
+                            pair.Value.BoundingBox is null
+                                ? null
+                                : new RuntimeSceneryBoundingBoxInfo(
+                                    pair.Value.BoundingBox.LengthX,
+                                    pair.Value.BoundingBox.WidthY,
+                                    pair.Value.BoundingBox.HeightZ,
+                                    pair.Value.BoundingBox.CenterX,
+                                    pair.Value.BoundingBox.CenterY,
+                                    pair.Value.BoundingBox.CenterZ)),
                     StringComparer.OrdinalIgnoreCase);
 
         var runtimeGroundTextures =
