@@ -710,6 +710,10 @@ public static class WorldLoader
                                         string? transMapTexturePath =
                                             null;
 
+                                        var requiresExternalTransMap =
+                                            materialOverride?.TransMapSource is
+                                                { Length: > 0 };
+
                                         if (materialOverride?.TransMapSource is
                                                 { Length: > 0 } transMapSource)
                                         {
@@ -751,7 +755,8 @@ public static class WorldLoader
                                             materialOverride?.NoZWrite ??
                                                 false,
                                             materialOverride?.NoZCheck ??
-                                                false);
+                                                false,
+                                            requiresExternalTransMap);
                                     })
                                 .ToArray(),
                             dynamicMesh?.VisibilityConditions,

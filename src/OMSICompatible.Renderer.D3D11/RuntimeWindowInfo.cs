@@ -226,7 +226,8 @@ public sealed record RuntimeO3dMaterialInfo(
     int? TextTextureIndex = null,
     IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
     bool HasTransMapDirective = false,
-    bool MaterialChangeIsNightMap = false);
+    bool MaterialChangeIsNightMap = false,
+    bool RequiresExternalTransMap = false);
 
 public sealed record RuntimeVehicleLightEffectInfo(
     double PositionX,

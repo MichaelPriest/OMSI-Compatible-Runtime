@@ -13,7 +13,8 @@ public sealed record WorldO3dMaterial(
     int AlphaMode,
     string? TransMapTexturePath,
     bool NoZWrite,
-    bool NoZCheck);
+    bool NoZCheck,
+    bool RequiresExternalTransMap = false);
 
 public sealed record WorldSceneryMeshTransform(
     double PositionX,

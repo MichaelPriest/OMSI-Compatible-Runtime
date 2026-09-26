@@ -2340,7 +2340,9 @@ internal sealed class RuntimeApplicationContext :
                                                             material.AlphaMode,
                                                             material.TransMapTexturePath,
                                                             material.NoZWrite,
-                                                            material.NoZCheck))
+                                                            material.NoZCheck,
+                                                            RequiresExternalTransMap:
+                                                                material.RequiresExternalTransMap))
                                                 .ToArray(),
                                             0,
                                             null,

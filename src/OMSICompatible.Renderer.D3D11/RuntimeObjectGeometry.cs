@@ -41,7 +41,8 @@ internal sealed record RuntimeObjectBatch(
     string? MouseEventTrigger = null,
     bool MaterialChangeIsNightMap = false,
     long ObjectId = -1,
-    string? RenderType = null);
+    string? RenderType = null,
+    bool RequiresExternalTransMap = false);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -107,7 +108,8 @@ internal static class RuntimeObjectGeometryBuilder
         string? MouseEventTrigger = null,
         bool MaterialChangeIsNightMap = false,
         long ObjectId = -1,
-        string? RenderType = null);
+        string? RenderType = null,
+        bool RequiresExternalTransMap = false);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -402,7 +404,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.MouseEventTrigger,
                     key.MaterialChangeIsNightMap,
                     key.ObjectId,
-                    key.RenderType));
+                    key.RenderType,
+                    key.RequiresExternalTransMap));
         }
 
         return new RuntimeObjectGeometry(
@@ -517,7 +520,8 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.MouseEventTrigger,
                     material?.MaterialChangeIsNightMap ?? false,
                     objectId,
-                    renderType);
+                    renderType,
+                    material?.RequiresExternalTransMap ?? false);
 
             var output =
                 GetBatch(

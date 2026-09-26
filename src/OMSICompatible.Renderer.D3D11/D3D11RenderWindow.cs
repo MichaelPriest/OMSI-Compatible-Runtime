@@ -3768,11 +3768,13 @@ public sealed class D3D11RenderWindow : Form
                     null;
 
                 var requiresExternalTransMap =
+                    batch.RequiresExternalTransMap ||
                     !string.IsNullOrWhiteSpace(
                         batch.TransMapTexturePath);
 
                 var hasTransMap =
-                    requiresExternalTransMap &&
+                    !string.IsNullOrWhiteSpace(
+                        batch.TransMapTexturePath) &&
                     _objectTextureCache.TryGetValue(
                         batch.TransMapTexturePath!,
                         out transMap);
