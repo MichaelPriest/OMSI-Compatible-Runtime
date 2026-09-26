@@ -118,7 +118,7 @@ internal static class Program
         if (!noBus)
         {
             var buses =
-                BusDiscovery.Discover(
+                BusDiscovery.DiscoverPlayerSelectable(
                     contentRoot);
 
             selectedBus =

@@ -32,7 +32,12 @@ internal enum RuntimeOmsiHostInputAction
     InteriorViewNext,
     InteriorViewPrevious,
     ResetDriverView,
-    ControllerToggle
+    ControllerToggle,
+    PauseToggle,
+    ResetCurrentView,
+    ResetAllViews,
+    ScrollViews,
+    StatusInfoCycle
 }
 
 internal sealed record RuntimeOmsiKeyboardBinding(
@@ -78,7 +83,8 @@ internal static class RuntimeOmsiKeyboardBindings
         var keyIndexToWindowsKey =
             LoadKeyTable(
                 inputs,
-                preferredLanguage);
+                preferredLanguage,
+                out var keyTablePath);
 
         if (keyIndexToWindowsKey.Count == 0)
         {
@@ -91,24 +97,48 @@ internal static class RuntimeOmsiKeyboardBindings
                 inputs,
                 keyIndexToWindowsKey);
 
-        return ParseBindings(
+        var parsed =
+            ParseBindings(
                 keyboardPath,
-                keyIndexToWindowsKey)
-            .Select(
-                binding =>
-                    new RuntimeOmsiKeyboardBinding(
-                        binding.Key,
-                        binding.Trigger,
-                        binding.Continuous,
-                        binding.Shift,
-                        binding.Control,
-                        hostActions.TryGetValue(
+                keyIndexToWindowsKey);
+
+        var bindings =
+            parsed
+                .Select(
+                    binding =>
+                        new RuntimeOmsiKeyboardBinding(
+                            binding.Key,
                             binding.Trigger,
-                            out var hostAction)
-                            ? hostAction
-                            : null))
-            .Distinct()
-            .ToArray();
+                            binding.Continuous,
+                            binding.Shift,
+                            binding.Control,
+                            hostActions.TryGetValue(
+                                binding.Trigger,
+                                out var hostAction)
+                                ? hostAction
+                                : null))
+                .Distinct()
+                .ToArray();
+
+        var entryCount =
+            CountEntries(
+                keyboardPath);
+
+        var keyboardEntryAudit =
+            AnalyzeKeyboardEntries(
+                keyboardPath,
+                keyIndexToWindowsKey);
+
+        WriteKeyboardAudit(
+            keyboardPath,
+            keyTablePath,
+            entryCount,
+            parsed.Count,
+            keyboardEntryAudit.UnassignedCount,
+            keyboardEntryAudit.InvalidEntries,
+            bindings);
+
+        return bindings;
     }
 
     public static IReadOnlyDictionary<
@@ -135,7 +165,8 @@ internal static class RuntimeOmsiKeyboardBindings
         var keyIndexToWindowsKey =
             LoadKeyTable(
                 inputs,
-                preferredLanguage);
+                preferredLanguage,
+                out _);
 
         return LoadHostActions(
             inputs,
@@ -190,97 +221,175 @@ internal static class RuntimeOmsiKeyboardBindings
         ParsedBinding binding,
         out RuntimeOmsiHostInputAction action)
     {
-        action =
-            default;
+        // keyboard_reset.cfg describes OMSI's default bindings, but the
+        // semantic host action belongs to the trigger, not to whichever
+        // physical key happens to be assigned there. Mapping by key made
+        // user remaps such as a door on NumPad3 accidentally release the
+        // brake, or blinker_off on Decimal toggle the parking brake.
+        var trigger =
+            binding.Trigger
+                .Trim()
+                .ToLowerInvariant();
 
-        if (binding.Shift ||
-            binding.Control)
-        {
-            return false;
-        }
-
         action =
-            binding.Key switch
+            trigger switch
             {
-                Keys.NumPad8 =>
+                "throttle" =>
                     RuntimeOmsiHostInputAction.Accelerate,
-                Keys.NumPad2 =>
+                "brake" =>
                     RuntimeOmsiHostInputAction.BrakeIncrease,
-                Keys.Add =>
-                    RuntimeOmsiHostInputAction.BrakeRelease,
-                Keys.NumPad4 =>
+                "steering_left" =>
                     RuntimeOmsiHostInputAction.SteerLeft,
-                Keys.NumPad6 =>
+                "steering_right" =>
                     RuntimeOmsiHostInputAction.SteerRight,
-                Keys.NumPad5 =>
+                "steering_neutral" =>
                     RuntimeOmsiHostInputAction.SteerCenter,
-                Keys.Tab =>
+                "clutch" =>
                     RuntimeOmsiHostInputAction.Clutch,
-                Keys.E =>
+
+                "kw_batterietrennschalter" or
+                "cp_batterietrennschalter_toggle" =>
                     RuntimeOmsiHostInputAction.ElectricalToggle,
-                Keys.M =>
-                    RuntimeOmsiHostInputAction.EngineToggle,
-                Keys.D =>
+
+                "kw_m_enginestart" or
+                "kw_m_engine_startbutton" =>
+                    RuntimeOmsiHostInputAction.EngineStart,
+
+                "kw_m_engineshutdown" =>
+                    RuntimeOmsiHostInputAction.EngineOff,
+
+                "automatic_d" or
+                "automatic_1" or
+                "automatic_2" or
+                "kw_s_1" or
+                "kw_s_2" =>
                     RuntimeOmsiHostInputAction.GearDrive,
-                Keys.N =>
+
+                "automatic_n" or
+                "kw_s_n" =>
                     RuntimeOmsiHostInputAction.GearNeutral,
-                Keys.R =>
+
+                "automatic_r" or
+                "kw_s_r" =>
                     RuntimeOmsiHostInputAction.GearReverse,
-                Keys.Decimal or
-                Keys.OemPeriod =>
+
+                "parking_brake_toggle" or
+                "parking_brake_mouse" =>
                     RuntimeOmsiHostInputAction.ParkingBrakeToggle,
-                Keys.Subtract =>
-                    RuntimeOmsiHostInputAction.StopBrakeToggle,
-                Keys.O =>
+
+                "parking_brake_set" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeSet,
+
+                "parking_brake_release" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeRelease,
+
+                "toggel_mouse_ctrl" or
+                "toggle_mouse_ctrl" =>
                     RuntimeOmsiHostInputAction.MouseDriveToggle,
-                Keys.F1 =>
-                    RuntimeOmsiHostInputAction.DriverView,
-                Keys.F2 =>
-                    RuntimeOmsiHostInputAction.PassengerView,
-                Keys.F3 =>
-                    RuntimeOmsiHostInputAction.ExteriorView,
-                Keys.F4 =>
-                    RuntimeOmsiHostInputAction.FreeCameraView,
-                Keys.Insert =>
-                    RuntimeOmsiHostInputAction.ScheduleView,
-                Keys.Home =>
-                    RuntimeOmsiHostInputAction.TicketSellingView,
-                Keys.Left =>
-                    RuntimeOmsiHostInputAction.InteriorViewNext,
-                Keys.Right =>
-                    RuntimeOmsiHostInputAction.InteriorViewPrevious,
-                Keys.K =>
+
+                "toggel_ctrler" or
+                "toggle_ctrler" or
+                "toggle_controller" =>
                     RuntimeOmsiHostInputAction.ControllerToggle,
+
+                "view_set_driver" =>
+                    RuntimeOmsiHostInputAction.DriverView,
+
+                "view_set_passenger" =>
+                    RuntimeOmsiHostInputAction.PassengerView,
+
+                "view_set_outside" =>
+                    RuntimeOmsiHostInputAction.ExteriorView,
+
+                "view_set_map" =>
+                    RuntimeOmsiHostInputAction.FreeCameraView,
+
+                "view_set_schedule" or
+                "view_schedule" =>
+                    RuntimeOmsiHostInputAction.ScheduleView,
+
+                "view_set_ticketselling" or
+                "view_ticketselling" =>
+                    RuntimeOmsiHostInputAction.TicketSellingView,
+
+                "view_interiorcam_minus" =>
+                    RuntimeOmsiHostInputAction.InteriorViewNext,
+
+                "view_interiorcam_plus" =>
+                    RuntimeOmsiHostInputAction.InteriorViewPrevious,
+
+                "view_reset_direction" =>
+                    RuntimeOmsiHostInputAction.ResetCurrentView,
+
+                "view_reset_all_directions" =>
+                    RuntimeOmsiHostInputAction.ResetAllViews,
+
+                "view_toggle_viewpoint" =>
+                    RuntimeOmsiHostInputAction.ScrollViews,
+
+                "view_toggle_informationdisplay" or
+                "view_status" or
+                "view_information" or
+                "view_info" =>
+                    RuntimeOmsiHostInputAction.StatusInfoCycle,
+
+                "sim_pause" or
+                "pause" =>
+                    RuntimeOmsiHostInputAction.PauseToggle,
+
                 _ =>
                     default
             };
 
-        return binding.Key is
-            Keys.NumPad8 or
-            Keys.NumPad2 or
-            Keys.Add or
-            Keys.NumPad4 or
-            Keys.NumPad6 or
-            Keys.NumPad5 or
-            Keys.Tab or
-            Keys.E or
-            Keys.M or
-            Keys.D or
-            Keys.N or
-            Keys.R or
-            Keys.Decimal or
-            Keys.OemPeriod or
-            Keys.Subtract or
-            Keys.O or
-            Keys.F1 or
-            Keys.F2 or
-            Keys.F3 or
-            Keys.F4 or
-            Keys.Insert or
-            Keys.Home or
-            Keys.Right or
-            Keys.Left or
-            Keys.K;
+        return trigger is
+            "throttle" or
+            "brake" or
+            "steering_left" or
+            "steering_right" or
+            "steering_neutral" or
+            "clutch" or
+            "kw_batterietrennschalter" or
+            "cp_batterietrennschalter_toggle" or
+            "kw_m_enginestart" or
+            "kw_m_engine_startbutton" or
+            "kw_m_engineshutdown" or
+            "automatic_d" or
+            "automatic_1" or
+            "automatic_2" or
+            "kw_s_1" or
+            "kw_s_2" or
+            "automatic_n" or
+            "kw_s_n" or
+            "automatic_r" or
+            "kw_s_r" or
+            "parking_brake_toggle" or
+            "parking_brake_mouse" or
+            "parking_brake_set" or
+            "parking_brake_release" or
+            "toggel_mouse_ctrl" or
+            "toggle_mouse_ctrl" or
+            "toggel_ctrler" or
+            "toggle_ctrler" or
+            "toggle_controller" or
+            "view_set_driver" or
+            "view_set_passenger" or
+            "view_set_outside" or
+            "view_set_map" or
+            "view_set_schedule" or
+            "view_schedule" or
+            "view_set_ticketselling" or
+            "view_ticketselling" or
+            "view_interiorcam_minus" or
+            "view_interiorcam_plus" or
+            "view_reset_direction" or
+            "view_reset_all_directions" or
+            "view_toggle_viewpoint" or
+            "view_toggle_informationdisplay" or
+            "view_status" or
+            "view_information" or
+            "view_info" or
+            "sim_pause" or
+            "pause";
     }
 
     private static IReadOnlyList<ParsedBinding>
@@ -368,16 +477,15 @@ internal static class RuntimeOmsiKeyboardBindings
 
     private static Dictionary<int, Keys> LoadKeyTable(
         string inputs,
-        string? preferredLanguage)
+        string? preferredLanguage,
+        out string? selectedPath)
     {
         var candidates =
-            new List<string>
-            {
-                Path.Combine(
-                    inputs,
-                    "ENG.kyb")
-            };
+            new List<string>();
 
+        // keyboard.cfg stores key-table indices, so those indices must be
+        // interpreted with the same language table selected by OMSI.
+        // Falling back to ENG first can map physical keys incorrectly.
         if (!string.IsNullOrWhiteSpace(
                 preferredLanguage))
         {
@@ -395,6 +503,10 @@ internal static class RuntimeOmsiKeyboardBindings
         candidates.Add(
             Path.Combine(
                 inputs,
+                "ENG.kyb"));
+        candidates.Add(
+            Path.Combine(
+                inputs,
                 "DEU.kyb"));
 
         var path =
@@ -406,6 +518,9 @@ internal static class RuntimeOmsiKeyboardBindings
                     "*.kyb",
                     SearchOption.TopDirectoryOnly)
                 .FirstOrDefault();
+
+        selectedPath =
+            path;
 
         var result =
             new Dictionary<int, Keys>();
@@ -537,25 +652,37 @@ internal static class RuntimeOmsiKeyboardBindings
                 ["spacebar"] = Keys.Space,
                 ["enter"] = Keys.Enter,
                 ["return"] = Keys.Enter,
+                ["numenter"] = Keys.Enter,
+                ["numpadenter"] = Keys.Enter,
                 ["tab"] = Keys.Tab,
                 ["backspace"] = Keys.Back,
                 ["back"] = Keys.Back,
                 ["insert"] = Keys.Insert,
+                ["einfg"] = Keys.Insert,
                 ["delete"] = Keys.Delete,
+                ["del"] = Keys.Delete,
+                ["entf"] = Keys.Delete,
                 ["home"] = Keys.Home,
+                ["pos1"] = Keys.Home,
                 ["end"] = Keys.End,
                 ["pageup"] = Keys.PageUp,
                 ["pgup"] = Keys.PageUp,
+                ["bildauf"] = Keys.PageUp,
                 ["pagedown"] = Keys.PageDown,
                 ["pgdn"] = Keys.PageDown,
+                ["bildab"] = Keys.PageDown,
                 ["left"] = Keys.Left,
                 ["arrowleft"] = Keys.Left,
+                ["leftarrow"] = Keys.Left,
                 ["right"] = Keys.Right,
                 ["arrowright"] = Keys.Right,
+                ["rightarrow"] = Keys.Right,
                 ["up"] = Keys.Up,
                 ["arrowup"] = Keys.Up,
+                ["uparrow"] = Keys.Up,
                 ["down"] = Keys.Down,
                 ["arrowdown"] = Keys.Down,
+                ["downarrow"] = Keys.Down,
                 ["num+"] = Keys.Add,
                 ["numpad+"] = Keys.Add,
                 ["num-"] = Keys.Subtract,
@@ -567,12 +694,24 @@ internal static class RuntimeOmsiKeyboardBindings
                 ["num."] = Keys.Decimal,
                 ["numpad."] = Keys.Decimal,
                 ["decimal"] = Keys.Decimal,
+                ["numdecimal"] = Keys.Decimal,
+                ["."] = Keys.OemPeriod,
+                ["period"] = Keys.OemPeriod,
+                ["fullstop"] = Keys.OemPeriod,
+                ["dot"] = Keys.OemPeriod,
+                ["punkt"] = Keys.OemPeriod,
+                [","] = Keys.Oemcomma,
+                ["comma"] = Keys.Oemcomma,
+                ["komma"] = Keys.Oemcomma,
+                ["minus"] = Keys.OemMinus,
+                ["plus"] = Keys.Oemplus,
                 ["shift"] = Keys.ShiftKey,
                 ["ctrl"] = Keys.ControlKey,
                 ["control"] = Keys.ControlKey,
                 ["alt"] = Keys.Menu,
                 ["capslock"] = Keys.CapsLock,
                 ["scrolllock"] = Keys.Scroll,
+                ["rollen"] = Keys.Scroll,
                 ["pause"] = Keys.Pause
             };
 
@@ -591,6 +730,239 @@ internal static class RuntimeOmsiKeyboardBindings
             ignoreCase:
                 true,
             out key);
+    }
+
+    private sealed record KeyboardEntryAudit(
+        int UnassignedCount,
+        IReadOnlyList<string> InvalidEntries);
+
+    private static KeyboardEntryAudit AnalyzeKeyboardEntries(
+        string path,
+        IReadOnlyDictionary<int, Keys> keyIndexToWindowsKey)
+    {
+        string[] lines;
+
+        try
+        {
+            lines =
+                File.ReadAllLines(
+                    path);
+        }
+        catch
+        {
+            return new KeyboardEntryAudit(
+                0,
+                Array.Empty<string>());
+        }
+
+        var unassignedCount =
+            0;
+
+        var invalidEntries =
+            new List<string>();
+
+        for (var index = 0;
+             index < lines.Length;
+             index++)
+        {
+            if (!string.Equals(
+                    lines[index].Trim(),
+                    "[entry]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                NextMeaningful(
+                    lines,
+                    index + 1,
+                    3);
+
+            var entryLine =
+                index + 1;
+
+            if (values.Count <
+                3)
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger=<unknown> | reason=incomplete-entry");
+                continue;
+            }
+
+            var trigger =
+                lines[values[0]]
+                    .Trim()
+                    .Trim('"');
+
+            var keyText =
+                lines[values[1]]
+                    .Trim();
+
+            var flagsText =
+                lines[values[2]]
+                    .Trim();
+
+            if (trigger.Length ==
+                0)
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger=<empty> | keyIndex={keyText} | flags={flagsText} | reason=empty-trigger");
+                continue;
+            }
+
+            if (!int.TryParse(
+                    keyText,
+                    out var keyIndex))
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger={trigger} | keyIndex={keyText} | flags={flagsText} | reason=invalid-key-index");
+                continue;
+            }
+
+            if (!int.TryParse(
+                    flagsText,
+                    out _))
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger={trigger} | keyIndex={keyIndex} | flags={flagsText} | reason=invalid-flags");
+                continue;
+            }
+
+            // OMSI uses key index 0 for entries intentionally left without
+            // a keyboard assignment. They are valid configuration entries,
+            // not parser failures.
+            if (keyIndex ==
+                0)
+            {
+                unassignedCount++;
+                continue;
+            }
+
+            if (!keyIndexToWindowsKey.ContainsKey(
+                    keyIndex))
+            {
+                invalidEntries.Add(
+                    $"line={entryLine} | trigger={trigger} | keyIndex={keyIndex} | flags={flagsText} | reason=key-index-not-in-{Path.GetFileName(path)}-table");
+            }
+        }
+
+        return new KeyboardEntryAudit(
+            unassignedCount,
+            invalidEntries);
+    }
+
+    private static int CountEntries(
+        string path)
+    {
+        try
+        {
+            return File.ReadLines(
+                    path)
+                .Count(
+                    line =>
+                        string.Equals(
+                            line.Trim(),
+                            "[entry]",
+                            StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static void WriteKeyboardAudit(
+        string keyboardPath,
+        string? keyTablePath,
+        int entryCount,
+        int resolvedEntryCount,
+        int unassignedEntryCount,
+        IReadOnlyList<string> invalidEntries,
+        IReadOnlyList<RuntimeOmsiKeyboardBinding> bindings)
+    {
+        try
+        {
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"keyboard={keyboardPath}",
+                    $"keyTable={keyTablePath ?? "<none>"}",
+                    $"entries={entryCount}",
+                    $"resolvedEntries={resolvedEntryCount}",
+                    $"unassignedEntries={unassignedEntryCount}",
+                    $"invalidEntries={invalidEntries.Count}",
+                    $"distinctBindings={bindings.Count}",
+                    $"unresolvedEntries={invalidEntries.Count}",
+                    $"hostMapped={bindings.Count(binding => binding.HostAction.HasValue)}",
+                    "",
+                    "invalidBindings:"
+                };
+
+            if (invalidEntries.Count ==
+                0)
+            {
+                lines.Add(
+                    "<none>");
+            }
+            else
+            {
+                lines.AddRange(
+                    invalidEntries);
+            }
+
+            lines.Add("");
+            lines.Add(
+                "bindings:");
+
+            foreach (var binding in
+                     bindings.OrderBy(
+                         static item =>
+                             item.Key)
+                     .ThenBy(
+                         static item =>
+                             item.Trigger,
+                         StringComparer.OrdinalIgnoreCase))
+            {
+                var modifiers =
+                    string.Join(
+                        "+",
+                        new[]
+                        {
+                            binding.Control
+                                ? "Ctrl"
+                                : null,
+                            binding.Shift
+                                ? "Shift"
+                                : null
+                        }.Where(
+                            static item =>
+                                item is not null));
+
+                var key =
+                    string.IsNullOrWhiteSpace(
+                        modifiers)
+                        ? binding.Key.ToString()
+                        : modifiers +
+                          "+" +
+                          binding.Key;
+
+                lines.Add(
+                    $"{key} | trigger={binding.Trigger} | continuous={binding.Continuous} | host={binding.HostAction?.ToString() ?? "<script>"}");
+            }
+
+            File.WriteAllLines(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "keyboard-runtime-audit.log"),
+                lines);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[input-keyboard] audit unavailable: {exception.Message}");
+        }
     }
 
     private static string Normalize(

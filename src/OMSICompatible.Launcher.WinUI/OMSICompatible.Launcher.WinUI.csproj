@@ -9,6 +9,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>OMSICompatible.Launcher.WinUI</AssemblyName>
+    <RootNamespace>OMSICompatible.Launcher.WinUI</RootNamespace>
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 

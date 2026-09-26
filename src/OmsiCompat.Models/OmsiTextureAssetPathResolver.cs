@@ -392,30 +392,56 @@ public static class OmsiTextureAssetPathResolver
             Path.GetExtension(
                 normalizedTextureName);
 
-        if (string.Equals(
-                extension,
+        // OMSI add-ons frequently ship an optimized DDS next to a model
+        // whose material still names BMP/TGA/PNG, and some repaints do the
+        // inverse. Prefer DDS after the exact name, then try the remaining
+        // supported raster extensions before declaring the texture missing.
+        var fallbackExtensions =
+            new[]
+            {
                 ".dds",
-                StringComparison.OrdinalIgnoreCase))
+                ".png",
+                ".tga",
+                ".bmp",
+                ".jpg",
+                ".jpeg",
+                ".webp",
+                ".gif"
+            };
+
+        foreach (var fallbackExtension in
+                 fallbackExtensions)
         {
-            return false;
+            if (string.Equals(
+                    extension,
+                    fallbackExtension,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var fallbackName =
+                Path.ChangeExtension(
+                    normalizedTextureName,
+                    fallbackExtension);
+
+            var fallbackCandidate =
+                Path.GetFullPath(
+                    Path.Combine(
+                        baseDirectory,
+                        fallbackName));
+
+            if (TryAcceptCandidate(
+                    root,
+                    requiredPrefix,
+                    fallbackCandidate,
+                    out fullPath))
+            {
+                return true;
+            }
         }
 
-        var ddsName =
-            Path.ChangeExtension(
-                normalizedTextureName,
-                ".dds");
-
-        var ddsCandidate =
-            Path.GetFullPath(
-                Path.Combine(
-                    baseDirectory,
-                    ddsName));
-
-        return TryAcceptCandidate(
-            root,
-            requiredPrefix,
-            ddsCandidate,
-            out fullPath);
+        return false;
     }
 
     private static bool TryAcceptCandidate(

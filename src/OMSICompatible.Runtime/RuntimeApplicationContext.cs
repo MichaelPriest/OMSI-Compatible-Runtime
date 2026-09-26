@@ -24,6 +24,30 @@ internal sealed class RuntimeApplicationContext :
 
     private D3D11RenderWindow? _runtimeWindow;
     private OmsiVehicleAsset? _vehicleAsset;
+    private WorldTrafficSimulation? _trafficSimulation;
+    private WorldRailTrafficSimulation? _railTrafficSimulation;
+    private readonly Dictionary<string, OmsiTrainConsist>
+        _railTrainConsists =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, RailRuntimeConsist>
+        _railRuntimeConsists =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, OmsiVehicleAsset>
+        _trafficVehicleAssets =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, OmsiScriptCatalog>
+        _trafficScriptCatalogs =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<int, TrafficScriptRuntimeState>
+        _trafficScriptRuntimes =
+            [];
+    private readonly Dictionary<long, OmsiScriptRuntime>
+        _railSignalScriptRuntimes =
+            [];
     private (int X, int Y)? _pendingStreamingCenter;
     private int _loadedCenterX;
     private int _loadedCenterY;
@@ -259,10 +283,38 @@ internal sealed class RuntimeApplicationContext :
             _vehicleAsset =
                 vehicle;
 
+            _trafficSimulation =
+                CreateTrafficSimulation(
+                    world);
+
+            _railTrafficSimulation =
+                CreateRailTrafficSimulation(
+                    world);
+
+            _trafficScriptRuntimes.Clear();
+
+            await EnsureTrafficVehicleAssetsAsync(
+                _trafficSimulation);
+
+            await EnsureRailTrafficAssetsAsync(
+                _railTrafficSimulation);
+
+            RebuildRailSignalScriptRuntimes(
+                world);
+
+            WriteTrafficDiagnostics(
+                world,
+                _trafficSimulation);
+
+            WriteRailTrafficDiagnostics(
+                world,
+                _railTrafficSimulation);
+
             if (vehicle is not null)
             {
                 WriteVehicleLoadDiagnostics(
-                    vehicle);
+                    vehicle,
+                    _contentRoot);
             }
 
             WriteWorldLoadDiagnostics(
@@ -287,7 +339,8 @@ internal sealed class RuntimeApplicationContext :
                     world,
                     vehicle,
                     _entryPoint,
-                    _contentRoot.RootPath);
+                    _contentRoot.RootPath,
+                    _trafficVehicleAssets);
 
             OmsiScriptRuntime? scriptRuntime =
                 null;
@@ -302,7 +355,40 @@ internal sealed class RuntimeApplicationContext :
                 scriptRuntime =
                     new OmsiScriptRuntime(
                         scriptCatalog);
+            }
 
+            var sectionScriptRuntimes =
+                new Dictionary<int, OmsiScriptRuntime>();
+
+            foreach (var section in
+                     vehicle?.Sections ??
+                     Array.Empty<OmsiVehicleSectionAssetInfo>())
+            {
+                if (section.ScriptManifest is not
+                    { } sectionManifest ||
+                    sectionManifest.RegisteredFileCount <=
+                    0)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var sectionCatalog =
+                        OmsiScriptCatalogLoader.Load(
+                            _contentRoot,
+                            sectionManifest);
+
+                    sectionScriptRuntimes[
+                        section.Index] =
+                        new OmsiScriptRuntime(
+                            sectionCatalog);
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine(
+                        $"[vehicle-script] section={section.Index} catalog unavailable: {exception.Message}");
+                }
             }
 
             ReportProgress(
@@ -324,7 +410,27 @@ internal sealed class RuntimeApplicationContext :
                     inputLanguage:
                         _options.Language,
                     gameControllerEnabled:
-                        _options.GameControllerEnabled);
+                        _options.GameControllerEnabled,
+                    sectionScriptRuntimes:
+                        sectionScriptRuntimes,
+                    masterVolumePercent:
+                        _options.MasterVolumePercent,
+                    automaticSteeringCenter:
+                        _options.AutomaticSteeringCenter,
+                    maximumSoundCount:
+                        _options.MaximumSoundCount,
+                    materialLightMapEnabled:
+                        _options.MaterialLightMap,
+                    materialReflectionMapEnabled:
+                        _options.MaterialReflectionMap,
+                    materialBumpMapEnabled:
+                        _options.MaterialBumpMap,
+                    materialNightMapEnabled:
+                        _options.MaterialNightMap,
+                    trafficStep:
+                        StepTrafficSimulation,
+                    railSignalStateProvider:
+                        GetRailSignalRouteStates);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
@@ -547,7 +653,8 @@ internal sealed class RuntimeApplicationContext :
     }
 
     private static void WriteVehicleLoadDiagnostics(
-        OmsiVehicleAsset vehicle)
+        OmsiVehicleAsset vehicle,
+        OmsiContentRoot contentRoot)
     {
         try
         {
@@ -622,6 +729,85 @@ internal sealed class RuntimeApplicationContext :
 
             lines.AddRange(
                 failedExamples);
+
+            lines.Add("");
+            lines.Add("sectionScripts:");
+
+            foreach (var section in
+                     vehicle.Sections ??
+                     Array.Empty<OmsiVehicleSectionAssetInfo>())
+            {
+                var manifest =
+                    section.ScriptManifest;
+
+                if (manifest is null)
+                {
+                    lines.Add(
+                        $"section={section.Index} | scripts=<none>");
+                    continue;
+                }
+
+                lines.Add(
+                    $"section={section.Index} | registered={manifest.RegisteredFileCount} | missing={manifest.MissingFileCount} | scripts={manifest.ScriptFiles.Count} | varlists={manifest.VariableLists.Count} | stringvarlists={manifest.StringVariableLists.Count} | constfiles={manifest.ConstantFiles.Count}");
+
+                foreach (var script in
+                         manifest.ScriptFiles)
+                {
+                    lines.Add(
+                        $"  script={script.DeclaredPath} | resolved={script.ResolvedPath ?? "<missing>"}");
+                }
+
+                try
+                {
+                    var catalog =
+                        OmsiScriptCatalogLoader.Load(
+                            contentRoot,
+                            manifest);
+
+                    var keyVariables =
+                        new[]
+                        {
+                            "M_Wheel",
+                            "Brakeforce",
+                            "Axle_Brakeforce_0_L",
+                            "Axle_Brakeforce_0_R",
+                            "Axle_Brakeforce_1_L",
+                            "Axle_Brakeforce_1_R",
+                            "articulation_0_alpha",
+                            "articulation_0_beta",
+                            "engine_on",
+                            "elec_busbar_main",
+                            "Snd_OutsideVol"
+                        }
+                        .Where(
+                            catalog.NumericVariables.Contains)
+                        .ToArray();
+
+                    lines.Add(
+                        $"  catalogVars={catalog.NumericVariables.Count} | stringVars={catalog.StringVariables.Count} | triggers={catalog.Program.Triggers.Count} | frameBlocks={catalog.Program.FrameBlocks.Count} | initBlocks={catalog.Program.InitBlocks.Count}");
+
+                    lines.Add(
+                        $"  keyVars={(keyVariables.Length == 0 ? "<none>" : string.Join(",", keyVariables))}");
+
+                    if (catalog.Program.Triggers.Count > 0)
+                    {
+                        lines.Add(
+                            $"  triggerSample={string.Join(",", catalog.Program.Triggers.Keys.OrderBy(static name => name, StringComparer.OrdinalIgnoreCase).Take(40))}");
+                    }
+
+                    foreach (var diagnostic in
+                             catalog.Diagnostics.Take(40))
+                    {
+                        lines.Add(
+                            $"  diagnostic={diagnostic}");
+                    }
+                }
+                catch (Exception exception)
+                {
+                    lines.Add(
+                        $"  catalogError={exception.GetType().Name}: {exception.Message}");
+                }
+            }
 
             lines.Add("");
             lines.Add("meshMaterials:");
@@ -721,8 +907,14 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
+        // Renderer X mirrors OMSI's map X to keep the X/Z ground plane
+        // right-handed after converting OMSI X/Y + Z-up into X/Z + Y-up.
+        // Convert the renderer tile coordinate back to the source OMSI tile
+        // before asking WorldLoader for the next streaming window.
         _pendingStreamingCenter =
-            (tileX, tileY);
+            (SourceTileXFromRuntimeTileX(
+                 tileX),
+             tileY);
 
         if (!await _streamingGate.WaitAsync(0))
         {
@@ -774,12 +966,40 @@ internal sealed class RuntimeApplicationContext :
                     return;
                 }
 
+                _trafficSimulation =
+                    CreateTrafficSimulation(
+                        streamedWorld);
+
+                _railTrafficSimulation =
+                    CreateRailTrafficSimulation(
+                        streamedWorld);
+
+                _trafficScriptRuntimes.Clear();
+
+                await EnsureTrafficVehicleAssetsAsync(
+                    _trafficSimulation);
+
+                await EnsureRailTrafficAssetsAsync(
+                    _railTrafficSimulation);
+
+                RebuildRailSignalScriptRuntimes(
+                    streamedWorld);
+
+                WriteTrafficDiagnostics(
+                    streamedWorld,
+                    _trafficSimulation);
+
+                WriteRailTrafficDiagnostics(
+                    streamedWorld,
+                    _railTrafficSimulation);
+
                 var runtimeInfo =
                     BuildRuntimeInfo(
                         streamedWorld,
                         _vehicleAsset,
                         _entryPoint,
-                        _contentRoot.RootPath);
+                        _contentRoot.RootPath,
+                        _trafficVehicleAssets);
 
                 _runtimeWindow.ApplyStreamedWorld(
                     runtimeInfo);
@@ -805,18 +1025,1118 @@ internal sealed class RuntimeApplicationContext :
         }
     }
 
+    private async Task EnsureTrafficVehicleAssetsAsync(
+        WorldTrafficSimulation simulation)
+    {
+        var requestedPaths =
+            simulation
+                .Snapshot()
+                .Select(
+                    static agent =>
+                        agent.VehiclePath)
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Where(
+                    path =>
+                        !_trafficVehicleAssets.ContainsKey(
+                            path))
+                .ToArray();
+
+        if (requestedPaths.Length ==
+            0)
+        {
+            return;
+        }
+
+        var loaded =
+            await Task.Run(
+                () =>
+                {
+                    var result =
+                        new List<KeyValuePair<
+                            string,
+                            OmsiVehicleAsset>>();
+
+                    foreach (var path in
+                             requestedPaths)
+                    {
+                        try
+                        {
+                            if (!File.Exists(
+                                    path))
+                            {
+                                continue;
+                            }
+
+                            var vehicleInfo =
+                                OmsiBusReader.ReadFile(
+                                    _contentRoot.RootPath,
+                                    path);
+
+                            var asset =
+                                OmsiArticulatedVehicleAssetLoader.Load(
+                                    _contentRoot,
+                                    vehicleInfo);
+
+                            if (asset.RenderableMeshCount <=
+                                0)
+                            {
+                                Console.WriteLine(
+                                    $"[traffic-ai] Vehicle has no renderable meshes: {path}");
+                                continue;
+                            }
+
+                            result.Add(
+                                new KeyValuePair<
+                                    string,
+                                    OmsiVehicleAsset>(
+                                    path,
+                                    asset));
+                        }
+                        catch (Exception exception)
+                        {
+                            Console.WriteLine(
+                                $"[traffic-ai] Failed to load {path}: {exception.Message}");
+                        }
+                    }
+
+                    return result;
+                });
+
+        foreach (var pair in
+                 loaded)
+        {
+            _trafficVehicleAssets[
+                pair.Key] =
+                pair.Value;
+
+            CacheTrafficScriptCatalog(
+                pair.Key,
+                pair.Value);
+        }
+
+        Console.WriteLine(
+            $"[traffic-ai] cached={_trafficVehicleAssets.Count}; requested={requestedPaths.Length}; loaded={loaded.Count}");
+    }
+
+    private async Task EnsureRailTrafficAssetsAsync(
+        WorldRailTrafficSimulation simulation)
+    {
+        var trainPaths =
+            simulation
+                .Snapshot()
+                .Select(
+                    static agent =>
+                        agent.TrainConsistPath)
+                .Where(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path))
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        foreach (var trainPath in
+                 trainPaths)
+        {
+            if (_railTrainConsists.ContainsKey(
+                    trainPath))
+            {
+                continue;
+            }
+
+            try
+            {
+                _railTrainConsists[
+                    trainPath] =
+                    OmsiTrainConsistReader.ReadFile(
+                        _contentRoot.RootPath,
+                        trainPath);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[rail-ai] Failed to parse {trainPath}: {exception.Message}");
+            }
+        }
+
+        var requestedVehiclePaths =
+            trainPaths
+                .Where(
+                    path =>
+                        _railTrainConsists.ContainsKey(
+                            path))
+                .SelectMany(
+                    path =>
+                        _railTrainConsists[
+                            path]
+                            .Vehicles)
+                .Where(
+                    static vehicle =>
+                        vehicle.Exists)
+                .Select(
+                    static vehicle =>
+                        vehicle.ResolvedPath!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Where(
+                    path =>
+                        !_trafficVehicleAssets.ContainsKey(
+                            path))
+                .ToArray();
+
+        if (requestedVehiclePaths.Length >
+            0)
+        {
+            var loaded =
+                await Task.Run(
+                    () =>
+                    {
+                        var result =
+                            new List<KeyValuePair<
+                                string,
+                                OmsiVehicleAsset>>();
+
+                        foreach (var vehiclePath in
+                                 requestedVehiclePaths)
+                        {
+                            try
+                            {
+                                var vehicleInfo =
+                                    OmsiBusReader.ReadFile(
+                                        _contentRoot.RootPath,
+                                        vehiclePath);
+
+                                var asset =
+                                    OmsiVehicleAssetLoader.Load(
+                                        _contentRoot,
+                                        vehicleInfo);
+
+                                if (asset.RenderableMeshCount <=
+                                    0)
+                                {
+                                    Console.WriteLine(
+                                        $"[rail-ai] Vehicle has no renderable meshes: {vehiclePath}");
+                                    continue;
+                                }
+
+                                result.Add(
+                                    new KeyValuePair<
+                                        string,
+                                        OmsiVehicleAsset>(
+                                        vehiclePath,
+                                        asset));
+                            }
+                            catch (Exception exception)
+                            {
+                                Console.WriteLine(
+                                    $"[rail-ai] Failed to load {vehiclePath}: {exception.Message}");
+                            }
+                        }
+
+                        return result;
+                    });
+
+            foreach (var pair in
+                     loaded)
+            {
+                _trafficVehicleAssets[
+                    pair.Key] =
+                    pair.Value;
+
+                CacheTrafficScriptCatalog(
+                    pair.Key,
+                    pair.Value);
+            }
+        }
+
+        foreach (var trainPath in
+                 trainPaths)
+        {
+            if (!_railTrainConsists.TryGetValue(
+                    trainPath,
+                    out var consist))
+            {
+                continue;
+            }
+
+            var runtimeConsist =
+                BuildRailRuntimeConsist(
+                    consist);
+
+            if (runtimeConsist.Cars.Count >
+                0)
+            {
+                _railRuntimeConsists[
+                    trainPath] =
+                    runtimeConsist;
+
+                if (runtimeConsist.TailClearanceMeters is
+                    { } tailClearanceMeters)
+                {
+                    simulation.SetConsistTrailingDistance(
+                        trainPath,
+                        tailClearanceMeters);
+                }
+            }
+        }
+
+        Console.WriteLine(
+            $"[rail-ai] consists={_railRuntimeConsists.Count}; requested={trainPaths.Length}; vehicles={requestedVehiclePaths.Length}");
+    }
+
+    private void CacheTrafficScriptCatalog(
+        string vehiclePath,
+        OmsiVehicleAsset asset)
+    {
+        if (_trafficScriptCatalogs.ContainsKey(
+                vehiclePath) ||
+            asset.Bus.ScriptManifest.RegisteredFileCount <=
+                0)
+        {
+            return;
+        }
+
+        try
+        {
+            _trafficScriptCatalogs[
+                vehiclePath] =
+                OmsiScriptCatalogLoader.Load(
+                    _contentRoot,
+                    asset.Bus.ScriptManifest);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[traffic-ai] Script catalog unavailable for {Path.GetFileName(vehiclePath)}: {exception.Message}");
+        }
+    }
+
+    private RailRuntimeConsist BuildRailRuntimeConsist(
+        OmsiTrainConsist consist)
+    {
+        var cars =
+            new List<RailRuntimeCar>();
+        OmsiVehicleAsset? previousAsset =
+            null;
+        var previousReverse =
+            false;
+        var trailingDistance =
+            0.0;
+
+        foreach (var vehicle in
+                 consist.Vehicles)
+        {
+            if (!vehicle.Exists ||
+                !_trafficVehicleAssets.TryGetValue(
+                    vehicle.ResolvedPath!,
+                    out var asset))
+            {
+                Console.WriteLine(
+                    $"[rail-ai] Missing consist vehicle: {vehicle.DeclaredPath}");
+                break;
+            }
+
+            if (previousAsset is not null)
+            {
+                var spacing =
+                    ResolveRailCarSpacing(
+                        previousAsset,
+                        previousReverse,
+                        asset,
+                        vehicle.Reverse);
+
+                if (!spacing.HasValue)
+                {
+                    Console.WriteLine(
+                        $"[rail-ai] Missing/invalid coupling geometry between {Path.GetFileName(previousAsset.Bus.FilePath)} and {Path.GetFileName(asset.Bus.FilePath)}; remaining consist cars are not placed.");
+                    break;
+                }
+
+                trailingDistance +=
+                    spacing.Value;
+            }
+
+            cars.Add(
+                new RailRuntimeCar(
+                    vehicle.ResolvedPath!,
+                    vehicle.Reverse,
+                    trailingDistance));
+
+            previousAsset =
+                asset;
+            previousReverse =
+                vehicle.Reverse;
+        }
+
+        double? tailClearanceMeters =
+            null;
+
+        if (cars.Count >
+                0 &&
+            previousAsset is not null)
+        {
+            var rearOverhang =
+                ResolveRailRearOverhang(
+                    previousAsset,
+                    previousReverse);
+
+            if (rearOverhang.HasValue)
+            {
+                tailClearanceMeters =
+                    trailingDistance +
+                    rearOverhang.Value;
+            }
+        }
+
+        return new RailRuntimeConsist(
+            consist.SourcePath,
+            cars,
+            tailClearanceMeters);
+    }
+
+    private static double? ResolveRailRearOverhang(
+        OmsiVehicleAsset asset,
+        bool reverse)
+    {
+        var rearCouplingLongitudinal =
+            reverse
+                ? asset.Bus.FrontCoupling?.Y
+                : asset.Bus.BackCoupling?.Y;
+
+        if (!rearCouplingLongitudinal.HasValue ||
+            !double.IsFinite(
+                rearCouplingLongitudinal.Value))
+        {
+            return null;
+        }
+
+        var distance =
+            Math.Abs(
+                rearCouplingLongitudinal.Value);
+
+        return distance >
+               0.1
+            ? distance
+            : null;
+    }
+
+    private static double? ResolveRailCarSpacing(
+        OmsiVehicleAsset previous,
+        bool previousReverse,
+        OmsiVehicleAsset current,
+        bool currentReverse)
+    {
+        var previousRear =
+            previousReverse
+                ? previous.Bus.FrontCoupling is
+                    { } previousFront
+                    ? -previousFront.Y
+                    : (double?)null
+                : previous.Bus.BackCoupling?.Y;
+
+        var currentFront =
+            currentReverse
+                ? current.Bus.BackCoupling is
+                    { } currentBack
+                    ? -currentBack.Y
+                    : (double?)null
+                : current.Bus.FrontCoupling?.Y;
+
+        if (!previousRear.HasValue ||
+            !currentFront.HasValue)
+        {
+            return null;
+        }
+
+        var spacing =
+            Math.Abs(
+                previousRear.Value -
+                currentFront.Value);
+
+        return double.IsFinite(
+                   spacing) &&
+               spacing >
+                   0.5
+            ? spacing
+            : null;
+    }
+
+    private static WorldTrafficSimulation
+        CreateTrafficSimulation(
+            WorldDefinition world) =>
+        new(
+            world.TrafficPaths,
+            world.AiCatalog,
+            maximumAgents:
+                12);
+
+    private static WorldRailTrafficSimulation
+        CreateRailTrafficSimulation(
+            WorldDefinition world) =>
+        new(
+            world.TrafficPaths,
+            world.AiCatalog,
+            maximumAgents:
+                4,
+            signalRoutes:
+                world.SignalRoutes);
+
+    private IReadOnlyList<RuntimeRailSignalRouteStateInfo>
+        GetRailSignalRouteStates()
+    {
+        var simulation =
+            _railTrafficSimulation;
+
+        if (simulation is null)
+        {
+            return Array.Empty<
+                RuntimeRailSignalRouteStateInfo>();
+        }
+
+        var states =
+            simulation
+                .SignalRouteSnapshot()
+                .Where(
+                    static state =>
+                        state.Signal is not null)
+                .ToArray();
+
+        var stateByObjectId =
+            states
+                .GroupBy(
+                    static state =>
+                        state.Signal!.ObjectId)
+                .ToDictionary(
+                    static group =>
+                        group.Key,
+                    static group =>
+                        group
+                            .OrderByDescending(
+                                static state =>
+                                    state.Reserved)
+                            .ThenBy(
+                                static state =>
+                                    state.RouteIndex)
+                            .First());
+
+        foreach (var pair in
+                 _railSignalScriptRuntimes)
+        {
+            var runtime =
+                pair.Value;
+
+            var signalState =
+                stateByObjectId.TryGetValue(
+                    pair.Key,
+                    out var state) &&
+                state.Reserved
+                    ? state.Signal!.SignalState
+                    : 0;
+
+            runtime.SetLocal(
+                "Signal",
+                signalState);
+
+            runtime.SetLocal(
+                "NextSignal",
+                signalState);
+
+            runtime.ExecuteFrame();
+        }
+
+        return states
+            .Select(
+                state =>
+                    new RuntimeRailSignalRouteStateInfo(
+                        state.RouteIndex,
+                        state.Signal!.ObjectId,
+                        state.Signal.SignalState,
+                        state.Reserved,
+                        state.ReservedAgentIndex,
+                        _railSignalScriptRuntimes.TryGetValue(
+                            state.Signal.ObjectId,
+                            out var runtime)
+                            ? runtime
+                            : null))
+            .ToArray();
+    }
+
+    private void RebuildRailSignalScriptRuntimes(
+        WorldDefinition world)
+    {
+        _railSignalScriptRuntimes.Clear();
+
+        var signalObjectIds =
+            WorldRailSignalRouteResolver
+                .Resolve(
+                    world.TrafficPaths,
+                    world.SignalRoutes)
+                .Select(
+                    static route =>
+                        route.Signal?.ObjectId)
+                .Where(
+                    static objectId =>
+                        objectId.HasValue)
+                .Select(
+                    static objectId =>
+                        objectId!.Value)
+                .Distinct()
+                .ToHashSet();
+
+        if (signalObjectIds.Count ==
+            0)
+        {
+            return;
+        }
+
+        foreach (var placement in
+                 world.Objects.Where(
+                     placement =>
+                         signalObjectIds.Contains(
+                             placement.Id)))
+        {
+            if (!world.SceneryAssets.TryGetValue(
+                    placement.AssetPath,
+                    out var asset) ||
+                asset.ScriptManifest is not
+                    { RegisteredFileCount: > 0 } manifest)
+            {
+                continue;
+            }
+
+            try
+            {
+                var vehicleManifest =
+                    new OmsiVehicleScriptManifest(
+                        manifest.ScriptFiles
+                            .Select(
+                                static file =>
+                                    new OmsiVehicleFileReference(
+                                        file.DeclaredPath,
+                                        file.ResolvedPath))
+                            .ToArray(),
+                        manifest.VariableLists
+                            .Select(
+                                static file =>
+                                    new OmsiVehicleFileReference(
+                                        file.DeclaredPath,
+                                        file.ResolvedPath))
+                            .ToArray(),
+                        manifest.StringVariableLists
+                            .Select(
+                                static file =>
+                                    new OmsiVehicleFileReference(
+                                        file.DeclaredPath,
+                                        file.ResolvedPath))
+                            .ToArray(),
+                        manifest.ConstantFiles
+                            .Select(
+                                static file =>
+                                    new OmsiVehicleFileReference(
+                                        file.DeclaredPath,
+                                        file.ResolvedPath))
+                            .ToArray());
+
+                var catalog =
+                    OmsiScriptCatalogLoader.Load(
+                        _contentRoot,
+                        vehicleManifest);
+
+                var runtime =
+                    new OmsiScriptRuntime(
+                        catalog);
+
+                runtime.SetLocal(
+                    "Signal",
+                    0.0);
+
+                runtime.SetLocal(
+                    "NextSignal",
+                    0.0);
+
+                runtime.ExecuteInit();
+
+                _railSignalScriptRuntimes[
+                    placement.Id] =
+                    runtime;
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[rail-signal] Script runtime unavailable for object {placement.Id}: {exception.Message}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[rail-signal] scriptRuntimes={_railSignalScriptRuntimes.Count}; referencedObjects={signalObjectIds.Count}");
+    }
+
+    private IReadOnlyList<RuntimeTrafficAgentInfo>
+        StepTrafficSimulation(
+            double deltaSeconds)
+    {
+        var agents =
+            new List<WorldTrafficAgentState>();
+
+        if (_trafficSimulation is
+            { } roadSimulation)
+        {
+            if (double.IsFinite(
+                    deltaSeconds) &&
+                deltaSeconds >
+                    0.0)
+            {
+                roadSimulation.Step(
+                    deltaSeconds);
+            }
+
+            agents.AddRange(
+                roadSimulation.Snapshot());
+        }
+
+        if (_railTrafficSimulation is
+            { } railSimulation)
+        {
+            if (double.IsFinite(
+                    deltaSeconds) &&
+                deltaSeconds >
+                    0.0)
+            {
+                railSimulation.Step(
+                    deltaSeconds);
+            }
+
+            foreach (var train in
+                     railSimulation.Snapshot())
+            {
+                if (!_railRuntimeConsists.TryGetValue(
+                        train.TrainConsistPath,
+                        out var consist))
+                {
+                    continue;
+                }
+
+                for (var carIndex = 0;
+                     carIndex <
+                         consist.Cars.Count;
+                     carIndex++)
+                {
+                    var car =
+                        consist.Cars[
+                            carIndex];
+
+                    int segmentIndex;
+                    double segmentDistanceMeters;
+                    WorldVector3 position;
+                    double headingRadians;
+
+                    if (car.TrailingDistanceMeters <=
+                            0.000001)
+                    {
+                        segmentIndex =
+                            train.SegmentIndex;
+                        segmentDistanceMeters =
+                            train.DistanceMeters;
+                        position =
+                            train.Position;
+                        headingRadians =
+                            train.HeadingRadians;
+                    }
+                    else if (!railSimulation.TrySampleBehind(
+                                 train.AgentIndex,
+                                 car.TrailingDistanceMeters,
+                                 out segmentIndex,
+                                 out segmentDistanceMeters,
+                                 out position,
+                                 out headingRadians))
+                    {
+                        continue;
+                    }
+
+                    if (car.Reverse)
+                    {
+                        headingRadians =
+                            Math.Atan2(
+                                -Math.Sin(
+                                    headingRadians),
+                                -Math.Cos(
+                                    headingRadians));
+                    }
+
+                    agents.Add(
+                        new WorldTrafficAgentState(
+                            2_000_000 +
+                            train.AgentIndex *
+                            1_000 +
+                            carIndex,
+                            segmentIndex,
+                            segmentDistanceMeters,
+                            train.SpeedMetersPerSecond,
+                            car.VehiclePath,
+                            position,
+                            headingRadians,
+                            train.GroupIndex,
+                            train.GroupName,
+                            false,
+                            false,
+                            false,
+                            train.TraveledDistanceMeters,
+                            0.0));
+                }
+            }
+        }
+
+        if (agents.Count ==
+            0)
+        {
+            _trafficScriptRuntimes.Clear();
+            return Array.Empty<
+                RuntimeTrafficAgentInfo>();
+        }
+
+        UpdateTrafficScriptRuntimes(
+            agents,
+            deltaSeconds);
+
+        return agents
+            .Select(
+                agent =>
+                    new RuntimeTrafficAgentInfo(
+                        agent.AgentIndex,
+                        agent.SegmentIndex,
+                        agent.DistanceMeters,
+                        agent.SpeedMetersPerSecond,
+                        agent.VehiclePath,
+                        RuntimeWorldXFromSource(
+                            agent.Position.X),
+                        agent.Position.Y,
+                        agent.Position.Z,
+                        RuntimeHeadingRadiansFromSource(
+                            agent.HeadingRadians),
+                        agent.AiBrakeLight,
+                        agent.AiBlinkerLeft,
+                        agent.AiBlinkerRight,
+                        agent.TraveledDistanceMeters,
+                        -agent.PathCurvaturePerMeter,
+                        ResolveTrafficScriptRuntime(
+                            agent)))
+            .ToArray();
+    }
+
+    private void UpdateTrafficScriptRuntimes(
+        IReadOnlyList<WorldTrafficAgentState> agents,
+        double deltaSeconds)
+    {
+        var activeAgentIds =
+            agents
+                .Select(
+                    static agent =>
+                        agent.AgentIndex)
+                .ToHashSet();
+
+        foreach (var staleAgentId in
+                 _trafficScriptRuntimes
+                     .Keys
+                     .Where(
+                         id =>
+                             !activeAgentIds.Contains(
+                                 id))
+                     .ToArray())
+        {
+            _trafficScriptRuntimes.Remove(
+                staleAgentId);
+        }
+
+        var validDeltaSeconds =
+            double.IsFinite(
+                deltaSeconds) &&
+            deltaSeconds >
+                0.0
+                ? deltaSeconds
+                : 0.0;
+
+        foreach (var agent in
+                 agents)
+        {
+            if (!_trafficScriptCatalogs.TryGetValue(
+                    agent.VehiclePath,
+                    out var catalog))
+            {
+                continue;
+            }
+
+            if (!_trafficScriptRuntimes.TryGetValue(
+                    agent.AgentIndex,
+                    out var state) ||
+                !state.VehiclePath.Equals(
+                    agent.VehiclePath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var runtime =
+                    new OmsiScriptRuntime(
+                        catalog);
+
+                SeedTrafficScriptHostVariables(
+                    runtime,
+                    agent,
+                    0.0);
+
+                runtime.ExecuteInit();
+
+                state =
+                    new TrafficScriptRuntimeState(
+                        agent.VehiclePath,
+                        runtime);
+
+                _trafficScriptRuntimes[
+                    agent.AgentIndex] =
+                    state;
+            }
+
+            SeedTrafficScriptHostVariables(
+                state.Runtime,
+                agent,
+                validDeltaSeconds);
+
+            if (validDeltaSeconds >
+                0.0)
+            {
+                state.Runtime.ExecuteFrameAi();
+            }
+        }
+    }
+
+    private void SeedTrafficScriptHostVariables(
+        OmsiScriptRuntime runtime,
+        WorldTrafficAgentState agent,
+        double deltaSeconds)
+    {
+        var speedKilometersPerHour =
+            agent.SpeedMetersPerSecond *
+            3.6;
+
+        runtime.SetLocal(
+            "Velocity",
+            speedKilometersPerHour);
+
+        runtime.SetLocal(
+            "Velocity_Ground",
+            speedKilometersPerHour);
+
+        runtime.SetSystem(
+            "Timegap",
+            deltaSeconds);
+
+        if (!_trafficVehicleAssets.TryGetValue(
+                agent.VehiclePath,
+                out var asset))
+        {
+            return;
+        }
+
+        var wheelDiameter =
+            asset
+                .Bus
+                .Physics
+                .AverageWheelDiameterMeters;
+
+        if (!wheelDiameter.HasValue ||
+            !double.IsFinite(
+                wheelDiameter.Value) ||
+            wheelDiameter.Value <=
+                0.0)
+        {
+            return;
+        }
+
+        var circumference =
+            Math.PI *
+            wheelDiameter.Value;
+
+        if (circumference <=
+            0.000001)
+        {
+            return;
+        }
+
+        var wheelRevolutionsPerMinute =
+            agent.SpeedMetersPerSecond /
+            circumference *
+            60.0;
+
+        runtime.SetLocal(
+            "n_Wheel",
+            wheelRevolutionsPerMinute);
+
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            runtime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_L",
+                wheelRevolutionsPerMinute);
+
+            runtime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_R",
+                wheelRevolutionsPerMinute);
+        }
+    }
+
+    private OmsiScriptRuntime? ResolveTrafficScriptRuntime(
+        WorldTrafficAgentState agent)
+    {
+        if (!_trafficScriptRuntimes.TryGetValue(
+                agent.AgentIndex,
+                out var state) ||
+            !state.VehiclePath.Equals(
+                agent.VehiclePath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return state.Runtime;
+    }
+
+    private static void WriteTrafficDiagnostics(
+        WorldDefinition world,
+        WorldTrafficSimulation simulation)
+    {
+        var agents =
+            simulation.Snapshot();
+
+        Console.WriteLine(
+            $"[traffic] agents={agents.Count}; " +
+            $"paths={world.TrafficPaths.Segments.Count}; " +
+            $"road={world.TrafficPaths.RoadVehicleSegmentCount}; " +
+            $"connected={world.TrafficPaths.ConnectedEndpointCount}; " +
+            $"terminal={world.TrafficPaths.TerminalEndpointCount}; " +
+            $"boundary={world.TrafficPaths.BoundaryEndpointCount}; " +
+            $"unmatched={world.TrafficPaths.UnmatchedEndpointCount}");
+    }
+
+    private static void WriteRailTrafficDiagnostics(
+        WorldDefinition world,
+        WorldRailTrafficSimulation simulation)
+    {
+        var agents =
+            simulation.Snapshot();
+
+        Console.WriteLine(
+            $"[rail-ai] agents={agents.Count}; " +
+            $"railPaths={world.TrafficPaths.RailSegmentCount}; " +
+            $"consists={agents.Select(static agent => agent.TrainConsistPath).Distinct(StringComparer.OrdinalIgnoreCase).Count()}");
+    }
+
+    private sealed record RailRuntimeCar(
+        string VehiclePath,
+        bool Reverse,
+        double TrailingDistanceMeters);
+
+    private sealed record RailRuntimeConsist(
+        string TrainConsistPath,
+        IReadOnlyList<RailRuntimeCar> Cars,
+        double? TailClearanceMeters);
+
+    private sealed record TrafficScriptRuntimeState(
+        string VehiclePath,
+        OmsiScriptRuntime Runtime);
+
+    private const double RuntimeTileSizeMeters =
+        300.0;
+
+    private static int RuntimeTileXFromSourceTileX(
+        int sourceTileX) =>
+        -sourceTileX -
+        1;
+
+    private static int SourceTileXFromRuntimeTileX(
+        int runtimeTileX) =>
+        -runtimeTileX -
+        1;
+
+    private static double RuntimeLocalXFromSourceLocalX(
+        double sourceLocalX) =>
+        RuntimeTileSizeMeters -
+        sourceLocalX;
+
+    private static double RuntimeWorldXFromSource(
+        double sourceWorldX) =>
+        -sourceWorldX;
+
+    private static double RuntimeHeadingDegreesFromSource(
+        double sourceHeadingDegrees) =>
+        -sourceHeadingDegrees;
+
+    private static double RuntimeHeadingRadiansFromSource(
+        double sourceHeadingRadians) =>
+        -sourceHeadingRadians;
+
+    private static IReadOnlyList<float> MirrorTerrainHeightsX(
+        WorldTerrainData terrain)
+    {
+        var sampleCount =
+            terrain.CellCount +
+            1;
+
+        if (sampleCount <=
+                0 ||
+            terrain.Heights.Count !=
+                sampleCount *
+                sampleCount)
+        {
+            return terrain.Heights;
+        }
+
+        var mirrored =
+            new float[
+                terrain.Heights.Count];
+
+        for (var row = 0;
+             row <
+                 sampleCount;
+             row++)
+        {
+            for (var column = 0;
+                 column <
+                     sampleCount;
+                 column++)
+            {
+                mirrored[
+                    row *
+                        sampleCount +
+                    column] =
+                    terrain.Heights[
+                        row *
+                            sampleCount +
+                        (sampleCount -
+                         1 -
+                         column)];
+            }
+        }
+
+        return mirrored;
+    }
+
     private static RuntimeWindowInfo BuildRuntimeInfo(
         WorldDefinition world,
         OmsiVehicleAsset? vehicle,
         OmsiMapEntryPoint entryPoint,
-        string contentRoot)
+        string contentRoot,
+        IReadOnlyDictionary<string, OmsiVehicleAsset> trafficVehicleAssets)
     {
         var runtimeTiles =
             world.Tiles
                 .Select(
                     static tile =>
                         new RuntimeTileInfo(
-                            tile.Coordinate.X,
+                            RuntimeTileXFromSourceTileX(
+                                tile.Coordinate.X),
                             tile.Coordinate.Y,
                             tile.Objects.Count,
                             tile.Splines.Count,
@@ -824,7 +2144,8 @@ internal sealed class RuntimeApplicationContext :
                                 ? null
                                 : new RuntimeTerrainInfo(
                                     tile.Terrain.CellCount,
-                                    tile.Terrain.Heights,
+                                    MirrorTerrainHeightsX(
+                                        tile.Terrain),
                                     tile.Terrain.MinimumHeight,
                                     tile.Terrain.MaximumHeight),
                             tile.Resources.LightmapPath,
@@ -852,12 +2173,12 @@ internal sealed class RuntimeApplicationContext :
                                     static surface =>
                                         new RuntimeSplineSurfaceInfo(
                                             new RuntimeSplineProfilePointInfo(
-                                                surface.From.X,
+                                                -surface.From.X,
                                                 surface.From.Z,
                                                 surface.From.TextureX,
                                                 surface.From.TextureScale),
                                             new RuntimeSplineProfilePointInfo(
-                                                surface.To.X,
+                                                -surface.To.X,
                                                 surface.To.Z,
                                                 surface.To.TextureX,
                                                 surface.To.TextureScale),
@@ -873,7 +2194,7 @@ internal sealed class RuntimeApplicationContext :
                                     static path =>
                                         new RuntimeSplinePathInfo(
                                             path.Type,
-                                            path.X,
+                                            -path.X,
                                             path.Z,
                                             path.Width,
                                             path.Direction))
@@ -885,14 +2206,17 @@ internal sealed class RuntimeApplicationContext :
                             spline.Id,
                             spline.PreviousId,
                             spline.NextId,
-                            spline.Tile.X,
+                            RuntimeTileXFromSourceTileX(
+                                spline.Tile.X),
                             spline.Tile.Y,
-                            spline.Position.X,
+                            RuntimeLocalXFromSourceLocalX(
+                                spline.Position.X),
                             spline.Position.Y,
                             spline.Position.Z,
-                            spline.HeadingDegrees,
+                            RuntimeHeadingDegreesFromSource(
+                                spline.HeadingDegrees),
                             spline.LengthMeters,
-                            spline.RadiusMeters,
+                            -spline.RadiusMeters,
                             spline.GradientStartPercent,
                             spline.GradientEndPercent,
                             surfaces,
@@ -905,16 +2229,20 @@ internal sealed class RuntimeApplicationContext :
                 .Select(
                     static item =>
                         new RuntimeObjectInfo(
-                            item.Tile.X,
+                            RuntimeTileXFromSourceTileX(
+                                item.Tile.X),
                             item.Tile.Y,
                             item.AssetPath,
-                            item.Position.X,
+                            RuntimeLocalXFromSourceLocalX(
+                                item.Position.X),
                             item.Position.Y,
                             item.Position.Z,
-                            item.HeadingDegrees,
+                            RuntimeHeadingDegreesFromSource(
+                                item.HeadingDegrees),
                             item.PitchDegrees,
-                            item.BankDegrees,
-                            item.ExtraValues))
+                            -item.BankDegrees,
+                            item.ExtraValues,
+                            item.Id))
                 .ToArray();
 
         var runtimeSceneryAssets =
@@ -961,7 +2289,72 @@ internal sealed class RuntimeApplicationContext :
                                                             material.TransMapTexturePath,
                                                             material.NoZWrite,
                                                             material.NoZCheck))
-                                                .ToArray()))
+                                                .ToArray(),
+                                            0,
+                                            null,
+                                            mesh.VisibilityConditions?
+                                                .Select(
+                                                    static condition =>
+                                                        new RuntimeVehicleVisibilityConditionInfo(
+                                                            condition.VariableName,
+                                                            condition.Value))
+                                                .ToArray(),
+                                            mesh.Animations?
+                                                .Select(
+                                                    static animation =>
+                                                        new RuntimeVehicleAnimationInfo(
+                                                            animation.Kind ==
+                                                                OmsiVehicleAnimationKind.Translation
+                                                                    ? RuntimeVehicleAnimationKind.Translation
+                                                                    : RuntimeVehicleAnimationKind.Rotation,
+                                                            animation.VariableName,
+                                                            animation.Delta,
+                                                            animation.OriginFromMesh,
+                                                            animation.OriginX,
+                                                            animation.OriginY,
+                                                            animation.OriginZ,
+                                                            animation.OriginRotationX,
+                                                            animation.OriginRotationY,
+                                                            animation.OriginRotationZ,
+                                                            animation.Offset,
+                                                            animation.MaxSpeed,
+                                                            animation.Delay))
+                                                .ToArray(),
+                                            null,
+                                            mesh.LightEffects?
+                                                .Select(
+                                                    static light =>
+                                                        new RuntimeVehicleLightEffectInfo(
+                                                            light.PositionX,
+                                                            light.PositionY,
+                                                            light.PositionZ,
+                                                            light.DirectionX,
+                                                            light.DirectionY,
+                                                            light.DirectionZ,
+                                                            light.UpX,
+                                                            light.UpY,
+                                                            light.UpZ,
+                                                            light.Omni,
+                                                            light.Rotating,
+                                                            light.Red,
+                                                            light.Green,
+                                                            light.Blue,
+                                                            light.SizeMeters,
+                                                            light.InnerConeAngleDegrees,
+                                                            light.OuterConeAngleDegrees,
+                                                            light.BrightnessVariable,
+                                                            light.BrightnessFactor,
+                                                            light.CameraOffsetMeters,
+                                                            light.Parameters,
+                                                            light.ConeEffect,
+                                                            light.TimeConstantSeconds,
+                                                            light.BitmapSource,
+                                                            light.Enhanced))
+                                                .ToArray(),
+                                            mesh.MeshIdentifier,
+                                            mesh.AnimationParent,
+                                            0,
+                                            mesh.ModelOrdinal))
                                 .ToArray(),
                             pair.Value.Tree is null
                                 ? null
@@ -989,330 +2382,61 @@ internal sealed class RuntimeApplicationContext :
         var runtimeVehicle =
             vehicle is null
                 ? null
-                : new RuntimeVehicleInfo(
-                vehicle.Bus.DisplayName,
-                vehicle.Bus.RelativePath,
-                vehicle.Bus.SoundConfigPath,
-                vehicle.Meshes
-                    .Select(
-                        static mesh =>
-                            new RuntimeObjectMeshInfo(
-                                mesh.DeclaredPath,
-                                mesh.ResolvedPath,
-                                mesh.ErrorCode,
-                                new RuntimeObjectMeshTransformInfo(
-                                    mesh.Transform.PositionX,
-                                    mesh.Transform.PositionY,
-                                    mesh.Transform.PositionZ,
-                                    mesh.Transform.RotationX,
-                                    mesh.Transform.RotationY,
-                                    mesh.Transform.RotationZ,
-                                    mesh.Transform.ScaleX,
-                                    mesh.Transform.ScaleY,
-                                    mesh.Transform.ScaleZ),
-                                mesh.Positions,
-                                mesh.Normals,
-                                mesh.Uvs,
-                                mesh.Indices,
-                                mesh.TriangleMaterialIndices,
-                                mesh.Materials
-                                    .Select(
-                                        static material =>
-                                            new RuntimeO3dMaterialInfo(
-                                                material.DiffuseR,
-                                                material.DiffuseG,
-                                                material.DiffuseB,
-                                                material.DiffuseA,
-                                                material.TexturePath,
-                                                material.AlphaMode,
-                                                material.TransMapTexturePath,
-                                                material.NoZWrite,
-                                                material.NoZCheck,
-                                                material.AlphaScaleVariable,
-                                                material.LightMapTexturePath,
-                                                material.LightMapVariable,
-                                                material.MaterialChangeTexturePath,
-                                                material.MaterialChangeVariable,
-                                                material.BaseAllColor is null
-                                                    ? null
-                                                    : new RuntimeVehicleMaterialColorInfo(
-                                                        material.BaseAllColor.DiffuseR,
-                                                        material.BaseAllColor.DiffuseG,
-                                                        material.BaseAllColor.DiffuseB,
-                                                        material.BaseAllColor.DiffuseA,
-                                                        material.BaseAllColor.AmbientR,
-                                                        material.BaseAllColor.AmbientG,
-                                                        material.BaseAllColor.AmbientB,
-                                                        material.BaseAllColor.SpecularR,
-                                                        material.BaseAllColor.SpecularG,
-                                                        material.BaseAllColor.SpecularB,
-                                                        material.BaseAllColor.EmissiveR,
-                                                        material.BaseAllColor.EmissiveG,
-                                                        material.BaseAllColor.EmissiveB,
-                                                        material.BaseAllColor.Power),
-                                                material.MaterialChangeAllColor is null
-                                                    ? null
-                                                    : new RuntimeVehicleMaterialColorInfo(
-                                                        material.MaterialChangeAllColor.DiffuseR,
-                                                        material.MaterialChangeAllColor.DiffuseG,
-                                                        material.MaterialChangeAllColor.DiffuseB,
-                                                        material.MaterialChangeAllColor.DiffuseA,
-                                                        material.MaterialChangeAllColor.AmbientR,
-                                                        material.MaterialChangeAllColor.AmbientG,
-                                                        material.MaterialChangeAllColor.AmbientB,
-                                                        material.MaterialChangeAllColor.SpecularR,
-                                                        material.MaterialChangeAllColor.SpecularG,
-                                                        material.MaterialChangeAllColor.SpecularB,
-                                                        material.MaterialChangeAllColor.EmissiveR,
-                                                        material.MaterialChangeAllColor.EmissiveG,
-                                                        material.MaterialChangeAllColor.EmissiveB,
-                                                        material.MaterialChangeAllColor.Power),
-                                                material.EnvMapTexturePath,
-                                                material.EnvMapStrength,
-                                                material.EnvMapMaskTexturePath,
-                                                material.BumpMapTexturePath,
-                                                material.BumpMapStrength,
-                                                material.FreeTextures
-                                                    .Select(
-                                                        static freeTexture =>
-                                                            new RuntimeVehicleFreeTextureInfo(
-                                                                freeTexture.SourceTextureName,
-                                                                freeTexture.VariableName))
-                                                    .ToArray(),
-                                                material.TextTextureIndex,
-                                                material.MaterialChangeSets?
-                                                    .Select(
-                                                        static changeSet =>
-                                                            new RuntimeVehicleMaterialChangeSetInfo(
-                                                                changeSet.VariableName,
-                                                                changeSet.GroupIndex,
-                                                                changeSet.Items
-                                                                    .Select(
-                                                                        static item =>
-                                                                            new RuntimeVehicleMaterialChangeItemInfo(
-                                                                                item.ItemIndex,
-                                                                                item.AlphaMode,
-                                                                                item.TransMapTexturePath,
-                                                                                item.HasTransMapDirective,
-                                                                                item.NoZWrite,
-                                                                                item.NoZCheck,
-                                                                                item.AlphaScaleVariable,
-                                                                                item.LightMapTexturePath,
-                                                                                item.LightMapVariable,
-                                                                                item.MaterialChangeTexturePath,
-                                                                                item.AllColor is null
-                                                                                    ? null
-                                                                                    : new RuntimeVehicleMaterialColorInfo(
-                                                                                        item.AllColor.DiffuseR,
-                                                                                        item.AllColor.DiffuseG,
-                                                                                        item.AllColor.DiffuseB,
-                                                                                        item.AllColor.DiffuseA,
-                                                                                        item.AllColor.AmbientR,
-                                                                                        item.AllColor.AmbientG,
-                                                                                        item.AllColor.AmbientB,
-                                                                                        item.AllColor.SpecularR,
-                                                                                        item.AllColor.SpecularG,
-                                                                                        item.AllColor.SpecularB,
-                                                                                        item.AllColor.EmissiveR,
-                                                                                        item.AllColor.EmissiveG,
-                                                                                        item.AllColor.EmissiveB,
-                                                                                        item.AllColor.Power),
-                                                                                item.EnvMapTexturePath,
-                                                                                item.EnvMapStrength,
-                                                                                item.EnvMapMaskTexturePath,
-                                                                                item.BumpMapTexturePath,
-                                                                                item.BumpMapStrength,
-                                                                                item.FreeTextures
-                                                                                    .Select(
-                                                                                        static freeTexture =>
-                                                                                            new RuntimeVehicleFreeTextureInfo(
-                                                                                                freeTexture.SourceTextureName,
-                                                                                                freeTexture.VariableName))
-                                                                                    .ToArray(),
-                                                                                item.TextTextureIndex))
-                                                                    .ToArray()))
-                                                    .ToArray(),
-                                                material.HasTransMapDirective))
-                                    .ToArray(),
-                                mesh.ViewpointFlag,
-                                mesh.LodThreshold,
-                                mesh.VisibilityConditions
-                                    .Select(
-                                        static condition =>
-                                            new RuntimeVehicleVisibilityConditionInfo(
-                                                condition.VariableName,
-                                                condition.Value))
-                                    .ToArray(),
-                                mesh.Animations
-                                    .Select(
-                                        static animation =>
-                                            new RuntimeVehicleAnimationInfo(
-                                                animation.Kind ==
-                                                    OmsiVehicleAnimationKind.Translation
-                                                    ? RuntimeVehicleAnimationKind.Translation
-                                                    : RuntimeVehicleAnimationKind.Rotation,
-                                                animation.VariableName,
-                                                animation.Delta,
-                                                animation.OriginFromMesh,
-                                                animation.OriginX,
-                                                animation.OriginY,
-                                                animation.OriginZ,
-                                                animation.OriginRotationX,
-                                                animation.OriginRotationY,
-                                                animation.OriginRotationZ,
-                                                animation.Offset,
-                                                animation.MaxSpeed,
-                                                animation.Delay))
-                                    .ToArray(),
-                                mesh.SourceTransform,
-                                mesh.LightEffects?
-                                    .Select(
-                                        static light =>
-                                            new RuntimeVehicleLightEffectInfo(
-                                                light.PositionX,
-                                                light.PositionY,
-                                                light.PositionZ,
-                                                light.DirectionX,
-                                                light.DirectionY,
-                                                light.DirectionZ,
-                                                light.UpX,
-                                                light.UpY,
-                                                light.UpZ,
-                                                light.Omni,
-                                                light.Rotating,
-                                                light.Red,
-                                                light.Green,
-                                                light.Blue,
-                                                light.SizeMeters,
-                                                light.InnerConeAngleDegrees,
-                                                light.OuterConeAngleDegrees,
-                                                light.BrightnessVariable,
-                                                light.BrightnessFactor,
-                                                light.CameraOffsetMeters,
-                                                light.Parameters,
-                                                light.ConeEffect,
-                                                light.TimeConstantSeconds,
-                                                light.BitmapSource,
-                                                light.Enhanced))
-                                    .ToArray(),
-                                mesh.MeshIdentifier,
-                                mesh.AnimationParent,
-                                mesh.SectionIndex))
-                    .ToArray(),
-                vehicle.Bus.DriverCameras
-                    .Select(
-                        static camera =>
-                            new RuntimeDriverCameraInfo(
-                                -camera.X,
-                                camera.Z,
-                                camera.Y,
-                                camera.EyeDistance,
-                                camera.FieldOfViewDegrees,
-                                camera.HeadingDegrees,
-                                camera.PitchDegrees))
-                    .ToArray(),
-                vehicle.Bus.PassengerCameras
-                    .Select(
-                        static camera =>
-                            new RuntimePassengerCameraInfo(
-                                -camera.X,
-                                camera.Z,
-                                camera.Y,
-                                camera.EyeDistance,
-                                camera.FieldOfViewDegrees,
-                                camera.HeadingDegrees,
-                                camera.PitchDegrees))
-                    .ToArray(),
-                vehicle.Bus.StandardDriverCameraIndex,
-                vehicle.Bus.ScheduleDriverCameraIndex,
-                vehicle.Bus.TicketSellingDriverCameraIndex,
-                vehicle.Bus.OutsideCameraCenter is null
-                    ? null
-                    : new RuntimeOutsideCameraCenterInfo(
-                        -vehicle.Bus.OutsideCameraCenter.X,
-                        vehicle.Bus.OutsideCameraCenter.Z,
-                        vehicle.Bus.OutsideCameraCenter.Y),
-                vehicle.Bus.ReflectionCameras
-                    .Select(
-                        static camera =>
-                            new RuntimeReflectionCameraInfo(
-                                camera.Index,
-                                -camera.X,
-                                camera.Z,
-                                camera.Y,
-                                camera.EyeDistance,
-                                camera.FieldOfViewDegrees,
-                                camera.HeadingDegrees,
-                                camera.PitchDegrees,
-                                camera.MaximumRenderDistanceMeters,
-                                camera.RuntimeTextureName,
-                                camera.RuntimeTextureKey))
-                    .ToArray(),
-                new RuntimeVehiclePhysicsInfo(
-                    vehicle.Bus.Physics.WheelBaseMeters,
-                    vehicle.Bus.Physics.MaximumSteeringAngleDegrees,
-                    vehicle.Bus.Physics.MassTonnes,
-                    vehicle.Bus.Physics.CenterOfGravityHeightMeters,
-                    vehicle.Bus.Physics.RollingResistanceNewtons,
-                    vehicle.Bus.Physics.TrackWidthMeters,
-                    vehicle.Bus.Physics.AverageWheelDiameterMeters,
-                    AverageAxleValue(
-                        vehicle.Bus.Physics.Axles,
-                        static axle =>
-                            axle.SpringRateKilonewtonsPerMeter),
-                    AverageAxleValue(
-                        vehicle.Bus.Physics.Axles,
-                        static axle =>
-                            axle.DamperRateKilonewtonSecondsPerMeter),
-                    vehicle.Bus.Physics.MomentOfInertiaZ,
-                    vehicle.Bus.Physics.RotationPointLongitudinalMeters,
-                    vehicle.Bus.Physics.InverseMinimumTurnRadius),
-                vehicle.DriverPosition is null
-                    ? null
-                    : new RuntimeDriverPositionInfo(
-                        -vehicle.DriverPosition.X,
-                        vehicle.DriverPosition.Z,
-                        vehicle.DriverPosition.Y,
-                        vehicle.DriverPosition.SeatHeight,
-                        vehicle.DriverPosition.RotationDegrees),
-                vehicle.ProtectedMeshCount,
-                vehicle.TextTextures
-                    .Select(
-                        static texture =>
-                            new RuntimeVehicleTextTextureInfo(
-                                texture.Index,
-                                texture.StringVariable,
-                                texture.FontName,
-                                texture.Width,
-                                texture.Height,
-                                texture.FullColor,
-                                texture.Red,
-                                texture.Green,
-                                texture.Blue,
-                                texture.Alignment,
-                                texture.GridAligned))
-                    .ToArray(),
-                vehicle.Sections?
-                    .Select(
-                        static section =>
-                            new RuntimeVehicleSectionInfo(
-                                section.Index,
-                                section.ParentIndex,
-                                -section.JointX,
-                                section.JointZ,
-                                section.JointY,
-                                section.FollowerLengthMeters,
-                                section.MaximumYawDegrees,
-                                section.Reverse))
-                    .ToArray());
+                : RuntimeVehicleInfoFactory.FromAsset(
+                    vehicle);
 
         var runtimeSpawn =
             new RuntimeSpawnInfo(
                 entryPoint.Name,
-                entryPoint.WorldX,
+                RuntimeWorldXFromSource(
+                    entryPoint.WorldX),
                 entryPoint.WorldY,
                 entryPoint.WorldZ,
-                -entryPoint.HeadingDegrees);
+                RuntimeHeadingDegreesFromSource(
+                    entryPoint.HeadingDegrees));
+
+        var runtimeTrafficPaths =
+            new RuntimeTrafficPathNetworkInfo(
+                world.TrafficPaths.Segments
+                    .Select(
+                        static segment =>
+                            new RuntimeTrafficPathSegmentInfo(
+                                segment.Index,
+                                segment.SplineId,
+                                segment.LocalPathIndex,
+                                segment.Type,
+                                segment.Direction,
+                                segment.WidthMeters,
+                                segment.Points
+                                    .Select(
+                                        static point =>
+                                            new RuntimeTrafficPathPointInfo(
+                                                RuntimeWorldXFromSource(
+                                                    point.X),
+                                                point.Y,
+                                                point.Z))
+                                    .ToArray(),
+                                segment.ForwardConnections,
+                                segment.ReverseConnections))
+                    .ToArray(),
+                world.TrafficPaths.RoadVehicleSegmentCount,
+                world.TrafficPaths.PedestrianSegmentCount,
+                world.TrafficPaths.RailSegmentCount,
+                world.TrafficPaths.AircraftSegmentCount,
+                world.TrafficPaths.ConnectedEndpointCount,
+                world.TrafficPaths.BoundaryEndpointCount,
+                world.TrafficPaths.TerminalEndpointCount,
+                world.TrafficPaths.UnmatchedEndpointCount);
+
+        var runtimeTrafficVehicleAssets =
+            trafficVehicleAssets
+                .ToDictionary(
+                    static pair =>
+                        pair.Key,
+                    static pair =>
+                        RuntimeVehicleInfoFactory.FromAsset(
+                            pair.Value),
+                    StringComparer.OrdinalIgnoreCase);
 
         var runtimeAiCatalog =
             new RuntimeAiCatalogInfo(
@@ -1347,6 +2471,24 @@ internal sealed class RuntimeApplicationContext :
                                 item.ResolvedPath))
                     .ToArray());
 
+        var dynamicSceneryObjectIds =
+            WorldRailSignalRouteResolver
+                .Resolve(
+                    world.TrafficPaths,
+                    world.SignalRoutes)
+                .Select(
+                    static route =>
+                        route.Signal?.ObjectId)
+                .Where(
+                    static objectId =>
+                        objectId.HasValue &&
+                        objectId.Value >=
+                            0)
+                .Select(
+                    static objectId =>
+                        objectId!.Value)
+                .ToHashSet();
+
         return new RuntimeWindowInfo(
             world.Name,
             world.Tiles.Count,
@@ -1360,9 +2502,104 @@ internal sealed class RuntimeApplicationContext :
             runtimeObjects,
             runtimeSceneryAssets,
             runtimeGroundTextures,
+            runtimeTrafficPaths,
             runtimeAiCatalog,
             runtimeVehicle,
-            runtimeSpawn);
+            runtimeSpawn,
+            runtimeTrafficVehicleAssets,
+            dynamicSceneryObjectIds);
+    }
+
+    private static RuntimeVehiclePhysicsInfo ConvertVehiclePhysics(
+        OmsiVehiclePhysics physics) =>
+        new RuntimeVehiclePhysicsInfo(
+            physics.WheelBaseMeters,
+            physics.MaximumSteeringAngleDegrees,
+            physics.MassTonnes,
+            physics.CenterOfGravityHeightMeters,
+            physics.RollingResistanceNewtons,
+            physics.TrackWidthMeters,
+            physics.AverageWheelDiameterMeters,
+            AverageAxleValue(
+                physics.Axles,
+                static axle =>
+                    axle.SpringRateKilonewtonsPerMeter),
+            AverageAxleValue(
+                physics.Axles,
+                static axle =>
+                    axle.DamperRateKilonewtonSecondsPerMeter),
+            physics.MomentOfInertiaZ,
+            physics.RotationPointLongitudinalMeters,
+            physics.InverseMinimumTurnRadius,
+            physics.Axles.Count > 0
+                ? physics.Axles.Max(
+                    static axle =>
+                        axle.LongitudinalPositionMeters)
+                : null,
+            physics.Axles.Count > 0
+                ? physics.Axles.Min(
+                    static axle =>
+                        axle.LongitudinalPositionMeters)
+                : null,
+            AxleValueByPosition(
+                physics.Axles,
+                front: true,
+                static axle =>
+                    axle.SpringRateKilonewtonsPerMeter),
+            AxleValueByPosition(
+                physics.Axles,
+                front: false,
+                static axle =>
+                    axle.SpringRateKilonewtonsPerMeter),
+            AxleValueByPosition(
+                physics.Axles,
+                front: true,
+                static axle =>
+                    axle.DamperRateKilonewtonSecondsPerMeter),
+            AxleValueByPosition(
+                physics.Axles,
+                front: false,
+                static axle =>
+                    axle.DamperRateKilonewtonSecondsPerMeter),
+            physics.MomentOfInertiaX,
+            physics.MomentOfInertiaY,
+            physics.MomentOfInertiaZ,
+            physics.Axles
+                .Select(
+                    static axle =>
+                        new RuntimeVehicleAxleInfo(
+                            axle.LongitudinalPositionMeters,
+                            axle.WheelDiameterMeters,
+                            axle.DriveFactor,
+                            axle.MaximumWidthMeters,
+                            axle.MinimumWidthMeters,
+                            axle.SpringRateKilonewtonsPerMeter,
+                            axle.MaximumForceKilonewtons,
+                            axle.DamperRateKilonewtonSecondsPerMeter))
+                .ToArray());
+
+    private static double? AxleValueByPosition(
+        IReadOnlyList<OmsiVehicleAxle> axles,
+        bool front,
+        Func<OmsiVehicleAxle, double?> selector)
+    {
+        var axle =
+            axles
+                .Where(
+                    static item =>
+                        double.IsFinite(
+                            item.LongitudinalPositionMeters))
+                .OrderBy(
+                    item =>
+                        front
+                            ? -item.LongitudinalPositionMeters
+                            : item.LongitudinalPositionMeters)
+                .FirstOrDefault();
+
+        return axle is null
+            ? null
+            : selector(
+                axle);
     }
 
     private static double? AverageAxleValue(

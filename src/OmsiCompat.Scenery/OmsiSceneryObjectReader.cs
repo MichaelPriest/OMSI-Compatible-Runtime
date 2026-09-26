@@ -231,6 +231,22 @@ public static class OmsiSceneryObjectReader
                     .FirstOrDefault()
                     ?.Value;
 
+        var trafficLightCycleSeconds =
+            ReadTrafficLightCycleSeconds(
+                document);
+
+        var trafficLights =
+            ReadTrafficLights(
+                document);
+
+        var scriptManifest =
+            ReadScriptManifest(
+                document,
+                Path.GetDirectoryName(
+                    Path.GetFullPath(
+                        path)) ??
+                string.Empty);
+
         return new OmsiSceneryDefinition(
             true,
             document.Sections.Any(
@@ -249,7 +265,11 @@ public static class OmsiSceneryObjectReader
                 : renderTypeValue.Trim(),
             meshes.ToArray(),
             ReadMaterialOverrides(document),
-            ReadTree(document));
+            ReadTree(document),
+            ReadPaths(document),
+            trafficLightCycleSeconds,
+            trafficLights,
+            scriptManifest);
     }
 
     private static IReadOnlyList<OmsiSceneryMaterialOverride>
@@ -427,6 +447,305 @@ public static class OmsiSceneryObjectReader
                 NoZCheck);
     }
 
+    private static IReadOnlyList<OmsiSceneryPathDefinition>
+        ReadPaths(
+            OmsiSectionDocument document)
+    {
+        var result =
+            new List<OmsiSceneryPathDefinition>();
+
+        for (var sectionIndex = 0;
+             sectionIndex <
+                 document.Sections.Count;
+             sectionIndex++)
+        {
+            var section =
+                document.Sections[
+                    sectionIndex];
+
+            if (!section.Name.Equals(
+                    "path",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                Data(section)
+                    .Select(
+                        static line =>
+                            line.Value)
+                    .ToArray();
+
+            // Crossing-editor paths store their geometric spline followed
+            // by path type/width/direction. Some OMSI versions/tools append
+            // additional numeric flags; keep those raw rather than guessing
+            // their meaning.
+            if (values.Length < 11 ||
+                !TryDouble(values[0], out var x) ||
+                !TryDouble(values[1], out var y) ||
+                !TryDouble(values[2], out var z) ||
+                !TryDouble(values[3], out var heading) ||
+                !TryDouble(values[4], out var radius) ||
+                !TryDouble(values[5], out var length) ||
+                !TryDouble(values[6], out var gradientStart) ||
+                !TryDouble(values[7], out var gradientEnd) ||
+                !int.TryParse(
+                    values[8],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var type) ||
+                !TryDouble(values[9], out var width) ||
+                !int.TryParse(
+                    values[10],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var direction) ||
+                type is < 0 or > 3 ||
+                direction is < 0 or > 2 ||
+                length < 0.0 ||
+                width < 0.0)
+            {
+                continue;
+            }
+
+            result.Add(
+                new OmsiSceneryPathDefinition(
+                    x,
+                    y,
+                    z,
+                    heading,
+                    radius,
+                    length,
+                    gradientStart,
+                    gradientEnd,
+                    type,
+                    width,
+                    direction,
+                    values
+                        .Skip(11)
+                        .ToArray(),
+                    ReadPathTrafficLightIndex(
+                        document,
+                        sectionIndex)));
+        }
+
+        return result;
+    }
+
+    private static int? ReadPathTrafficLightIndex(
+        OmsiSectionDocument document,
+        int pathSectionIndex)
+    {
+        for (var index =
+                 pathSectionIndex + 1;
+             index <
+                 document.Sections.Count;
+             index++)
+        {
+            var section =
+                document.Sections[index];
+
+            if (section.Name.Equals(
+                    "path",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (!section.Name.Equals(
+                    "use_traffic_light",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value =
+                Data(section)
+                    .FirstOrDefault()
+                    ?.Value;
+
+            return int.TryParse(
+                       value,
+                       NumberStyles.Integer,
+                       CultureInfo.InvariantCulture,
+                       out var trafficLightIndex) &&
+                   trafficLightIndex >=
+                       0
+                ? trafficLightIndex
+                : null;
+        }
+
+        return null;
+    }
+
+    private static double? ReadTrafficLightCycleSeconds(
+        OmsiSectionDocument document)
+    {
+        var section =
+            document.Sections
+                .FirstOrDefault(
+                    static item =>
+                        item.Name.Equals(
+                            "traffic_lights_group",
+                            StringComparison.OrdinalIgnoreCase));
+
+        if (section is null ||
+            !TryDouble(
+                Data(section)
+                    .FirstOrDefault()
+                    ?.Value,
+                out var cycleSeconds) ||
+            cycleSeconds <=
+                0.0)
+        {
+            return null;
+        }
+
+        return cycleSeconds;
+    }
+
+    private static IReadOnlyList<OmsiSceneryTrafficLightProgram>
+        ReadTrafficLights(
+            OmsiSectionDocument document)
+    {
+        var result =
+            new List<OmsiSceneryTrafficLightProgram>();
+
+        var inGroup =
+            false;
+
+        TrafficLightBuilder? current =
+            null;
+
+        foreach (var section in
+                 document.Sections)
+        {
+            if (section.Name.Equals(
+                    "traffic_lights_group",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (inGroup)
+                {
+                    FinalizeTrafficLight(
+                        current,
+                        result);
+                    break;
+                }
+
+                inGroup =
+                    true;
+                continue;
+            }
+
+            if (!inGroup)
+            {
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "traffic_light",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                FinalizeTrafficLight(
+                    current,
+                    result);
+
+                var name =
+                    Data(section)
+                        .FirstOrDefault()
+                        ?.Value
+                        .Trim();
+
+                current =
+                    string.IsNullOrWhiteSpace(
+                        name)
+                        ? null
+                        : new TrafficLightBuilder(
+                            name);
+
+                continue;
+            }
+
+            if (current is null)
+            {
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "phase",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Data(section)
+                        .Select(
+                            static line =>
+                                line.Value)
+                        .ToArray();
+
+                if (values.Length >=
+                        2 &&
+                    int.TryParse(
+                        values[0],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var phase) &&
+                    TryDouble(
+                        values[1],
+                        out var durationSeconds) &&
+                    durationSeconds >
+                        0.0)
+                {
+                    current.Phases.Add(
+                        new OmsiSceneryTrafficLightPhase(
+                            phase,
+                            durationSeconds));
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "approachdist",
+                    StringComparison.OrdinalIgnoreCase) &&
+                TryDouble(
+                    Data(section)
+                        .FirstOrDefault()
+                        ?.Value,
+                    out var approachDistance) &&
+                approachDistance >=
+                    0.0)
+            {
+                current.ApproachDistanceMeters =
+                    approachDistance;
+            }
+        }
+
+        FinalizeTrafficLight(
+            current,
+            result);
+
+        return result;
+    }
+
+    private static void FinalizeTrafficLight(
+        TrafficLightBuilder? builder,
+        ICollection<OmsiSceneryTrafficLightProgram> target)
+    {
+        if (builder is null ||
+            builder.Phases.Count ==
+                0)
+        {
+            return;
+        }
+
+        target.Add(
+            new OmsiSceneryTrafficLightProgram(
+                builder.Name,
+                builder.Phases.ToArray(),
+                builder.ApproachDistanceMeters));
+    }
+
     private static OmsiSceneryTreeDefinition? ReadTree(
         OmsiSectionDocument document)
     {
@@ -467,6 +786,176 @@ public static class OmsiSceneryObjectReader
             maximumHeight,
             minimumAspect,
             maximumAspect);
+    }
+
+    private sealed class TrafficLightBuilder(
+        string name)
+    {
+        public string Name { get; } =
+            name;
+
+        public List<OmsiSceneryTrafficLightPhase> Phases { get; } =
+            [];
+
+        public double ApproachDistanceMeters
+        {
+            get;
+            set;
+        }
+    }
+
+    private static OmsiSceneryScriptManifest
+        ReadScriptManifest(
+        OmsiSectionDocument document,
+        string baseDirectory) =>
+        new(
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "script"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "varnamelist"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "stringvarnamelist"),
+            ReadRegisteredFiles(
+                document,
+                baseDirectory,
+                "constfile"));
+
+    private static IReadOnlyList<OmsiSceneryFileReference>
+        ReadRegisteredFiles(
+        OmsiSectionDocument document,
+        string baseDirectory,
+        string sectionName)
+    {
+        var result =
+            new List<OmsiSceneryFileReference>();
+
+        foreach (var section in
+                 document.Sections.Where(
+                     section =>
+                         section.Name.Equals(
+                             sectionName,
+                             StringComparison.OrdinalIgnoreCase)))
+        {
+            var values =
+                Data(section)
+                    .Select(
+                        static line =>
+                            line.Value
+                                .Trim()
+                                .Trim('"'))
+                    .Where(
+                        static value =>
+                            value.Length >
+                            0)
+                    .ToArray();
+
+            if (values.Length ==
+                0)
+            {
+                continue;
+            }
+
+            var firstPathIndex =
+                0;
+
+            var declaredCount =
+                values.Length;
+
+            if (int.TryParse(
+                    values[0],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var parsedCount) &&
+                parsedCount >=
+                    0)
+            {
+                firstPathIndex =
+                    1;
+
+                declaredCount =
+                    Math.Min(
+                        parsedCount,
+                        Math.Max(
+                            values.Length -
+                                1,
+                            0));
+            }
+
+            for (var index = 0;
+                 index <
+                     declaredCount;
+                 index++)
+            {
+                var declaredPath =
+                    values[
+                        firstPathIndex +
+                        index];
+
+                result.Add(
+                    new OmsiSceneryFileReference(
+                        declaredPath,
+                        ResolveRelativeFile(
+                            baseDirectory,
+                            declaredPath)));
+            }
+        }
+
+        return result;
+    }
+
+    private static string? ResolveRelativeFile(
+        string baseDirectory,
+        string declaredPath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                baseDirectory) ||
+            string.IsNullOrWhiteSpace(
+                declaredPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var normalized =
+                declaredPath
+                    .Trim()
+                    .Trim('"')
+                    .Replace(
+                        '/',
+                        Path.DirectorySeparatorChar)
+                    .Replace(
+                        '\\',
+                        Path.DirectorySeparatorChar);
+
+            var fullPath =
+                Path.IsPathRooted(
+                    normalized)
+                    ? Path.GetFullPath(
+                        normalized)
+                    : Path.GetFullPath(
+                        Path.Combine(
+                            baseDirectory,
+                            normalized));
+
+            return File.Exists(
+                       fullPath)
+                ? fullPath
+                : null;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or
+            NotSupportedException or
+            PathTooLongException)
+        {
+            return null;
+        }
     }
 
     private static IReadOnlyList<OmsiSectionLine> Data(

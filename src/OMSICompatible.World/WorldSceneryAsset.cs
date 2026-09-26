@@ -1,3 +1,6 @@
+using OmsiCompat.Scenery;
+using OmsiCompat.Vehicles;
+
 namespace OMSICompatible.World;
 
 public sealed record WorldO3dMaterial(
@@ -34,7 +37,13 @@ public sealed record WorldSceneryMeshAsset(
     float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
-    IReadOnlyList<WorldO3dMaterial> Materials)
+    IReadOnlyList<WorldO3dMaterial> Materials,
+    IReadOnlyList<OmsiVehicleVisibilityCondition>? VisibilityConditions = null,
+    IReadOnlyList<OmsiVehicleAnimation>? Animations = null,
+    IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
+    string? MeshIdentifier = null,
+    string? AnimationParent = null,
+    int ModelOrdinal = -1)
 {
     public bool IsRenderable =>
         Exists &&
@@ -51,6 +60,30 @@ public sealed record WorldSceneryTreeDefinition(
     double MinimumAspect,
     double MaximumAspect);
 
+public sealed record WorldTrafficLightPhase(
+    int Phase,
+    double DurationSeconds);
+
+public sealed record WorldTrafficLightProgram(
+    string Name,
+    IReadOnlyList<WorldTrafficLightPhase> Phases,
+    double ApproachDistanceMeters);
+
+public sealed record WorldSceneryPath(
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees,
+    double RadiusMeters,
+    double LengthMeters,
+    double GradientStart,
+    double GradientEnd,
+    int Type,
+    double WidthMeters,
+    int Direction,
+    IReadOnlyList<string> ExtraValues,
+    int? TrafficLightIndex = null);
+
 public sealed record WorldSceneryAsset(
     string DeclaredPath,
     string? ResolvedPath,
@@ -59,7 +92,11 @@ public sealed record WorldSceneryAsset(
     bool OnlyEditor,
     string? RenderType,
     IReadOnlyList<WorldSceneryMeshAsset> Meshes,
-    WorldSceneryTreeDefinition? Tree)
+    WorldSceneryTreeDefinition? Tree,
+    IReadOnlyList<WorldSceneryPath> Paths,
+    double? TrafficLightCycleSeconds = null,
+    IReadOnlyList<WorldTrafficLightProgram>? TrafficLights = null,
+    OmsiSceneryScriptManifest? ScriptManifest = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(

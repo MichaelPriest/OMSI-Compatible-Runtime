@@ -4,6 +4,14 @@ namespace OmsiCompat.Map;
 
 public readonly record struct OmsiSourceVector3(double X, double Y, double Z);
 
+public sealed record OmsiTrafficRule(
+    int PathIndex,
+    string Name,
+    double Value,
+    int? GroupIndex,
+    IReadOnlyList<string> ExtraValues,
+    int SourceLineNumber);
+
 public sealed record OmsiObjectPlacement(
     long Id,
     string AssetPath,
@@ -12,7 +20,8 @@ public sealed record OmsiObjectPlacement(
     double PitchDegrees,
     double BankDegrees,
     IReadOnlyList<string> ExtraValues,
-    int SourceLineNumber);
+    int SourceLineNumber,
+    IReadOnlyList<OmsiTrafficRule>? TrafficRules = null);
 
 public sealed record OmsiSplinePlacement(
     long Id,
@@ -26,7 +35,8 @@ public sealed record OmsiSplinePlacement(
     double GradientStartPercent,
     double GradientEndPercent,
     bool UsesHeightProfile,
-    int SourceLineNumber);
+    int SourceLineNumber,
+    IReadOnlyList<OmsiTrafficRule>? TrafficRules = null);
 
 public sealed record OmsiPlacementParseIssue(
     string SectionName,
@@ -50,6 +60,8 @@ public static class MapTilePlacementParser
         var objects = new List<OmsiObjectPlacement>();
         var splines = new List<OmsiSplinePlacement>();
         var issues = new List<OmsiPlacementParseIssue>();
+        PlacementTarget? activeTarget =
+            null;
 
         foreach (var section in document.Sections)
         {
@@ -64,33 +76,113 @@ public static class MapTilePlacementParser
                     placement is not null)
                 {
                     objects.Add(placement);
+                    activeTarget =
+                        new PlacementTarget(
+                            IsSpline: false,
+                            Index: objects.Count - 1);
                 }
                 else if (error is not null)
                 {
                     issues.Add(error);
+                    activeTarget =
+                        null;
                 }
 
                 continue;
             }
 
-            if (!IsSplineSection(section.Name))
+            if (IsSplineSection(section.Name))
             {
+                if (TryParseSpline(
+                        section,
+                        version,
+                        out var spline,
+                        out var splineError) &&
+                    spline is not null)
+                {
+                    splines.Add(spline);
+                    activeTarget =
+                        new PlacementTarget(
+                            IsSpline: true,
+                            Index: splines.Count - 1);
+                }
+                else if (splineError is not null)
+                {
+                    issues.Add(splineError);
+                    activeTarget =
+                        null;
+                }
+
                 continue;
             }
 
-            if (TryParseSpline(
-                    section,
-                    version,
-                    out var spline,
-                    out var splineError) &&
-                spline is not null)
+            if (section.Name.Equals(
+                    "rule",
+                    StringComparison.OrdinalIgnoreCase))
             {
-                splines.Add(spline);
+                if (activeTarget is null)
+                {
+                    issues.Add(
+                        Issue(
+                            section,
+                            "Traffic rule has no preceding object or spline placement."));
+                    continue;
+                }
+
+                if (!TryParseTrafficRule(
+                        section,
+                        out var rule,
+                        out var ruleError) ||
+                    rule is null)
+                {
+                    if (ruleError is not null)
+                    {
+                        issues.Add(ruleError);
+                    }
+
+                    continue;
+                }
+
+                if (activeTarget.Value.IsSpline)
+                {
+                    var index =
+                        activeTarget.Value.Index;
+
+                    var placement =
+                        splines[index];
+
+                    splines[index] =
+                        placement with
+                        {
+                            TrafficRules =
+                                AppendTrafficRule(
+                                    placement.TrafficRules,
+                                    rule)
+                        };
+                }
+                else
+                {
+                    var index =
+                        activeTarget.Value.Index;
+
+                    var placement =
+                        objects[index];
+
+                    objects[index] =
+                        placement with
+                        {
+                            TrafficRules =
+                                AppendTrafficRule(
+                                    placement.TrafficRules,
+                                    rule)
+                        };
+                }
+
+                continue;
             }
-            else if (splineError is not null)
-            {
-                issues.Add(splineError);
-            }
+
+            activeTarget =
+                null;
         }
 
         return new OmsiTilePlacements(
@@ -287,6 +379,119 @@ public static class MapTilePlacementParser
         return true;
     }
 
+    private static bool TryParseTrafficRule(
+        OmsiSection section,
+        out OmsiTrafficRule? rule,
+        out OmsiPlacementParseIssue? issue)
+    {
+        rule =
+            null;
+        issue =
+            null;
+
+        var values =
+            GetValues(
+                section);
+
+        if (values.Count <
+            3)
+        {
+            issue =
+                Issue(
+                    section,
+                    $"Traffic rule expected at least 3 values but found {values.Count}.");
+            return false;
+        }
+
+        if (!int.TryParse(
+                values[0].Value.Trim(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var pathIndex) ||
+            pathIndex <
+                0)
+        {
+            issue =
+                Issue(
+                    section,
+                    "Traffic rule contains an invalid path index.");
+            return false;
+        }
+
+        var name =
+            values[1]
+                .Value
+                .Trim();
+
+        if (name.Length ==
+                0 ||
+            !TryDouble(
+                values[2].Value,
+                out var value))
+        {
+            issue =
+                Issue(
+                    section,
+                    "Traffic rule contains an invalid name or value.");
+            return false;
+        }
+
+        int? groupIndex =
+            null;
+
+        if (values.Count >
+                3 &&
+            int.TryParse(
+                values[3].Value.Trim(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var parsedGroup))
+        {
+            groupIndex =
+                parsedGroup;
+        }
+
+        rule =
+            new OmsiTrafficRule(
+                pathIndex,
+                name,
+                value,
+                groupIndex,
+                values
+                    .Skip(
+                        groupIndex.HasValue
+                            ? 4
+                            : 3)
+                    .Select(
+                        static line =>
+                            line.Value)
+                    .ToArray(),
+                section.HeaderLineNumber);
+
+        return true;
+    }
+
+    private static IReadOnlyList<OmsiTrafficRule>
+        AppendTrafficRule(
+            IReadOnlyList<OmsiTrafficRule>? rules,
+            OmsiTrafficRule rule)
+    {
+        if (rules is null ||
+            rules.Count ==
+                0)
+        {
+            return
+            [
+                rule
+            ];
+        }
+
+        return rules
+            .Append(
+                rule)
+            .ToArray();
+    }
+
     private static IReadOnlyList<OmsiSectionLine> GetValues(
         OmsiSection section)
     {
@@ -341,6 +546,10 @@ public static class MapTilePlacementParser
             .Trim('"')
             .Replace('/', Path.DirectorySeparatorChar);
     }
+
+    private readonly record struct PlacementTarget(
+        bool IsSpline,
+        int Index);
 
     private sealed record SplineLayout(
         int PathIndex,

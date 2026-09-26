@@ -7,7 +7,17 @@ internal sealed record LauncherSettings(
     string? MapName,
     string? BusRelativePath,
     string? EntryPointName,
-    bool StartWithoutBus = false)
+    bool StartWithoutBus = false,
+    string? RepaintName = null,
+    string? RepaintCtiRelativePath = null,
+    string? LastSessionMapName = null,
+    string? LastSessionBusRelativePath = null,
+    string? LastSessionSkin = null,
+    string? LastSessionRepaintName = null,
+    string? LastSessionRepaintCtiRelativePath = null,
+    string? LastSessionEntryPointName = null,
+    bool LastSessionWithoutBus = false,
+    DateTimeOffset? LastSessionStartedAt = null)
 {
     private static string SettingsPath =>
         Path.Combine(

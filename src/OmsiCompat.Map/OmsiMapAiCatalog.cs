@@ -12,6 +12,11 @@ public sealed record OmsiAiFileReference(
         ResolvedPath is not null;
 }
 
+public sealed record OmsiUnscheduledVehicleGroup(
+    int Index,
+    string Name,
+    int DefaultDensityClassIndex);
+
 public sealed record OmsiAiVehicleDefinition(
     string GroupName,
     string DeclaredPath,
@@ -26,32 +31,34 @@ public sealed record OmsiMapAiCatalog(
     IReadOnlyList<OmsiAiVehicleDefinition> MovingVehicles,
     IReadOnlyList<OmsiAiFileReference> Humans,
     IReadOnlyList<OmsiAiFileReference> Drivers,
-    IReadOnlyList<OmsiAiFileReference> ParkedVehicles)
+    IReadOnlyList<OmsiAiFileReference> ParkedVehicles,
+    IReadOnlyList<OmsiUnscheduledVehicleGroup>? UnscheduledVehicleGroups = null)
 {
     public static OmsiMapAiCatalog Empty { get; } =
         new(
             Array.Empty<OmsiAiVehicleDefinition>(),
             Array.Empty<OmsiAiFileReference>(),
             Array.Empty<OmsiAiFileReference>(),
-            Array.Empty<OmsiAiFileReference>());
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiUnscheduledVehicleGroup>());
 }
 
 public static partial class OmsiMapAiCatalogReader
 {
     [GeneratedRegex(
-        @"^(?<path>.+?.(?:bus|ovh|zug))(?:s+(?<weight>[-+]?[0-9]+(?:[.,][0-9]+)?))?s*$",
+        @"^(?<path>.+?\.(?:bus|ovh|zug))(?:\s+(?<weight>[-+]?[0-9]+(?:[.,][0-9]+)?))?\s*$",
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant)]
     private static partial Regex VehicleLineRegex();
 
     [GeneratedRegex(
-        @"^(?<path>.+?.hum)s*$",
+        @"^(?<path>.+?\.hum)\s*$",
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant)]
     private static partial Regex HumanLineRegex();
 
     [GeneratedRegex(
-        @"^(?<path>.+?.sco)(?:s+.*)?$",
+        @"^(?<path>.+?\.sco)(?:\s+.*)?$",
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant)]
     private static partial Regex SceneryLineRegex();
@@ -88,7 +95,151 @@ public static partial class OmsiMapAiCatalogReader
                 Path.Combine(
                     map.DirectoryPath,
                     "parklist_p.txt"),
-                SceneryLineRegex()));
+                SceneryLineRegex()),
+            ReadUnscheduledVehicleGroups(
+                Path.Combine(
+                    map.DirectoryPath,
+                    "unsched_vehgroups.txt")));
+    }
+
+    private static IReadOnlyList<OmsiUnscheduledVehicleGroup>
+        ReadUnscheduledVehicleGroups(
+            string path)
+    {
+        if (!File.Exists(
+                path))
+        {
+            return Array.Empty<
+                OmsiUnscheduledVehicleGroup>();
+        }
+
+        string[] lines;
+
+        try
+        {
+            lines =
+                File.ReadAllLines(
+                    path);
+        }
+        catch
+        {
+            return Array.Empty<
+                OmsiUnscheduledVehicleGroup>();
+        }
+
+        var result =
+            new List<
+                OmsiUnscheduledVehicleGroup>();
+
+        for (var index = 0;
+             index <
+                 lines.Length;
+             index++)
+        {
+            var line =
+                Clean(
+                    lines[index]);
+
+            if (!line.Equals(
+                    "[group]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var groupNameLine =
+                FindNextNonEmptyDataLineIndex(
+                    lines,
+                    index + 1);
+
+            if (groupNameLine <
+                0)
+            {
+                continue;
+            }
+
+            var groupName =
+                Clean(
+                    lines[groupNameLine]);
+
+            if (groupName.StartsWith(
+                    '<') &&
+                groupName.EndsWith(
+                    '>'))
+            {
+                continue;
+            }
+
+            var densityLine =
+                FindNextNonEmptyDataLineIndex(
+                    lines,
+                    groupNameLine + 1);
+
+            var defaultDensityClassIndex =
+                0;
+
+            if (densityLine >=
+                    0 &&
+                int.TryParse(
+                    Clean(
+                        lines[densityLine]),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var parsedDefault))
+            {
+                defaultDensityClassIndex =
+                    parsedDefault;
+            }
+
+            result.Add(
+                new OmsiUnscheduledVehicleGroup(
+                    result.Count,
+                    groupName,
+                    defaultDensityClassIndex));
+
+            if (densityLine >
+                index)
+            {
+                index =
+                    densityLine;
+            }
+        }
+
+        return result;
+    }
+
+    private static int FindNextNonEmptyDataLineIndex(
+        IReadOnlyList<string> lines,
+        int start)
+    {
+        for (var index =
+                 start;
+             index <
+                 lines.Count;
+             index++)
+        {
+            var value =
+                Clean(
+                    lines[index]);
+
+            if (value.Length ==
+                0)
+            {
+                continue;
+            }
+
+            if (value.StartsWith(
+                    '[') &&
+                value.EndsWith(
+                    ']'))
+            {
+                return -1;
+            }
+
+            return index;
+        }
+
+        return -1;
     }
 
     private static IReadOnlyList<OmsiAiVehicleDefinition>

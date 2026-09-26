@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -16,6 +17,13 @@ namespace OMSICompatible.Renderer.D3D11;
 public sealed class D3D11RenderWindow : Form
 {
     [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimeSkyConstants
+    {
+        // x = yaw, y = pitch, z = tan(verticalFov / 2), w = aspect.
+        public Vector4 ViewParameters;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct RuntimeCameraConstants
     {
         public Matrix4x4 ViewProjection;
@@ -27,6 +35,15 @@ public sealed class D3D11RenderWindow : Form
     private struct RuntimeModelConstants
     {
         public Matrix4x4 World;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimeVehicleSkinConstants
+    {
+        public Matrix4x4 Bone0;
+        public Matrix4x4 Bone1;
+        public Matrix4x4 Bone2;
+        public Matrix4x4 Bone3;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -54,6 +71,17 @@ public sealed class D3D11RenderWindow : Form
         Exterior
     }
 
+    private enum RuntimeSceneryRenderPass
+    {
+        PreSurface,
+        Surface,
+        OnSurface,
+        One,
+        Two,
+        Three,
+        Four
+    }
+
     private static readonly FeatureLevel[] RequestedFeatureLevels =
     [
         FeatureLevel.Level_11_1,
@@ -61,10 +89,25 @@ public sealed class D3D11RenderWindow : Form
     ];
 
     private RuntimeWindowInfo _windowInfo;
+    private readonly Func<
+        double,
+        IReadOnlyList<RuntimeTrafficAgentInfo>>?
+        _trafficStep;
+    private IReadOnlyList<RuntimeTrafficAgentInfo>
+        _trafficAgents =
+            Array.Empty<RuntimeTrafficAgentInfo>();
+    private readonly Func<
+        IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
+        _railSignalStateProvider;
+    private IReadOnlyList<RuntimeRailSignalRouteStateInfo>
+        _railSignalRouteStates =
+            Array.Empty<RuntimeRailSignalRouteStateInfo>();
     private readonly System.Windows.Forms.Timer _renderTimer;
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
     private readonly OmsiScriptRuntime? _scriptRuntime;
+    private readonly IReadOnlyDictionary<int, OmsiScriptRuntime>
+        _sectionScriptRuntimes;
     private readonly IReadOnlyDictionary<string, double>? _initialVehicleVariables;
     private readonly OmsiSystemMacroHandler? _previousSystemMacroHandler;
     private readonly HashSet<string> _reportedUnhandledSystemMacros =
@@ -90,8 +133,15 @@ public sealed class D3D11RenderWindow : Form
         _activeControllerHostActions =
             [];
     private readonly bool _gameControllerEnabled;
+    private readonly bool _automaticSteeringCenter;
     private RuntimeOmsiGameControllerHost? _omsiGameController;
     private RuntimeOmsiAudioHost? _omsiAudio;
+    private readonly Dictionary<int, RuntimeOmsiAudioHost>
+        _articulatedOmsiAudio =
+            [];
+    private readonly Dictionary<int, TrafficOmsiAudioState>
+        _trafficOmsiAudio =
+            [];
     private bool _controllerInputEnabled = true;
     private float _controllerClutchInput;
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
@@ -107,26 +157,69 @@ public sealed class D3D11RenderWindow : Form
         _vehicleAnimationParentBatches =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<(int SectionIndex, int ModelOrdinal), RuntimeObjectBatch>
+        _vehicleMeshOrdinalBatches =
+            [];
     private readonly Dictionary<int, float>
         _articulatedSectionAbsoluteHeadingRadians =
             [];
     private readonly Dictionary<int, float>
         _articulatedSectionYawRadians =
             [];
+    private readonly Dictionary<int, float>
+        _articulatedSectionYawRateRadiansPerSecond =
+            [];
+    private readonly Dictionary<int, float>
+        _articulatedSectionPitchRadians =
+            [];
+    private readonly Dictionary<int, float>
+        _articulatedSectionPitchRateRadiansPerSecond =
+            [];
+    private readonly Dictionary<int, Vector2>
+        _articulatedSectionJointWorldPosition =
+            [];
 
     private double _lastFrameTimeSeconds;
+    private double _odometerMeters;
+    private double _lastVehiclePhysicsDiagnosticsSeconds =
+        double.NegativeInfinity;
     private bool _graphicsPrepared;
     private bool _mouseLooking;
+    private MouseButtons _freeCameraDragButton =
+        MouseButtons.None;
     private bool _mouseDriveMode;
+    private string? _activeVehicleMouseTrigger;
+    private int _activeVehicleMouseSectionIndex;
+    private float _vehicleMouseDeltaX;
+    private float _vehicleMouseDeltaY;
+    private readonly Dictionary<Keys, string>
+        _fallbackOmsiPressTriggers =
+            [];
+    private bool _vehicleRemoved;
     private bool _driveMode = true;
     private RuntimeVehicleViewMode _vehicleViewMode =
         RuntimeVehicleViewMode.Driver;
     private int _driverCameraIndex;
     private int _passengerCameraIndex;
+    private float _interiorCameraYawOffsetRadians;
+    private float _interiorCameraPitchOffsetRadians;
+    private float _interiorCameraFieldOfViewScale = 1.0f;
+    private float _exteriorCameraYawOffsetRadians;
+    private float _exteriorCameraPitchOffsetRadians;
+    private float _exteriorCameraDistanceScale = 1.0f;
     private float _mouseDriveAccelerator;
     private float _mouseDriveBrake;
     private float _mouseDriveSteering;
     private bool _simulationPaused;
+    private bool _vehiclePanelAuditWritten;
+    private bool _suppressVehicleInitAudio;
+    private int _statusInfoLevel = 1;
+    private bool _specialViewActive;
+    private bool _specialPreviousDriveMode;
+    private RuntimeVehicleViewMode _specialPreviousViewMode =
+        RuntimeVehicleViewMode.Driver;
+    private int _specialPreviousDriverCameraIndex;
+    private int _specialPreviousPassengerCameraIndex;
     private readonly RuntimeOmsiMenuBar? _omsiMenuBar;
     private int _captionFrame;
     private int? _streamingTileX;
@@ -148,6 +241,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11VertexShader? _skyVertexShader;
     private ID3D11PixelShader? _skyPixelShader;
     private ID3D11SamplerState? _skySampler;
+    private ID3D11Buffer? _skyConstantsBuffer;
     private RuntimeGpuTexture? _skyTexture;
 
     private ID3D11Buffer? _tileVertexBuffer;
@@ -173,6 +267,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11RasterizerState? _terrainRasterizerState;
     private RuntimeTerrainGeometry _terrainGeometry =
         RuntimeTerrainGeometry.Empty;
+    private RuntimeTerrainSampler _terrainSurfaceSampler;
     private uint _terrainVertexCount;
 
     private ID3D11Buffer? _splineVertexBuffer;
@@ -189,6 +284,8 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11PixelShader? _objectAlphaCutoutTransMapPixelShader;
     private ID3D11PixelShader? _objectAlphaBlendTransMapPixelShader;
     private ID3D11BlendState? _objectAlphaBlendState;
+    private ID3D11DepthStencilState? _objectDepthReadState;
+    private ID3D11DepthStencilState? _objectDepthDisabledState;
     private ID3D11InputLayout? _objectInputLayout;
     private ID3D11SamplerState? _objectSampler;
     private RuntimeGpuTextureLoader? _objectTextureLoader;
@@ -210,6 +307,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11Buffer? _vehicleLightVertexBuffer;
     private ID3D11Buffer? _vehicleModelBuffer;
     private ID3D11Buffer? _vehicleMaterialBuffer;
+    private ID3D11Buffer? _vehicleSkinBuffer;
     private ID3D11VertexShader? _vehicleVertexShader;
     private ID3D11PixelShader? _vehicleColorPixelShader;
     private ID3D11PixelShader? _vehicleLightPixelShader;
@@ -227,6 +325,14 @@ public sealed class D3D11RenderWindow : Form
         RuntimeObjectGeometry.Empty;
     private RuntimeObjectGeometry _vehicleInteriorGeometry =
         RuntimeObjectGeometry.Empty;
+    private readonly Dictionary<string, RuntimeObjectGeometry>
+        _trafficVehicleGeometries =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ID3D11Buffer>
+        _trafficVehicleVertexBuffers =
+            new(
+                StringComparer.OrdinalIgnoreCase);
 
     private const uint ReflectionTextureSize = 512;
     private readonly Dictionary<string, RuntimeReflectionTarget>
@@ -238,6 +344,8 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11RenderTargetView? _activeRenderTargetView;
     private ID3D11DepthStencilView? _activeDepthStencilView;
     private Matrix4x4? _viewProjectionOverride;
+    private Vector3? _cameraPositionOverride;
+    private Vector4? _skyViewParametersOverride;
     private bool _reflectionRenderingEnabled;
     private readonly bool _vehiclePreviewMode;
     private float _previewYaw = 0.62f;
@@ -252,6 +360,12 @@ public sealed class D3D11RenderWindow : Form
 
     private FeatureLevel _featureLevel;
     private readonly bool _vsync;
+    private readonly float _masterVolume;
+    private readonly int _maximumSoundCount;
+    private readonly bool _materialLightMapEnabled;
+    private readonly bool _materialReflectionMapEnabled;
+    private readonly bool _materialBumpMapEnabled;
+    private readonly bool _materialNightMapEnabled;
 
     public D3D11RenderWindow(
         RuntimeWindowInfo windowInfo,
@@ -261,21 +375,78 @@ public sealed class D3D11RenderWindow : Form
         bool vehiclePreviewMode = false,
         IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
         string? inputLanguage = null,
-        bool gameControllerEnabled = true)
+        bool gameControllerEnabled = true,
+        IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null,
+        int masterVolumePercent = 100,
+        bool automaticSteeringCenter = false,
+        int maximumSoundCount = 400,
+        bool materialLightMapEnabled = true,
+        bool materialReflectionMapEnabled = true,
+        bool materialBumpMapEnabled = true,
+        bool materialNightMapEnabled = true,
+        Func<
+            double,
+            IReadOnlyList<RuntimeTrafficAgentInfo>>?
+            trafficStep = null,
+        Func<
+            IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
+            railSignalStateProvider = null)
     {
         _windowInfo = windowInfo;
+        _trafficStep =
+            trafficStep;
+        _trafficAgents =
+            _trafficStep?.Invoke(
+                0.0) ??
+            Array.Empty<RuntimeTrafficAgentInfo>();
+        _railSignalStateProvider =
+            railSignalStateProvider;
+        _railSignalRouteStates =
+            _railSignalStateProvider?.Invoke() ??
+            Array.Empty<RuntimeRailSignalRouteStateInfo>();
         _scriptRuntime = scriptRuntime;
+        _sectionScriptRuntimes =
+            sectionScriptRuntimes is null
+                ? new Dictionary<int, OmsiScriptRuntime>()
+                : new Dictionary<int, OmsiScriptRuntime>(
+                    sectionScriptRuntimes);
         _initialVehicleVariables =
             initialVehicleVariables is null
                 ? null
                 : new Dictionary<string, double>(
                     initialVehicleVariables,
                     StringComparer.OrdinalIgnoreCase);
+
+        _odometerMeters =
+            ResolveInitialOdometerMeters(
+                _initialVehicleVariables);
+
         _vsync = vsync;
+        _masterVolume =
+            Math.Clamp(
+                masterVolumePercent,
+                0,
+                100) /
+            100.0f;
+        _maximumSoundCount =
+            Math.Clamp(
+                maximumSoundCount,
+                1,
+                10_000);
+        _materialLightMapEnabled =
+            materialLightMapEnabled;
+        _materialReflectionMapEnabled =
+            materialReflectionMapEnabled;
+        _materialBumpMapEnabled =
+            materialBumpMapEnabled;
+        _materialNightMapEnabled =
+            materialNightMapEnabled;
         _vehiclePreviewMode =
             vehiclePreviewMode;
         _gameControllerEnabled =
             gameControllerEnabled;
+        _automaticSteeringCenter =
+            automaticSteeringCenter;
         _omsiKeyboardBindings =
             _vehiclePreviewMode
                 ? Array.Empty<
@@ -303,14 +474,63 @@ public sealed class D3D11RenderWindow : Form
                 OnUnhandledSystemMacro;
             _scriptRuntime.DebugMessageRequested +=
                 OnScriptDebugMessage;
+            _scriptRuntime.SoundTriggerRequested +=
+                OnScriptSoundTriggerRequested;
+            _scriptRuntime.FileSoundTriggerRequested +=
+                OnScriptFileSoundTriggerRequested;
         }
+
+        foreach (var pair in
+                 _sectionScriptRuntimes)
+        {
+            var sectionIndex =
+                pair.Key;
+
+            var runtime =
+                pair.Value;
+
+            runtime.SystemMacroHandler =
+                (name, context) =>
+                    HandleOmsiSectionSystemMacro(
+                        sectionIndex,
+                        name,
+                        context);
+
+            runtime.UnhandledSystemMacro +=
+                OnUnhandledSystemMacro;
+
+            runtime.DebugMessageRequested +=
+                OnScriptDebugMessage;
+
+            runtime.SoundTriggerRequested +=
+                trigger =>
+                    TriggerSectionOmsiAudio(
+                        sectionIndex,
+                        trigger);
+
+            runtime.FileSoundTriggerRequested +=
+                (trigger, declaredFile) =>
+                    OnSectionScriptFileSoundTriggerRequested(
+                        sectionIndex,
+                        trigger,
+                        declaredFile);
+        }
+
+        _terrainSurfaceSampler =
+            new RuntimeTerrainSampler(
+                windowInfo.Tiles);
 
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
-            windowInfo.Vehicle?.Physics);
+            windowInfo.Vehicle?.Physics,
+            windowInfo.Vehicle?.Sections);
         _driveMode =
             windowInfo.Vehicle is not null &&
             !_vehiclePreviewMode;
+        _reflectionRenderingEnabled =
+            !_vehiclePreviewMode &&
+            windowInfo.Vehicle?.ReflectionCameras.Count is
+                > 0;
         _driverCameraIndex =
             Math.Max(
                 windowInfo.Vehicle?.StandardDriverCameraIndex ?? 0,
@@ -411,6 +631,12 @@ public sealed class D3D11RenderWindow : Form
         _windowInfo =
             windowInfo;
 
+        EnsureTrafficVehicleResources();
+
+        _terrainSurfaceSampler =
+            new RuntimeTerrainSampler(
+                windowInfo.Tiles);
+
         _vehicle.ReplaceTerrainTiles(
             windowInfo.Tiles);
 
@@ -490,6 +716,9 @@ public sealed class D3D11RenderWindow : Form
             RuntimeSplineGeometryBuilder.Build(
                 _windowInfo.Splines);
 
+        _vehicle.ReplaceSplineSurfaceGeometry(
+            _splineGeometry);
+
         if (_splineGeometry.Vertices.Length > 0)
         {
             _splineVertexBuffer =
@@ -509,7 +738,9 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Tiles,
                 _windowInfo.Objects,
                 _windowInfo.SceneryAssets,
-                useNativeOmsiModelSpace: true);
+                useNativeOmsiModelSpace: true,
+                isolatedObjectIds:
+                    _windowInfo.DynamicSceneryObjectIds);
 
         if (_objectGeometry.Vertices.Length > 0)
         {
@@ -679,9 +910,12 @@ public sealed class D3D11RenderWindow : Form
         }
 
         InitializeGraphics();
+
+        // sound.cfg must exist before {init} because OMSI scripts may emit
+        // T.L/T.F sound events during initialization.
+        InitializeOmsiAudio();
         InitializeVehicleScripts();
         InitializeOmsiGameControllers();
-        InitializeOmsiAudio();
         UpdateCaption();
 
         _graphicsPrepared =
@@ -699,12 +933,98 @@ public sealed class D3D11RenderWindow : Form
         _omsiAudio =
             RuntimeOmsiAudioHost.TryCreate(
                 _windowInfo.Vehicle?
-                    .SoundConfigPath);
+                    .SoundConfigPath,
+                _masterVolume,
+                _maximumSoundCount);
 
         if (_omsiAudio is not null)
         {
             Console.WriteLine(
-                $"[audio] {_omsiAudio.ExistingFileCount}/{_omsiAudio.SoundCount} OMSI sound files resolved.");
+                $"[audio] lead: {_omsiAudio.ExistingFileCount}/{_omsiAudio.SoundCount} OMSI sound files resolved.");
+
+            try
+            {
+                var lines =
+                    new List<string>
+                    {
+                        $"timestamp={DateTimeOffset.Now:O}",
+                        $"vehicle={_windowInfo.Vehicle?.DisplayName ?? "<none>"}",
+                        $"soundConfig={_windowInfo.Vehicle?.SoundConfigPath ?? "<none>"}",
+                        ""
+                    };
+
+                lines.AddRange(
+                    _omsiAudio.BuildConfigurationDiagnostics());
+
+                File.WriteAllLines(
+                    Path.Combine(
+                        AppContext.BaseDirectory,
+                        "vehicle-audio-config.log"),
+                    lines);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[audio] unable to write vehicle-audio-config.log: {exception.Message}");
+            }
+        }
+
+        _articulatedOmsiAudio.Clear();
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections ??
+                 Array.Empty<RuntimeVehicleSectionInfo>())
+        {
+            if (string.IsNullOrWhiteSpace(
+                    section.SoundConfigPath))
+            {
+                continue;
+            }
+
+            var audio =
+                RuntimeOmsiAudioHost.TryCreate(
+                    section.SoundConfigPath,
+                    _masterVolume,
+                    _maximumSoundCount);
+
+            if (audio is null)
+            {
+                continue;
+            }
+
+            _articulatedOmsiAudio[
+                section.Index] =
+                audio;
+
+            Console.WriteLine(
+                $"[audio] section={section.Index}: {audio.ExistingFileCount}/{audio.SoundCount} OMSI sound files resolved from {Path.GetFileName(section.SoundConfigPath)}.");
+
+            try
+            {
+                var sectionLines =
+                    new List<string>
+                    {
+                        $"timestamp={DateTimeOffset.Now:O}",
+                        $"vehicle={_windowInfo.Vehicle?.DisplayName ?? "<none>"}",
+                        $"section={section.Index}",
+                        $"soundConfig={section.SoundConfigPath}",
+                        ""
+                    };
+
+                sectionLines.AddRange(
+                    audio.BuildConfigurationDiagnostics());
+
+                File.WriteAllLines(
+                    Path.Combine(
+                        AppContext.BaseDirectory,
+                        $"vehicle-audio-section-{section.Index}.log"),
+                    sectionLines);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[audio] unable to write section audio diagnostics: {exception.Message}");
+            }
         }
     }
 
@@ -794,6 +1114,7 @@ public sealed class D3D11RenderWindow : Form
         CreateSplineResources();
         CreateObjectResources();
         CreateVehicleResources();
+        EnsureTrafficVehicleResources();
     }
 
     private static IDXGIAdapter1 GetHardwareAdapter(IDXGIFactory2 factory)
@@ -914,7 +1235,11 @@ public sealed class D3D11RenderWindow : Form
 
         _skySampler =
             _device.CreateSamplerState(
-                SamplerDescription.LinearClamp);
+                SamplerDescription.LinearWrap);
+
+        _skyConstantsBuffer =
+            _device.CreateConstantBuffer<
+                RuntimeSkyConstants>();
 
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
@@ -931,6 +1256,152 @@ public sealed class D3D11RenderWindow : Form
                 skyPath);
     }
 
+    private Vector4 ResolveSkyViewParameters()
+    {
+        float yaw;
+        float pitch;
+        float verticalFieldOfViewRadians;
+
+        var aspect =
+            Math.Max(
+                ClientSize.Width,
+                1) /
+            (float)Math.Max(
+                ClientSize.Height,
+                1);
+
+        if (_vehiclePreviewMode)
+        {
+            yaw =
+                _previewYaw +
+                MathF.PI;
+            pitch =
+                -_previewPitch;
+            verticalFieldOfViewRadians =
+                MathF.PI /
+                4.0f;
+        }
+        else if (!_driveMode)
+        {
+            yaw =
+                _camera.Yaw;
+            pitch =
+                _camera.Pitch;
+            verticalFieldOfViewRadians =
+                MathF.PI /
+                3.0f;
+        }
+        else
+        {
+            var vehicle =
+                _windowInfo.Vehicle;
+
+            if (_vehicleViewMode ==
+                    RuntimeVehicleViewMode.Driver &&
+                vehicle?.DriverCameras.Count > 0)
+            {
+                var index =
+                    Math.Clamp(
+                        _driverCameraIndex,
+                        0,
+                        vehicle.DriverCameras.Count - 1);
+
+                var camera =
+                    vehicle.DriverCameras[index];
+
+                yaw =
+                    _vehicle.HeadingRadians +
+                    DegreesToRadians(
+                        camera.HeadingDegrees) +
+                    _interiorCameraYawOffsetRadians;
+
+                pitch =
+                    DegreesToRadians(
+                        camera.PitchDegrees) +
+                    _interiorCameraPitchOffsetRadians;
+
+                verticalFieldOfViewRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            camera.FieldOfViewDegrees *
+                            Math.Clamp(
+                                _interiorCameraFieldOfViewScale,
+                                0.35f,
+                                2.0f),
+                            18.0,
+                            120.0));
+            }
+            else if (_vehicleViewMode ==
+                         RuntimeVehicleViewMode.Passenger &&
+                     vehicle?.PassengerCameras.Count > 0)
+            {
+                var index =
+                    Math.Clamp(
+                        _passengerCameraIndex,
+                        0,
+                        vehicle.PassengerCameras.Count - 1);
+
+                var camera =
+                    vehicle.PassengerCameras[index];
+
+                yaw =
+                    _vehicle.HeadingRadians +
+                    DegreesToRadians(
+                        camera.HeadingDegrees) +
+                    _interiorCameraYawOffsetRadians;
+
+                pitch =
+                    DegreesToRadians(
+                        camera.PitchDegrees) +
+                    _interiorCameraPitchOffsetRadians;
+
+                verticalFieldOfViewRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            camera.FieldOfViewDegrees *
+                            Math.Clamp(
+                                _interiorCameraFieldOfViewScale,
+                                0.35f,
+                                2.0f),
+                            18.0,
+                            120.0));
+            }
+            else
+            {
+                yaw =
+                    _vehicle.HeadingRadians +
+                    _exteriorCameraYawOffsetRadians;
+
+                var basePitch =
+                    MathF.Atan2(
+                        4.4f,
+                        14.0f);
+
+                pitch =
+                    -Math.Clamp(
+                        basePitch +
+                        _exteriorCameraPitchOffsetRadians,
+                        -1.15f,
+                        1.25f);
+
+                verticalFieldOfViewRadians =
+                    MathF.PI /
+                    3.0f;
+            }
+        }
+
+        return _skyViewParametersOverride ??
+            new Vector4(
+                yaw,
+                pitch,
+                MathF.Tan(
+                    verticalFieldOfViewRadians *
+                    0.5f),
+                MathF.Max(
+                    aspect,
+                    0.1f));
+    }
+
     private void DrawSky()
     {
         if (_deviceContext is null ||
@@ -938,6 +1409,7 @@ public sealed class D3D11RenderWindow : Form
             _skyVertexShader is null ||
             _skyPixelShader is null ||
             _skySampler is null ||
+            _skyConstantsBuffer is null ||
             _skyTexture is null)
         {
             return;
@@ -958,6 +1430,25 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.PSSetShader(
             _skyPixelShader);
+
+        Span<RuntimeSkyConstants> skyConstants =
+            stackalloc RuntimeSkyConstants[1];
+
+        skyConstants[0] =
+            new RuntimeSkyConstants
+            {
+                ViewParameters =
+                    ResolveSkyViewParameters()
+            };
+
+        _skyConstantsBuffer.SetData(
+            _deviceContext,
+            skyConstants,
+            MapMode.WriteDiscard);
+
+        _deviceContext.PSSetConstantBuffer(
+            0,
+            _skyConstantsBuffer);
 
         _deviceContext.PSSetSampler(
             0,
@@ -1166,6 +1657,9 @@ public sealed class D3D11RenderWindow : Form
             RuntimeSplineGeometryBuilder.Build(
                 _windowInfo.Splines);
 
+        _vehicle.ReplaceSplineSurfaceGeometry(
+            _splineGeometry);
+
         if (_splineGeometry.Vertices.Length == 0)
         {
             return;
@@ -1193,7 +1687,9 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Tiles,
                 _windowInfo.Objects,
                 _windowInfo.SceneryAssets,
-                useNativeOmsiModelSpace: true);
+                useNativeOmsiModelSpace: true,
+                isolatedObjectIds:
+                    _windowInfo.DynamicSceneryObjectIds);
 
         if (_objectGeometry.Vertices.Length == 0 &&
             _splineGeometry.Vertices.Length == 0 &&
@@ -1287,6 +1783,14 @@ public sealed class D3D11RenderWindow : Form
         _objectAlphaBlendState =
             _device.CreateBlendState(
                 BlendDescription.NonPremultiplied);
+
+        _objectDepthReadState =
+            _device.CreateDepthStencilState(
+                DepthStencilDescription.DepthRead);
+
+        _objectDepthDisabledState =
+            _device.CreateDepthStencilState(
+                DepthStencilDescription.None);
 
         _objectInputLayout =
             _device.CreateInputLayout(
@@ -1428,6 +1932,57 @@ public sealed class D3D11RenderWindow : Form
             (uint)_objectGeometry.Vertices.Length;
     }
 
+    private void EnsureTrafficVehicleResources()
+    {
+        if (_device is null ||
+            _windowInfo.TrafficVehicleAssets is null ||
+            _windowInfo.TrafficVehicleAssets.Count ==
+                0)
+        {
+            return;
+        }
+
+        foreach (var pair in
+                 _windowInfo.TrafficVehicleAssets)
+        {
+            if (_trafficVehicleVertexBuffers.ContainsKey(
+                    pair.Key))
+            {
+                continue;
+            }
+
+            var geometry =
+                RuntimeVehicleGeometry.Build(
+                    pair.Value,
+                    viewpointBit:
+                        4,
+                    forceMaterialAlphaOpaque:
+                        true);
+
+            if (geometry.Vertices.Length ==
+                0)
+            {
+                continue;
+            }
+
+            var buffer =
+                _device.CreateBuffer(
+                    geometry.Vertices.AsSpan(),
+                    BindFlags.VertexBuffer);
+
+            _trafficVehicleGeometries[
+                pair.Key] =
+                geometry;
+
+            _trafficVehicleVertexBuffers[
+                pair.Key] =
+                buffer;
+
+            Console.WriteLine(
+                $"[traffic-ai] GPU vehicle={Path.GetFileName(pair.Key)}; vertices={geometry.Vertices.Length}; meshes={geometry.RenderedMeshCount}");
+        }
+    }
+
     private void CreateVehicleResources()
     {
         if (_device is null)
@@ -1455,23 +2010,29 @@ public sealed class D3D11RenderWindow : Form
                 viewpointBit: 2);
 
         _vehicleAnimationParentBatches.Clear();
+        _vehicleMeshOrdinalBatches.Clear();
 
         foreach (var batch in
                  _vehicleExteriorGeometry.Batches
                      .Concat(
                          _vehicleInteriorGeometry.Batches))
         {
-            if (string.IsNullOrWhiteSpace(
-                    batch.MeshIdentifier) ||
-                _vehicleAnimationParentBatches.ContainsKey(
-                    batch.MeshIdentifier))
+            if (batch.ModelOrdinal >= 0)
             {
-                continue;
+                _vehicleMeshOrdinalBatches.TryAdd(
+                    (
+                        batch.SectionIndex,
+                        batch.ModelOrdinal),
+                    batch);
             }
 
-            _vehicleAnimationParentBatches[
-                batch.MeshIdentifier] =
-                batch;
+            if (!string.IsNullOrWhiteSpace(
+                    batch.MeshIdentifier))
+            {
+                _vehicleAnimationParentBatches.TryAdd(
+                    batch.MeshIdentifier,
+                    batch);
+            }
         }
 
         if (_vehiclePreviewMode)
@@ -1489,19 +2050,37 @@ public sealed class D3D11RenderWindow : Form
 
         AppendVehicleGeometryDiagnostics();
 
-        var hasVehicleLights =
+        var hasPlayerVehicleLights =
             _windowInfo.Vehicle?.Meshes.Any(
                 static mesh =>
                     mesh.LightEffects is
                         { Count: > 0 }) ==
             true;
 
+        var hasTrafficVehicleLights =
+            _windowInfo.TrafficVehicleAssets?.Values.Any(
+                static vehicle =>
+                    vehicle.Meshes.Any(
+                        static mesh =>
+                            mesh.LightEffects is
+                                { Count: > 0 })) ==
+            true;
+
+        var hasVehicleLights =
+            hasPlayerVehicleLights ||
+            hasTrafficVehicleLights;
+
+        var hasTrafficVehicleAssets =
+            _windowInfo.TrafficVehicleAssets is
+                { Count: > 0 };
+
         if (_vehicleExteriorGeometry.Vertices.Length == 0 &&
             _vehicleInteriorGeometry.Vertices.Length == 0 &&
-            !hasVehicleLights)
+            !hasVehicleLights &&
+            !hasTrafficVehicleAssets)
         {
             Console.WriteLine(
-                "[vehicle-geometry] No real vehicle geometry or light effects could be built.");
+                "[vehicle-geometry] No real player or AI vehicle geometry or light effects could be built.");
             return;
         }
 
@@ -1675,6 +2254,10 @@ public sealed class D3D11RenderWindow : Form
         _vehicleMaterialBuffer =
             _device.CreateConstantBuffer<
                 RuntimeVehicleMaterialConstants>();
+
+        _vehicleSkinBuffer =
+            _device.CreateConstantBuffer<
+                RuntimeVehicleSkinConstants>();
 
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
@@ -2029,6 +2612,12 @@ public sealed class D3D11RenderWindow : Form
             0,
             Format.R32G32B32_Float,
             36,
+            0),
+        new InputElementDescription(
+            "BLENDWEIGHT",
+            0,
+            Format.R32G32B32A32_Float,
+            48,
             0)
     ];
 
@@ -2190,12 +2779,6 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (!_omsiMenuBar.Visible &&
-            _mouseDriveMode)
-        {
-            DisableMouseDriveMode();
-        }
-
         _omsiMenuBar.ToggleMenu();
 
         if (_omsiMenuBar.Visible)
@@ -2265,6 +2848,16 @@ public sealed class D3D11RenderWindow : Form
                 Close();
                 return;
 
+            case RuntimeOmsiMenuCommand.NewBus:
+                Console.WriteLine(
+                    "[runtime-select-bus]");
+                Close();
+                return;
+
+            case RuntimeOmsiMenuCommand.RemoveBus:
+                RemoveCurrentVehicle();
+                break;
+
             case RuntimeOmsiMenuCommand.Schedule:
                 ApplyOmsiHostActionPress(
                     RuntimeOmsiHostInputAction.ScheduleView);
@@ -2273,6 +2866,7 @@ public sealed class D3D11RenderWindow : Form
             case RuntimeOmsiMenuCommand.Pause:
                 _simulationPaused =
                     !_simulationPaused;
+                SynchronizeOmsiPauseSystemVariable();
                 break;
 
             case RuntimeOmsiMenuCommand.DriverView:
@@ -2309,7 +2903,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiMenuCommand.ResetVehicle:
-                if (_terrainGeometry.Vertices.Length >
+                if (!_vehicleRemoved &&
+                    _terrainGeometry.Vertices.Length >
                     0)
                 {
                     _vehicle.Reset(
@@ -2324,6 +2919,71 @@ public sealed class D3D11RenderWindow : Form
 
         SyncOmsiMenuState();
         UpdateCaption();
+    }
+
+    private void RemoveCurrentVehicle()
+    {
+        if (_vehicleRemoved ||
+            _windowInfo.Vehicle is null)
+        {
+            return;
+        }
+
+        if (_mouseDriveMode)
+        {
+            DisableMouseDriveMode();
+        }
+
+        var freeCameraPosition =
+            _vehicle.GetChaseCameraPosition(
+                _windowInfo.Vehicle
+                    .OutsideCameraCenter,
+                distanceScale:
+                    0.75f);
+
+        var freeCameraTarget =
+            _vehicle.Position +
+            new Vector3(
+                0.0f,
+                1.6f,
+                0.0f);
+
+        _camera.SetLookAt(
+            freeCameraPosition,
+            freeCameraTarget,
+            moveSpeed:
+                Math.Clamp(
+                    14.0f +
+                    Math.Abs(
+                        _vehicle.SpeedMetersPerSecond) *
+                    2.0f,
+                    10.0f,
+                    80.0f));
+
+        _vehicle.SetEngineRunning(
+            false);
+
+        _vehicleRemoved =
+            true;
+        _driveMode =
+            false;
+        _reflectionRenderingEnabled =
+            false;
+
+        _omsiAudio?.Dispose();
+        _omsiAudio =
+            null;
+
+        foreach (var audio in
+                 _articulatedOmsiAudio.Values)
+        {
+            audio.Dispose();
+        }
+
+        _articulatedOmsiAudio.Clear();
+
+        Console.WriteLine(
+            "[vehicle] current bus removed from map");
     }
 
     private void OnClientSizeChanged(
@@ -2499,11 +3159,45 @@ public sealed class D3D11RenderWindow : Form
 
         if (CanDrawTerrain())
         {
+            // OMSI scenery objects have an explicit global render order.
+            // Respect it instead of drawing every .sco in one late pass:
+            // presurface -> terrain -> surface -> splines -> on_surface ->
+            // 1 -> 2(default) -> 3 -> vehicles -> 4.
+            DrawObjects(
+                RuntimeSceneryRenderPass.PreSurface);
             DrawTerrain();
+            DrawObjects(
+                RuntimeSceneryRenderPass.Surface);
             DrawSplines();
-            DrawObjects();
-            DrawVehicle();
-            DrawVehicleLights();
+            DrawObjects(
+                RuntimeSceneryRenderPass.OnSurface);
+            DrawObjects(
+                RuntimeSceneryRenderPass.One);
+            DrawObjects(
+                RuntimeSceneryRenderPass.Two);
+            DrawObjects(
+                RuntimeSceneryRenderPass.Three);
+
+            DrawTrafficVehicles();
+            DrawTrafficVehicleLights();
+
+            var exteriorVehicle =
+                UseExteriorVehicleView();
+
+            if (exteriorVehicle)
+            {
+                DrawVehicle();
+                DrawVehicleLights();
+            }
+
+            DrawObjects(
+                RuntimeSceneryRenderPass.Four);
+
+            if (!exteriorVehicle)
+            {
+                DrawVehicle();
+                DrawVehicleLights();
+            }
         }
         else
         {
@@ -2547,6 +3241,36 @@ public sealed class D3D11RenderWindow : Form
                         1.0f,
                         _terrainGeometry);
 
+                _cameraPositionOverride =
+                    _vehicle.GetDriverCameraPosition(
+                        new RuntimeDriverCameraInfo(
+                            target.Camera.X,
+                            target.Camera.Y,
+                            target.Camera.Z,
+                            target.Camera.EyeDistance,
+                            target.Camera.FieldOfViewDegrees,
+                            target.Camera.HeadingDegrees,
+                            target.Camera.PitchDegrees));
+
+                var reflectionFovRadians =
+                    DegreesToRadians(
+                        Math.Clamp(
+                            target.Camera.FieldOfViewDegrees,
+                            18.0,
+                            120.0));
+
+                _skyViewParametersOverride =
+                    new Vector4(
+                        _vehicle.HeadingRadians +
+                        DegreesToRadians(
+                            target.Camera.HeadingDegrees),
+                        DegreesToRadians(
+                            target.Camera.PitchDegrees),
+                        MathF.Tan(
+                            reflectionFovRadians *
+                            0.5f),
+                        1.0f);
+
                 _deviceContext.OMSetRenderTargets(
                     target.RenderTargetView,
                     _reflectionDepthStencilView);
@@ -2571,9 +3295,25 @@ public sealed class D3D11RenderWindow : Form
                     ReflectionTextureSize,
                     ReflectionTextureSize);
 
+                DrawSky();
+                DrawObjects(
+                    RuntimeSceneryRenderPass.PreSurface);
                 DrawTerrain();
+                DrawObjects(
+                    RuntimeSceneryRenderPass.Surface);
                 DrawSplines();
-                DrawObjects();
+                DrawObjects(
+                    RuntimeSceneryRenderPass.OnSurface);
+                DrawObjects(
+                    RuntimeSceneryRenderPass.One);
+                DrawObjects(
+                    RuntimeSceneryRenderPass.Two);
+                DrawObjects(
+                    RuntimeSceneryRenderPass.Three);
+                DrawTrafficVehicles();
+                DrawTrafficVehicleLights();
+                DrawObjects(
+                    RuntimeSceneryRenderPass.Four);
             }
         }
         finally
@@ -2584,6 +3324,8 @@ public sealed class D3D11RenderWindow : Form
             _activeRenderTargetView = null;
             _activeDepthStencilView = null;
             _viewProjectionOverride = null;
+            _cameraPositionOverride = null;
+            _skyViewParametersOverride = null;
         }
     }
 
@@ -2596,6 +3338,10 @@ public sealed class D3D11RenderWindow : Form
         CurrentDepthStencilView =>
             _activeDepthStencilView ??
             _depthStencilView;
+
+    private Vector3 CurrentCameraPosition =>
+        _cameraPositionOverride ??
+        ResolveActiveCameraPosition();
 
     private bool CanDrawTerrain() =>
         _terrainVertexBuffer is not null &&
@@ -2655,7 +3401,7 @@ public sealed class D3D11RenderWindow : Form
                 ViewProjection =
                     CreateViewProjection(),
                 CameraPosition =
-                    ResolveActiveCameraPosition(),
+                    CurrentCameraPosition,
                 CameraPadding =
                     0.0f
             };
@@ -2784,6 +3530,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _deviceContext.OMSetBlendState(null);
+        _deviceContext.OMSetDepthStencilState(null);
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.PSUnsetShaderResource(2);
@@ -2799,18 +3546,65 @@ public sealed class D3D11RenderWindow : Form
             _splineGeometry.Batches);
     }
 
-    private void DrawObjects()
+    private void DrawObjects(
+        RuntimeSceneryRenderPass renderPass)
     {
         DrawTexturedGeometry(
             _objectVertexBuffer,
             _objectVertexCount,
-            _objectGeometry.Batches);
+            _objectGeometry.Batches,
+            renderPass);
+    }
+
+    private static bool MatchesSceneryRenderPass(
+        string? renderType,
+        RuntimeSceneryRenderPass renderPass)
+    {
+        var normalized =
+            renderType?
+                .Trim()
+                .ToLowerInvariant();
+
+        return renderPass switch
+        {
+            RuntimeSceneryRenderPass.PreSurface =>
+                normalized ==
+                    "presurface",
+            RuntimeSceneryRenderPass.Surface =>
+                normalized ==
+                    "surface",
+            RuntimeSceneryRenderPass.OnSurface =>
+                normalized ==
+                    "on_surface",
+            RuntimeSceneryRenderPass.One =>
+                normalized ==
+                    "1",
+            RuntimeSceneryRenderPass.Three =>
+                normalized ==
+                    "3",
+            RuntimeSceneryRenderPass.Four =>
+                normalized ==
+                    "4",
+            _ =>
+                string.IsNullOrWhiteSpace(
+                    normalized) ||
+                normalized ==
+                    "2" ||
+                normalized is not
+                    ("presurface" or
+                     "surface" or
+                     "on_surface" or
+                     "1" or
+                     "3" or
+                     "4")
+        };
     }
 
     private void DrawTexturedGeometry(
         ID3D11Buffer? vertexBuffer,
         uint vertexCount,
-        IReadOnlyList<RuntimeObjectBatch> batches)
+        IReadOnlyList<RuntimeObjectBatch> batches,
+        RuntimeSceneryRenderPass? sceneryRenderPass = null)
     {
         if (_deviceContext is null ||
             CurrentRenderTargetView is null ||
@@ -2856,7 +3650,13 @@ public sealed class D3D11RenderWindow : Form
 
         foreach (var batch in batches)
         {
-            if (batch.VertexCount == 0)
+            if (batch.VertexCount == 0 ||
+                (sceneryRenderPass.HasValue &&
+                 !MatchesSceneryRenderPass(
+                     batch.RenderType,
+                     sceneryRenderPass.Value)) ||
+                !IsDynamicSceneryBatchVisible(
+                    batch))
             {
                 continue;
             }
@@ -2865,6 +3665,14 @@ public sealed class D3D11RenderWindow : Form
                 batch.AlphaBlend
                     ? _objectAlphaBlendState
                     : null);
+
+            _deviceContext.OMSetDepthStencilState(
+                batch.NoZCheck
+                    ? _objectDepthDisabledState
+                    : batch.NoZWrite ||
+                      batch.AlphaBlend
+                        ? _objectDepthReadState
+                        : null);
 
             _deviceContext.PSUnsetShaderResource(
                 0);
@@ -2909,6 +3717,16 @@ public sealed class D3D11RenderWindow : Form
                     0,
                     texture.View);
             }
+            else if (!string.IsNullOrWhiteSpace(
+                         batch.TexturePath))
+            {
+                // A textured OMSI surface with an unresolved texture is not
+                // an untextured white polygon. Path markings, decals and
+                // transparent helper surfaces otherwise become large white
+                // rectangles. Keep the missing asset visible in diagnostics,
+                // but do not fabricate a color fallback.
+                continue;
+            }
             else
             {
                 _deviceContext.PSSetShader(
@@ -2927,6 +3745,63 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(null);
     }
 
+    private bool IsDynamicSceneryBatchVisible(
+        RuntimeObjectBatch batch)
+    {
+        var conditions =
+            batch.VisibilityConditions;
+
+        if (conditions is null ||
+            conditions.Count ==
+                0 ||
+            batch.ObjectId <
+                0)
+        {
+            return true;
+        }
+
+        var runtime =
+            _railSignalRouteStates
+                .Where(
+                    state =>
+                        state.SignalObjectId ==
+                            batch.ObjectId &&
+                        state.ScriptRuntime is not null)
+                .Select(
+                    static state =>
+                        state.ScriptRuntime)
+                .FirstOrDefault();
+
+        if (runtime is null)
+        {
+            return true;
+        }
+
+        foreach (var condition in
+                 conditions)
+        {
+            if (!runtime.HasLocalVariable(
+                    condition.VariableName))
+            {
+                return false;
+            }
+
+            var value =
+                runtime.GetLocal(
+                    condition.VariableName);
+
+            if (Math.Abs(
+                    value -
+                    condition.Value) >
+                0.000001)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private bool UseExteriorVehicleView() =>
         !_driveMode ||
         _vehicleViewMode ==
@@ -2942,8 +3817,663 @@ public sealed class D3D11RenderWindow : Form
          _windowInfo.Vehicle?.DriverCameras.Count is
              not > 0);
 
+    private void DrawTrafficVehicles()
+    {
+        if (_trafficAgents.Count ==
+                0 ||
+            _trafficVehicleGeometries.Count ==
+                0 ||
+            _deviceContext is null ||
+            CurrentRenderTargetView is null ||
+            CurrentDepthStencilView is null ||
+            _vehicleModelBuffer is null ||
+            _vehicleMaterialBuffer is null ||
+            _vehicleSkinBuffer is null ||
+            _vehicleVertexShader is null ||
+            _vehicleColorPixelShader is null ||
+            _vehicleTexturedPixelShader is null ||
+            _vehicleAlphaCutoutPixelShader is null ||
+            _vehicleAlphaBlendPixelShader is null ||
+            _vehicleAlphaCutoutTransMapPixelShader is null ||
+            _vehicleAlphaBlendTransMapPixelShader is null ||
+            _vehicleInputLayout is null ||
+            _vehicleSampler is null ||
+            _terrainCameraBuffer is null)
+        {
+            return;
+        }
+
+        Span<RuntimeModelConstants> model =
+            stackalloc RuntimeModelConstants[1];
+
+        Span<RuntimeVehicleMaterialConstants> materialConstants =
+            stackalloc RuntimeVehicleMaterialConstants[1];
+
+        Span<RuntimeVehicleSkinConstants> skinConstants =
+            stackalloc RuntimeVehicleSkinConstants[1];
+
+        skinConstants[0] =
+            new RuntimeVehicleSkinConstants
+            {
+                Bone0 = Matrix4x4.Identity,
+                Bone1 = Matrix4x4.Identity,
+                Bone2 = Matrix4x4.Identity,
+                Bone3 = Matrix4x4.Identity
+            };
+
+        _deviceContext.OMSetRenderTargets(
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            _vehicleInputLayout);
+
+        _deviceContext.VSSetShader(
+            _vehicleVertexShader);
+
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            1,
+            _vehicleModelBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            3,
+            _vehicleSkinBuffer);
+
+        _vehicleSkinBuffer.SetData(
+            _deviceContext,
+            skinConstants,
+            MapMode.WriteDiscard);
+
+        _deviceContext.PSSetSampler(
+            0,
+            _vehicleSampler);
+
+        _deviceContext.PSSetConstantBuffer(
+            2,
+            _vehicleMaterialBuffer);
+
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            if (!_trafficVehicleGeometries.TryGetValue(
+                    agent.VehiclePath,
+                    out var geometry) ||
+                !_trafficVehicleVertexBuffers.TryGetValue(
+                    agent.VehiclePath,
+                    out var vertexBuffer) ||
+                !_windowInfo.TrafficVehicleAssets!.TryGetValue(
+                    agent.VehiclePath,
+                    out var vehicleInfo))
+            {
+                continue;
+            }
+
+            _deviceContext.IASetVertexBuffer(
+                0,
+                vertexBuffer,
+                RuntimeObjectVertex.SizeInBytes);
+
+            var heightOffset =
+                (float)(
+                    vehicleInfo.Physics.AiDeltaHeightMeters ??
+                    0.0);
+
+            var vehicleWorld =
+                Matrix4x4.CreateRotationY(
+                    (float)agent.HeadingRadians) *
+                Matrix4x4.CreateTranslation(
+                    (float)agent.X,
+                    (float)agent.Y +
+                        heightOffset,
+                    (float)agent.Z);
+
+            foreach (var batch in
+                     geometry.Batches
+                         .Where(
+                             static batch =>
+                                 batch.VertexCount >
+                                     0)
+                         .OrderBy(
+                             static batch =>
+                                 batch.AlphaBlend
+                                     ? 1
+                                     : 0))
+            {
+                model[0] =
+                    new RuntimeModelConstants
+                    {
+                        World =
+                            CreateTrafficVehicleAnimationMatrix(
+                                batch,
+                                agent,
+                                vehicleInfo) *
+                            vehicleWorld
+                    };
+
+                _vehicleModelBuffer.SetData(
+                    _deviceContext,
+                    model,
+                    MapMode.WriteDiscard);
+
+                materialConstants[0] =
+                    new RuntimeVehicleMaterialConstants
+                    {
+                        AlphaScale = 1.0f,
+                        LightMapStrength =
+                            _materialLightMapEnabled &&
+                            !string.IsNullOrWhiteSpace(
+                                batch.LightMapTexturePath)
+                                ? 1.0f
+                                : 0.0f,
+                        EnvMapStrength =
+                            ResolveVehicleEnvMapStrength(
+                                batch.EnvMapTexturePath,
+                                batch.EnvMapStrength),
+                        EnvMapMaskEnabled =
+                            ResolveVehicleEnvMapMaskEnabled(
+                                batch.EnvMapMaskTexturePath,
+                                batch.HasTransMapDirective &&
+                                string.IsNullOrWhiteSpace(
+                                    batch.TransMapTexturePath)),
+                        BumpMapStrength =
+                            ResolveVehicleBumpMapStrength(
+                                batch.BumpMapTexturePath,
+                                batch.BumpMapStrength),
+                        BaseEmissive =
+                            ResolveVehicleAllColorEmissive(
+                                batch.BaseAllColor)
+                    };
+
+                _vehicleMaterialBuffer.SetData(
+                    _deviceContext,
+                    materialConstants,
+                    MapMode.WriteDiscard);
+
+                _deviceContext.OMSetBlendState(
+                    batch.AlphaBlend
+                        ? _vehicleAlphaBlendState
+                        : null);
+
+                _deviceContext.OMSetDepthStencilState(
+                    batch.AlphaBlend
+                        ? _vehicleDepthReadState
+                        : batch.NoZCheck
+                            ? _vehicleDepthDisabledState
+                            : batch.NoZWrite
+                                ? _vehicleDepthReadState
+                                : null);
+
+                for (var slot = 0;
+                     slot <= 6;
+                     slot++)
+                {
+                    _deviceContext.PSUnsetShaderResource(
+                        (uint)slot);
+                }
+
+                if (_materialReflectionMapEnabled &&
+                    TryGetVehicleTextureView(
+                        batch.EnvMapTexturePath,
+                        out var envMapView))
+                {
+                    _deviceContext.PSSetShaderResource(
+                        4,
+                        envMapView!);
+                }
+
+                if (_materialReflectionMapEnabled &&
+                    TryGetVehicleTextureView(
+                        batch.EnvMapMaskTexturePath,
+                        out var envMapMaskView))
+                {
+                    _deviceContext.PSSetShaderResource(
+                        5,
+                        envMapMaskView!);
+                }
+
+                if (_materialBumpMapEnabled &&
+                    TryGetVehicleTextureView(
+                        batch.BumpMapTexturePath,
+                        out var bumpMapView))
+                {
+                    _deviceContext.PSSetShaderResource(
+                        6,
+                        bumpMapView!);
+                }
+
+                var hasDiffuseTexture =
+                    TryGetVehicleTextureView(
+                        batch.TexturePath,
+                        out var textureView);
+
+                if (hasDiffuseTexture)
+                {
+                    var hasTransMap =
+                        TryGetVehicleTextureView(
+                            batch.TransMapTexturePath,
+                            out var transMapView);
+
+                    if (hasTransMap)
+                    {
+                        _deviceContext.PSSetShaderResource(
+                            1,
+                            transMapView!);
+                    }
+
+                    if (_materialLightMapEnabled &&
+                        TryGetVehicleTextureView(
+                            batch.LightMapTexturePath,
+                            out var lightMapView))
+                    {
+                        _deviceContext.PSSetShaderResource(
+                            2,
+                            lightMapView!);
+                    }
+
+                    _deviceContext.PSSetShader(
+                        batch.AlphaCutout
+                            ? hasTransMap
+                                ? _vehicleAlphaCutoutTransMapPixelShader
+                                : _vehicleAlphaCutoutPixelShader
+                            : batch.AlphaBlend
+                                ? hasTransMap
+                                    ? _vehicleAlphaBlendTransMapPixelShader
+                                    : _vehicleAlphaBlendPixelShader
+                                : _vehicleTexturedPixelShader);
+
+                    _deviceContext.PSSetShaderResource(
+                        0,
+                        textureView!);
+                }
+                else
+                {
+                    if (batch.AlphaCutout ||
+                        batch.AlphaBlend)
+                    {
+                        continue;
+                    }
+
+                    _deviceContext.PSSetShader(
+                        _vehicleColorPixelShader);
+                }
+
+                _deviceContext.Draw(
+                    batch.VertexCount,
+                    batch.StartVertex);
+            }
+        }
+
+        _deviceContext.OMSetBlendState(
+            null);
+
+        _deviceContext.OMSetDepthStencilState(
+            null);
+
+        for (var slot = 0;
+             slot <= 6;
+             slot++)
+        {
+            _deviceContext.PSUnsetShaderResource(
+                (uint)slot);
+        }
+
+        _deviceContext.RSSetState(
+            null);
+    }
+
+    private void DrawTrafficVehicleLights()
+    {
+        if (_trafficAgents.Count ==
+                0 ||
+            _windowInfo.TrafficVehicleAssets is null ||
+            _vehicleLightVertexBuffer is null ||
+            _deviceContext is null ||
+            CurrentRenderTargetView is null ||
+            CurrentDepthStencilView is null ||
+            _vehicleModelBuffer is null ||
+            _vehicleMaterialBuffer is null ||
+            _vehicleSkinBuffer is null ||
+            _vehicleVertexShader is null ||
+            _vehicleLightPixelShader is null ||
+            _vehicleInputLayout is null ||
+            _terrainCameraBuffer is null ||
+            _terrainAdditiveBlendState is null ||
+            _vehicleDepthReadState is null)
+        {
+            return;
+        }
+
+        Span<RuntimeModelConstants> model =
+            stackalloc RuntimeModelConstants[1];
+
+        Span<RuntimeVehicleMaterialConstants> material =
+            stackalloc RuntimeVehicleMaterialConstants[1];
+
+        Span<RuntimeVehicleSkinConstants> lightSkin =
+            stackalloc RuntimeVehicleSkinConstants[1];
+
+        lightSkin[0] =
+            new RuntimeVehicleSkinConstants
+            {
+                Bone0 = Matrix4x4.Identity,
+                Bone1 = Matrix4x4.Identity,
+                Bone2 = Matrix4x4.Identity,
+                Bone3 = Matrix4x4.Identity
+            };
+
+        _vehicleSkinBuffer.SetData(
+            _deviceContext,
+            lightSkin,
+            MapMode.WriteDiscard);
+
+        _deviceContext.OMSetRenderTargets(
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            _vehicleInputLayout);
+
+        _deviceContext.IASetVertexBuffer(
+            0,
+            _vehicleLightVertexBuffer,
+            RuntimeObjectVertex.SizeInBytes);
+
+        _deviceContext.VSSetShader(
+            _vehicleVertexShader);
+
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            1,
+            _vehicleModelBuffer);
+
+        _deviceContext.VSSetConstantBuffer(
+            3,
+            _vehicleSkinBuffer);
+
+        _deviceContext.PSSetShader(
+            _vehicleLightPixelShader);
+
+        _deviceContext.PSSetConstantBuffer(
+            2,
+            _vehicleMaterialBuffer);
+
+        _deviceContext.OMSetBlendState(
+            _terrainAdditiveBlendState);
+
+        _deviceContext.OMSetDepthStencilState(
+            _vehicleDepthReadState);
+
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+
+        var cameraPosition =
+            CurrentCameraPosition;
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            if (!_windowInfo.TrafficVehicleAssets.TryGetValue(
+                    agent.VehiclePath,
+                    out var vehicleInfo))
+            {
+                continue;
+            }
+
+            var heightOffset =
+                (float)(
+                    vehicleInfo.Physics.AiDeltaHeightMeters ??
+                    0.0);
+
+            var vehicleWorld =
+                Matrix4x4.CreateRotationY(
+                    (float)agent.HeadingRadians) *
+                Matrix4x4.CreateTranslation(
+                    (float)agent.X,
+                    (float)agent.Y +
+                        heightOffset,
+                    (float)agent.Z);
+
+            var allLightMeshes =
+                vehicleInfo.Meshes
+                    .Where(
+                        static mesh =>
+                            mesh.LightEffects is
+                                { Count: > 0 })
+                    .ToArray();
+
+            var viewpointMeshes =
+                allLightMeshes
+                    .Where(
+                        static mesh =>
+                            IsVehicleMeshVisibleFromViewpoint(
+                                mesh.ViewpointFlag,
+                                4))
+                    .ToArray();
+
+            var lightMeshes =
+                viewpointMeshes.Length >
+                    0
+                    ? viewpointMeshes
+                    : allLightMeshes;
+
+            foreach (var mesh in
+                     lightMeshes)
+            {
+                var staticTransform =
+                    RuntimeObjectGeometryBuilder
+                        .CreateMeshTransform(
+                            mesh.Transform);
+
+                var parentTransform =
+                    staticTransform *
+                    vehicleWorld;
+
+                foreach (var light in
+                         mesh.LightEffects!)
+                {
+                    var brightness =
+                        ResolveTrafficVehicleLightValue(
+                            agent,
+                            light);
+
+                    if (brightness <=
+                        0.0001)
+                    {
+                        continue;
+                    }
+
+                    var center =
+                        Vector3.Transform(
+                            ConvertCfgPosition(
+                                light.PositionX,
+                                light.PositionY,
+                                light.PositionZ),
+                            parentTransform);
+
+                    var toCamera =
+                        cameraPosition -
+                        center;
+
+                    if (toCamera.LengthSquared() <
+                        0.000001f)
+                    {
+                        continue;
+                    }
+
+                    var cameraDirection =
+                        Vector3.Normalize(
+                            toCamera);
+
+                    brightness *=
+                        ResolveVehicleLightDirectionalAttenuation(
+                            light,
+                            parentTransform,
+                            cameraDirection);
+
+                    if (brightness <=
+                        0.0001)
+                    {
+                        continue;
+                    }
+
+                    center +=
+                        cameraDirection *
+                        (float)light.CameraOffsetMeters;
+
+                    var size =
+                        (float)Math.Clamp(
+                            light.SizeMeters,
+                            0.005,
+                            20.0);
+
+                    model[0] =
+                        new RuntimeModelConstants
+                        {
+                            World =
+                                Matrix4x4.CreateScale(
+                                    size) *
+                                Matrix4x4.CreateBillboard(
+                                    center,
+                                    cameraPosition,
+                                    Vector3.UnitY,
+                                    Vector3.UnitZ)
+                        };
+
+                    _vehicleModelBuffer.SetData(
+                        _deviceContext,
+                        model,
+                        MapMode.WriteDiscard);
+
+                    var normalizedBrightness =
+                        (float)Math.Clamp(
+                            brightness,
+                            0.0,
+                            16.0);
+
+                    material[0] =
+                        new RuntimeVehicleMaterialConstants
+                        {
+                            AlphaScale = 1.0f,
+                            MaterialChangeDiffuse =
+                                new Vector4(
+                                    light.Red / 255.0f *
+                                        normalizedBrightness,
+                                    light.Green / 255.0f *
+                                        normalizedBrightness,
+                                    light.Blue / 255.0f *
+                                        normalizedBrightness,
+                                    1.0f)
+                        };
+
+                    _vehicleMaterialBuffer.SetData(
+                        _deviceContext,
+                        material,
+                        MapMode.WriteDiscard);
+
+                    _deviceContext.Draw(
+                        6,
+                        0);
+                }
+            }
+        }
+
+        _deviceContext.OMSetBlendState(
+            null);
+
+        _deviceContext.OMSetDepthStencilState(
+            null);
+
+        _deviceContext.RSSetState(
+            null);
+    }
+
+    private bool IsTrafficBlinkPhaseOn() =>
+        _frameClock.Elapsed.TotalSeconds %
+            1.0 <
+        0.5;
+
+    private double ResolveTrafficVehicleLightValue(
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleLightEffectInfo light)
+    {
+        double source;
+
+        if (!double.TryParse(
+                light.BrightnessVariable,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out source))
+        {
+            source =
+                light.BrightnessVariable
+                    .Trim()
+                    .ToLowerInvariant() switch
+                {
+                    "ai_brakelight" or
+                    "lights_brems" or
+                    "lights_brakes" =>
+                        agent.AiBrakeLight
+                            ? 1.0
+                            : 0.0,
+                    "ai_blinker_l" or
+                    "lights_blinker_l" =>
+                        agent.AiBlinkerLeft &&
+                        IsTrafficBlinkPhaseOn()
+                            ? 1.0
+                            : 0.0,
+                    "ai_blinker_r" or
+                    "lights_blinker_r" =>
+                        agent.AiBlinkerRight &&
+                        IsTrafficBlinkPhaseOn()
+                            ? 1.0
+                            : 0.0,
+                    "lights_blinkgeber" =>
+                        (agent.AiBlinkerLeft ||
+                         agent.AiBlinkerRight) &&
+                        IsTrafficBlinkPhaseOn()
+                            ? 1.0
+                            : 0.0,
+                    _ =>
+                        0.0
+                };
+        }
+
+        var value =
+            source *
+            light.BrightnessFactor;
+
+        return double.IsFinite(
+                   value)
+            ? Math.Clamp(
+                value,
+                0.0,
+                16.0)
+            : 0.0;
+    }
+
     private void DrawVehicle()
     {
+        if (_vehicleRemoved)
+        {
+            return;
+        }
+
         // Geometry selection must follow the camera that is actually in use.
         // If an OMSI .bus has no valid F1/F2 cameras, CreateViewProjection()
         // falls back to the chase camera; drawing the interior geometry in
@@ -2993,6 +4523,7 @@ public sealed class D3D11RenderWindow : Form
             vertexBuffer is null ||
             _vehicleModelBuffer is null ||
             _vehicleMaterialBuffer is null ||
+            _vehicleSkinBuffer is null ||
             _vehicleVertexShader is null ||
             _vehicleColorPixelShader is null ||
             _vehicleTexturedPixelShader is null ||
@@ -3013,6 +4544,8 @@ public sealed class D3D11RenderWindow : Form
 
         Span<RuntimeVehicleMaterialConstants> materialConstants =
             stackalloc RuntimeVehicleMaterialConstants[1];
+        Span<RuntimeVehicleSkinConstants> skinConstants =
+            stackalloc RuntimeVehicleSkinConstants[1];
 
         var vehicleWorld =
             _vehicle.CreateWorldMatrix();
@@ -3043,6 +4576,10 @@ public sealed class D3D11RenderWindow : Form
             1,
             _vehicleModelBuffer);
 
+        _deviceContext.VSSetConstantBuffer(
+            3,
+            _vehicleSkinBuffer);
+
         _deviceContext.PSSetSampler(
             0,
             _vehicleSampler);
@@ -3054,19 +4591,39 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
-        foreach (var batch in
-            geometry.Batches)
-        {
-            if (!IsVehicleBatchVisible(
-                    batch) ||
-                batch.VertexCount == 0)
-            {
-                continue;
-            }
+        var drawBatches =
+            geometry.Batches
+                .Where(
+                    batch =>
+                        IsVehicleBatchVisible(
+                            batch) &&
+                        batch.VertexCount >
+                            0)
+                .Select(
+                    batch =>
+                        (
+                            Batch: batch,
+                            Material:
+                                ResolveVehicleMaterialState(
+                                    batch)))
+                // OMSI relies heavily on model.cfg ordering, but transparent
+                // glass/overlays must never be allowed to reveal through an
+                // opaque body that has not written depth yet. Stable OrderBy
+                // preserves original order inside each pass.
+                .OrderBy(
+                    item =>
+                        item.Material.AlphaBlend
+                            ? 1
+                            : 0)
+                .ToArray();
 
+        foreach (var draw in
+                 drawBatches)
+        {
+            var batch =
+                draw.Batch;
             var materialState =
-                ResolveVehicleMaterialState(
-                    batch);
+                draw.Material;
 
             model[0] =
                 new RuntimeModelConstants
@@ -3084,16 +4641,27 @@ public sealed class D3D11RenderWindow : Form
                 model,
                 MapMode.WriteDiscard);
 
+            skinConstants[0] =
+                ResolveVehicleSkinConstants(
+                    batch);
+
+            _vehicleSkinBuffer.SetData(
+                _deviceContext,
+                skinConstants,
+                MapMode.WriteDiscard);
+
             materialConstants[0] =
                 new RuntimeVehicleMaterialConstants
                 {
                     AlphaScale =
                         ResolveVehicleAlphaScale(
-                            materialState.AlphaScaleVariable),
+                            materialState.AlphaScaleVariable,
+                            batch.SectionIndex),
                     LightMapStrength =
                         ResolveVehicleLightMapStrength(
                             materialState.LightMapTexturePath,
-                            materialState.LightMapVariable),
+                            materialState.LightMapVariable,
+                            batch.SectionIndex),
                     MaterialChangeStrength =
                         materialState.HasMaterialChange
                             ? 1.0f
@@ -3140,11 +4708,13 @@ public sealed class D3D11RenderWindow : Form
                     : null);
 
             _deviceContext.OMSetDepthStencilState(
-                materialState.NoZCheck
-                    ? _vehicleDepthDisabledState
-                    : materialState.NoZWrite
-                        ? _vehicleDepthReadState
-                        : null);
+                materialState.AlphaBlend
+                    ? _vehicleDepthReadState
+                    : materialState.NoZCheck
+                        ? _vehicleDepthDisabledState
+                        : materialState.NoZWrite
+                            ? _vehicleDepthReadState
+                            : null);
 
             _deviceContext.PSUnsetShaderResource(
                 0);
@@ -3167,7 +4737,8 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.PSUnsetShaderResource(
                 6);
 
-            if (TryGetVehicleTextureView(
+            if (_materialReflectionMapEnabled &&
+                TryGetVehicleTextureView(
                     materialState.EnvMapTexturePath,
                     out var envMapView))
             {
@@ -3176,7 +4747,8 @@ public sealed class D3D11RenderWindow : Form
                     envMapView!);
             }
 
-            if (TryGetVehicleTextureView(
+            if (_materialReflectionMapEnabled &&
+                TryGetVehicleTextureView(
                     materialState.EnvMapMaskTexturePath,
                     out var envMapMaskView))
             {
@@ -3185,7 +4757,8 @@ public sealed class D3D11RenderWindow : Form
                     envMapMaskView!);
             }
 
-            if (TryGetVehicleTextureView(
+            if (_materialBumpMapEnabled &&
+                TryGetVehicleTextureView(
                     materialState.BumpMapTexturePath,
                     out var bumpMapView))
             {
@@ -3204,6 +4777,7 @@ public sealed class D3D11RenderWindow : Form
                 requiresTextTexture
                     ? TryGetVehicleTextTextureView(
                         materialState.TextTextureIndex,
+                        batch.SectionIndex,
                         out textureView)
                     : TryGetVehicleTextureView(
                         ResolveVehicleDiffuseTexturePath(
@@ -3225,7 +4799,8 @@ public sealed class D3D11RenderWindow : Form
                         transMapView!);
                 }
 
-                if (TryGetVehicleTextureView(
+                if (_materialLightMapEnabled &&
+                    TryGetVehicleTextureView(
                         materialState.LightMapTexturePath,
                         out var lightMapView))
                 {
@@ -3290,6 +4865,11 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawVehicleLights()
     {
+        if (_vehicleRemoved)
+        {
+            return;
+        }
+
         var vehicle =
             _windowInfo.Vehicle;
 
@@ -3300,6 +4880,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleLightVertexBuffer is null ||
             _vehicleModelBuffer is null ||
             _vehicleMaterialBuffer is null ||
+            _vehicleSkinBuffer is null ||
             _vehicleVertexShader is null ||
             _vehicleLightPixelShader is null ||
             _vehicleInputLayout is null ||
@@ -3392,6 +4973,27 @@ public sealed class D3D11RenderWindow : Form
             1,
             _vehicleModelBuffer);
 
+        Span<RuntimeVehicleSkinConstants> lightSkin =
+            stackalloc RuntimeVehicleSkinConstants[1];
+
+        lightSkin[0] =
+            new RuntimeVehicleSkinConstants
+            {
+                Bone0 = Matrix4x4.Identity,
+                Bone1 = Matrix4x4.Identity,
+                Bone2 = Matrix4x4.Identity,
+                Bone3 = Matrix4x4.Identity
+            };
+
+        _vehicleSkinBuffer.SetData(
+            _deviceContext,
+            lightSkin,
+            MapMode.WriteDiscard);
+
+        _deviceContext.VSSetConstantBuffer(
+            3,
+            _vehicleSkinBuffer);
+
         _deviceContext.PSSetShader(
             _vehicleLightPixelShader);
 
@@ -3423,7 +5025,8 @@ public sealed class D3D11RenderWindow : Form
             }
 
             if (!AreVehicleVisibilityConditionsMet(
-                    mesh.VisibilityConditions))
+                    mesh.VisibilityConditions,
+                    mesh.SectionIndex))
             {
                 continue;
             }
@@ -3437,7 +5040,8 @@ public sealed class D3D11RenderWindow : Form
                 CreateVehicleAnimationMatrix(
                     mesh.Animations,
                     mesh.SourceTransform,
-                    staticTransform);
+                    staticTransform,
+                    mesh.SectionIndex);
 
             var parentTransform =
                 staticTransform *
@@ -3451,7 +5055,8 @@ public sealed class D3D11RenderWindow : Form
             {
                 var brightness =
                     ResolveVehicleLightValue(
-                        light);
+                        light,
+                        mesh.SectionIndex);
 
                 if (brightness <=
                     0.0001)
@@ -3573,7 +5178,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool AreVehicleVisibilityConditionsMet(
-        IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? conditions)
+        IReadOnlyList<RuntimeVehicleVisibilityConditionInfo>? conditions,
+        int sectionIndex = 0)
     {
         if (conditions is null ||
             conditions.Count == 0)
@@ -3585,9 +5191,9 @@ public sealed class D3D11RenderWindow : Form
                  conditions)
         {
             var value =
-                _scriptRuntime?.GetLocal(
-                    condition.VariableName) ??
-                0.0;
+                ResolveSectionNumericValue(
+                    sectionIndex,
+                    condition.VariableName);
 
             if (Math.Abs(
                     value -
@@ -3718,9 +5324,9 @@ public sealed class D3D11RenderWindow : Form
                              set.GroupIndex))
             {
                 var value =
-                    _scriptRuntime?.GetLocal(
-                        changeSet.VariableName) ??
-                    0.0;
+                    ResolveSectionNumericValue(
+                        batch.SectionIndex,
+                        changeSet.VariableName);
 
                 if (!double.IsFinite(
                         value))
@@ -3733,7 +5339,7 @@ public sealed class D3D11RenderWindow : Form
                         value,
                         MidpointRounding.ToEven);
 
-                if (rounded < 1.0 ||
+                if (rounded < 0.0 ||
                     rounded > int.MaxValue)
                 {
                     continue;
@@ -3767,12 +5373,12 @@ public sealed class D3D11RenderWindow : Form
             !string.IsNullOrWhiteSpace(
                 batch.MaterialChangeVariable) &&
             double.IsFinite(
-                _scriptRuntime?.GetLocal(
-                    batch.MaterialChangeVariable) ??
-                0.0) &&
-            (_scriptRuntime?.GetLocal(
-                 batch.MaterialChangeVariable) ??
-             0.0) >= 0.5;
+                ResolveSectionNumericValue(
+                    batch.SectionIndex,
+                    batch.MaterialChangeVariable)) &&
+            ResolveSectionNumericValue(
+                batch.SectionIndex,
+                batch.MaterialChangeVariable) >= 0.5;
 
         var alphaMode =
             selectedItem?.AlphaMode ??
@@ -3814,6 +5420,19 @@ public sealed class D3D11RenderWindow : Form
                 : legacyActive
                     ? batch.MaterialChangeTexturePath
                     : null;
+
+        var changeTextureIsNightMap =
+            hasNativeItem
+                ? selectedItem!.MaterialChangeIsNightMap
+                : legacyActive &&
+                  batch.MaterialChangeIsNightMap;
+
+        if (changeTextureIsNightMap &&
+            !_materialNightMapEnabled)
+        {
+            changeTexture =
+                null;
+        }
 
         var changeColor =
             hasNativeItem
@@ -3888,7 +5507,8 @@ public sealed class D3D11RenderWindow : Form
         string? texturePath,
         double strength)
     {
-        if (string.IsNullOrWhiteSpace(
+        if (!_materialBumpMapEnabled ||
+            string.IsNullOrWhiteSpace(
                 texturePath) ||
             strength <= 0.0 ||
             !TryGetVehicleTextureView(
@@ -3908,7 +5528,8 @@ public sealed class D3D11RenderWindow : Form
         string? texturePath,
         double strength)
     {
-        if (string.IsNullOrWhiteSpace(
+        if (!_materialReflectionMapEnabled ||
+            string.IsNullOrWhiteSpace(
                 texturePath) ||
             strength <= 0.0 ||
             !TryGetVehicleTextureView(
@@ -3928,6 +5549,11 @@ public sealed class D3D11RenderWindow : Form
         string? texturePath,
         bool useDiffuseAlpha)
     {
+        if (!_materialReflectionMapEnabled)
+        {
+            return 0.0f;
+        }
+
         if (useDiffuseAlpha)
         {
             // 2 = use the diffuse texture alpha channel as the reflection
@@ -4015,9 +5641,11 @@ public sealed class D3D11RenderWindow : Form
 
     private float ResolveVehicleLightMapStrength(
         string? texturePath,
-        string? variableName)
+        string? variableName,
+        int sectionIndex = 0)
     {
-        if (string.IsNullOrWhiteSpace(
+        if (!_materialLightMapEnabled ||
+            string.IsNullOrWhiteSpace(
                 texturePath))
         {
             return 0.0f;
@@ -4030,9 +5658,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            _scriptRuntime?.GetLocal(
-                variableName) ??
-            0.0;
+            ResolveSectionNumericValue(
+                sectionIndex,
+                variableName);
 
         if (!double.IsFinite(
                 value))
@@ -4046,7 +5674,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private float ResolveVehicleAlphaScale(
-        string? variableName)
+        string? variableName,
+        int sectionIndex = 0)
     {
         if (string.IsNullOrWhiteSpace(
                 variableName))
@@ -4055,9 +5684,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            _scriptRuntime?.GetLocal(
-                variableName) ??
-            0.0;
+            ResolveSectionNumericValue(
+                sectionIndex,
+                variableName);
 
         if (!double.IsFinite(
                 value))
@@ -4071,10 +5700,529 @@ public sealed class D3D11RenderWindow : Form
             1.0);
     }
 
+    private RuntimeVehicleSkinConstants ResolveVehicleSkinConstants(
+        RuntimeObjectBatch batch)
+    {
+        var identity =
+            Matrix4x4.Identity;
+
+        var result =
+            new RuntimeVehicleSkinConstants
+            {
+                Bone0 = identity,
+                Bone1 = identity,
+                Bone2 = identity,
+                Bone3 = identity
+            };
+
+        var targets =
+            batch.SkinBoneMeshOrdinals;
+
+        if (targets is null ||
+            targets.Count == 0)
+        {
+            return result;
+        }
+
+        for (var slot = 0;
+             slot < Math.Min(
+                 targets.Count,
+                 4);
+             slot++)
+        {
+            if (!_vehicleMeshOrdinalBatches.TryGetValue(
+                    (
+                        batch.SectionIndex,
+                        targets[slot]),
+                    out var boneBatch))
+            {
+                continue;
+            }
+
+            var transform =
+                CreateVehicleAnimationMatrix(
+                    boneBatch);
+
+            switch (slot)
+            {
+                case 0:
+                    result.Bone0 =
+                        transform;
+                    break;
+                case 1:
+                    result.Bone1 =
+                        transform;
+                    break;
+                case 2:
+                    result.Bone2 =
+                        transform;
+                    break;
+                case 3:
+                    result.Bone3 =
+                        transform;
+                    break;
+            }
+        }
+
+        return result;
+    }
+
     private bool IsVehicleBatchVisible(
         RuntimeObjectBatch batch) =>
         AreVehicleVisibilityConditionsMet(
-            batch.VisibilityConditions);
+            batch.VisibilityConditions,
+            batch.SectionIndex);
+
+    private static Matrix4x4 CreateTrafficVehicleAnimationMatrix(
+        RuntimeObjectBatch batch,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo)
+    {
+        if (batch.Animations is null ||
+            batch.Animations.Count ==
+                0)
+        {
+            return Matrix4x4.Identity;
+        }
+
+        var result =
+            Matrix4x4.Identity;
+
+        foreach (var animation in
+                 batch.Animations)
+        {
+            if (!TryResolveTrafficVehicleAnimationValue(
+                    animation.VariableName,
+                    agent,
+                    vehicleInfo,
+                    out var variableValue))
+            {
+                continue;
+            }
+
+            var amount =
+                variableValue *
+                animation.Delta +
+                animation.Offset;
+
+            if (!double.IsFinite(
+                    amount) ||
+                Math.Abs(
+                    amount) <
+                0.0000001)
+            {
+                continue;
+            }
+
+            ResolveAnimationFrame(
+                batch.SourceTransform,
+                batch.StaticTransform,
+                animation,
+                out var pivot,
+                out var orientation);
+
+            var axis =
+                Vector3.TransformNormal(
+                    Vector3.UnitX,
+                    orientation);
+
+            if (axis.LengthSquared() <
+                0.000001f)
+            {
+                axis =
+                    Vector3.UnitX;
+            }
+            else
+            {
+                axis =
+                    Vector3.Normalize(
+                        axis);
+            }
+
+            Matrix4x4 animationTransform;
+
+            if (animation.Kind ==
+                RuntimeVehicleAnimationKind.Translation)
+            {
+                animationTransform =
+                    Matrix4x4.CreateTranslation(
+                        axis *
+                        (float)amount);
+            }
+            else
+            {
+                animationTransform =
+                    Matrix4x4.CreateTranslation(
+                        -pivot) *
+                    Matrix4x4.CreateFromAxisAngle(
+                        axis,
+                        DegreesToRadians(
+                            amount)) *
+                    Matrix4x4.CreateTranslation(
+                        pivot);
+            }
+
+            result *=
+                animationTransform;
+        }
+
+        return result;
+    }
+
+    private static bool TryResolveTrafficVehicleAnimationValue(
+        string variableName,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo,
+        out double value)
+    {
+        if (TryResolveTrafficSteeringAnimationValue(
+                variableName,
+                agent,
+                vehicleInfo,
+                out value))
+        {
+            return true;
+        }
+
+        return TryResolveTrafficWheelRotationAnimationValue(
+            variableName,
+            agent,
+            vehicleInfo,
+            out value);
+    }
+
+    private static bool TryResolveTrafficSteeringAnimationValue(
+        string variableName,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo,
+        out double value)
+    {
+        value =
+            0.0;
+
+        const string prefix =
+            "Axle_Steering_";
+
+        if (!variableName.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var suffix =
+            variableName[
+                prefix.Length..];
+
+        var separator =
+            suffix.IndexOf(
+                '_');
+
+        if (separator <=
+                0 ||
+            !int.TryParse(
+                suffix[
+                    ..separator],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var axleIndex) ||
+            axleIndex !=
+                0)
+        {
+            return false;
+        }
+
+        var side =
+            suffix[
+                (separator + 1)..];
+
+        var isLeft =
+            side.Equals(
+                "L",
+                StringComparison.OrdinalIgnoreCase);
+
+        var isRight =
+            side.Equals(
+                "R",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!isLeft &&
+            !isRight)
+        {
+            return false;
+        }
+
+        var curvature =
+            agent.PathCurvaturePerMeter;
+
+        if (!double.IsFinite(
+                curvature))
+        {
+            return false;
+        }
+
+        var wheelBase =
+            vehicleInfo
+                .Physics
+                .WheelBaseMeters;
+
+        if ((!wheelBase.HasValue ||
+             !double.IsFinite(
+                 wheelBase.Value) ||
+             wheelBase.Value <=
+                 0.0) &&
+            vehicleInfo.Physics.FrontAxleLongitudinalMeters.HasValue &&
+            vehicleInfo.Physics.RearAxleLongitudinalMeters.HasValue)
+        {
+            wheelBase =
+                Math.Abs(
+                    vehicleInfo.Physics.FrontAxleLongitudinalMeters.Value -
+                    vehicleInfo.Physics.RearAxleLongitudinalMeters.Value);
+        }
+
+        if (!wheelBase.HasValue ||
+            !double.IsFinite(
+                wheelBase.Value) ||
+            wheelBase.Value <=
+                0.0)
+        {
+            return false;
+        }
+
+        if (Math.Abs(
+                curvature) <
+            0.000001)
+        {
+            value =
+                0.0;
+            return true;
+        }
+
+        var direction =
+            Math.Sign(
+                curvature);
+
+        var absoluteCurvature =
+            Math.Abs(
+                curvature);
+
+        var centerSteering =
+            Math.Atan(
+                wheelBase.Value *
+                absoluteCurvature);
+
+        double? trackWidth =
+            vehicleInfo
+                .Physics
+                .TrackWidthMeters;
+
+        if ((!trackWidth.HasValue ||
+             !double.IsFinite(
+                 trackWidth.Value) ||
+             trackWidth.Value <=
+                 0.0) &&
+            vehicleInfo.Physics.Axles is
+                { Count: > 0 })
+        {
+            trackWidth =
+                vehicleInfo
+                    .Physics
+                    .Axles[0]
+                    .MaximumWidthMeters;
+        }
+
+        var steering =
+            centerSteering;
+
+        if (trackWidth.HasValue &&
+            double.IsFinite(
+                trackWidth.Value) &&
+            trackWidth.Value >
+                0.0)
+        {
+            var centerRadius =
+                1.0 /
+                absoluteCurvature;
+
+            var halfTrack =
+                trackWidth.Value *
+                0.5;
+
+            var innerRadius =
+                Math.Max(
+                    centerRadius -
+                        halfTrack,
+                    0.05);
+
+            var outerRadius =
+                centerRadius +
+                halfTrack;
+
+            var innerSteering =
+                Math.Atan(
+                    wheelBase.Value /
+                    innerRadius);
+
+            var outerSteering =
+                Math.Atan(
+                    wheelBase.Value /
+                    outerRadius);
+
+            var innerWheel =
+                direction >
+                    0.0
+                    ? isRight
+                    : isLeft;
+
+            steering =
+                innerWheel
+                    ? innerSteering
+                    : outerSteering;
+        }
+
+        steering *=
+            direction;
+
+        var maximumSteeringDegrees =
+            vehicleInfo
+                .Physics
+                .MaximumSteeringAngleDegrees;
+
+        if (maximumSteeringDegrees.HasValue &&
+            double.IsFinite(
+                maximumSteeringDegrees.Value) &&
+            maximumSteeringDegrees.Value >
+                0.0)
+        {
+            var maximumSteeringRadians =
+                DegreesToRadians(
+                    maximumSteeringDegrees.Value);
+
+            steering =
+                Math.Clamp(
+                    steering,
+                    -maximumSteeringRadians,
+                    maximumSteeringRadians);
+        }
+
+        value =
+            steering;
+
+        return true;
+    }
+
+    private static bool TryResolveTrafficWheelRotationAnimationValue(
+        string variableName,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo,
+        out double value)
+    {
+        value =
+            0.0;
+
+        const string prefix =
+            "Wheel_Rotation_";
+
+        if (!variableName.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var suffix =
+            variableName[
+                prefix.Length..];
+
+        var separator =
+            suffix.IndexOf(
+                '_');
+
+        if (separator <=
+            0 ||
+            !int.TryParse(
+                suffix[
+                    ..separator],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var axleIndex))
+        {
+            return false;
+        }
+
+        var side =
+            suffix[
+                (separator + 1)..];
+
+        if (!side.Equals(
+                "L",
+                StringComparison.OrdinalIgnoreCase) &&
+            !side.Equals(
+                "R",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        double? diameter =
+            null;
+
+        if (vehicleInfo.Physics.Axles is
+                { Count: > 0 } &&
+            axleIndex >=
+                0 &&
+            axleIndex <
+                vehicleInfo.Physics.Axles.Count)
+        {
+            diameter =
+                vehicleInfo
+                    .Physics
+                    .Axles[
+                        axleIndex]
+                    .WheelDiameterMeters;
+        }
+
+        diameter ??=
+            vehicleInfo
+                .Physics
+                .AverageWheelDiameterMeters;
+
+        if (!diameter.HasValue ||
+            !double.IsFinite(
+                diameter.Value) ||
+            diameter.Value <=
+                0.0)
+        {
+            return false;
+        }
+
+        var radius =
+            Math.Clamp(
+                diameter.Value *
+                    0.5,
+                0.05,
+                2.0);
+
+        value =
+            agent.TraveledDistanceMeters /
+            radius;
+
+        if (!double.IsFinite(
+                value))
+        {
+            value =
+                0.0;
+            return false;
+        }
+
+        value =
+            Math.IEEERemainder(
+                value,
+                Math.PI *
+                2.0);
+
+        return true;
+    }
 
     private Matrix4x4 CreateVehicleAnimationMatrix(
         RuntimeObjectBatch batch)
@@ -4103,7 +6251,8 @@ public sealed class D3D11RenderWindow : Form
             CreateVehicleAnimationMatrix(
                 batch.Animations,
                 batch.SourceTransform,
-                batch.StaticTransform);
+                batch.StaticTransform,
+                batch.SectionIndex);
 
         if (string.IsNullOrWhiteSpace(
                 batch.AnimationParent) ||
@@ -4128,7 +6277,8 @@ public sealed class D3D11RenderWindow : Form
     private Matrix4x4 CreateVehicleAnimationMatrix(
         IReadOnlyList<RuntimeVehicleAnimationInfo>? animations,
         Matrix4x4? sourceTransform,
-        Matrix4x4? staticTransform)
+        Matrix4x4? staticTransform,
+        int sectionIndex = 0)
     {
         if (animations is null ||
             animations.Count == 0)
@@ -4144,7 +6294,8 @@ public sealed class D3D11RenderWindow : Form
         {
             var variableValue =
                 ResolveVehicleAnimationValue(
-                    animation);
+                    animation,
+                    sectionIndex);
 
             var amount =
                 variableValue *
@@ -4247,24 +6398,96 @@ public sealed class D3D11RenderWindow : Form
                     localTransform;
             }
 
-            if (Matrix4x4.Decompose(
-                    converted,
-                    out _,
-                    out var rotation,
-                    out pivot))
+            pivot =
+                new Vector3(
+                    converted.M41,
+                    converted.M42,
+                    converted.M43);
+
+            // Do not use Matrix4x4.Decompose here. OMSI O3D origins can
+            // legitimately contain a reflected/negative object scale
+            // (the MEP steering wheel is one real example). Decompose can
+            // move that reflection into an arbitrary scale axis and flip
+            // the animation axis. Preserve the authored local basis and
+            // normalize its rows instead.
+            var axisX =
+                new Vector3(
+                    converted.M11,
+                    converted.M12,
+                    converted.M13);
+            var axisY =
+                new Vector3(
+                    converted.M21,
+                    converted.M22,
+                    converted.M23);
+            var axisZ =
+                new Vector3(
+                    converted.M31,
+                    converted.M32,
+                    converted.M33);
+
+            axisX =
+                axisX.LengthSquared() >
+                    0.000001f
+                    ? Vector3.Normalize(
+                        axisX)
+                    : Vector3.UnitX;
+            axisY =
+                axisY.LengthSquared() >
+                    0.000001f
+                    ? Vector3.Normalize(
+                        axisY)
+                    : Vector3.UnitY;
+            axisZ =
+                axisZ.LengthSquared() >
+                    0.000001f
+                    ? Vector3.Normalize(
+                        axisZ)
+                    : Vector3.UnitZ;
+
+            // An animation origin is a rotation frame, so it must not
+            // carry a mirror/reflection. Some exported O3D meshes (the MEP
+            // Quadbus steering wheel is a real example) have a negative
+            // determinant in their source transform. OMSI still evaluates
+            // anim_rot around a proper local X rotation axis. Keep mirrored
+            // bases intact for anim_trans, but remove the X reflection for
+            // rotations only. This changes the visual steering-wheel
+            // direction without touching Axle_Steering_* or Ackermann
+            // physics used by the road wheels.
+            var handedness =
+                Vector3.Dot(
+                    Vector3.Cross(
+                        axisX,
+                        axisY),
+                    axisZ);
+
+            if (animation.Kind ==
+                    RuntimeVehicleAnimationKind.Rotation &&
+                handedness <
+                    0.0f)
             {
-                orientation =
-                    Matrix4x4.CreateFromQuaternion(
-                        rotation);
+                axisX =
+                    -axisX;
             }
-            else
-            {
-                pivot =
-                    new Vector3(
-                        converted.M41,
-                        converted.M42,
-                        converted.M43);
-            }
+
+            orientation =
+                new Matrix4x4(
+                    axisX.X,
+                    axisX.Y,
+                    axisX.Z,
+                    0.0f,
+                    axisY.X,
+                    axisY.Y,
+                    axisY.Z,
+                    0.0f,
+                    axisZ.X,
+                    axisZ.Y,
+                    axisZ.Z,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    1.0f);
         }
         else
         {
@@ -4281,9 +6504,13 @@ public sealed class D3D11RenderWindow : Form
                 animation.OriginRotationY,
                 animation.OriginRotationZ);
 
-        orientation =
-            originRotation *
-            orientation;
+        // origin_rot_* rotates the animation origin after the mesh-authored
+        // origin has been adopted. With row-vector matrices that means
+        // appending the CFG origin rotation to the mesh basis. Prepending it
+        // collapses compound pivots such as the MEP Quadbus II steering wheel
+        // to an almost vertical axis.
+        orientation *=
+            originRotation;
     }
 
     private static Vector3 ConvertCfgPosition(
@@ -4300,16 +6527,24 @@ public sealed class D3D11RenderWindow : Form
         double yDegrees,
         double zDegrees)
     {
+        // OMSI animation origins use intrinsic X/Y/Z orientation.
+        // System.Numerics applies row-vector matrices left-to-right, so the
+        // equivalent composition is Z * Y * X. The previous X * Y * Z order
+        // made a stock MAN steering-wheel origin such as X=-10, Y=90 lose
+        // the X tilt entirely, leaving the steering axis vertical.
+        //
+        // Single-axis animations are unchanged; only compound origins are
+        // corrected.
         var sourceRotation =
-            Matrix4x4.CreateRotationX(
+            Matrix4x4.CreateRotationZ(
                 DegreesToRadians(
-                    xDegrees)) *
+                    zDegrees)) *
             Matrix4x4.CreateRotationY(
                 DegreesToRadians(
                     yDegrees)) *
-            Matrix4x4.CreateRotationZ(
+            Matrix4x4.CreateRotationX(
                 DegreesToRadians(
-                    zDegrees));
+                    xDegrees));
 
         var basis =
             new Matrix4x4(
@@ -4325,6 +6560,7 @@ public sealed class D3D11RenderWindow : Form
 
     private bool TryGetVehicleTextTextureView(
         int? textTextureIndex,
+        int sectionIndex,
         out ID3D11ShaderResourceView? view)
     {
         view =
@@ -4350,9 +6586,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var value =
-            _scriptRuntime?.GetStringLocal(
-                definition.StringVariable) ??
-            string.Empty;
+            ResolveSectionStringValue(
+                sectionIndex,
+                definition.StringVariable);
 
         var texture =
             _vehicleTextTextureRenderer
@@ -4384,8 +6620,7 @@ public sealed class D3D11RenderWindow : Form
     {
 
         if (bindings is null ||
-            bindings.Count == 0 ||
-            _scriptRuntime is null)
+            bindings.Count == 0)
         {
             return batch.TexturePath;
         }
@@ -4409,7 +6644,8 @@ public sealed class D3D11RenderWindow : Form
             }
 
             var value =
-                _scriptRuntime.GetStringLocal(
+                ResolveSectionStringValue(
+                    batch.SectionIndex,
                     binding.VariableName);
 
             if (string.IsNullOrWhiteSpace(
@@ -4679,7 +6915,10 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return _vehicle.GetChaseCameraPosition(
-            vehicle?.OutsideCameraCenter);
+            vehicle?.OutsideCameraCenter,
+            _exteriorCameraYawOffsetRadians,
+            _exteriorCameraPitchOffsetRadians,
+            _exteriorCameraDistanceScale);
     }
 
     private Matrix4x4 CreateViewProjection()
@@ -4722,7 +6961,10 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Vehicle.DriverCameras[
                     _driverCameraIndex],
                 aspect,
-                _terrainGeometry);
+                _terrainGeometry,
+                _interiorCameraYawOffsetRadians,
+                _interiorCameraPitchOffsetRadians,
+                _interiorCameraFieldOfViewScale);
         }
 
         if (_vehicleViewMode ==
@@ -4739,7 +6981,10 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Vehicle.PassengerCameras[
                     _passengerCameraIndex],
                 aspect,
-                _terrainGeometry);
+                _terrainGeometry,
+                _interiorCameraYawOffsetRadians,
+                _interiorCameraPitchOffsetRadians,
+                _interiorCameraFieldOfViewScale);
         }
 
         if (_vehicleViewMode !=
@@ -4756,13 +7001,19 @@ public sealed class D3D11RenderWindow : Form
                 _windowInfo.Vehicle.DriverCameras[
                     _driverCameraIndex],
                 aspect,
-                _terrainGeometry);
+                _terrainGeometry,
+                _interiorCameraYawOffsetRadians,
+                _interiorCameraPitchOffsetRadians,
+                _interiorCameraFieldOfViewScale);
         }
 
         return _vehicle.CreateChaseViewProjection(
             aspect,
             _terrainGeometry,
-            _windowInfo.Vehicle?.OutsideCameraCenter);
+            _windowInfo.Vehicle?.OutsideCameraCenter,
+            _exteriorCameraYawOffsetRadians,
+            _exteriorCameraPitchOffsetRadians,
+            _exteriorCameraDistanceScale);
     }
 
     private void UpdateSimulation()
@@ -4793,6 +7044,21 @@ public sealed class D3D11RenderWindow : Form
                 elapsed,
                 0.0,
                 0.1);
+
+        if (_trafficStep is not null)
+        {
+            _trafficAgents =
+                _trafficStep(
+                    deltaSeconds) ??
+                Array.Empty<RuntimeTrafficAgentInfo>();
+        }
+
+        if (_railSignalStateProvider is not null)
+        {
+            _railSignalRouteStates =
+                _railSignalStateProvider() ??
+                Array.Empty<RuntimeRailSignalRouteStateInfo>();
+        }
 
         var controllerFrame =
             _controllerInputEnabled
@@ -4918,6 +7184,8 @@ public sealed class D3D11RenderWindow : Form
                         steeringDirection,
                     centerSteeringHeld:
                         centerSteeringHeld,
+                    automaticSteeringCenter:
+                        _automaticSteeringCenter,
                     deltaSeconds:
                         deltaSeconds);
             }
@@ -4926,7 +7194,7 @@ public sealed class D3D11RenderWindow : Form
         {
             var forward =
                 (IsFreeCameraKeyHeld(Keys.W) ? 1.0f : 0.0f) -
-                (IsFreeCameraKeyHeld(Keys.S) ? 1.0f : 0.0f);
+                (IsFreeCameraKeyHeld(Keys.Down) ? 1.0f : 0.0f);
 
             var right =
                 (IsFreeCameraKeyHeld(Keys.D) ? 1.0f : 0.0f) -
@@ -4955,9 +7223,69 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds,
             now);
 
-        _omsiAudio?.Update(
-            _scriptRuntime,
-            IsInteriorSoundView());
+        if (_driveMode &&
+            now -
+                _lastVehiclePhysicsDiagnosticsSeconds >=
+            1.0)
+        {
+            WriteVehiclePhysicsDiagnostics(
+                now);
+        }
+
+        var listenerPosition =
+            ResolveActiveCameraPosition();
+
+        if (!_vehicleRemoved)
+        {
+            _omsiAudio?.Update(
+                _scriptRuntime,
+                IsInteriorSoundView(),
+                ResolveLeadEngineRunning(),
+                listenerPosition,
+                _vehicle.Position,
+                _vehicle.HeadingRadians);
+        }
+
+        if (!_vehicleRemoved)
+        {
+            foreach (var pair in
+                     _articulatedOmsiAudio)
+            {
+                var section =
+                    _windowInfo.Vehicle?.Sections?
+                        .FirstOrDefault(
+                            item =>
+                                item.Index ==
+                                pair.Key);
+
+                if (section is null)
+                {
+                    continue;
+                }
+
+                ResolveArticulatedSectionAudioPose(
+                    section,
+                    out var sectionPosition,
+                    out var sectionHeading);
+
+                var sectionRuntime =
+                    ResolveScriptRuntimeForSection(
+                        section.Index);
+
+                pair.Value.Update(
+                    sectionRuntime,
+                    IsInteriorSoundView() &&
+                        section.OpenForSound,
+                    ResolveSectionEngineRunning(
+                        sectionRuntime),
+                    listenerPosition,
+                    sectionPosition,
+                    sectionHeading);
+            }
+        }
+
+        UpdateTrafficOmsiAudio(
+            listenerPosition);
 
         UpdateVehicleAnimationStates(
             deltaSeconds);
@@ -4966,10 +7294,148 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds);
     }
 
+    private void UpdateTrafficOmsiAudio(
+        Vector3 listenerPosition)
+    {
+        var activeAgentIds =
+            _trafficAgents
+                .Select(
+                    static agent =>
+                        agent.AgentIndex)
+                .ToHashSet();
+
+        foreach (var staleAgentId in
+                 _trafficOmsiAudio
+                     .Keys
+                     .Where(
+                         id =>
+                             !activeAgentIds.Contains(
+                                 id))
+                     .ToArray())
+        {
+            _trafficOmsiAudio[
+                staleAgentId]
+                .Audio
+                .Dispose();
+
+            _trafficOmsiAudio.Remove(
+                staleAgentId);
+        }
+
+        if (_trafficAgents.Count ==
+                0 ||
+            _windowInfo.TrafficVehicleAssets is
+                null)
+        {
+            return;
+        }
+
+        var perAgentVoiceBudget =
+            Math.Max(
+                4,
+                _maximumSoundCount /
+                Math.Max(
+                    _trafficAgents.Count,
+                    1));
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            if (!_windowInfo.TrafficVehicleAssets.TryGetValue(
+                    agent.VehiclePath,
+                    out var vehicleInfo) ||
+                string.IsNullOrWhiteSpace(
+                    vehicleInfo.SoundConfigPath))
+            {
+                continue;
+            }
+
+            if (!_trafficOmsiAudio.TryGetValue(
+                    agent.AgentIndex,
+                    out var state) ||
+                !state.VehiclePath.Equals(
+                    agent.VehiclePath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                state?.Audio.Dispose();
+
+                var audio =
+                    RuntimeOmsiAudioHost.TryCreate(
+                        vehicleInfo.SoundConfigPath,
+                        _masterVolume,
+                        perAgentVoiceBudget);
+
+                if (audio is null)
+                {
+                    _trafficOmsiAudio.Remove(
+                        agent.AgentIndex);
+                    continue;
+                }
+
+                state =
+                    new TrafficOmsiAudioState(
+                        agent.VehiclePath,
+                        audio);
+
+                _trafficOmsiAudio[
+                    agent.AgentIndex] =
+                    state;
+
+                Console.WriteLine(
+                    $"[traffic-ai] audio agent={agent.AgentIndex}; vehicle={Path.GetFileName(agent.VehiclePath)}; sounds={audio.ExistingFileCount}/{audio.SoundCount}");
+            }
+
+            state.Audio.Update(
+                agent.ScriptRuntime,
+                interiorView:
+                    false,
+                engineRunning:
+                    ResolveTrafficEngineRunning(
+                        agent.ScriptRuntime),
+                listenerPosition,
+                new Vector3(
+                    (float)agent.X,
+                    (float)agent.Y,
+                    (float)agent.Z),
+                (float)agent.HeadingRadians);
+        }
+    }
+
+    private static bool ResolveTrafficEngineRunning(
+        OmsiScriptRuntime? runtime)
+    {
+        if (runtime is null)
+        {
+            return true;
+        }
+
+        if (runtime.HasLocalVariable(
+                "engine_on"))
+        {
+            return runtime.GetLocal(
+                       "engine_on") >
+                   0.5;
+        }
+
+        if (runtime.HasLocalVariable(
+                "engine_injection_on"))
+        {
+            return runtime.GetLocal(
+                       "engine_injection_on") >
+                   0.5;
+        }
+
+        return true;
+    }
+
     private void ResetArticulatedSections()
     {
         _articulatedSectionAbsoluteHeadingRadians.Clear();
         _articulatedSectionYawRadians.Clear();
+        _articulatedSectionYawRateRadiansPerSecond.Clear();
+        _articulatedSectionPitchRadians.Clear();
+        _articulatedSectionPitchRateRadiansPerSecond.Clear();
+        _articulatedSectionJointWorldPosition.Clear();
 
         foreach (var section in
                  _windowInfo.Vehicle?.Sections ??
@@ -4982,6 +7448,28 @@ public sealed class D3D11RenderWindow : Form
             _articulatedSectionYawRadians[
                 section.Index] =
                 0.0f;
+
+            _articulatedSectionYawRateRadiansPerSecond[
+                section.Index] =
+                0.0f;
+
+            _articulatedSectionPitchRadians[
+                section.Index] =
+                0.0f;
+
+            _articulatedSectionPitchRateRadiansPerSecond[
+                section.Index] =
+                0.0f;
+        }
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections ??
+                 Array.Empty<RuntimeVehicleSectionInfo>())
+        {
+            _articulatedSectionJointWorldPosition[
+                section.Index] =
+                ResolveArticulatedJointWorldPosition(
+                    section);
         }
     }
 
@@ -5003,6 +7491,42 @@ public sealed class D3D11RenderWindow : Form
                      static item =>
                          item.Index))
         {
+            if (_vehicle.TryGetOdeArticulatedSectionState(
+                    section.Index,
+                    out var physicalHeading,
+                    out var physicalYaw,
+                    out var physicalYawRate,
+                    out var physicalPitch,
+                    out var physicalPitchRate))
+            {
+                _articulatedSectionAbsoluteHeadingRadians[
+                    section.Index] =
+                    physicalHeading;
+
+                _articulatedSectionYawRadians[
+                    section.Index] =
+                    physicalYaw;
+
+                _articulatedSectionYawRateRadiansPerSecond[
+                    section.Index] =
+                    physicalYawRate;
+
+                _articulatedSectionPitchRadians[
+                    section.Index] =
+                    physicalPitch;
+
+                _articulatedSectionPitchRateRadiansPerSecond[
+                    section.Index] =
+                    physicalPitchRate;
+
+                _articulatedSectionJointWorldPosition[
+                    section.Index] =
+                    ResolveArticulatedJointWorldPosition(
+                        section);
+
+                continue;
+            }
+
             var parentHeading =
                 section.ParentIndex <= 0
                     ? _vehicle.HeadingRadians
@@ -5022,27 +7546,125 @@ public sealed class D3D11RenderWindow : Form
                     parentHeading;
             }
 
+            var hitchWorld =
+                ResolveArticulatedJointWorldPosition(
+                    section);
+
+            var previousHitch =
+                _articulatedSectionJointWorldPosition
+                    .TryGetValue(
+                        section.Index,
+                        out var storedHitch)
+                    ? storedHitch
+                    : hitchWorld;
+
+            _articulatedSectionJointWorldPosition[
+                section.Index] =
+                hitchWorld;
+
+            var hitchVelocity =
+                (hitchWorld -
+                 previousHitch) /
+                Math.Max(
+                    deltaSeconds,
+                    0.0001f);
+
             var followerLength =
                 Math.Clamp(
                     (float)section.FollowerLengthMeters,
-                    1.0f,
-                    15.0f);
+                    0.75f,
+                    20.0f);
 
-            var headingDifference =
-                NormalizeRadians(
-                    parentHeading -
-                    sectionHeading);
+            // A coupled OMSI section is constrained by its front hitch and
+            // its own rotation point/rear axle. For a no-slip follower the
+            // yaw rate is the lateral hitch velocity divided by the
+            // hitch-to-rotation-point distance. Unlike the old speed/L
+            // approximation this also accounts for the parent's yaw rate,
+            // off-axis coupling points and reversing.
+            var sectionRight =
+                new Vector2(
+                    MathF.Cos(
+                        sectionHeading),
+                    -MathF.Sin(
+                        sectionHeading));
 
-            var angularVelocity =
-                _vehicle.SpeedMetersPerSecond /
-                followerLength *
-                MathF.Sin(
-                    headingDifference);
+            var targetYawRate =
+                Vector2.Dot(
+                    hitchVelocity,
+                    sectionRight) /
+                followerLength;
+
+            var massKilograms =
+                Math.Clamp(
+                    (float)(section.MassTonnes ??
+                        10.0) *
+                    1000.0f,
+                    1_000.0f,
+                    50_000.0f);
+
+            var yawInertiaKilogramSquareMeters =
+                Math.Clamp(
+                    (float)(section.YawInertiaTonneSquareMeters ??
+                        (massKilograms *
+                         followerLength *
+                         followerLength /
+                         12.0f /
+                         1000.0f)) *
+                    1000.0f,
+                    5_000.0f,
+                    8_000_000.0f);
+
+            var inertialRatio =
+                Math.Clamp(
+                    yawInertiaKilogramSquareMeters /
+                    Math.Max(
+                        massKilograms *
+                        followerLength *
+                        followerLength,
+                        1.0f),
+                    0.03f,
+                    1.5f);
+
+            var responseTime =
+                Math.Clamp(
+                    0.035f +
+                    inertialRatio *
+                    0.30f,
+                    0.04f,
+                    0.45f);
+
+            var blend =
+                1.0f -
+                MathF.Exp(
+                    -deltaSeconds /
+                    responseTime);
+
+            var yawRate =
+                _articulatedSectionYawRateRadiansPerSecond
+                    .TryGetValue(
+                        section.Index,
+                        out var storedYawRate)
+                    ? storedYawRate
+                    : 0.0f;
+
+            yawRate +=
+                (targetYawRate -
+                 yawRate) *
+                blend;
+
+            // Prevent violent numerical snaps after a hitch crosses a tile
+            // or frame-time spike while still allowing realistic jackknife
+            // behaviour when reversing.
+            yawRate =
+                Math.Clamp(
+                    yawRate,
+                    -2.8f,
+                    2.8f);
 
             sectionHeading =
                 NormalizeRadians(
                     sectionHeading +
-                    angularVelocity *
+                    yawRate *
                     deltaSeconds);
 
             var relativeYaw =
@@ -5057,16 +7679,34 @@ public sealed class D3D11RenderWindow : Form
                         5.0,
                         89.0));
 
-            relativeYaw =
-                Math.Clamp(
-                    relativeYaw,
-                    -maximumYaw,
-                    maximumYaw);
-
-            sectionHeading =
-                NormalizeRadians(
-                    parentHeading +
-                    relativeYaw);
+            if (relativeYaw >
+                maximumYaw)
+            {
+                relativeYaw =
+                    maximumYaw;
+                sectionHeading =
+                    NormalizeRadians(
+                        parentHeading +
+                        relativeYaw);
+                yawRate =
+                    Math.Min(
+                        yawRate,
+                        _vehicle.YawRateRadiansPerSecond);
+            }
+            else if (relativeYaw <
+                     -maximumYaw)
+            {
+                relativeYaw =
+                    -maximumYaw;
+                sectionHeading =
+                    NormalizeRadians(
+                        parentHeading +
+                        relativeYaw);
+                yawRate =
+                    Math.Max(
+                        yawRate,
+                        _vehicle.YawRateRadiansPerSecond);
+            }
 
             _articulatedSectionAbsoluteHeadingRadians[
                 section.Index] =
@@ -5075,7 +7715,63 @@ public sealed class D3D11RenderWindow : Form
             _articulatedSectionYawRadians[
                 section.Index] =
                 relativeYaw;
+
+            _articulatedSectionYawRateRadiansPerSecond[
+                section.Index] =
+                yawRate;
+
+            _articulatedSectionPitchRadians[
+                section.Index] =
+                0.0f;
+
+            _articulatedSectionPitchRateRadiansPerSecond[
+                section.Index] =
+                0.0f;
         }
+    }
+
+    private Vector2 ResolveArticulatedJointWorldPosition(
+        RuntimeVehicleSectionInfo section)
+    {
+        var local =
+            new Vector3(
+                (float)section.JointX,
+                0.0f,
+                (float)section.JointZ);
+
+        if (section.ParentIndex > 0)
+        {
+            local =
+                Vector3.Transform(
+                    local,
+                    CreateArticulatedSectionMatrix(
+                        section.ParentIndex));
+        }
+
+        var sine =
+            MathF.Sin(
+                _vehicle.HeadingRadians);
+        var cosine =
+            MathF.Cos(
+                _vehicle.HeadingRadians);
+
+        var rotatedX =
+            local.X *
+                cosine +
+            local.Z *
+                sine;
+
+        var rotatedZ =
+            -local.X *
+                sine +
+            local.Z *
+                cosine;
+
+        return new Vector2(
+            _vehicle.Position.X +
+                rotatedX,
+            _vehicle.Position.Z +
+                rotatedZ);
     }
 
     private Matrix4x4 CreateArticulatedSectionMatrix(
@@ -5131,6 +7827,13 @@ public sealed class D3D11RenderWindow : Form
                 ? storedYaw
                 : 0.0f;
 
+        var pitch =
+            _articulatedSectionPitchRadians.TryGetValue(
+                sectionIndex,
+                out var storedPitch)
+                ? storedPitch
+                : 0.0f;
+
         var pivot =
             new Vector3(
                 (float)section.JointX,
@@ -5140,8 +7843,10 @@ public sealed class D3D11RenderWindow : Form
         var local =
             Matrix4x4.CreateTranslation(
                 -pivot) *
-            Matrix4x4.CreateRotationY(
-                yaw) *
+            Matrix4x4.CreateFromYawPitchRoll(
+                yaw,
+                pitch,
+                0.0f) *
             Matrix4x4.CreateTranslation(
                 pivot);
 
@@ -5216,9 +7921,23 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 var target =
-                    _scriptRuntime?.GetLocal(
-                        animation.VariableName) ??
-                    0.0;
+                    ResolveSectionNumericValue(
+                        mesh.SectionIndex,
+                        animation.VariableName);
+
+                // The physical steering sign is now correct. Stock OMSI
+                // steering-wheel meshes (e.g. MAN SD202 D87_lenkrad.o3d)
+                // use the opposite visual rotation sense for the cockpit
+                // wheel while the road-wheel Axle_Steering variables stay
+                // in physical steering direction. Invert only that cockpit
+                // animation target, never the driving/physics variable.
+                if (ShouldInvertCockpitSteeringWheelAnimation(
+                        mesh,
+                        animation))
+                {
+                    target =
+                        -target;
+                }
 
                 if (!double.IsFinite(
                         target))
@@ -5325,6 +8044,37 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private static bool ShouldInvertCockpitSteeringWheelAnimation(
+        RuntimeObjectMeshInfo mesh,
+        RuntimeVehicleAnimationInfo animation)
+    {
+        if (animation.Kind !=
+                RuntimeVehicleAnimationKind.Rotation ||
+            !animation.VariableName.StartsWith(
+                "Axle_Steering_",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var path =
+            mesh.DeclaredPath ??
+            string.Empty;
+
+        return path.Contains(
+                   "lenkrad",
+                   StringComparison.OrdinalIgnoreCase) ||
+               path.Contains(
+                   "steeringwheel",
+                   StringComparison.OrdinalIgnoreCase) ||
+               path.Contains(
+                   "steering_wheel",
+                   StringComparison.OrdinalIgnoreCase) ||
+               path.Contains(
+                   "volante",
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
     private void UpdateVehicleLightStates(
         double deltaSeconds)
     {
@@ -5347,7 +8097,8 @@ public sealed class D3D11RenderWindow : Form
             {
                 var target =
                     ResolveVehicleLightTarget(
-                        light);
+                        light,
+                        mesh.SectionIndex);
 
                 if (!_vehicleLightValues.TryGetValue(
                         light,
@@ -5393,7 +8144,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private double ResolveVehicleLightTarget(
-        RuntimeVehicleLightEffectInfo light)
+        RuntimeVehicleLightEffectInfo light,
+        int sectionIndex = 0)
     {
         double source;
 
@@ -5404,9 +8156,9 @@ public sealed class D3D11RenderWindow : Form
                 out source))
         {
             source =
-                _scriptRuntime?.GetLocal(
-                    light.BrightnessVariable) ??
-                0.0;
+                ResolveSectionNumericValue(
+                    sectionIndex,
+                    light.BrightnessVariable);
         }
 
         if (!double.IsFinite(
@@ -5429,7 +8181,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private double ResolveVehicleLightValue(
-        RuntimeVehicleLightEffectInfo light)
+        RuntimeVehicleLightEffectInfo light,
+        int sectionIndex = 0)
     {
         if (_vehicleLightValues.TryGetValue(
                 light,
@@ -5441,11 +8194,13 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return ResolveVehicleLightTarget(
-            light);
+            light,
+            sectionIndex);
     }
 
     private double ResolveVehicleAnimationValue(
-        RuntimeVehicleAnimationInfo animation)
+        RuntimeVehicleAnimationInfo animation,
+        int sectionIndex = 0)
     {
         if (_vehicleAnimationValues.TryGetValue(
                 animation,
@@ -5457,9 +8212,9 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var raw =
-            _scriptRuntime?.GetLocal(
-                animation.VariableName) ??
-            0.0;
+            ResolveSectionNumericValue(
+                sectionIndex,
+                animation.VariableName);
 
         return double.IsFinite(
                 raw)
@@ -5468,6 +8223,24 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool HandleOmsiSystemMacro(
+        string name,
+        OmsiScriptCallbackContext context) =>
+        HandleOmsiSystemMacro(
+            0,
+            name,
+            context);
+
+    private bool HandleOmsiSectionSystemMacro(
+        int sectionIndex,
+        string name,
+        OmsiScriptCallbackContext context) =>
+        HandleOmsiSystemMacro(
+            sectionIndex,
+            name,
+            context);
+
+    private bool HandleOmsiSystemMacro(
+        int sectionIndex,
         string name,
         OmsiScriptCallbackContext context)
     {
@@ -5486,10 +8259,452 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
-        return _previousSystemMacroHandler?.Invoke(
+        if (name.Equals(
+                "GetHumanCountOnPathLink",
+                StringComparison.Ordinal) ||
+            name.Equals(
+                "GetHumanCountOnSeat",
+                StringComparison.Ordinal))
+        {
+            _ =
+                (int)Math.Truncate(
+                    context.PopFloat());
+
+            // The x64 runtime does not spawn passenger agents yet, so the
+            // exact current occupancy of every path link and every seat is
+            // zero. Keeping these callbacks handled preserves native door/
+            // suspension/cabin scripts without inventing phantom occupants.
+            context.PushFloat(
+                0.0);
+
+            return true;
+        }
+
+        if (name.Equals(
+                "GetHeightAbovePoint",
+                StringComparison.Ordinal))
+        {
+            var localZ =
+                context.PopFloat();
+
+            var localY =
+                context.PopFloat();
+
+            var localX =
+                context.PopFloat();
+
+            context.PushFloat(
+                ResolveHeightAboveOmsiPoint(
+                    sectionIndex,
+                    localX,
+                    localY,
+                    localZ));
+
+            return true;
+        }
+
+        return sectionIndex ==
+                   0 &&
+               _previousSystemMacroHandler?.Invoke(
                    name,
                    context) ==
                true;
+    }
+
+    private double ResolveHeightAboveOmsiPoint(
+        int sectionIndex,
+        double omsiX,
+        double omsiY,
+        double omsiZ)
+    {
+        if (!double.IsFinite(
+                omsiX) ||
+            !double.IsFinite(
+                omsiY) ||
+            !double.IsFinite(
+                omsiZ))
+        {
+            return 0.0;
+        }
+
+        // OMSI vehicle coordinates are x=right, y=forward, z=up. Vehicle
+        // geometry/cameras are normalized to renderer x=left, y=up,
+        // z=forward, therefore x is mirrored and y/z are swapped.
+        var localPoint =
+            new Vector3(
+                -(float)omsiX,
+                (float)omsiZ,
+                (float)omsiY);
+
+        var vehicleWorld =
+            CreateArticulatedSectionMatrix(
+                sectionIndex) *
+            _vehicle.CreateWorldMatrix();
+
+        var origin =
+            Vector3.Transform(
+                localPoint,
+                vehicleWorld);
+
+        var direction =
+            Vector3.TransformNormal(
+                -Vector3.UnitY,
+                vehicleWorld);
+
+        if (direction.LengthSquared() <
+            0.000001f)
+        {
+            direction =
+                -Vector3.UnitY;
+        }
+        else
+        {
+            direction =
+                Vector3.Normalize(
+                    direction);
+        }
+
+        const float maximumDistanceMeters =
+            100.0f;
+
+        var bestDistance =
+            maximumDistanceMeters;
+
+        var found =
+            TryRaycastSplineSurface(
+                origin,
+                direction,
+                maximumDistanceMeters,
+                out var splineDistance);
+
+        if (found)
+        {
+            bestDistance =
+                Math.Min(
+                    bestDistance,
+                    splineDistance);
+        }
+
+        if (TryRaycastTerrainSurface(
+                origin,
+                direction,
+                bestDistance,
+                out var terrainDistance))
+        {
+            bestDistance =
+                Math.Min(
+                    bestDistance,
+                    terrainDistance);
+
+            found = true;
+        }
+
+        return found
+            ? Math.Max(
+                bestDistance,
+                0.0f)
+            : 0.0;
+    }
+
+    private bool TryRaycastSplineSurface(
+        Vector3 origin,
+        Vector3 direction,
+        float maximumDistanceMeters,
+        out float distance)
+    {
+        distance =
+            float.PositiveInfinity;
+
+        var vertices =
+            _splineGeometry.Vertices;
+
+        if (vertices.Length <
+            3)
+        {
+            return false;
+        }
+
+        var found =
+            false;
+
+        for (var index = 0;
+             index + 2 <
+                 vertices.Length;
+             index += 3)
+        {
+            var a =
+                vertices[index]
+                    .Position;
+
+            var b =
+                vertices[index + 1]
+                    .Position;
+
+            var c =
+                vertices[index + 2]
+                    .Position;
+
+            if (!TryRayTriangleDistance(
+                    origin,
+                    direction,
+                    a,
+                    b,
+                    c,
+                    out var candidate) ||
+                candidate <
+                    0.0f ||
+                candidate >
+                    maximumDistanceMeters ||
+                candidate >=
+                    distance)
+            {
+                continue;
+            }
+
+            distance =
+                candidate;
+
+            found = true;
+        }
+
+        return found;
+    }
+
+    private bool TryRaycastTerrainSurface(
+        Vector3 origin,
+        Vector3 direction,
+        float maximumDistanceMeters,
+        out float distance)
+    {
+        distance =
+            0.0f;
+
+        if (maximumDistanceMeters <=
+            0.0f)
+        {
+            return false;
+        }
+
+        const float stepMeters =
+            0.25f;
+
+        var previousDistance =
+            0.0f;
+
+        if (!_terrainSurfaceSampler.TrySample(
+                origin.X,
+                origin.Z,
+                out var previousGround))
+        {
+            return false;
+        }
+
+        var previousClearance =
+            origin.Y -
+            previousGround;
+
+        if (previousClearance <=
+            0.0f)
+        {
+            distance =
+                0.0f;
+
+            return true;
+        }
+
+        for (var currentDistance =
+                 stepMeters;
+             currentDistance <=
+                 maximumDistanceMeters +
+                 0.0001f;
+             currentDistance +=
+                 stepMeters)
+        {
+            var point =
+                origin +
+                direction *
+                currentDistance;
+
+            if (!_terrainSurfaceSampler.TrySample(
+                    point.X,
+                    point.Z,
+                    out var ground))
+            {
+                previousDistance =
+                    currentDistance;
+                previousClearance =
+                    float.NaN;
+                continue;
+            }
+
+            var clearance =
+                point.Y -
+                ground;
+
+            if (clearance <=
+                    0.0f &&
+                float.IsFinite(
+                    previousClearance) &&
+                previousClearance >
+                    0.0f)
+            {
+                var low =
+                    previousDistance;
+
+                var high =
+                    currentDistance;
+
+                for (var iteration = 0;
+                     iteration < 12;
+                     iteration++)
+                {
+                    var middle =
+                        (low +
+                         high) *
+                        0.5f;
+
+                    var middlePoint =
+                        origin +
+                        direction *
+                        middle;
+
+                    if (!_terrainSurfaceSampler.TrySample(
+                            middlePoint.X,
+                            middlePoint.Z,
+                            out var middleGround))
+                    {
+                        low =
+                            middle;
+
+                        continue;
+                    }
+
+                    if (middlePoint.Y -
+                        middleGround >
+                        0.0f)
+                    {
+                        low =
+                            middle;
+                    }
+                    else
+                    {
+                        high =
+                            middle;
+                    }
+                }
+
+                distance =
+                    high;
+
+                return true;
+            }
+
+            previousDistance =
+                currentDistance;
+
+            previousClearance =
+                clearance;
+        }
+
+        return false;
+    }
+
+    private static bool TryRayTriangleDistance(
+        Vector3 origin,
+        Vector3 direction,
+        Vector3 a,
+        Vector3 b,
+        Vector3 c,
+        out float distance)
+    {
+        distance =
+            0.0f;
+
+        var edge1 =
+            b -
+            a;
+
+        var edge2 =
+            c -
+            a;
+
+        var p =
+            Vector3.Cross(
+                direction,
+                edge2);
+
+        var determinant =
+            Vector3.Dot(
+                edge1,
+                p);
+
+        if (Math.Abs(
+                determinant) <
+            0.000001f)
+        {
+            return false;
+        }
+
+        var inverse =
+            1.0f /
+            determinant;
+
+        var t =
+            origin -
+            a;
+
+        var u =
+            Vector3.Dot(
+                t,
+                p) *
+            inverse;
+
+        if (u <
+                -0.00001f ||
+            u >
+                1.00001f)
+        {
+            return false;
+        }
+
+        var q =
+            Vector3.Cross(
+                t,
+                edge1);
+
+        var v =
+            Vector3.Dot(
+                direction,
+                q) *
+            inverse;
+
+        if (v <
+                -0.00001f ||
+            u +
+                v >
+                1.00001f)
+        {
+            return false;
+        }
+
+        var candidate =
+            Vector3.Dot(
+                edge2,
+                q) *
+            inverse;
+
+        if (!float.IsFinite(
+                candidate) ||
+            candidate <
+                0.0f)
+        {
+            return false;
+        }
+
+        distance =
+            candidate;
+
+        return true;
     }
 
     private double ResolveNrSpecRandom(
@@ -5565,6 +8780,45 @@ public sealed class D3D11RenderWindow : Form
             $"[script:$msg] {message}");
     }
 
+    private static double ResolveInitialOdometerMeters(
+        IReadOnlyDictionary<string, double>? initialVariables)
+    {
+        if (initialVariables is null)
+        {
+            return 0.0;
+        }
+
+        initialVariables.TryGetValue(
+            "kmcounter_km",
+            out var kilometers);
+
+        initialVariables.TryGetValue(
+            "kmcounter_m",
+            out var meters);
+
+        kilometers =
+            double.IsFinite(
+                    kilometers)
+                ? Math.Max(
+                    Math.Floor(
+                        kilometers),
+                    0.0)
+                : 0.0;
+
+        meters =
+            double.IsFinite(
+                    meters)
+                ? Math.Clamp(
+                    meters,
+                    0.0,
+                    999.999999)
+                : 0.0;
+
+        return kilometers *
+                   1_000.0 +
+               meters;
+    }
+
     private void InitializeVehicleScripts()
     {
         if (_scriptRuntime is null)
@@ -5572,25 +8826,205 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        UpdateScriptHostVariables(
-            0.0,
-            0.0);
+        // OMSI scripts can emit T.L/T.F during {init}. Those initialization
+        // triggers must not become audible "engine already running" sounds
+        // before the player actually starts the vehicle. Keep sound.cfg
+        // loaded so the script host is complete, but suppress trigger output
+        // until all lead/section init macros have finished and host state is
+        // synchronized from the scripts.
+        _suppressVehicleInitAudio =
+            true;
 
-        _scriptRuntime.ExecuteInit();
-
-        if (_initialVehicleVariables is
-            { Count: > 0 })
+        try
         {
-            foreach (var pair in
-                     _initialVehicleVariables)
+            UpdateScriptHostVariables(
+                0.0,
+                0.0);
+
+            _scriptRuntime.ExecuteInit();
+
+            if (_initialVehicleVariables is
+                { Count: > 0 })
             {
-                _scriptRuntime.SetLocal(
-                    pair.Key,
+                foreach (var pair in
+                         _initialVehicleVariables)
+                {
+                    _scriptRuntime.SetLocal(
+                        pair.Key,
+                        pair.Value);
+                }
+            }
+
+            SynchronizeHostVehicleStateFromScripts();
+            SynchronizeOmsiScriptDynamics();
+            AcknowledgeOmsiStringRefresh();
+
+            foreach (var pair in
+                     _sectionScriptRuntimes)
+            {
+                var section =
+                    ResolveVehicleSection(
+                        pair.Key);
+
+                if (section is null)
+                {
+                    continue;
+                }
+
+                UpdateSectionScriptHostVariables(
+                    pair.Value,
+                    section,
+                    0.0,
+                    0.0);
+
+                pair.Value.ExecuteInit();
+
+                AcknowledgeOmsiStringRefresh(
                     pair.Value);
             }
         }
+        finally
+        {
+            _suppressVehicleInitAudio =
+                false;
+        }
 
         WriteVehicleRuntimeStateDiagnostics();
+    }
+
+    private void WriteVehiclePhysicsDiagnostics(
+        double absoluteSeconds)
+    {
+        _lastVehiclePhysicsDiagnosticsSeconds =
+            absoluteSeconds;
+
+        if (_windowInfo.Vehicle is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"vehicle={_windowInfo.Vehicle.DisplayName}",
+                    ""
+                };
+
+            lines.AddRange(
+                _vehicle.BuildPhysicsDiagnostics());
+
+            if (_scriptRuntime is not null)
+            {
+                static string ScriptValue(
+                    OmsiScriptRuntime runtime,
+                    string variable) =>
+                    runtime.HasLocalVariable(
+                        variable)
+                        ? runtime.GetLocal(
+                                variable)
+                            .ToString(
+                                "0.###",
+                                System.Globalization.CultureInfo.InvariantCulture)
+                        : "<missing>";
+
+                lines.Add(
+                    "");
+                lines.Add(
+                    "drivetrainScript:");
+                lines.Add(
+                    $"engine_on={ScriptValue(_scriptRuntime, "engine_on")}");
+                lines.Add(
+                    $"engine_n={ScriptValue(_scriptRuntime, "engine_n")}");
+                lines.Add(
+                    $"engine_M={ScriptValue(_scriptRuntime, "engine_M")}");
+                lines.Add(
+                    $"M_Wheel={ScriptValue(_scriptRuntime, "M_Wheel")}");
+                lines.Add(
+                    $"n_Wheel={ScriptValue(_scriptRuntime, "n_Wheel")}");
+                lines.Add(
+                    $"Brakeforce={ScriptValue(_scriptRuntime, "Brakeforce")}");
+                lines.Add(
+                    $"gearSelector={ScriptValue(_scriptRuntime, "antrieb_getr_gangwahl")}");
+                lines.Add(
+                    $"gearPreselect={ScriptValue(_scriptRuntime, "antrieb_getr_gangvorwahl")}");
+                lines.Add(
+                    $"gearActual={ScriptValue(_scriptRuntime, "antrieb_getr_gang")}");
+                lines.Add(
+                    $"gearRatio={ScriptValue(_scriptRuntime, "antrieb_getr_ratio_act")}");
+                lines.Add(
+                    $"cardanRpm={ScriptValue(_scriptRuntime, "antrieb_n_kardanwelle")}");
+            }
+
+            lines.Add(
+                $"primaryDrivenSection={_vehicle.PrimaryDrivenSectionIndex}");
+            lines.Add(
+                $"primaryDrivenOmsiAxle={_vehicle.PrimaryDrivenOmsiAxleIndex}");
+
+            var torqueRuntime =
+                ResolveOmsiWheelTorqueRuntime();
+
+            var torqueAuthority =
+                ReferenceEquals(
+                    torqueRuntime,
+                    _scriptRuntime)
+                    ? "lead"
+                    : _sectionScriptRuntimes
+                        .FirstOrDefault(
+                            pair =>
+                                ReferenceEquals(
+                                    pair.Value,
+                                    torqueRuntime))
+                        .Key is
+                            var sectionKey &&
+                        sectionKey >
+                            0
+                            ? $"section:{sectionKey}"
+                            : torqueRuntime is null
+                                ? "<none>"
+                                : "unknown";
+
+            lines.Add(
+                $"wheelTorqueAuthority={torqueAuthority}");
+
+            foreach (var pair in
+                     _sectionScriptRuntimes
+                         .OrderBy(
+                             static item =>
+                                 item.Key))
+            {
+                var runtime =
+                    pair.Value;
+
+                static string SectionValue(
+                    OmsiScriptRuntime sectionRuntime,
+                    string variable) =>
+                    sectionRuntime.HasLocalVariable(
+                        variable)
+                        ? sectionRuntime.GetLocal(
+                                variable)
+                            .ToString(
+                                "0.###",
+                                System.Globalization.CultureInfo.InvariantCulture)
+                        : "<missing>";
+
+                lines.Add(
+                    $"sectionScript#{pair.Key}|writesM_Wheel={runtime.WritesLocalVariable("M_Wheel")}|M_Wheel={SectionValue(runtime, "M_Wheel")}|writesBrakeforce={runtime.WritesLocalVariable("Brakeforce")}|Brakeforce={SectionValue(runtime, "Brakeforce")}|n_Wheel={SectionValue(runtime, "n_Wheel")}|engine_on={SectionValue(runtime, "engine_on")}|alpha={SectionValue(runtime, "articulation_0_alpha")}|beta={SectionValue(runtime, "articulation_0_beta")}");
+            }
+
+            File.WriteAllLines(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-physics-state.log"),
+                lines);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[vehicle-physics-state] unable to write diagnostics: {exception.Message}");
+        }
     }
 
     private void WriteVehicleRuntimeStateDiagnostics()
@@ -5728,6 +9162,141 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private void WriteVehiclePanelDiagnostics()
+    {
+        if (_scriptRuntime is null ||
+            _windowInfo.Vehicle is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var panelMeshes =
+                _windowInfo.Vehicle.Meshes
+                    .Where(
+                        mesh =>
+                            mesh.DeclaredPath.Contains(
+                                "painel",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            mesh.DeclaredPath.Contains(
+                                "cockpit",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            mesh.DeclaredPath.Contains(
+                                "dashboard",
+                                StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+            var animationVariables =
+                panelMeshes
+                    .SelectMany(
+                        static mesh =>
+                            mesh.Animations ??
+                            Array.Empty<RuntimeVehicleAnimationInfo>())
+                    .Select(
+                        static animation =>
+                            animation.VariableName)
+                    .Where(
+                        static variable =>
+                            !string.IsNullOrWhiteSpace(
+                                variable))
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(
+                        static variable =>
+                            variable,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            var materialVariables =
+                panelMeshes
+                    .SelectMany(
+                        static mesh =>
+                            mesh.Materials)
+                    .SelectMany(
+                        static material =>
+                            new[]
+                            {
+                                material.AlphaScaleVariable,
+                                material.LightMapVariable,
+                                material.MaterialChangeVariable
+                            })
+                    .Where(
+                        static variable =>
+                            !string.IsNullOrWhiteSpace(
+                                variable))
+                    .Select(
+                        static variable =>
+                            variable!)
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(
+                        static variable =>
+                            variable,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            var lines =
+                new List<string>
+                {
+                    $"timestamp={DateTimeOffset.Now:O}",
+                    $"vehicle={_windowInfo.Vehicle.DisplayName}",
+                    $"panelMeshes={panelMeshes.Length}",
+                    "",
+                    "animationVariables:"
+                };
+
+            foreach (var variable in
+                     animationVariables)
+            {
+                lines.Add(
+                    $"{variable}={_scriptRuntime.GetLocal(variable).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)}");
+            }
+
+            lines.Add(
+                "");
+            lines.Add(
+                "materialVariables:");
+
+            foreach (var variable in
+                     materialVariables)
+            {
+                lines.Add(
+                    $"{variable}={_scriptRuntime.GetLocal(variable).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)}");
+            }
+
+            lines.Add(
+                "");
+            lines.Add(
+                "mouseEvents:");
+
+            foreach (var mesh in
+                     _windowInfo.Vehicle.Meshes
+                         .Where(
+                             static mesh =>
+                                 !string.IsNullOrWhiteSpace(
+                                     mesh.MouseEventTrigger))
+                         .OrderBy(
+                             static mesh =>
+                                 mesh.ModelOrdinal))
+            {
+                lines.Add(
+                    $"mesh#{mesh.ModelOrdinal} path={mesh.DeclaredPath} trigger={mesh.MouseEventTrigger} viewpoint={mesh.ViewpointFlag}");
+            }
+
+            File.WriteAllLines(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-panel-state.log"),
+                lines);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[vehicle-panel] diagnostics unavailable: {exception.Message}");
+        }
+    }
+
     private void UpdateVehicleScripts(
         double deltaSeconds,
         double absoluteSeconds)
@@ -5741,6 +9310,9 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds,
             absoluteSeconds);
 
+        // OMSI scripts own engine/electrical/gearbox state. The host feeds
+        // predefined physical/input variables, then the vehicle scripts
+        // calculate drivetrain, brake, cockpit and sound state themselves.
         foreach (var binding in
                  _activeOmsiContinuousBindings)
         {
@@ -5748,8 +9320,593 @@ public sealed class D3D11RenderWindow : Form
                 binding.Trigger);
         }
 
+        if (!string.IsNullOrWhiteSpace(
+                _activeVehicleMouseTrigger))
+        {
+            SetOmsiMouseSystemVariables(
+                _activeVehicleMouseSectionIndex,
+                _vehicleMouseDeltaX,
+                _vehicleMouseDeltaY);
+
+            DispatchOmsiSectionScriptTrigger(
+                _activeVehicleMouseSectionIndex,
+                _activeVehicleMouseTrigger +
+                "_drag");
+
+            _vehicleMouseDeltaX =
+                0.0f;
+            _vehicleMouseDeltaY =
+                0.0f;
+
+            SetOmsiMouseSystemVariables(
+                _activeVehicleMouseSectionIndex,
+                0.0f,
+                0.0f);
+        }
+
         _scriptRuntime.ExecuteFrame();
         SynchronizeHostVehicleStateFromScripts();
+        SynchronizeOmsiScriptDynamics();
+        AcknowledgeOmsiStringRefresh();
+
+        foreach (var pair in
+                 _sectionScriptRuntimes)
+        {
+            var section =
+                ResolveVehicleSection(
+                    pair.Key);
+
+            if (section is null)
+            {
+                continue;
+            }
+
+            UpdateSectionScriptHostVariables(
+                pair.Value,
+                section,
+                deltaSeconds,
+                absoluteSeconds);
+
+            pair.Value.ExecuteFrame();
+
+            AcknowledgeOmsiStringRefresh(
+                pair.Value);
+        }
+
+        if (!_vehiclePanelAuditWritten &&
+            absoluteSeconds >= 1.0)
+        {
+            WriteVehiclePanelDiagnostics();
+            _vehiclePanelAuditWritten =
+                true;
+        }
+    }
+
+    private void AcknowledgeOmsiStringRefresh()
+    {
+        if (_scriptRuntime is not null)
+        {
+            AcknowledgeOmsiStringRefresh(
+                _scriptRuntime);
+        }
+    }
+
+    private static void AcknowledgeOmsiStringRefresh(
+        OmsiScriptRuntime runtime)
+    {
+        if (!runtime.HasLocalVariable(
+                "Refresh_Strings"))
+        {
+            return;
+        }
+
+        // OMSI resets this write-only refresh request after the host has
+        // consumed the current string-variable values. Text textures in
+        // this renderer already compare the live string value on every
+        // draw, so acknowledging the flag here preserves the script
+        // handshake without delaying the visual update.
+        if (Math.Abs(
+                runtime.GetLocal(
+                    "Refresh_Strings")) >
+            0.000001)
+        {
+            runtime.SetLocal(
+                "Refresh_Strings",
+                0.0);
+        }
+    }
+
+    private RuntimeVehicleSectionInfo? ResolveVehicleSection(
+        int sectionIndex) =>
+        _windowInfo.Vehicle?.Sections?
+            .FirstOrDefault(
+                section =>
+                    section.Index ==
+                    sectionIndex);
+
+    private OmsiScriptRuntime? ResolveScriptRuntimeForSection(
+        int sectionIndex) =>
+        sectionIndex > 0 &&
+        _sectionScriptRuntimes.TryGetValue(
+            sectionIndex,
+            out var runtime)
+                ? runtime
+                : _scriptRuntime;
+
+    private double ResolveSectionNumericValue(
+        int sectionIndex,
+        string variableName)
+    {
+        if (sectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                sectionIndex,
+                out var sectionRuntime))
+        {
+            if (sectionRuntime.WritesLocalVariable(
+                    variableName) ||
+                IsSectionHostLocalVariable(
+                    variableName) ||
+                _scriptRuntime is null ||
+                !_scriptRuntime.HasLocalVariable(
+                    variableName))
+            {
+                return sectionRuntime.GetLocal(
+                    variableName);
+            }
+        }
+
+        return _scriptRuntime?.GetLocal(
+                   variableName) ??
+               0.0;
+    }
+
+    private string ResolveSectionStringValue(
+        int sectionIndex,
+        string variableName)
+    {
+        if (sectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                sectionIndex,
+                out var sectionRuntime) &&
+            (sectionRuntime.WritesStringLocalVariable(
+                 variableName) ||
+             _scriptRuntime is null))
+        {
+            return sectionRuntime.GetStringLocal(
+                variableName);
+        }
+
+        return _scriptRuntime?.GetStringLocal(
+                   variableName) ??
+               string.Empty;
+    }
+
+    private static bool IsSectionHostLocalVariable(
+        string variableName) =>
+        variableName.Equals(
+            "Throttle",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Brake",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Clutch",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Velocity",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Velocity_Ground",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "n_Wheel",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "kmcounter_km",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "kmcounter_m",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.Equals(
+            "Envir_Brightness",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "A_Trans_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "Wheel_Rotation_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "Wheel_RotationSpeed_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "Axle_Suspension_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "Axle_Steering_",
+            StringComparison.OrdinalIgnoreCase) ||
+        variableName.StartsWith(
+            "articulation_",
+            StringComparison.OrdinalIgnoreCase);
+
+    private void InheritLeadScriptValueWhenPassive(
+        OmsiScriptRuntime sectionRuntime,
+        string variableName)
+    {
+        if (_scriptRuntime is null ||
+            sectionRuntime.WritesLocalVariable(
+                variableName) ||
+            !sectionRuntime.HasLocalVariable(
+                variableName) ||
+            !_scriptRuntime.HasLocalVariable(
+                variableName))
+        {
+            return;
+        }
+
+        sectionRuntime.SetLocal(
+            variableName,
+            _scriptRuntime.GetLocal(
+                variableName));
+    }
+
+    private bool ResolveLeadEngineRunning()
+    {
+        // The player vehicle always starts electrically and mechanically
+        // off. Script init blocks may seed engine_on/engine_n with non-zero
+        // values before the user starts the engine; those values must not
+        // make propulsion loops audible by themselves.
+        if (!_vehicle.EngineRunning)
+        {
+            return false;
+        }
+
+        if (_scriptRuntime is not null)
+        {
+            // Presence in the OMSI varlist is enough for engine audio state.
+            // Some stock scripts read/update these through macros in ways the
+            // static "writes variable" analysis cannot always prove.
+            if (_scriptRuntime.HasLocalVariable(
+                    "engine_on"))
+            {
+                return _scriptRuntime.GetLocal(
+                           "engine_on") >
+                       0.5;
+            }
+
+            if (_scriptRuntime.HasLocalVariable(
+                    "engine_injection_on"))
+            {
+                return _scriptRuntime.GetLocal(
+                           "engine_injection_on") >
+                       0.5;
+            }
+        }
+
+        return _vehicle.EngineRunning;
+    }
+
+    private bool ResolveSectionEngineRunning(
+        OmsiScriptRuntime? runtime)
+    {
+        if (!_vehicle.EngineRunning)
+        {
+            return false;
+        }
+
+        if (runtime is not null &&
+            runtime.HasLocalVariable(
+                "engine_on") &&
+            runtime.WritesLocalVariable(
+                "engine_on"))
+        {
+            return runtime.GetLocal(
+                       "engine_on") >
+                   0.5;
+        }
+
+        return _vehicle.EngineRunning;
+    }
+
+    private int ResolveSectionOmsiAxleStartIndex(
+        int sectionIndex)
+    {
+        var start =
+            Math.Max(
+                _windowInfo.Vehicle?.Physics?.Axles?.Count ??
+                0,
+                2);
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections?
+                     .OrderBy(
+                         static item =>
+                             item.Index) ??
+                 Enumerable.Empty<RuntimeVehicleSectionInfo>())
+        {
+            if (section.Index ==
+                sectionIndex)
+            {
+                return start;
+            }
+
+            start +=
+                Math.Max(
+                    section.Physics?.Axles?.Count ??
+                    0,
+                    1);
+        }
+
+        return start;
+    }
+
+    private void UpdateSectionScriptHostVariables(
+        OmsiScriptRuntime runtime,
+        RuntimeVehicleSectionInfo section,
+        double deltaSeconds,
+        double absoluteSeconds)
+    {
+        runtime.SetSystem(
+            "Timegap",
+            deltaSeconds);
+
+        runtime.SetSystem(
+            "GetTime",
+            absoluteSeconds);
+
+        var now =
+            DateTime.Now;
+
+        runtime.SetSystem(
+            "Time",
+            now.TimeOfDay.TotalSeconds);
+
+        runtime.SetSystem(
+            "Year",
+            now.Year);
+
+        runtime.SetSystem(
+            "Month",
+            now.Month);
+
+        runtime.SetSystem(
+            "Day",
+            now.Day);
+
+        runtime.SetSystem(
+            "DayOfYear",
+            now.DayOfYear);
+
+        runtime.SetSystem(
+            "Pause",
+            _simulationPaused
+                ? 1.0
+                : 0.0);
+
+        runtime.SetSystem(
+            "NoSound",
+            _masterVolume <=
+                    0.0001f
+                ? 1.0
+                : 0.0);
+
+        runtime.SetLocal(
+            "Envir_Brightness",
+            1.0);
+
+        runtime.SetLocal(
+            "Throttle",
+            _vehicle.AcceleratorLevel);
+
+        runtime.SetLocal(
+            "Brake",
+            _vehicle.BrakeLevel);
+
+        runtime.SetLocal(
+            "Clutch",
+            Math.Max(
+                _controllerClutchInput,
+                IsHostActionHeld(
+                    RuntimeOmsiHostInputAction.Clutch)
+                    ? 1.0f
+                    : 0.0f));
+
+        runtime.SetLocal(
+            "Velocity",
+            _vehicle.SpeedKph);
+
+        runtime.SetLocal(
+            "Velocity_Ground",
+            _vehicle.SpeedKph);
+
+        runtime.SetLocal(
+            "kmcounter_km",
+            Math.Floor(
+                _odometerMeters /
+                1_000.0));
+
+        runtime.SetLocal(
+            "kmcounter_m",
+            _odometerMeters %
+                1_000.0);
+
+        runtime.SetLocal(
+            "A_Trans_X",
+            _vehicle.LateralAccelerationMetersPerSecondSquared);
+
+        runtime.SetLocal(
+            "A_Trans_Y",
+            _vehicle.LongitudinalAccelerationMetersPerSecondSquared);
+
+        runtime.SetLocal(
+            "A_Trans_Z",
+            _vehicle.VerticalAccelerationMetersPerSecondSquared);
+
+        foreach (var sharedVariable in
+                 new[]
+                 {
+                     "engine_on",
+                     "engine_injection_on",
+                     "engine_n",
+                     "engine_M",
+                     "elec_busbar_main",
+                     "elec_busbar_main_sw",
+                     "elec_bus_main",
+                     "Snd_OutsideVol"
+                 })
+        {
+            InheritLeadScriptValueWhenPassive(
+                runtime,
+                sharedVariable);
+        }
+
+        var globalAxleStart =
+            ResolveSectionOmsiAxleStartIndex(
+                section.Index);
+
+        var localAxleCount =
+            Math.Max(
+                section.Physics?.Axles?.Count ??
+                0,
+                1);
+
+        var rpmSum =
+            0.0;
+        var rpmSamples =
+            0;
+
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            var globalAxle =
+                axle <
+                    localAxleCount
+                    ? globalAxleStart +
+                      axle
+                    : -1;
+
+            var leftRotation =
+                0.0f;
+            var rightRotation =
+                0.0f;
+            var leftRpm =
+                0.0f;
+            var rightRpm =
+                0.0f;
+
+            var hasWheel =
+                globalAxle >=
+                    0 &&
+                _vehicle.TryGetOmsiWheelKinematics(
+                    globalAxle,
+                    out leftRotation,
+                    out rightRotation,
+                    out leftRpm,
+                    out rightRpm);
+
+            runtime.SetLocal(
+                $"Wheel_Rotation_{axle}_L",
+                hasWheel
+                    ? leftRotation
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Wheel_Rotation_{axle}_R",
+                hasWheel
+                    ? rightRotation
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_L",
+                hasWheel
+                    ? leftRpm
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Wheel_RotationSpeed_{axle}_R",
+                hasWheel
+                    ? rightRpm
+                    : 0.0);
+
+            if (hasWheel)
+            {
+                rpmSum +=
+                    (leftRpm +
+                     rightRpm) *
+                    0.5;
+
+                rpmSamples++;
+            }
+
+            var leftSuspension =
+                0.0f;
+            var rightSuspension =
+                0.0f;
+
+            var hasSuspension =
+                globalAxle >=
+                    0 &&
+                _vehicle.TryGetOmsiAxleSuspension(
+                    globalAxle,
+                    out leftSuspension,
+                    out rightSuspension);
+
+            runtime.SetLocal(
+                $"Axle_Suspension_{axle}_L",
+                hasSuspension
+                    ? leftSuspension
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Axle_Suspension_{axle}_R",
+                hasSuspension
+                    ? rightSuspension
+                    : 0.0);
+
+            runtime.SetLocal(
+                $"Axle_Steering_{axle}_L",
+                0.0);
+
+            runtime.SetLocal(
+                $"Axle_Steering_{axle}_R",
+                0.0);
+        }
+
+        runtime.SetLocal(
+            "n_Wheel",
+            rpmSamples >
+                0
+                ? rpmSum /
+                  rpmSamples
+                : _vehicle.WheelRotationSpeedRpm);
+
+        if (_vehicle.TryGetOdeArticulatedSectionState(
+                section.Index,
+                out _,
+                out var relativeYaw,
+                out var relativeYawRate,
+                out var relativePitch,
+                out var relativePitchRate))
+        {
+            runtime.SetLocal(
+                "articulation_0_alpha",
+                relativeYaw);
+
+            runtime.SetLocal(
+                "articulation_0_alpha_vel",
+                relativeYawRate);
+
+            runtime.SetLocal(
+                "articulation_0_beta",
+                relativePitch);
+
+            runtime.SetLocal(
+                "articulation_0_beta_vel",
+                relativePitchRate);
+        }
     }
 
     private void UpdateScriptHostVariables(
@@ -5767,6 +9924,36 @@ public sealed class D3D11RenderWindow : Form
         _scriptRuntime.SetSystem(
             "GetTime",
             absoluteSeconds);
+
+        var now =
+            DateTime.Now;
+
+        _scriptRuntime.SetSystem(
+            "Time",
+            now.TimeOfDay.TotalSeconds);
+        _scriptRuntime.SetSystem(
+            "Year",
+            now.Year);
+        _scriptRuntime.SetSystem(
+            "Month",
+            now.Month);
+        _scriptRuntime.SetSystem(
+            "Day",
+            now.Day);
+        _scriptRuntime.SetSystem(
+            "DayOfYear",
+            now.DayOfYear);
+        _scriptRuntime.SetSystem(
+            "Pause",
+            _simulationPaused
+                ? 1.0
+                : 0.0);
+        _scriptRuntime.SetSystem(
+            "NoSound",
+            _masterVolume <=
+                    0.0001f
+                ? 1.0
+                : 0.0);
 
         // The current bootstrap renderer is daylight-only. OMSI vehicle
         // materials use Envir_Brightness as an alpha scale for exterior
@@ -5797,14 +9984,60 @@ public sealed class D3D11RenderWindow : Form
             "Velocity_Ground",
             _vehicle.SpeedKph);
 
-        // Runtime world yaw uses positive values for a right turn,
-        // while OMSI's built-in axle animation variables use the opposite
-        // sign convention. Inverting here keeps the bus path and the
-        // visible steering wheel/front wheels synchronized.
+        if (_driveMode &&
+            !_simulationPaused &&
+            !_vehicleRemoved &&
+            deltaSeconds >
+                0.0)
+        {
+            _odometerMeters +=
+                Math.Abs(
+                    _vehicle.SpeedMetersPerSecond) *
+                deltaSeconds;
+        }
+
+        var odometerKilometers =
+            Math.Floor(
+                _odometerMeters /
+                1_000.0);
+
+        var odometerRemainderMeters =
+            _odometerMeters -
+            odometerKilometers *
+                1_000.0;
+
+        _scriptRuntime.SetLocal(
+            "kmcounter_km",
+            odometerKilometers);
+
+        _scriptRuntime.SetLocal(
+            "kmcounter_m",
+            odometerRemainderMeters);
+
+        _scriptRuntime.SetLocal(
+            "n_Wheel",
+            _vehicle.WheelRotationSpeedRpm);
+
+        // OMSI vehicle coordinates are x=right, y=forward, z=up.
+        _scriptRuntime.SetLocal(
+            "A_Trans_X",
+            _vehicle.LateralAccelerationMetersPerSecondSquared);
+        _scriptRuntime.SetLocal(
+            "A_Trans_Y",
+            _vehicle.LongitudinalAccelerationMetersPerSecondSquared);
+        _scriptRuntime.SetLocal(
+            "A_Trans_Z",
+            _vehicle.VerticalAccelerationMetersPerSecondSquared);
+
+        // Keep input/physics steering independent from model animation.
+        // The OMSI Axle_Steering_* variables use the same signed steering
+        // direction as the model.cfg wheel animations. The previous extra
+        // negation made the visible front wheels steer opposite the actual
+        // vehicle path.
         var omsiSteeringLeft =
-            -_vehicle.FrontLeftSteeringRadians;
+            _vehicle.FrontLeftSteeringRadians;
         var omsiSteeringRight =
-            -_vehicle.FrontRightSteeringRadians;
+            _vehicle.FrontRightSteeringRadians;
 
         _scriptRuntime.SetLocal(
             "Axle_Steering_0_L",
@@ -5813,41 +10046,113 @@ public sealed class D3D11RenderWindow : Form
             "Axle_Steering_0_R",
             omsiSteeringRight);
 
-        var wheelRotation =
-            _vehicle.WheelRotationRadians;
-        var wheelRotationSpeedRpm =
-            _vehicle.WheelRotationSpeedRpm;
-
         for (var axle = 0;
-             axle < 4;
+             axle < 8;
              axle++)
         {
+            var hasWheelKinematics =
+                _vehicle.TryGetOmsiWheelKinematics(
+                    axle,
+                    out var leftWheelRotation,
+                    out var rightWheelRotation,
+                    out var leftWheelRotationSpeedRpm,
+                    out var rightWheelRotationSpeedRpm);
+
             _scriptRuntime.SetLocal(
                 $"Wheel_Rotation_{axle}_L",
-                wheelRotation);
+                hasWheelKinematics
+                    ? leftWheelRotation
+                    : 0.0f);
+
             _scriptRuntime.SetLocal(
                 $"Wheel_Rotation_{axle}_R",
-                wheelRotation);
+                hasWheelKinematics
+                    ? rightWheelRotation
+                    : 0.0f);
+
             _scriptRuntime.SetLocal(
                 $"Wheel_RotationSpeed_{axle}_L",
-                wheelRotationSpeedRpm);
+                hasWheelKinematics
+                    ? leftWheelRotationSpeedRpm
+                    : 0.0f);
+
             _scriptRuntime.SetLocal(
                 $"Wheel_RotationSpeed_{axle}_R",
-                wheelRotationSpeedRpm);
+                hasWheelKinematics
+                    ? rightWheelRotationSpeedRpm
+                    : 0.0f);
         }
 
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_0_L",
-            _vehicle.FrontLeftSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_0_R",
-            _vehicle.FrontRightSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_1_L",
-            _vehicle.RearLeftSuspensionMeters);
-        _scriptRuntime.SetLocal(
-            "Axle_Suspension_1_R",
-            _vehicle.RearRightSuspensionMeters);
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            var hasSuspension =
+                _vehicle.TryGetOmsiAxleSuspension(
+                    axle,
+                    out var leftSuspension,
+                    out var rightSuspension);
+
+            _scriptRuntime.SetLocal(
+                $"Axle_Suspension_{axle}_L",
+                hasSuspension
+                    ? leftSuspension
+                    : 0.0f);
+
+            _scriptRuntime.SetLocal(
+                $"Axle_Suspension_{axle}_R",
+                hasSuspension
+                    ? rightSuspension
+                    : 0.0f);
+        }
+
+        // Coupled OMSI .bus models expose the articulation angle as a host
+        // variable. The MEP Quadbus II bellows and its articulation.osc
+        // consume articulation_0_alpha/beta directly.
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections ??
+                 Array.Empty<RuntimeVehicleSectionInfo>())
+        {
+            var couplingIndex =
+                Math.Max(
+                    section.Index - 1,
+                    0);
+
+            var relativeYaw =
+                _articulatedSectionYawRadians
+                    .TryGetValue(
+                        section.Index,
+                        out var yaw)
+                        ? yaw
+                        : 0.0f;
+
+            var alphaDegrees =
+                -relativeYaw *
+                180.0 /
+                Math.PI;
+
+            _scriptRuntime.SetLocal(
+                $"articulation_{couplingIndex}_alpha",
+                alphaDegrees);
+
+            var relativePitch =
+                _articulatedSectionPitchRadians
+                    .TryGetValue(
+                        section.Index,
+                        out var pitch)
+                        ? pitch
+                        : 0.0f;
+
+            var betaDegrees =
+                relativePitch *
+                180.0 /
+                Math.PI;
+
+            _scriptRuntime.SetLocal(
+                $"articulation_{couplingIndex}_beta",
+                betaDegrees);
+        }
+
     }
 
     private void OnRuntimeKeyDown(
@@ -5925,6 +10230,20 @@ public sealed class D3D11RenderWindow : Form
                 UpdateCaption();
                 e.SuppressKeyPress =
                     true;
+                return;
+            }
+
+            // Preserve OMSI's standard drive keys even when a custom or
+            // partially parsed keyboard.cfg omits one of them. Explicit
+            // bindings always win because this path runs only when no
+            // binding matched the physical key.
+            if (_driveMode &&
+                TryApplyOmsiDefaultDriveKeyFallback(
+                    e.KeyCode))
+            {
+                UpdateCaption();
+                e.SuppressKeyPress =
+                    true;
             }
 
             return;
@@ -5932,6 +10251,130 @@ public sealed class D3D11RenderWindow : Form
 
         ApplyLegacyKeyboardFallback(
             e);
+    }
+
+    private bool TryApplyOmsiDefaultDriveKeyFallback(
+        Keys key)
+    {
+        switch (key)
+        {
+            case Keys.E:
+                if (DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "cp_batterietrennschalter_toggle") ||
+                    DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "kw_batterietrennschalter"))
+                {
+                    SynchronizeHostVehicleStateFromScripts();
+                    return true;
+                }
+
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ElectricalToggle);
+                return true;
+
+            case Keys.N:
+                if (!DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "automatic_N"))
+                {
+                    ApplyOmsiHostActionPress(
+                        RuntimeOmsiHostInputAction.GearNeutral);
+                }
+                else
+                {
+                    SynchronizeHostVehicleStateFromScripts();
+                }
+
+                return true;
+
+            case Keys.D:
+                if (!DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "automatic_D"))
+                {
+                    ApplyOmsiHostActionPress(
+                        RuntimeOmsiHostInputAction.GearDrive);
+                }
+                else
+                {
+                    SynchronizeHostVehicleStateFromScripts();
+                }
+
+                return true;
+
+            case Keys.R:
+                if (!DispatchDefaultScriptTriggerIfPresent(
+                        key,
+                        "automatic_R"))
+                {
+                    ApplyOmsiHostActionPress(
+                        RuntimeOmsiHostInputAction.GearReverse);
+                }
+                else
+                {
+                    SynchronizeHostVehicleStateFromScripts();
+                }
+
+                return true;
+
+            case Keys.M:
+                if (DispatchFirstDefaultScriptTriggerIfPresent(
+                        key,
+                        "kw_m_enginestart",
+                        "kw_m_engine_startbutton"))
+                {
+                    SynchronizeHostVehicleStateFromScripts();
+                }
+                else
+                {
+                    _vehicle.ToggleEngine();
+                }
+
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    private bool DispatchFirstDefaultScriptTriggerIfPresent(
+        Keys key,
+        params string[] triggers)
+    {
+        foreach (var trigger in
+                 triggers)
+        {
+            if (DispatchDefaultScriptTriggerIfPresent(
+                    key,
+                    trigger))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool DispatchDefaultScriptTriggerIfPresent(
+        Keys key,
+        string trigger)
+    {
+        if (!HasOmsiScriptTrigger(
+                trigger))
+        {
+            return false;
+        }
+
+        DispatchOmsiScriptTrigger(
+            trigger);
+
+        _fallbackOmsiPressTriggers[
+            key] =
+            trigger;
+
+        return true;
     }
 
     private void ApplyLegacyKeyboardFallback(
@@ -5994,6 +10437,42 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (e.KeyCode == Keys.S)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.ScrollViews);
+            return;
+        }
+
+        if (e.KeyCode == Keys.P)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.PauseToggle);
+            return;
+        }
+
+        if (e.KeyCode == Keys.C)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.ResetCurrentView);
+            return;
+        }
+
+        if (e.KeyCode == Keys.Space)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.ResetAllViews);
+            return;
+        }
+
+        if (e.Shift &&
+            e.KeyCode == Keys.Z)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.StatusInfoCycle);
+            return;
+        }
+
         if (!_driveMode)
         {
             return;
@@ -6017,28 +10496,12 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case Keys.E:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.ElectricalToggle);
-                break;
-
             case Keys.M:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.EngineToggle);
-                break;
-
             case Keys.D:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearDrive);
-                break;
-
             case Keys.N:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearNeutral);
-                break;
-
             case Keys.R:
-                ApplyOmsiHostActionPress(
-                    RuntimeOmsiHostInputAction.GearReverse);
+                TryApplyOmsiDefaultDriveKeyFallback(
+                    e.KeyCode);
                 break;
 
             case Keys.Decimal:
@@ -6061,6 +10524,46 @@ public sealed class D3D11RenderWindow : Form
         UpdateCaption();
     }
 
+    private void CycleOmsiMainView()
+    {
+        if (_windowInfo.Vehicle is null)
+        {
+            if (_driveMode)
+            {
+                _driveMode =
+                    false;
+            }
+
+            return;
+        }
+
+        if (!_driveMode)
+        {
+            ApplyOmsiHostActionPress(
+                RuntimeOmsiHostInputAction.DriverView);
+            return;
+        }
+
+        switch (_vehicleViewMode)
+        {
+            case RuntimeVehicleViewMode.Driver:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.PassengerView);
+                break;
+
+            case RuntimeVehicleViewMode.Passenger:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.ExteriorView);
+                break;
+
+            case RuntimeVehicleViewMode.Exterior:
+            default:
+                ApplyOmsiHostActionPress(
+                    RuntimeOmsiHostInputAction.FreeCameraView);
+                break;
+        }
+    }
+
     private void ActivateSpecialDriverCamera(
         int? cameraIndex)
     {
@@ -6073,6 +10576,20 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (!_specialViewActive)
+        {
+            _specialViewActive =
+                true;
+            _specialPreviousDriveMode =
+                _driveMode;
+            _specialPreviousViewMode =
+                _vehicleViewMode;
+            _specialPreviousDriverCameraIndex =
+                _driverCameraIndex;
+            _specialPreviousPassengerCameraIndex =
+                _passengerCameraIndex;
+        }
+
         _driveMode = true;
         _vehicleViewMode =
             RuntimeVehicleViewMode.Driver;
@@ -6082,6 +10599,129 @@ public sealed class D3D11RenderWindow : Form
                     vehicle.StandardDriverCameraIndex,
                 0,
                 vehicle.DriverCameras.Count - 1);
+    }
+
+    private void ReleaseSpecialDriverCamera()
+    {
+        if (!_specialViewActive)
+        {
+            return;
+        }
+
+        _specialViewActive =
+            false;
+        _driveMode =
+            _specialPreviousDriveMode;
+        _vehicleViewMode =
+            _specialPreviousViewMode;
+        _driverCameraIndex =
+            _specialPreviousDriverCameraIndex;
+        _passengerCameraIndex =
+            _specialPreviousPassengerCameraIndex;
+    }
+
+    private void ResetCurrentOmsiView()
+    {
+        var vehicle =
+            _windowInfo.Vehicle;
+
+        if (!_driveMode)
+        {
+            if (_terrainGeometry.Vertices.Length >
+                0)
+            {
+                _camera.Reset(
+                    _terrainGeometry);
+            }
+
+            return;
+        }
+
+        if (vehicle is null)
+        {
+            return;
+        }
+
+        switch (_vehicleViewMode)
+        {
+            case RuntimeVehicleViewMode.Driver:
+                _driverCameraIndex =
+                    Math.Clamp(
+                        vehicle.StandardDriverCameraIndex,
+                        0,
+                        Math.Max(
+                            vehicle.DriverCameras.Count - 1,
+                            0));
+                _interiorCameraYawOffsetRadians =
+                    0.0f;
+                _interiorCameraPitchOffsetRadians =
+                    0.0f;
+                _interiorCameraFieldOfViewScale =
+                    1.0f;
+                break;
+
+            case RuntimeVehicleViewMode.Passenger:
+                _passengerCameraIndex =
+                    0;
+                _interiorCameraYawOffsetRadians =
+                    0.0f;
+                _interiorCameraPitchOffsetRadians =
+                    0.0f;
+                _interiorCameraFieldOfViewScale =
+                    1.0f;
+                break;
+
+            case RuntimeVehicleViewMode.Exterior:
+                _exteriorCameraYawOffsetRadians =
+                    0.0f;
+                _exteriorCameraPitchOffsetRadians =
+                    0.0f;
+                _exteriorCameraDistanceScale =
+                    1.0f;
+                break;
+        }
+    }
+
+    private void ResetAllOmsiViews()
+    {
+        var vehicle =
+            _windowInfo.Vehicle;
+
+        if (vehicle is not null)
+        {
+            _driverCameraIndex =
+                Math.Clamp(
+                    vehicle.StandardDriverCameraIndex,
+                    0,
+                    Math.Max(
+                        vehicle.DriverCameras.Count - 1,
+                        0));
+            _passengerCameraIndex =
+                0;
+        }
+
+        _interiorCameraYawOffsetRadians =
+            0.0f;
+        _interiorCameraPitchOffsetRadians =
+            0.0f;
+        _interiorCameraFieldOfViewScale =
+            1.0f;
+        _exteriorCameraYawOffsetRadians =
+            0.0f;
+        _exteriorCameraPitchOffsetRadians =
+            0.0f;
+        _exteriorCameraDistanceScale =
+            1.0f;
+
+        if (_terrainGeometry.Vertices.Length >
+            0)
+        {
+            _camera.Reset(
+                _terrainGeometry);
+        }
+
+        _specialViewActive =
+            false;
     }
 
     private void CycleInteriorCamera(
@@ -6154,6 +10794,15 @@ public sealed class D3D11RenderWindow : Form
                         e.KeyCode)
                 .ToArray();
 
+        if (_fallbackOmsiPressTriggers.Remove(
+                e.KeyCode,
+                out var fallbackTrigger))
+        {
+            DispatchOmsiScriptTrigger(
+                ReleaseTriggerName(
+                    fallbackTrigger));
+        }
+
         foreach (var binding in
                  released)
         {
@@ -6161,12 +10810,161 @@ public sealed class D3D11RenderWindow : Form
                 ReleaseTriggerName(
                     binding.Trigger));
 
+            if (binding.HostAction is
+                { } hostAction)
+            {
+                ApplyOmsiHostActionRelease(
+                    hostAction);
+            }
+
             _activeOmsiPressedBindings.Remove(
                 binding);
 
             _activeOmsiContinuousBindings.Remove(
                 binding);
         }
+
+        if (_omsiKeyboardBindings.Count == 0 &&
+            e.KeyCode is Keys.Insert or Keys.Home)
+        {
+            ReleaseSpecialDriverCamera();
+        }
+    }
+
+    private void ApplyOmsiHostActionRelease(
+        RuntimeOmsiHostInputAction action)
+    {
+        if (action is
+            RuntimeOmsiHostInputAction.ScheduleView or
+            RuntimeOmsiHostInputAction.TicketSellingView)
+        {
+            ReleaseSpecialDriverCamera();
+        }
+    }
+
+    private bool HasOmsiScriptTrigger(
+        int sectionIndex,
+        string trigger)
+    {
+        if (string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return false;
+        }
+
+        if (sectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                sectionIndex,
+                out var sectionRuntime))
+        {
+            return sectionRuntime.HasTrigger(
+                trigger);
+        }
+
+        return _scriptRuntime?.HasTrigger(
+                   trigger) ==
+               true;
+    }
+
+    private void SetOmsiMouseSystemVariables(
+        int sectionIndex,
+        float mouseX,
+        float mouseY)
+    {
+        var runtime =
+            sectionIndex >
+                    0 &&
+                _sectionScriptRuntimes.TryGetValue(
+                    sectionIndex,
+                    out var sectionRuntime)
+                ? sectionRuntime
+                : _scriptRuntime;
+
+        if (runtime is null)
+        {
+            return;
+        }
+
+        // OMSI documents mouse_x/mouse_y as pixel-valued system variables.
+        // In mouseevent *_drag scripts they are consumed as incremental
+        // movement (e.g. mouse_x / -400 added to a door accumulator).
+        // Accumulate WinForms motion between frames and consume it once,
+        // reproducing the effective relative-drag behavior without making
+        // controls jump to a screen-coordinate-dependent limit.
+        runtime.SetSystem(
+            "mouse_x",
+            mouseX);
+
+        runtime.SetSystem(
+            "mouse_y",
+            mouseY);
+    }
+
+    private void DispatchOmsiSectionScriptTrigger(
+        int sectionIndex,
+        string trigger)
+    {
+        if (string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return;
+        }
+
+        var traceStartup =
+            IsVehicleStartupTraceTrigger(
+                trigger);
+
+        var before =
+            traceStartup
+                ? DescribeVehicleStartupScriptState()
+                : null;
+
+        if (sectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                sectionIndex,
+                out var sectionRuntime))
+        {
+            sectionRuntime.ExecuteTrigger(
+                trigger);
+        }
+        else
+        {
+            _scriptRuntime?.ExecuteTrigger(
+                trigger);
+        }
+
+        if (traceStartup)
+        {
+            AppendVehicleStartupTrace(
+                trigger,
+                before ??
+                    "<no-script-runtime>",
+                DescribeVehicleStartupScriptState());
+        }
+    }
+
+    private bool HasOmsiScriptTrigger(
+        string trigger)
+    {
+        if (string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return false;
+        }
+
+        if (_scriptRuntime?.HasTrigger(
+                trigger) ==
+            true)
+        {
+            return true;
+        }
+
+        return _sectionScriptRuntimes.Values.Any(
+            runtime =>
+                runtime.HasTrigger(
+                    trigger));
     }
 
     private bool DispatchOmsiKeyboardKeyDown(
@@ -6203,7 +11001,11 @@ public sealed class D3D11RenderWindow : Form
                 binding);
 
             if (binding.HostAction is
-                { } hostAction)
+                { } hostAction &&
+                !(HasOmsiScriptTrigger(
+                      binding.Trigger) &&
+                  IsOmsiScriptAuthoritativeAction(
+                      hostAction)))
             {
                 ApplyOmsiHostActionPress(
                     hostAction);
@@ -6228,13 +11030,330 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        var traceStartup =
+            IsVehicleStartupTraceTrigger(
+                trigger);
+
+        var before =
+            traceStartup
+                ? DescribeVehicleStartupScriptState()
+                : null;
+
         _scriptRuntime?.ExecuteTrigger(
             trigger);
+
+        foreach (var runtime in
+                 _sectionScriptRuntimes.Values)
+        {
+            if (runtime.HasTrigger(
+                    trigger))
+            {
+                runtime.ExecuteTrigger(
+                    trigger);
+            }
+        }
+
+        if (traceStartup)
+        {
+            AppendVehicleStartupTrace(
+                trigger,
+                before ??
+                    "<no-script-runtime>",
+                DescribeVehicleStartupScriptState());
+        }
+
+        TriggerOmsiAudio(
+            trigger);
+    }
+
+    private static bool IsVehicleStartupTraceTrigger(
+        string trigger) =>
+        trigger.StartsWith(
+            "kw_m_engine",
+            StringComparison.OrdinalIgnoreCase) ||
+        trigger.Contains(
+            "batterietrennschalter",
+            StringComparison.OrdinalIgnoreCase) ||
+        trigger.StartsWith(
+            "automatic_",
+            StringComparison.OrdinalIgnoreCase);
+
+    private string DescribeVehicleStartupScriptState()
+    {
+        if (_scriptRuntime is null)
+        {
+            return "<no-script-runtime>";
+        }
+
+        static string Value(
+            OmsiScriptRuntime runtime,
+            string name) =>
+            runtime.HasLocalVariable(
+                name)
+                ? runtime.GetLocal(
+                        name)
+                    .ToString(
+                        "0.###",
+                        System.Globalization.CultureInfo.InvariantCulture)
+                : "<missing>";
+
+        var lead =
+            $"lead[main={Value(_scriptRuntime, "elec_busbar_main")};" +
+            $"main_sw={Value(_scriptRuntime, "elec_busbar_main_sw")};" +
+            $"gear={Value(_scriptRuntime, "antrieb_getr_gangwahl")};" +
+            $"pregear={Value(_scriptRuntime, "antrieb_getr_gangvorwahl")};" +
+            $"engine_on={Value(_scriptRuntime, "engine_on")};" +
+            $"injection={Value(_scriptRuntime, "engine_injection_on")};" +
+            $"engine_n={Value(_scriptRuntime, "engine_n")};" +
+            $"M_Wheel={Value(_scriptRuntime, "M_Wheel")}]";
+
+        if (_sectionScriptRuntimes.Count == 0)
+        {
+            return lead;
+        }
+
+        var sectionStates =
+            _sectionScriptRuntimes
+                .OrderBy(static pair => pair.Key)
+                .Select(pair =>
+                    $"section{pair.Key}[main={Value(pair.Value, "elec_busbar_main")};" +
+                    $"main_sw={Value(pair.Value, "elec_busbar_main_sw")};" +
+                    $"gear={Value(pair.Value, "antrieb_getr_gangwahl")};" +
+                    $"pregear={Value(pair.Value, "antrieb_getr_gangvorwahl")};" +
+                    $"engine_on={Value(pair.Value, "engine_on")};" +
+                    $"injection={Value(pair.Value, "engine_injection_on")};" +
+                    $"engine_n={Value(pair.Value, "engine_n")};" +
+                    $"M_Wheel={Value(pair.Value, "M_Wheel")};" +
+                    $"writesM_Wheel={pair.Value.WritesLocalVariable("M_Wheel")}]");
+
+        return lead + "|" +
+               string.Join("|", sectionStates);
+    }
+
+    private static void AppendVehicleStartupTrace(
+        string trigger,
+        string before,
+        string after)
+    {
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "vehicle-startup-trace.log"),
+                $"{DateTimeOffset.Now:O} | trigger={trigger} | before={before} | after={after}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Diagnostics must never affect vehicle input.
+        }
+    }
+
+    private void OnScriptSoundTriggerRequested(
+        string trigger)
+    {
+        if (_suppressVehicleInitAudio)
+        {
+            return;
+        }
+
+        TriggerOmsiAudio(
+            trigger);
+    }
+
+    private void OnScriptFileSoundTriggerRequested(
+        string trigger,
+        string declaredFile)
+    {
+        if (_suppressVehicleInitAudio)
+        {
+            return;
+        }
+
+        // OMSI accepts an empty string on T.F as the configured trigger
+        // sound, equivalent to T.L. Dynamic filenames remain relative to
+        // the lead vehicle's sound directory.
+        if (string.IsNullOrWhiteSpace(
+                declaredFile))
+        {
+            TriggerOmsiAudio(
+                trigger);
+            return;
+        }
+
+        _omsiAudio?.TriggerFile(
+            trigger,
+            declaredFile,
+            IsInteriorSoundView());
+    }
+
+    private void OnSectionScriptFileSoundTriggerRequested(
+        int sectionIndex,
+        string trigger,
+        string declaredFile)
+    {
+        if (_suppressVehicleInitAudio)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                declaredFile))
+        {
+            TriggerSectionOmsiAudio(
+                sectionIndex,
+                trigger);
+            return;
+        }
+
+        if (_articulatedOmsiAudio.TryGetValue(
+                sectionIndex,
+                out var audio))
+        {
+            audio.TriggerFile(
+                trigger,
+                declaredFile,
+                IsInteriorSoundView());
+        }
+    }
+
+    private void TriggerSectionOmsiAudio(
+        int sectionIndex,
+        string trigger)
+    {
+        if (_suppressVehicleInitAudio ||
+            _vehicleRemoved ||
+            string.IsNullOrWhiteSpace(
+                trigger) ||
+            !_articulatedOmsiAudio.TryGetValue(
+                sectionIndex,
+                out var audio))
+        {
+            return;
+        }
+
+        var section =
+            ResolveVehicleSection(
+                sectionIndex);
+
+        if (section is null)
+        {
+            return;
+        }
+
+        ResolveArticulatedSectionAudioPose(
+            section,
+            out var sectionPosition,
+            out var sectionHeading);
+
+        audio.Trigger(
+            trigger,
+            ResolveScriptRuntimeForSection(
+                sectionIndex),
+            IsInteriorSoundView() &&
+                section.OpenForSound,
+            ResolveActiveCameraPosition(),
+            sectionPosition,
+            sectionHeading);
+    }
+
+    private void TriggerOmsiAudio(
+        string trigger)
+    {
+        if (_vehicleRemoved ||
+            string.IsNullOrWhiteSpace(
+                trigger))
+        {
+            return;
+        }
+
+        var listenerPosition =
+            ResolveActiveCameraPosition();
 
         _omsiAudio?.Trigger(
             trigger,
             _scriptRuntime,
-            IsInteriorSoundView());
+            IsInteriorSoundView(),
+            listenerPosition,
+            _vehicle.Position,
+            _vehicle.HeadingRadians);
+
+        foreach (var pair in
+                 _articulatedOmsiAudio)
+        {
+            var section =
+                _windowInfo.Vehicle?.Sections?
+                    .FirstOrDefault(
+                        item =>
+                            item.Index ==
+                            pair.Key);
+
+            if (section is null)
+            {
+                continue;
+            }
+
+            ResolveArticulatedSectionAudioPose(
+                section,
+                out var sectionPosition,
+                out var sectionHeading);
+
+            pair.Value.Trigger(
+                trigger,
+                ResolveScriptRuntimeForSection(
+                    section.Index),
+                IsInteriorSoundView() &&
+                    section.OpenForSound,
+                listenerPosition,
+                sectionPosition,
+                sectionHeading);
+        }
+    }
+
+    private void ResolveArticulatedSectionAudioPose(
+        RuntimeVehicleSectionInfo section,
+        out Vector3 position,
+        out float headingRadians)
+    {
+        var localOrigin =
+            new Vector3(
+                (float)section.OriginX,
+                (float)section.OriginY,
+                (float)section.OriginZ);
+
+        localOrigin =
+            Vector3.Transform(
+                localOrigin,
+                CreateArticulatedSectionMatrix(
+                    section.Index));
+
+        var sine =
+            MathF.Sin(
+                _vehicle.HeadingRadians);
+        var cosine =
+            MathF.Cos(
+                _vehicle.HeadingRadians);
+
+        position =
+            _vehicle.Position +
+            new Vector3(
+                localOrigin.X *
+                    cosine +
+                localOrigin.Z *
+                    sine,
+                localOrigin.Y,
+                -localOrigin.X *
+                    sine +
+                localOrigin.Z *
+                    cosine);
+
+        headingRadians =
+            _articulatedSectionAbsoluteHeadingRadians
+                .TryGetValue(
+                    section.Index,
+                    out var storedHeading)
+                    ? storedHeading
+                    : _vehicle.HeadingRadians;
     }
 
     private bool IsInteriorSoundView() =>
@@ -6270,6 +11389,9 @@ public sealed class D3D11RenderWindow : Form
 
         _activeControllerHostActions.Remove(
             action);
+
+        ApplyOmsiHostActionRelease(
+            action);
     }
 
     private bool TryResolveHostAction(
@@ -6300,23 +11422,36 @@ public sealed class D3D11RenderWindow : Form
                     RuntimeOmsiHostInputAction.ParkingBrakeSet,
                 "parking_brake_release" =>
                     RuntimeOmsiHostInputAction.ParkingBrakeRelease,
-                "kw_m_enginestart" =>
+                "parking_brake_mouse" =>
+                    RuntimeOmsiHostInputAction.ParkingBrakeToggle,
+                "kw_batterietrennschalter" or
+                "cp_batterietrennschalter_toggle" =>
+                    RuntimeOmsiHostInputAction.ElectricalToggle,
+                "kw_m_enginestart" or
+                "kw_m_engine_startbutton" =>
                     RuntimeOmsiHostInputAction.EngineStart,
                 "kw_m_engineshutdown" =>
                     RuntimeOmsiHostInputAction.EngineOff,
-                "cp_batterietrennschalter_toggle" =>
-                    RuntimeOmsiHostInputAction.ElectricalToggle,
                 "view_interiorcam_plus" =>
-                    RuntimeOmsiHostInputAction.InteriorViewNext,
-                "view_interiorcam_minus" =>
                     RuntimeOmsiHostInputAction.InteriorViewPrevious,
-                "view_reset_direction" or
-                "view_reset_all_directions" =>
-                    RuntimeOmsiHostInputAction.ResetDriverView,
-                "view_schedule" =>
+                "view_interiorcam_minus" =>
+                    RuntimeOmsiHostInputAction.InteriorViewNext,
+                "view_reset_direction" =>
+                    RuntimeOmsiHostInputAction.ResetCurrentView,
+                "view_schedule" or
+                "view_set_schedule" =>
                     RuntimeOmsiHostInputAction.ScheduleView,
-                "view_ticketselling" =>
+                "view_ticketselling" or
+                "view_set_ticketselling" =>
                     RuntimeOmsiHostInputAction.TicketSellingView,
+                "view_reset_all_directions" =>
+                    RuntimeOmsiHostInputAction.ResetAllViews,
+                "pause" =>
+                    RuntimeOmsiHostInputAction.PauseToggle,
+                "view_status" or
+                "view_information" or
+                "view_info" =>
+                    RuntimeOmsiHostInputAction.StatusInfoCycle,
                 _ =>
                     default
             };
@@ -6330,7 +11465,11 @@ public sealed class D3D11RenderWindow : Form
                 "parking_brake_toggle" or
                 "parking_brake_set" or
                 "parking_brake_release" or
+                "parking_brake_mouse" or
+                "kw_batterietrennschalter" or
+                "cp_batterietrennschalter_toggle" or
                 "kw_m_enginestart" or
+                "kw_m_engine_startbutton" or
                 "kw_m_engineshutdown" or
                 "cp_batterietrennschalter_toggle" or
                 "view_interiorcam_plus" or
@@ -6338,8 +11477,29 @@ public sealed class D3D11RenderWindow : Form
                 "view_reset_direction" or
                 "view_reset_all_directions" or
                 "view_schedule" or
-                "view_ticketselling";
+                "view_set_schedule" or
+                "view_ticketselling" or
+                "view_set_ticketselling" or
+                "pause" or
+                "view_status" or
+                "view_information" or
+                "view_info";
     }
+
+    private static bool IsOmsiScriptAuthoritativeAction(
+        RuntimeOmsiHostInputAction action) =>
+        action is
+            RuntimeOmsiHostInputAction.ElectricalToggle or
+            RuntimeOmsiHostInputAction.EngineToggle or
+            RuntimeOmsiHostInputAction.EngineStart or
+            RuntimeOmsiHostInputAction.EngineOff or
+            RuntimeOmsiHostInputAction.GearDrive or
+            RuntimeOmsiHostInputAction.GearNeutral or
+            RuntimeOmsiHostInputAction.GearReverse or
+            RuntimeOmsiHostInputAction.ParkingBrakeToggle or
+            RuntimeOmsiHostInputAction.ParkingBrakeSet or
+            RuntimeOmsiHostInputAction.ParkingBrakeRelease or
+            RuntimeOmsiHostInputAction.StopBrakeToggle;
 
     private void ApplyOmsiHostActionPress(
         RuntimeOmsiHostInputAction action)
@@ -6360,17 +11520,36 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.EngineToggle:
-                _vehicle.ToggleEngine();
+                if (_scriptRuntime?.HasLocalVariable(
+                        "engine_on") == true)
+                {
+                    _vehicle.SetEngineRunning(
+                        _scriptRuntime.GetLocal(
+                            "engine_on") >
+                        0.5);
+                }
+                else
+                {
+                    _vehicle.ToggleEngine();
+                }
                 break;
 
             case RuntimeOmsiHostInputAction.EngineStart:
-                _vehicle.SetEngineRunning(
-                    true);
-                break;
-
             case RuntimeOmsiHostInputAction.EngineOff:
-                _vehicle.SetEngineRunning(
-                    false);
+                if (_scriptRuntime?.HasLocalVariable(
+                        "engine_on") == true)
+                {
+                    _vehicle.SetEngineRunning(
+                        _scriptRuntime.GetLocal(
+                            "engine_on") >
+                        0.5);
+                }
+                else
+                {
+                    _vehicle.SetEngineRunning(
+                        action ==
+                        RuntimeOmsiHostInputAction.EngineStart);
+                }
                 break;
 
             case RuntimeOmsiHostInputAction.GearDrive:
@@ -6407,7 +11586,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.MouseDriveToggle:
-                if (_driveMode)
+                if (!_vehicleRemoved &&
+                    _windowInfo.Vehicle is not null)
                 {
                     ToggleMouseDriveMode();
                 }
@@ -6415,7 +11595,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.DriverView:
-                if (_windowInfo.Vehicle is null)
+                if (_vehicleRemoved ||
+                    _windowInfo.Vehicle is null)
                 {
                     break;
                 }
@@ -6432,7 +11613,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.PassengerView:
-                if (_windowInfo.Vehicle is null)
+                if (_vehicleRemoved ||
+                    _windowInfo.Vehicle is null)
                 {
                     break;
                 }
@@ -6448,7 +11630,8 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.ExteriorView:
-                if (_windowInfo.Vehicle is null)
+                if (_vehicleRemoved ||
+                    _windowInfo.Vehicle is null)
                 {
                     break;
                 }
@@ -6460,9 +11643,31 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.FreeCameraView:
-                if (_mouseDriveMode)
+                if (_windowInfo.Vehicle is not null)
                 {
-                    DisableMouseDriveMode();
+                    var freeCameraPosition =
+                        _vehicle.GetChaseCameraPosition(
+                            _windowInfo.Vehicle
+                                .OutsideCameraCenter);
+
+                    var freeCameraTarget =
+                        _vehicle.Position +
+                        new Vector3(
+                            0.0f,
+                            1.6f,
+                            0.0f);
+
+                    _camera.SetLookAt(
+                        freeCameraPosition,
+                        freeCameraTarget,
+                        moveSpeed:
+                            Math.Clamp(
+                                12.0f +
+                                Math.Abs(
+                                    _vehicle.SpeedMetersPerSecond) *
+                                2.0f,
+                                8.0f,
+                                80.0f));
                 }
 
                 _driveMode =
@@ -6492,9 +11697,28 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.ResetDriverView:
-                ActivateSpecialDriverCamera(
-                    _windowInfo.Vehicle?
-                        .StandardDriverCameraIndex);
+            case RuntimeOmsiHostInputAction.ResetCurrentView:
+                ResetCurrentOmsiView();
+                break;
+
+            case RuntimeOmsiHostInputAction.ScrollViews:
+                CycleOmsiMainView();
+                break;
+
+            case RuntimeOmsiHostInputAction.PauseToggle:
+                _simulationPaused =
+                    !_simulationPaused;
+                SynchronizeOmsiPauseSystemVariable();
+                break;
+
+            case RuntimeOmsiHostInputAction.ResetAllViews:
+                ResetAllOmsiViews();
+                break;
+
+            case RuntimeOmsiHostInputAction.StatusInfoCycle:
+                _statusInfoLevel =
+                    (_statusInfoLevel + 1) %
+                    4;
                 break;
 
             case RuntimeOmsiHostInputAction.ControllerToggle:
@@ -6509,6 +11733,26 @@ public sealed class D3D11RenderWindow : Form
                 }
 
                 break;
+        }
+    }
+
+    private void SynchronizeOmsiPauseSystemVariable()
+    {
+        var value =
+            _simulationPaused
+                ? 1.0
+                : 0.0;
+
+        _scriptRuntime?.SetSystem(
+            "Pause",
+            value);
+
+        foreach (var runtime in
+                 _sectionScriptRuntimes.Values)
+        {
+            runtime.SetSystem(
+                "Pause",
+                value);
         }
     }
 
@@ -6567,6 +11811,306 @@ public sealed class D3D11RenderWindow : Form
                 binding.Key ==
                 key);
 
+    private void SynchronizeOmsiScriptDynamics()
+    {
+        var torqueRuntime =
+            ResolveOmsiWheelTorqueRuntime();
+
+        if (torqueRuntime is null ||
+            !torqueRuntime.HasLocalVariable(
+                "M_Wheel"))
+        {
+            _vehicle.SetOmsiScriptDynamics(
+                false,
+                0.0,
+                0.0);
+            return;
+        }
+
+        var wheelTorque =
+            torqueRuntime.GetLocal(
+                "M_Wheel");
+
+        var perWheelBrakeForce =
+            0.0;
+
+        var axleBrakeForces =
+            new double[8];
+
+        // OMSI numbers physical axles continuously in the coupled vehicle,
+        // but a coupled .bus VM sees its own axles from zero. Prefer the
+        // local section VM only when its scripts actually write that brake
+        // output; otherwise retain the lead-VM continuous-index behavior.
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            foreach (var side in
+                     new[] { "L", "R" })
+            {
+                var wheelBrakeForce =
+                    ReadOmsiAxleOutput(
+                        axle,
+                        "Axle_Brakeforce",
+                        side,
+                        defaultValue:
+                            0.0);
+
+                perWheelBrakeForce +=
+                    wheelBrakeForce;
+
+                axleBrakeForces[
+                    axle] +=
+                    wheelBrakeForce;
+            }
+        }
+
+        var legacyRuntime =
+            torqueRuntime.WritesLocalVariable(
+                "Brakeforce")
+                ? torqueRuntime
+                : _scriptRuntime;
+
+        var legacyBrakeForce =
+            legacyRuntime is not null &&
+            legacyRuntime.HasLocalVariable(
+                "Brakeforce")
+                ? Math.Max(
+                    0.0,
+                    legacyRuntime.GetLocal(
+                        "Brakeforce"))
+                : 0.0;
+
+        var brakeForce =
+            perWheelBrakeForce >
+                0.001
+                ? perWheelBrakeForce
+                : legacyBrakeForce;
+
+        _vehicle.SetOmsiScriptDynamics(
+            true,
+            wheelTorque,
+            brakeForce,
+            axleBrakeForces);
+
+        var axleSpringFactorLeft =
+            new double[8];
+
+        var axleSpringFactorRight =
+            new double[8];
+
+        for (var axle = 0;
+             axle < 8;
+             axle++)
+        {
+            axleSpringFactorLeft[
+                axle] =
+                ReadOmsiAxleOutput(
+                    axle,
+                    "Axle_Springfactor",
+                    "L",
+                    defaultValue:
+                        1.0,
+                    requirePositive:
+                        true);
+
+            axleSpringFactorRight[
+                axle] =
+                ReadOmsiAxleOutput(
+                    axle,
+                    "Axle_Springfactor",
+                    "R",
+                    defaultValue:
+                        1.0,
+                    requirePositive:
+                        true);
+        }
+
+        _vehicle.SetOmsiAxleSpringFactors(
+            axleSpringFactorLeft,
+            axleSpringFactorRight);
+    }
+
+    private OmsiScriptRuntime? ResolveOmsiWheelTorqueRuntime()
+    {
+        if (_vehicle.PrimaryDrivenSectionIndex >
+                0 &&
+            _sectionScriptRuntimes.TryGetValue(
+                _vehicle.PrimaryDrivenSectionIndex,
+                out var drivenSectionRuntime) &&
+            drivenSectionRuntime.WritesLocalVariable(
+                "M_Wheel"))
+        {
+            return drivenSectionRuntime;
+        }
+
+        if (_scriptRuntime?.WritesLocalVariable(
+                "M_Wheel") ==
+            true)
+        {
+            return _scriptRuntime;
+        }
+
+        foreach (var pair in
+                 _sectionScriptRuntimes
+                     .OrderBy(
+                         static pair =>
+                             pair.Key))
+        {
+            if (pair.Value.WritesLocalVariable(
+                    "M_Wheel"))
+            {
+                return pair.Value;
+            }
+        }
+
+        // Compatibility fallback for older/add-on scripts where the write
+        // cannot be statically identified (for example generated VM state).
+        if (_scriptRuntime?.HasLocalVariable(
+                "M_Wheel") ==
+            true)
+        {
+            return _scriptRuntime;
+        }
+
+        return _sectionScriptRuntimes.Values
+            .FirstOrDefault(
+                static runtime =>
+                    runtime.HasLocalVariable(
+                        "M_Wheel"));
+    }
+
+    private double ReadOmsiAxleOutput(
+        int globalAxleIndex,
+        string variablePrefix,
+        string side,
+        double defaultValue,
+        bool requirePositive = false)
+    {
+        var leadVariable =
+            $"{variablePrefix}_{globalAxleIndex}_{side}";
+
+        if (TryResolveSectionScriptAxle(
+                globalAxleIndex,
+                out var sectionRuntime,
+                out var localAxleIndex))
+        {
+            var localVariable =
+                $"{variablePrefix}_{localAxleIndex}_{side}";
+
+            if (sectionRuntime is not null &&
+                sectionRuntime.WritesLocalVariable(
+                    localVariable))
+            {
+                return NormalizeOmsiScriptOutput(
+                    sectionRuntime.GetLocal(
+                        localVariable),
+                    defaultValue,
+                    requirePositive);
+            }
+        }
+
+        if (_scriptRuntime is not null &&
+            _scriptRuntime.HasLocalVariable(
+                leadVariable))
+        {
+            return NormalizeOmsiScriptOutput(
+                _scriptRuntime.GetLocal(
+                    leadVariable),
+                defaultValue,
+                requirePositive);
+        }
+
+        return defaultValue;
+    }
+
+    private bool TryResolveSectionScriptAxle(
+        int globalAxleIndex,
+        out OmsiScriptRuntime? sectionRuntime,
+        out int localAxleIndex)
+    {
+        sectionRuntime =
+            null;
+        localAxleIndex =
+            -1;
+
+        var leadAxleCount =
+            Math.Max(
+                _windowInfo.Vehicle?.Physics?.Axles?.Count ??
+                0,
+                2);
+
+        if (globalAxleIndex <
+            leadAxleCount)
+        {
+            return false;
+        }
+
+        var start =
+            leadAxleCount;
+
+        foreach (var section in
+                 _windowInfo.Vehicle?.Sections?
+                     .OrderBy(
+                         static item =>
+                             item.Index) ??
+                 Enumerable.Empty<RuntimeVehicleSectionInfo>())
+        {
+            var count =
+                Math.Max(
+                    section.Physics?.Axles?.Count ??
+                    0,
+                    1);
+
+            if (globalAxleIndex >=
+                    start &&
+                globalAxleIndex <
+                    start +
+                    count)
+            {
+                localAxleIndex =
+                    globalAxleIndex -
+                    start;
+
+                _sectionScriptRuntimes.TryGetValue(
+                    section.Index,
+                    out sectionRuntime);
+
+                return true;
+            }
+
+            start +=
+                count;
+        }
+
+        return false;
+    }
+
+    private static double NormalizeOmsiScriptOutput(
+        double value,
+        double defaultValue,
+        bool requirePositive)
+    {
+        if (!double.IsFinite(
+                value))
+        {
+            return defaultValue;
+        }
+
+        if (requirePositive &&
+            value <=
+                0.0)
+        {
+            return defaultValue;
+        }
+
+        return Math.Max(
+            value,
+            requirePositive
+                ? double.Epsilon
+                : 0.0);
+    }
+
     private void SynchronizeHostVehicleStateFromScripts()
     {
         if (_scriptRuntime is null)
@@ -6608,6 +12152,23 @@ public sealed class D3D11RenderWindow : Form
                     "bremse_feststell") >
                 0.5);
         }
+
+        if (_scriptRuntime.HasLocalVariable(
+                "antrieb_getr_gangwahl"))
+        {
+            var selector =
+                _scriptRuntime.GetLocal(
+                    "antrieb_getr_gangwahl");
+
+            _vehicle.SelectGear(
+                selector <
+                    0.5
+                    ? RuntimeDriveGear.Reverse
+                    : selector <
+                        1.5
+                        ? RuntimeDriveGear.Neutral
+                        : RuntimeDriveGear.Drive);
+        }
     }
 
     private static string ReleaseTriggerName(
@@ -6618,6 +12179,440 @@ public sealed class D3D11RenderWindow : Form
             ? trigger
             : trigger +
               "_off";
+
+    private bool TryDispatchVehicleMouseEvent(
+        System.Drawing.Point location)
+    {
+        if ((_scriptRuntime is null &&
+             _sectionScriptRuntimes.Count ==
+                 0) ||
+            !_driveMode ||
+            _vehicleViewMode !=
+                RuntimeVehicleViewMode.Driver ||
+            ClientSize.Width <= 0 ||
+            ClientSize.Height <= 0)
+        {
+            return false;
+        }
+
+        var geometry =
+            _vehicleInteriorGeometry.Vertices.Length > 0
+                ? _vehicleInteriorGeometry
+                : _vehicleExteriorGeometry;
+
+        if (geometry.Vertices.Length == 0 ||
+            geometry.Batches.Count == 0)
+        {
+            return false;
+        }
+
+        var viewProjection =
+            CreateViewProjection();
+        var vehicleWorld =
+            _vehicle.CreateWorldMatrix();
+        var mouse =
+            new Vector2(
+                location.X,
+                location.Y);
+
+        var bestDepth =
+            float.MaxValue;
+        string? bestTrigger =
+            null;
+        var bestSectionIndex =
+            0;
+
+        foreach (var batch in
+                 geometry.Batches)
+        {
+            if (string.IsNullOrWhiteSpace(
+                    batch.MouseEventTrigger) ||
+                !IsVehicleBatchVisible(
+                    batch) ||
+                batch.VertexCount <
+                    3)
+            {
+                continue;
+            }
+
+            var world =
+                CreateVehicleAnimationMatrix(
+                    batch) *
+                CreateArticulatedSectionMatrix(
+                    batch.SectionIndex) *
+                vehicleWorld;
+
+            var skin =
+                ResolveVehicleSkinConstants(
+                    batch);
+
+            var startVertex =
+                checked(
+                    (int)batch.StartVertex);
+            var endVertex =
+                Math.Min(
+                    checked(
+                        (int)(
+                            batch.StartVertex +
+                            batch.VertexCount)),
+                    geometry.Vertices.Length);
+
+            for (var vertex = startVertex;
+                 vertex + 2 < endVertex;
+                 vertex += 3)
+            {
+                if (!TryProjectVehiclePoint(
+                        Vector3.Transform(
+                            ResolveVehiclePickingPosition(
+                                geometry.Vertices[
+                                    vertex],
+                                skin),
+                            world),
+                        viewProjection,
+                        out var a,
+                        out var depthA) ||
+                    !TryProjectVehiclePoint(
+                        Vector3.Transform(
+                            ResolveVehiclePickingPosition(
+                                geometry.Vertices[
+                                    vertex + 1],
+                                skin),
+                            world),
+                        viewProjection,
+                        out var b,
+                        out var depthB) ||
+                    !TryProjectVehiclePoint(
+                        Vector3.Transform(
+                            ResolveVehiclePickingPosition(
+                                geometry.Vertices[
+                                    vertex + 2],
+                                skin),
+                            world),
+                        viewProjection,
+                        out var c,
+                        out var depthC))
+                {
+                    continue;
+                }
+
+                if (!TryGetScreenTriangleDepth(
+                        mouse,
+                        a,
+                        b,
+                        c,
+                        depthA,
+                        depthB,
+                        depthC,
+                        out var depth))
+                {
+                    continue;
+                }
+
+                if (depth <
+                    bestDepth)
+                {
+                    bestDepth =
+                        depth;
+                    bestTrigger =
+                        batch.MouseEventTrigger;
+                    bestSectionIndex =
+                        batch.SectionIndex;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                bestTrigger))
+        {
+            return false;
+        }
+
+        _activeVehicleMouseTrigger =
+            bestTrigger;
+        _activeVehicleMouseSectionIndex =
+            bestSectionIndex;
+        _vehicleMouseDeltaX =
+            0.0f;
+        _vehicleMouseDeltaY =
+            0.0f;
+        _lastMousePosition =
+            location;
+        Capture =
+            true;
+
+        SetOmsiMouseSystemVariables(
+            bestSectionIndex,
+            0.0f,
+            0.0f);
+
+        var scriptOwnsTrigger =
+            HasOmsiScriptTrigger(
+                bestSectionIndex,
+                bestTrigger);
+
+        DispatchOmsiSectionScriptTrigger(
+            bestSectionIndex,
+            bestTrigger);
+
+        if (TryResolveHostAction(
+                bestTrigger,
+                out var hostAction) &&
+            !(scriptOwnsTrigger &&
+              IsOmsiScriptAuthoritativeAction(
+                  hostAction)))
+        {
+            ApplyOmsiHostActionPress(
+                hostAction);
+        }
+
+        Console.WriteLine(
+            $"[cockpit-click] section={bestSectionIndex}; trigger={bestTrigger}; x={location.X}; y={location.Y}");
+
+        return true;
+    }
+
+    private static Vector3 ResolveVehiclePickingPosition(
+        RuntimeObjectVertex vertex,
+        RuntimeVehicleSkinConstants skin)
+    {
+        var weights =
+            new Vector4(
+                Math.Max(
+                    vertex.SkinWeights.X,
+                    0.0f),
+                Math.Max(
+                    vertex.SkinWeights.Y,
+                    0.0f),
+                Math.Max(
+                    vertex.SkinWeights.Z,
+                    0.0f),
+                Math.Max(
+                    vertex.SkinWeights.W,
+                    0.0f));
+
+        var skinSum =
+            Math.Clamp(
+                weights.X +
+                weights.Y +
+                weights.Z +
+                weights.W,
+                0.0f,
+                1.0f);
+
+        var result =
+            vertex.Position *
+            (1.0f -
+             skinSum);
+
+        if (weights.X >
+            0.0f)
+        {
+            result +=
+                Vector3.Transform(
+                    vertex.Position,
+                    skin.Bone0) *
+                weights.X;
+        }
+
+        if (weights.Y >
+            0.0f)
+        {
+            result +=
+                Vector3.Transform(
+                    vertex.Position,
+                    skin.Bone1) *
+                weights.Y;
+        }
+
+        if (weights.Z >
+            0.0f)
+        {
+            result +=
+                Vector3.Transform(
+                    vertex.Position,
+                    skin.Bone2) *
+                weights.Z;
+        }
+
+        if (weights.W >
+            0.0f)
+        {
+            result +=
+                Vector3.Transform(
+                    vertex.Position,
+                    skin.Bone3) *
+                weights.W;
+        }
+
+        return result;
+    }
+
+    private bool TryProjectVehiclePoint(
+        Vector3 worldPosition,
+        Matrix4x4 viewProjection,
+        out Vector2 screen,
+        out float depth)
+    {
+        screen =
+            default;
+        depth =
+            0.0f;
+
+        var clip =
+            Vector4.Transform(
+                new Vector4(
+                    worldPosition,
+                    1.0f),
+                viewProjection);
+
+        if (clip.W <=
+            0.000001f)
+        {
+            return false;
+        }
+
+        var inverseW =
+            1.0f /
+            clip.W;
+        var ndcX =
+            clip.X *
+            inverseW;
+        var ndcY =
+            clip.Y *
+            inverseW;
+        var ndcZ =
+            clip.Z *
+            inverseW;
+
+        if (!float.IsFinite(
+                ndcX) ||
+            !float.IsFinite(
+                ndcY) ||
+            !float.IsFinite(
+                ndcZ) ||
+            ndcZ <
+                0.0f ||
+            ndcZ >
+                1.0f)
+        {
+            return false;
+        }
+
+        screen =
+            new Vector2(
+                (ndcX + 1.0f) *
+                    0.5f *
+                    ClientSize.Width,
+                (1.0f - ndcY) *
+                    0.5f *
+                    ClientSize.Height);
+        depth =
+            ndcZ;
+
+        return true;
+    }
+
+    private static bool TryGetScreenTriangleDepth(
+        Vector2 point,
+        Vector2 a,
+        Vector2 b,
+        Vector2 c,
+        float depthA,
+        float depthB,
+        float depthC,
+        out float depth)
+    {
+        var v0 =
+            c - a;
+        var v1 =
+            b - a;
+        var v2 =
+            point - a;
+
+        var dot00 =
+            Vector2.Dot(
+                v0,
+                v0);
+        var dot01 =
+            Vector2.Dot(
+                v0,
+                v1);
+        var dot02 =
+            Vector2.Dot(
+                v0,
+                v2);
+        var dot11 =
+            Vector2.Dot(
+                v1,
+                v1);
+        var dot12 =
+            Vector2.Dot(
+                v1,
+                v2);
+
+        var denominator =
+            dot00 *
+                dot11 -
+            dot01 *
+                dot01;
+
+        if (Math.Abs(
+                denominator) <
+            0.000001f)
+        {
+            depth =
+                float.MaxValue;
+            return false;
+        }
+
+        var inverseDenominator =
+            1.0f /
+            denominator;
+        var u =
+            (dot11 *
+                 dot02 -
+             dot01 *
+                 dot12) *
+            inverseDenominator;
+        var v =
+            (dot00 *
+                 dot12 -
+             dot01 *
+                 dot02) *
+            inverseDenominator;
+
+        const float edgeTolerance =
+            0.015f;
+
+        if (u <
+                -edgeTolerance ||
+            v <
+                -edgeTolerance ||
+            u + v >
+                1.0f +
+                edgeTolerance)
+        {
+            depth =
+                float.MaxValue;
+            return false;
+        }
+
+        var aWeight =
+            1.0f -
+            u -
+            v;
+
+        depth =
+            depthA *
+                aWeight +
+            depthB *
+                v +
+            depthC *
+                u;
+
+        return float.IsFinite(
+            depth);
+    }
 
     private void OnRuntimeMouseDown(
         object? sender,
@@ -6645,27 +12640,36 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.Button != MouseButtons.Right)
+        if (e.Button ==
+                MouseButtons.Left &&
+            TryDispatchVehicleMouseEvent(
+                e.Location))
         {
             return;
         }
 
-        if (_driveMode &&
-            _mouseDriveMode)
-        {
-            DisableMouseDriveMode();
-            UpdateCaption();
-            return;
-        }
-
-        if (_driveMode)
+        if (e.Button is not
+                (MouseButtons.Right or
+                 MouseButtons.Middle))
         {
             return;
         }
 
         _mouseLooking = true;
-        _lastMousePosition = e.Location;
+        _freeCameraDragButton =
+            e.Button;
+        _lastMousePosition =
+            e.Location;
         Capture = true;
+
+        if (_mouseDriveMode)
+        {
+            // O remains latched. RMB/MMB only borrows the pointer while
+            // held so the driver can look around without leaving mouse
+            // steering mode.
+            Cursor =
+                Cursors.Default;
+        }
     }
 
     private void OnRuntimeMouseUp(
@@ -6685,17 +12689,101 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.Button != MouseButtons.Right ||
-            _mouseDriveMode)
+        if (e.Button ==
+                MouseButtons.Left &&
+            !string.IsNullOrWhiteSpace(
+                _activeVehicleMouseTrigger))
+        {
+            var releasedTrigger =
+                _activeVehicleMouseTrigger;
+
+            DispatchOmsiSectionScriptTrigger(
+                _activeVehicleMouseSectionIndex,
+                ReleaseTriggerName(
+                    releasedTrigger));
+
+            if (TryResolveHostAction(
+                    releasedTrigger,
+                    out var releasedHostAction))
+            {
+                ApplyOmsiHostActionRelease(
+                    releasedHostAction);
+            }
+
+            SetOmsiMouseSystemVariables(
+                _activeVehicleMouseSectionIndex,
+                0.0f,
+                0.0f);
+
+            _activeVehicleMouseTrigger =
+                null;
+            _activeVehicleMouseSectionIndex =
+                0;
+            _vehicleMouseDeltaX =
+                0.0f;
+            _vehicleMouseDeltaY =
+                0.0f;
+
+            if (_mouseDriveMode)
+            {
+                Capture =
+                    true;
+                Cursor =
+                    Cursors.Cross;
+
+                var center =
+                    new System.Drawing.Point(
+                        ClientSize.Width / 2,
+                        ClientSize.Height / 2);
+
+                _lastMousePosition =
+                    center;
+
+                Cursor.Position =
+                    PointToScreen(
+                        center);
+            }
+            else
+            {
+                Capture =
+                    false;
+            }
+
+            return;
+        }
+
+        if (e.Button !=
+                _freeCameraDragButton)
         {
             return;
         }
 
         _mouseLooking = false;
+        _freeCameraDragButton =
+            MouseButtons.None;
 
-        if (!_driveMode)
+        if (_mouseDriveMode)
         {
-            Capture = false;
+            Capture =
+                true;
+            Cursor =
+                Cursors.Cross;
+
+            var center =
+                new System.Drawing.Point(
+                    ClientSize.Width / 2,
+                    ClientSize.Height / 2);
+
+            _lastMousePosition =
+                center;
+            Cursor.Position =
+                PointToScreen(
+                    center);
+        }
+        else
+        {
+            Capture =
+                false;
         }
     }
 
@@ -6730,15 +12818,38 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (!string.IsNullOrWhiteSpace(
+                _activeVehicleMouseTrigger))
+        {
+            var controlDeltaX =
+                e.X -
+                _lastMousePosition.X;
+
+            var controlDeltaY =
+                e.Y -
+                _lastMousePosition.Y;
+
+            _lastMousePosition =
+                e.Location;
+
+            _vehicleMouseDeltaX +=
+                controlDeltaX;
+
+            _vehicleMouseDeltaY +=
+                controlDeltaY;
+
+            return;
+        }
+
         if (_driveMode &&
-            _mouseDriveMode)
+            _mouseDriveMode &&
+            !_mouseLooking)
         {
             UpdateOmsiMouseAxes(e.Location);
             return;
         }
 
-        if (!_mouseLooking ||
-            _driveMode)
+        if (!_mouseLooking)
         {
             return;
         }
@@ -6750,9 +12861,64 @@ public sealed class D3D11RenderWindow : Form
 
         _lastMousePosition = e.Location;
 
-        _camera.Rotate(
-            deltaX,
-            deltaY);
+        if (_driveMode)
+        {
+            const float vehicleCameraSensitivity =
+                0.0045f;
+
+            if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Exterior)
+            {
+                _exteriorCameraYawOffsetRadians =
+                    NormalizeRadians(
+                        _exteriorCameraYawOffsetRadians +
+                        deltaX *
+                        vehicleCameraSensitivity);
+
+                _exteriorCameraPitchOffsetRadians =
+                    Math.Clamp(
+                        _exteriorCameraPitchOffsetRadians -
+                        deltaY *
+                        vehicleCameraSensitivity,
+                        -1.1f,
+                        1.0f);
+            }
+            else
+            {
+                _interiorCameraYawOffsetRadians =
+                    Math.Clamp(
+                        _interiorCameraYawOffsetRadians +
+                        deltaX *
+                        vehicleCameraSensitivity,
+                        -3.0f,
+                        3.0f);
+
+                _interiorCameraPitchOffsetRadians =
+                    Math.Clamp(
+                        _interiorCameraPitchOffsetRadians -
+                        deltaY *
+                        vehicleCameraSensitivity,
+                        -1.35f,
+                        1.35f);
+            }
+
+            return;
+        }
+
+        if (_freeCameraDragButton ==
+            MouseButtons.Middle)
+        {
+            _camera.Pan(
+                deltaX,
+                deltaY,
+                ClientSize.Height);
+        }
+        else
+        {
+            _camera.Rotate(
+                deltaX,
+                deltaY);
+        }
     }
 
     private void OnRuntimeMouseWheel(
@@ -6782,11 +12948,54 @@ public sealed class D3D11RenderWindow : Form
 
         if (_driveMode)
         {
+            var steps =
+                e.Delta /
+                120.0f;
+
+            if (_vehicleViewMode ==
+                RuntimeVehicleViewMode.Exterior)
+            {
+                _exteriorCameraDistanceScale =
+                    Math.Clamp(
+                        _exteriorCameraDistanceScale *
+                        MathF.Pow(
+                            0.90f,
+                            steps),
+                        0.35f,
+                        4.0f);
+            }
+            else
+            {
+                // OMSI cockpit/passenger zoom changes field of view while
+                // keeping the eye at the authored camera position.
+                _interiorCameraFieldOfViewScale =
+                    Math.Clamp(
+                        _interiorCameraFieldOfViewScale *
+                        MathF.Pow(
+                            0.90f,
+                            steps),
+                        0.35f,
+                        1.75f);
+            }
+
             return;
         }
 
-        _camera.AdjustSpeed(
-            e.Delta / 120.0f);
+        var wheelSteps =
+            e.Delta /
+            120.0f;
+
+        if (_pressedKeys.Contains(
+                Keys.ControlKey))
+        {
+            _camera.AdjustSpeed(
+                wheelSteps);
+        }
+        else
+        {
+            _camera.Dolly(
+                wheelSteps);
+        }
     }
 
     private void ToggleMouseDriveMode()
@@ -6799,6 +13008,8 @@ public sealed class D3D11RenderWindow : Form
 
         _mouseDriveMode = true;
         _mouseLooking = false;
+        _freeCameraDragButton =
+            MouseButtons.None;
         _mouseDriveAccelerator = 0.0f;
         _mouseDriveBrake = 0.0f;
         _mouseDriveSteering = 0.0f;
@@ -6825,6 +13036,8 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _mouseDriveMode = false;
+        _freeCameraDragButton =
+            MouseButtons.None;
         _mouseDriveAccelerator = 0.0f;
         _mouseDriveBrake = 0.0f;
         _mouseDriveSteering = 0.0f;
@@ -6852,9 +13065,10 @@ public sealed class D3D11RenderWindow : Form
         var centerY =
             ClientSize.Height * 0.5f;
 
-        // OMSI mouse drive is mirrored relative to screen X in the
-        // vehicle coordinate system: moving the cross to the left
-        // must turn the bus left, and vice-versa.
+        // Physical alpha testing is the authority for the screen-space
+        // steering direction. The renderer/vehicle coordinate conversion
+        // makes the previous screen-X sign feel reversed in OMSI mouse
+        // steering mode, so map cursor-right to the opposite raw axis here.
         var horizontal =
             Math.Clamp(
                 (centerX - location.X) /
@@ -7134,7 +13348,9 @@ public sealed class D3D11RenderWindow : Form
             ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · runtime objects {_objectGeometry.RenderedObjectCount:N0}/{runtimeObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0} loaded · texture failures {_failedObjectTexturePaths.Count:N0} · encrypted {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
-        var gear = _vehicle.Gear switch
+        var gear = _vehicleRemoved
+            ? "—"
+            : _vehicle.Gear switch
         {
             RuntimeDriveGear.Drive => "D",
             RuntimeDriveGear.Reverse => "R",
@@ -7143,7 +13359,7 @@ public sealed class D3D11RenderWindow : Form
 
         var driveInputMode =
             _mouseDriveMode
-                ? "MOUSE: ←/→ steer · ↑ throttle · ↓ brake · RMB exit"
+                ? "MOUSE LOCKED: ←/→ steer · ↑ throttle · ↓ brake · O desativa · RMB segura câmera"
                 : _controllerInputEnabled &&
                   _omsiGameController is
                     { ConnectedDeviceCount: > 0 }
@@ -7172,19 +13388,35 @@ public sealed class D3D11RenderWindow : Form
               $"M:{(_vehicle.EngineRunning ? "ON" : "OFF")} · " +
               $"brake {_vehicle.BrakeLevel * 100.0f:0}% · " +
               $"park:{(_vehicle.ParkingBrakeEngaged ? "ON" : "OFF")} · " +
-              $"{driveInputMode} · F1/F2/F3 view · ←/→ perspectives · Insert schedule · Home tickets · F4 free cam · F9 mirrors · D/N/R · E/M · Num. park · Tab free cam"
-            : $"{pauseState}FREE CAM · WASD move · RMB look · Q/E vertical · R reset · F1/F2/F3 OMSI view · Tab OMSI drive";
+              $"{driveInputMode} · RMB drag look/orbit · F3 wheel zoom · S views · F1/F2/F3/F4 cameras · ←/→ perspectives · C/Space reset · P pause · D/N/R · E/M · Tab clutch"
+            : $"{pauseState}FREE CAM · RMB look · MMB pan · wheel zoom · Ctrl+wheel speed · S views · F1/F2/F3/F4 cameras · C reset · O:{(_mouseDriveMode ? "LOCKED" : "OFF")}";
 
         control +=
             " · Alt menu";
 
         Text =
-            $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
-            $"{_windowInfo.TileCount:N0}/{_windowInfo.TotalTileCount:N0} tiles — " +
-            $"{runtimeObjectCount:N0} runtime objects · {_windowInfo.ObjectCount:N0} map entries — " +
-            $"{_windowInfo.SplineCount:N0} splines — " +
-            $"{mode} — {control}";
+            _statusInfoLevel switch
+            {
+                0 =>
+                    $"OMSI Compatible Runtime — {_windowInfo.WorldName}",
+                1 =>
+                    $"OMSI Compatible Runtime — {_windowInfo.WorldName} — {control}",
+                2 =>
+                    $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
+                    $"{_windowInfo.TileCount:N0}/{_windowInfo.TotalTileCount:N0} tiles — " +
+                    $"{_windowInfo.SplineCount:N0} splines — {control}",
+                _ =>
+                    $"OMSI Compatible Runtime — {_windowInfo.WorldName} — " +
+                    $"{_windowInfo.TileCount:N0}/{_windowInfo.TotalTileCount:N0} tiles — " +
+                    $"{runtimeObjectCount:N0} runtime objects · {_windowInfo.ObjectCount:N0} map entries — " +
+                    $"{_windowInfo.SplineCount:N0} splines — " +
+                    $"{mode} — {control}"
+            };
     }
+
+    private sealed record TrafficOmsiAudioState(
+        string VehiclePath,
+        RuntimeOmsiAudioHost Audio);
 
     protected override void Dispose(bool disposing)
     {
@@ -7204,6 +13436,10 @@ public sealed class D3D11RenderWindow : Form
                     OnUnhandledSystemMacro;
                 _scriptRuntime.DebugMessageRequested -=
                     OnScriptDebugMessage;
+                _scriptRuntime.SoundTriggerRequested -=
+                    OnScriptSoundTriggerRequested;
+                _scriptRuntime.FileSoundTriggerRequested -=
+                    OnScriptFileSoundTriggerRequested;
             }
 
             if (_mouseDriveMode)
@@ -7219,6 +13455,24 @@ public sealed class D3D11RenderWindow : Form
             _omsiAudio =
                 null;
 
+            foreach (var audio in
+                     _articulatedOmsiAudio.Values)
+            {
+                audio.Dispose();
+            }
+
+            _articulatedOmsiAudio.Clear();
+
+            foreach (var state in
+                     _trafficOmsiAudio.Values)
+            {
+                state.Audio.Dispose();
+            }
+
+            _trafficOmsiAudio.Clear();
+
+            _vehicle.Dispose();
+
             _renderTimer.Stop();
             _renderTimer.Tick -=
                 RenderTimerOnTick;
@@ -7229,6 +13483,7 @@ public sealed class D3D11RenderWindow : Form
 
             _skyTexture?.Dispose();
             _skyTexture = null;
+            _skyConstantsBuffer?.Dispose();
             _skySampler?.Dispose();
             _skyPixelShader?.Dispose();
             _skyVertexShader?.Dispose();
@@ -7264,6 +13519,8 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAnimationParentBatches.Clear();
 
             _objectSampler?.Dispose();
+            _objectDepthDisabledState?.Dispose();
+            _objectDepthReadState?.Dispose();
             _objectAlphaBlendState?.Dispose();
             _objectInputLayout?.Dispose();
             _objectAlphaBlendTransMapPixelShader?.Dispose();
@@ -7302,11 +13559,21 @@ public sealed class D3D11RenderWindow : Form
             _vehicleLightPixelShader?.Dispose();
             _vehicleColorPixelShader?.Dispose();
             _vehicleVertexShader?.Dispose();
+            _vehicleSkinBuffer?.Dispose();
             _vehicleMaterialBuffer?.Dispose();
             _vehicleModelBuffer?.Dispose();
             _vehicleLightVertexBuffer?.Dispose();
             _vehicleInteriorVertexBuffer?.Dispose();
             _vehicleExteriorVertexBuffer?.Dispose();
+
+            foreach (var buffer in
+                     _trafficVehicleVertexBuffers.Values)
+            {
+                buffer.Dispose();
+            }
+
+            _trafficVehicleVertexBuffers.Clear();
+            _trafficVehicleGeometries.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();

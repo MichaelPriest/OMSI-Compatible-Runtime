@@ -33,7 +33,13 @@ internal sealed class RuntimeProcessHost :
                     "OMSICompatible.Runtime.exe"),
                 Path.Combine(
                     baseDirectory,
-                    "OMSICompatible.Runtime.exe")
+                    "OMSICompatible.Runtime.exe"),
+                Path.GetFullPath(
+                    Path.Combine(
+                        baseDirectory,
+                        "..",
+                        "Runtime",
+                        "OMSICompatible.Runtime.exe"))
             };
 
         return candidates
@@ -47,7 +53,8 @@ internal sealed class RuntimeProcessHost :
         string mapName,
         string? busRelativePath,
         string entryPointName,
-        string? repaintName = null)
+        string? repaintName = null,
+        string? repaintCtiRelativePath = null)
     {
         if (IsRunning)
         {
@@ -124,6 +131,17 @@ internal sealed class RuntimeProcessHost :
                 startInfo,
                 "--repaint",
                 repaintName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                repaintCtiRelativePath) &&
+            !string.IsNullOrWhiteSpace(
+                busRelativePath))
+        {
+            Add(
+                startInfo,
+                "--repaint-cti",
+                repaintCtiRelativePath);
         }
 
         Add(

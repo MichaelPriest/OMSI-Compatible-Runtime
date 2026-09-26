@@ -81,6 +81,8 @@ public static class OmsiO3dGeometryReader
             ushort[]? triangleMaterialIndices = null;
             IReadOnlyList<OmsiO3dMaterial> materials =
                 Array.Empty<OmsiO3dMaterial>();
+            IReadOnlyList<OmsiO3dBone> bones =
+                Array.Empty<OmsiO3dBone>();
 
             var sourceTransform =
                 Matrix4x4.Identity;
@@ -249,10 +251,11 @@ public static class OmsiO3dGeometryReader
                         break;
 
                     case BoneSection:
-                        if (!SkipBones(
+                        if (!TryReadBones(
                                 reader,
                                 stream,
-                                longTriangleIndices))
+                                longTriangleIndices,
+                                out bones))
                         {
                             return OmsiO3dGeometry.Error(
                                 "invalidBoneSection");
@@ -324,7 +327,8 @@ public static class OmsiO3dGeometryReader
                 indices,
                 triangleMaterialIndices,
                 materials,
-                sourceTransform);
+                sourceTransform,
+                bones);
         }
         catch (EndOfStreamException)
         {
@@ -432,11 +436,15 @@ public static class OmsiO3dGeometryReader
         return true;
     }
 
-    private static bool SkipBones(
+    private static bool TryReadBones(
         BinaryReader reader,
         Stream stream,
-        bool longTriangleIndices)
+        bool longVertexIndices,
+        out IReadOnlyList<OmsiO3dBone> bones)
     {
+        bones =
+            Array.Empty<OmsiO3dBone>();
+
         if (!HasRemaining(
                 stream,
                 2))
@@ -452,6 +460,10 @@ public static class OmsiO3dGeometryReader
             return false;
         }
 
+        var result =
+            new List<OmsiO3dBone>(
+                checked((int)boneCount));
+
         for (var index = 0U;
              index < boneCount;
              index++)
@@ -461,30 +473,79 @@ public static class OmsiO3dGeometryReader
                 return false;
             }
 
-            var nameLength = reader.ReadByte();
+            var nameLength =
+                reader.ReadByte();
 
-            if (!TrySkip(stream, nameLength) ||
-                !HasRemaining(stream, 2))
-            {
-                return false;
-            }
-
-            var weightCount = reader.ReadUInt16();
-            var weightSize =
-                longTriangleIndices
-                    ? 8L
-                    : 6L;
-
-            if (!TrySkip(
+            if (!HasRemaining(
                     stream,
-                    checked(
-                        (long)weightCount *
-                        weightSize)))
+                    nameLength))
             {
                 return false;
             }
+
+            var name =
+                nameLength == 0
+                    ? string.Empty
+                    : Encoding.Latin1.GetString(
+                        reader.ReadBytes(
+                            nameLength));
+
+            if (!HasRemaining(stream, 2))
+            {
+                return false;
+            }
+
+            var weightCount =
+                reader.ReadUInt16();
+
+            var weights =
+                new List<OmsiO3dBoneWeight>(
+                    weightCount);
+
+            for (var weightIndex = 0;
+                 weightIndex < weightCount;
+                 weightIndex++)
+            {
+                var indexBytes =
+                    longVertexIndices
+                        ? 4
+                        : 2;
+
+                if (!HasRemaining(
+                        stream,
+                        indexBytes + 4))
+                {
+                    return false;
+                }
+
+                var vertexIndex =
+                    longVertexIndices
+                        ? checked((int)reader.ReadUInt32())
+                        : reader.ReadUInt16();
+
+                var weight =
+                    reader.ReadSingle();
+
+                if (!float.IsFinite(weight) ||
+                    weight <= 0.0f)
+                {
+                    continue;
+                }
+
+                weights.Add(
+                    new OmsiO3dBoneWeight(
+                        vertexIndex,
+                        weight));
+            }
+
+            result.Add(
+                new OmsiO3dBone(
+                    name,
+                    weights));
         }
 
+        bones =
+            result;
         return true;
     }
 

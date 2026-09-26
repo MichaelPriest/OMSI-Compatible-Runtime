@@ -12,11 +12,60 @@ concurrency:
 
 jobs:
   build-x64:
-    runs-on: windows-latest
+    # Native ODE x64 is compiled with MSVC. Pin the image so the
+    # Visual Studio 2022 generator/toolchain remains deterministic.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Build ODE x64 single precision
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $odeVersion = "0.16.6"
+          $expectedSha512 = "c9160d9b7419c74c700d9efe5cdb82e70cab867a10f03fe8b99c32ed946ee4ecb50e055a6c11495dd9ed4754110ef0d071fbcfbf4cc6b67841607ed90b1ce35b"
+          $nativeRoot = Join-Path $PWD "native"
+          $archive = Join-Path $nativeRoot "ode-$odeVersion.tar.gz"
+          $sourceRoot = Join-Path $nativeRoot "ode-src"
+          $buildRoot = Join-Path $nativeRoot "ode-build"
+          $outputRoot = Join-Path $nativeRoot "win-x64"
+          New-Item -ItemType Directory -Force $nativeRoot, $sourceRoot, $outputRoot | Out-Null
+          $odeUri = "https://bitbucket.org/odedevs/ode/get/$odeVersion.tar.gz"
+          $downloadSucceeded = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+              if (Test-Path $archive) { Remove-Item $archive -Force }
+              Write-Host "Downloading ODE $odeVersion (attempt $attempt/5)..."
+              Invoke-WebRequest -Uri $odeUri -OutFile $archive -MaximumRedirection 10
+              if (-not (Test-Path $archive)) { throw "ODE archive was not created." }
+              $archiveLength = (Get-Item $archive).Length
+              if ($archiveLength -lt 1000000) { throw "ODE download is unexpectedly small ($archiveLength bytes)." }
+              $actualSha512 = (Get-FileHash -Algorithm SHA512 $archive).Hash.ToLowerInvariant()
+              if ($actualSha512 -ne $expectedSha512) { throw "ODE $odeVersion SHA-512 mismatch: $actualSha512" }
+              $downloadSucceeded = $true
+              break
+            }
+            catch {
+              Write-Warning "ODE download attempt $attempt failed: $($_.Exception.Message)"
+              if ($attempt -lt 5) {
+                Start-Sleep -Seconds ([Math]::Min(30, 4 * $attempt))
+              }
+            }
+          }
+          if (-not $downloadSucceeded) { throw "Unable to download and verify ODE $odeVersion after 5 attempts." }
+          tar -xzf $archive -C $sourceRoot
+          if ($LASTEXITCODE -ne 0) { throw "Failed to extract ODE source." }
+          $source = Get-ChildItem $sourceRoot -Directory | Select-Object -First 1
+          if (-not $source) { throw "ODE source directory was not found." }
+          cmake -S $source.FullName -B $buildRoot -G "Visual Studio 17 2022" -A x64 "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DBUILD_SHARED_LIBS=ON" "-DODE_DOUBLE_PRECISION=OFF" "-DODE_WITH_DEMOS=OFF" "-DODE_WITH_TESTS=OFF" "-DODE_WITH_OPCODE=ON"
+          if ($LASTEXITCODE -ne 0) { throw "ODE CMake configure failed." }
+          cmake --build $buildRoot --config Release --target ODE
+          if ($LASTEXITCODE -ne 0) { throw "ODE x64 build failed." }
+          $odeDll = Get-ChildItem $buildRoot -Recurse -Filter "ode_single.dll" | Select-Object -First 1
+          if (-not $odeDll) { throw "ode_single.dll was not produced." }
+          Copy-Item $odeDll.FullName (Join-Path $outputRoot "ode_single.dll") -Force
 
       - name: Verify preinstalled .NET
         run: dotnet --info
@@ -27,10 +76,19 @@ jobs:
       - name: Build x64
         run: dotnet build OMSI-Compatible-Runtime.slnx -c Release --no-restore
 
+      - name: Stage ODE x64 for smoke test
+        shell: pwsh
+        run: |
+          $target = "tests/OMSICompatible.SmokeTests/bin/Release/net10.0"
+          New-Item -ItemType Directory -Force $target | Out-Null
+          Copy-Item "native/win-x64/ode_single.dll" (Join-Path $target "ode_single.dll") -Force
+
       - name: Run synthetic world smoke test
+        env:
+          OMSI_REQUIRE_ODE: "1"
         run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
 
-      - name: Publish Launcher x64
+      - name: Publish legacy Launcher x64
         run: >
           dotnet publish src/OMSICompatible.Launcher/OMSICompatible.Launcher.csproj
           -c Release
@@ -40,7 +98,56 @@ jobs:
           -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Launcher-Legacy
+
+      - name: Publish WinUI Launcher x64
+        run: >
+          dotnet publish src/OMSICompatible.Launcher.WinUI/OMSICompatible.Launcher.WinUI.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:Platform=x64
+          -p:WindowsAppSDKSelfContained=true
+          -p:PublishSingleFile=false
+          -p:UseAppHost=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
+
+      - name: Create and verify primary WinUI launcher alias
+        shell: pwsh
+        run: |
+          $root = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64"
+          $source = Join-Path $root "OMSICompatible.Launcher.WinUI.exe"
+          $assembly = Join-Path $root "OMSICompatible.Launcher.WinUI.dll"
+          $target = Join-Path $root "OMSICompatible.Launcher.exe"
+          if (-not (Test-Path $source)) { throw "WinUI launcher apphost was not published." }
+          if (-not (Test-Path $assembly)) { throw "WinUI launcher managed assembly was not published." }
+          Copy-Item $source $target -Force
+          if (-not (Test-Path $target)) { throw "Primary WinUI launcher alias was not created." }
+
+      - name: Smoke test WinUI XAML startup
+        shell: pwsh
+        run: |
+          $root = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64"
+          $launcher = Join-Path $root "OMSICompatible.Launcher.WinUI.exe"
+          if (-not (Test-Path $launcher)) { throw "WinUI launcher apphost is missing." }
+
+          $process = Start-Process -FilePath $launcher -ArgumentList "--xaml-smoke" -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "WinUI XAML smoke test timed out."
+          }
+
+          if ($process.ExitCode -ne 0) {
+            $log = Join-Path $env:LOCALAPPDATA "OMSI-Compatible-Runtime\launcher-winui.log"
+            if (Test-Path $log) {
+              Write-Host "===== launcher-winui.log ====="
+              Get-Content $log
+              Write-Host "===== end launcher-winui.log ====="
+            }
+            throw "WinUI XAML smoke test failed with exit code $($process.ExitCode)."
+          }
 
       - name: Publish Runtime x64
         run: >
@@ -54,6 +161,12 @@ jobs:
           -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime
 
+      - name: Package ODE x64
+        shell: pwsh
+        run: |
+          Copy-Item "native/win-x64/ode_single.dll" "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/ode_single.dll" -Force
+          Copy-Item "native/win-x64/ode_single.dll" "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime/ode_single.dll" -Force
+
       - name: Add test instructions
         shell: pwsh
         run: |
@@ -66,10 +179,24 @@ jobs:
           Extraia TODO o conteúdo do ZIP antes de executar.
           Não execute o EXE de dentro do ZIP.
 
+          LAUNCHER PRINCIPAL — NOVA INTERFACE WINUI 3
+          ============================================
           Abra:
             OMSICompatible.Launcher.exe
 
-          No launcher:
+          A nova interface WinUI 3 agora é o launcher principal do pacote,
+          com Home, Mapas, Veículos, Controles, Configurações,
+          Compatibilidade e Diagnóstico.
+
+          LAUNCHER LEGADO — FALLBACK TEMPORÁRIO
+          ======================================
+          Para comparar ou usar a prévia 3D D3D11 antiga durante a migração:
+            Launcher-Legacy\OMSICompatible.Launcher.Legacy.exe
+
+          O legado permanece somente como fallback até a prévia 3D real
+          estar integrada ao WinUI, sem remover a funcionalidade existente.
+
+          No launcher principal:
           1. Clique em Procurar.
           2. Selecione a pasta raiz do conteúdo OMSI.
              Exemplo: G:\Games\OMSI 2 Steam Edition
@@ -207,7 +334,8 @@ jobs:
           - Ônibus OMSI real carregado por .bus/model.cfg
           - Câmeras F1/F2/F3/F4, horário e bilhetagem
           - Espelhos/reflexões D3D11 iniciais
-          - Física baseada em eixos/raio de giro do .bus
+          - Backend Open Dynamics Engine x64 single precision, compilado na CI
+          - Física alimentada pelos scripts OMSI via M_Wheel e Brakeforce/Axle_Brakeforce
           - Manifesto de scripts OMSI
           - VM RPN inicial em desenvolvimento
           - keyboard.cfg/.kyb executando triggers de veículo
@@ -216,8 +344,8 @@ jobs:
           - gamectrler.cfg via DirectInput com eixos e botões
           - sincronização inicial de marcha, elétrica, motor e freio de mão
             entre eventos/scripts OMSI e o estado físico do Runtime
-          - dinâmica veicular usa massa, centro de gravidade, resistência ao
-            rolamento, entre-eixos, bitola, inércia, molas e amortecedores do .bus
+          - o backend de dinâmica está migrando para ODE x64 usando massa,
+            inércia, eixos, molas, amortecedores e demais parâmetros do .bus
           - inclinação da carroceria em curvas/aceleração/frenagem e terreno
           - animações model.cfg [newanim] com anim_rot/anim_trans, origin,
             origin_rot_x/y/z, offset, delay e maxspeed
@@ -242,3 +370,79 @@ jobs:
           path: artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
           if-no-files-found: error
           compression-level: 6
+
+  publish-pr2-test-release:
+    name: Publish PR #2 Test Release
+    needs: build-x64
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 2 &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Download portable package
+        uses: actions/download-artifact@v4
+        with:
+          name: OMSI-Compatible-Runtime-alpha-ui-win-x64-portable
+          path: package
+
+      - name: Create or update stable Test Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+
+          tag="pr2-test-latest"
+          archive="OMSI-Compatible-Runtime-PR2-Test-win-x64.zip"
+
+          rm -f "$archive"
+          (
+            cd package
+            zip -qr "../$archive" .
+          )
+
+          git tag -f "$tag" "$HEAD_SHA"
+          git push --force origin "refs/tags/$tag"
+
+          cat > release-notes.md <<EOF
+          # OMSI Compatible Runtime — PR #2 Test Release
+
+          Build automático validado pelo CI antes da publicação.
+
+          - PR: #2 (DRAFT)
+          - Branch: fix/runtime-visual-controls-pass
+          - HEAD: $HEAD_SHA
+          - CI: #$RUN_NUMBER
+          - Plataforma: Windows x64
+          - Runtime: x64 standalone
+          - ODE: x64 single precision
+          - Smoke test: obrigatório
+
+          O ZIP contém:
+          - `OMSICompatible.Launcher.exe`: novo launcher principal WinUI 3;
+          - `Launcher-Legacy/OMSICompatible.Launcher.Legacy.exe`: launcher anterior preservado como fallback com prévia 3D D3D11;
+          - `Runtime/OMSICompatible.Runtime.exe`: runtime x64;
+          - ODE e dependências necessárias.
+
+          A nova interface é agora a entrada padrão do pacote. O launcher legado continua incluído apenas para preservar a prévia 3D enquanto ela é migrada ao WinUI.
+          EOF
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$archive" --clobber
+            gh release edit "$tag"               --title "OMSI Compatible Runtime — PR #2 Test"               --notes-file release-notes.md               --prerelease
+          else
+            gh release create "$tag" "$archive"               --title "OMSI Compatible Runtime — PR #2 Test"               --notes-file release-notes.md               --prerelease
+          fi
+

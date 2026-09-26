@@ -200,11 +200,15 @@ internal static class RuntimeTerrainGeometryBuilder
                     ground.DetailTexturePath,
                     ground.MainTextureRepeating,
                     ground.DetailTextureRepeating,
+                    // Terrain masks are coplanar texture layers in OMSI.
+                    // Keep only a microscopic bias to avoid z-fighting;
+                    // centimetre-scale lifts can visually cover rails and
+                    // other spline geometry on elevated/embedded track.
                     heightOffset:
                         Math.Min(
                             overlayOrdinal,
                             16) *
-                        0.002f,
+                        0.00002f,
                     fallbackToHeightColor: false,
                     additiveLightmap: false,
                     terrainLayerIndex:
@@ -229,7 +233,9 @@ internal static class RuntimeTerrainGeometryBuilder
                     detailTexturePath: null,
                     repeating: 1.0,
                     detailRepeating: 1.0,
-                    heightOffset: 0.04f,
+                    // Lightmaps must shade the terrain, not become a
+                    // separate surface several centimetres above it.
+                    heightOffset: 0.0001f,
                     fallbackToHeightColor: false,
                     additiveLightmap: true,
                     terrainLayerIndex: null,
@@ -595,10 +601,15 @@ internal static class RuntimeTerrainGeometryBuilder
                 ? repeating
                 : 1.0;
 
+        // Runtime world X is mirrored relative to OMSI source X to keep
+        // the renderer ground plane right-handed. Sample terrain textures
+        // from the corresponding source-side U coordinate so lightmaps,
+        // masks and base/detail textures remain in the same place as OMSI.
         return new Vector2(
             (float)(
-                localX /
-                TileSizeMeters *
+                (1.0 -
+                 localX /
+                     TileSizeMeters) *
                 safeRepeating),
             (float)(
                 localZ /
@@ -611,8 +622,9 @@ internal static class RuntimeTerrainGeometryBuilder
         double localZ) =>
         new(
             (float)(
+                1.0 -
                 localX /
-                TileSizeMeters),
+                    TileSizeMeters),
             (float)(
                 localZ /
                 TileSizeMeters));

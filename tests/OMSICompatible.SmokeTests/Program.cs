@@ -1,7 +1,10 @@
+using System.Numerics;
 using System.Text;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Models;
+using OmsiCompat.Scenery;
+using OmsiCompat.Physics.Ode;
 using OmsiCompat.Vehicles;
 using OmsiCompat.Scripting;
 using OMSICompatible.World;
@@ -12,6 +15,312 @@ var root = Path.Combine(
 
 try
 {
+    if (string.Equals(
+            Environment.GetEnvironmentVariable(
+                "OMSI_REQUIRE_ODE"),
+            "1",
+            StringComparison.Ordinal))
+    {
+        var odeInfo =
+            OdeRuntime.Inspect();
+
+        Require(
+            odeInfo.Available &&
+            odeInfo.Is64BitProcess &&
+            odeInfo.SinglePrecision,
+            $"ODE x64 single-precision backend unavailable: {odeInfo.Error ?? odeInfo.Configuration}");
+
+        using var odeWorld =
+            new OdeWorld();
+
+        using var odeBody =
+            new OdeRigidBody(
+                odeWorld,
+                new OdeRigidBodyParameters(
+                    MassKilograms:
+                        8_000.0f,
+                    CenterOfMassX:
+                        0.0f,
+                    CenterOfMassY:
+                        0.0f,
+                    CenterOfMassZ:
+                        0.0f,
+                    InertiaXKilogramSquareMeters:
+                        20_000.0f,
+                    InertiaYKilogramSquareMeters:
+                        45_000.0f,
+                    InertiaZKilogramSquareMeters:
+                        55_000.0f));
+
+        odeBody.SetPosition(
+            new Vector3(
+                0.0f,
+                0.0f,
+                10.0f));
+
+        Require(
+            odeWorld.Step(
+                1.0f / 120.0f),
+            "ODE x64 QuickStep smoke test failed.");
+
+        Require(
+            odeBody.Position.Z <
+                10.0f &&
+            odeBody.LinearVelocity.Z <
+                0.0f,
+            "ODE rigid body did not respond to gravity with OMSI Z-up coordinates.");
+
+        odeBody.SetGravityEnabled(
+            false);
+        odeBody.SetPosition(
+            Vector3.Zero);
+        odeBody.SetLinearVelocity(
+            Vector3.Zero);
+        odeBody.SetAngularVelocity(
+            Vector3.Zero);
+        odeBody.SetOrientation(
+            Quaternion.CreateFromAxisAngle(
+                Vector3.UnitZ,
+                0.25f));
+        odeBody.AddWorldForce(
+            new Vector3(
+                8_000.0f,
+                0.0f,
+                0.0f));
+        odeBody.AddWorldForceAtLocalPosition(
+            new Vector3(
+                0.0f,
+                0.0f,
+                8_000.0f),
+            new Vector3(
+                1.0f,
+                0.0f,
+                0.0f));
+        odeBody.AddWorldTorque(
+            new Vector3(
+                0.0f,
+                0.0f,
+                55_000.0f));
+
+        Require(
+            odeWorld.Step(
+                1.0f / 120.0f),
+            "ODE x64 force/torque QuickStep smoke test failed.");
+
+        Require(
+            odeBody.LinearVelocity.X >
+                0.0f &&
+            Math.Abs(
+                odeBody.AngularVelocity.Y) >
+                0.0001f &&
+            odeBody.AngularVelocity.Z >
+                0.0f &&
+            Math.Abs(
+                odeBody.Orientation.Z) >
+                0.01f,
+            "ODE rigid body force-at-position, torque or quaternion bridge is invalid.");
+
+        using var odeTrailerBody =
+            new OdeRigidBody(
+                odeWorld,
+                new OdeRigidBodyParameters(
+                    MassKilograms:
+                        6_000.0f,
+                    CenterOfMassX:
+                        0.0f,
+                    CenterOfMassY:
+                        0.0f,
+                    CenterOfMassZ:
+                        0.0f,
+                    InertiaXKilogramSquareMeters:
+                        15_000.0f,
+                    InertiaYKilogramSquareMeters:
+                        30_000.0f,
+                    InertiaZKilogramSquareMeters:
+                        40_000.0f));
+
+        odeTrailerBody.SetGravityEnabled(
+            false);
+        odeTrailerBody.SetPosition(
+            new Vector3(
+                0.0f,
+                -5.0f,
+                0.0f));
+
+        using var odeArticulation =
+            new OdeHingeJoint(
+                odeWorld,
+                odeBody,
+                odeTrailerBody,
+                new Vector3(
+                    0.0f,
+                    -2.5f,
+                    0.0f),
+                Vector3.UnitZ);
+
+        odeArticulation.SetStops(
+            -0.2617994f,
+            0.2617994f,
+            stopErp:
+                0.35f,
+            stopCfm:
+                0.00001f);
+
+        for (var hingeStep = 0;
+             hingeStep < 240;
+             hingeStep++)
+        {
+            odeTrailerBody.AddWorldTorque(
+                new Vector3(
+                    0.0f,
+                    0.0f,
+                    120_000.0f));
+
+            Require(
+                odeWorld.Step(
+                    1.0f / 120.0f),
+                "ODE articulated hinge stop QuickStep failed.");
+        }
+
+        Require(
+            float.IsFinite(
+                odeArticulation.AngleRadians) &&
+            float.IsFinite(
+                odeArticulation.AngularRateRadiansPerSecond) &&
+            Math.Abs(
+                odeArticulation.AngleRadians) <
+                0.34f,
+            $"ODE articulated hinge stop was exceeded: {odeArticulation.AngleRadians:0.0000} rad.");
+
+        using var odeUniversalParent =
+            new OdeRigidBody(
+                odeWorld,
+                new OdeRigidBodyParameters(
+                    8_000.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    20_000.0f,
+                    45_000.0f,
+                    55_000.0f));
+
+        using var odeUniversalTrailer =
+            new OdeRigidBody(
+                odeWorld,
+                new OdeRigidBodyParameters(
+                    6_000.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    15_000.0f,
+                    30_000.0f,
+                    40_000.0f));
+
+        odeUniversalParent.SetGravityEnabled(
+            false);
+        odeUniversalTrailer.SetGravityEnabled(
+            false);
+
+        odeUniversalParent.SetPosition(
+            new Vector3(
+                20.0f,
+                0.0f,
+                0.0f));
+
+        odeUniversalTrailer.SetPosition(
+            new Vector3(
+                20.0f,
+                -5.0f,
+                0.0f));
+
+        using var odeUniversal =
+            new OdeUniversalJoint(
+                odeWorld,
+                odeUniversalParent,
+                odeUniversalTrailer,
+                new Vector3(
+                    20.0f,
+                    -2.5f,
+                    0.0f),
+                Vector3.UnitZ,
+                Vector3.UnitX);
+
+        odeUniversal.SetYawStops(
+            -0.35f,
+            0.35f);
+
+        odeUniversal.SetPitchStops(
+            -0.20f,
+            0.20f);
+
+        odeUniversal.AddTorques(
+            yawTorqueNewtonMeters:
+                18_000.0f,
+            pitchTorqueNewtonMeters:
+                -9_000.0f);
+
+        Require(
+            odeWorld.Step(
+                1.0f / 120.0f),
+            "ODE universal joint torque API smoke test failed.");
+
+        Require(
+            float.IsFinite(
+                odeUniversal.YawRateRadiansPerSecond) &&
+            float.IsFinite(
+                odeUniversal.PitchRateRadiansPerSecond),
+            "ODE universal joint torque API returned invalid angular rates.");
+
+        for (var universalStep = 0;
+             universalStep < 240;
+             universalStep++)
+        {
+            odeUniversalTrailer.AddWorldTorque(
+                new Vector3(
+                    45_000.0f,
+                    0.0f,
+                    120_000.0f));
+
+            Require(
+                odeWorld.Step(
+                    1.0f / 120.0f),
+                "ODE universal articulation QuickStep failed.");
+        }
+
+        Require(
+            float.IsFinite(
+                odeUniversal.YawAngleRadians) &&
+            float.IsFinite(
+                odeUniversal.PitchAngleRadians) &&
+            Math.Abs(
+                odeUniversal.YawAngleRadians) <
+                0.45f &&
+            Math.Abs(
+                odeUniversal.PitchAngleRadians) <
+                0.30f,
+            $"ODE universal articulation stops were exceeded: yaw={odeUniversal.YawAngleRadians:0.0000}, pitch={odeUniversal.PitchAngleRadians:0.0000}.");
+
+        var frontSuspension =
+            OdeSuspensionTuning.FromSpringDamper(
+                springNewtonsPerMeter:
+                    240_000.0f,
+                damperNewtonSecondsPerMeter:
+                    20_000.0f,
+                timeStepSeconds:
+                    1.0f / 120.0f);
+
+        Require(
+            Math.Abs(
+                frontSuspension.ErrorReductionParameter -
+                0.09090909f) <
+                0.0001f &&
+            Math.Abs(
+                frontSuspension.ConstraintForceMixing -
+                0.0000454545f) <
+                0.000001f,
+            "OMSI axle spring/damper values were not converted to ODE ERP/CFM correctly.");
+    }
+
     var mapDirectory = Path.Combine(root, "maps", "SyntheticMap");
     var sceneryDirectory = Path.Combine(root, "Sceneryobjects", "Synthetic");
     var splineDirectory = Path.Combine(root, "Splines", "Synthetic");
@@ -31,11 +340,1124 @@ try
 
     Directory.CreateDirectory(mapDirectory);
     Directory.CreateDirectory(sceneryDirectory);
+    Directory.CreateDirectory(
+        Path.Combine(
+            sceneryDirectory,
+            "script"));
     Directory.CreateDirectory(splineDirectory);
     Directory.CreateDirectory(vehicleDirectory);
     Directory.CreateDirectory(vehicleScriptDirectory);
     Directory.CreateDirectory(vehicleModelDirectory);
     Directory.CreateDirectory(programDirectory);
+
+    var trainDirectory =
+        Path.Combine(
+            root,
+            "trains");
+    Directory.CreateDirectory(
+        trainDirectory);
+
+    var trainFrontVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "rail_front.ovh");
+    var trainRearVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "rail_rear.ovh");
+
+    File.WriteAllText(
+        trainFrontVehiclePath,
+        string.Empty);
+    File.WriteAllText(
+        trainRearVehiclePath,
+        string.Empty);
+
+    var trainConsistPath =
+        Path.Combine(
+            trainDirectory,
+            "synthetic.zug");
+
+    File.WriteAllText(
+        trainConsistPath,
+        Lines(
+            @"Vehicles\Synthetic\rail_front.ovh",
+            "0",
+            @"Vehicles\Synthetic\rail_rear.ovh",
+            "1"),
+        Encoding.Unicode);
+
+    var trainConsist =
+        OmsiTrainConsistReader.ReadFile(
+            root,
+            trainConsistPath);
+
+    Require(
+        trainConsist.Vehicles.Count ==
+            2 &&
+        !trainConsist.Vehicles[0].Reverse &&
+        trainConsist.Vehicles[0].Exists &&
+        trainConsist.Vehicles[1].Reverse &&
+        trainConsist.Vehicles[1].Exists,
+        "OMSI .zug consist parsing did not preserve .ovh order/orientation or resolve vehicle files.");
+
+    var signalRoutesPath =
+        Path.Combine(
+            mapDirectory,
+            "signalroutes.cfg");
+
+    File.WriteAllText(
+        signalRoutesPath,
+        Lines(
+            "-----------------------",
+            "Signal Routes File",
+            "-----------------------",
+            "0:",
+            "[signalroute]",
+            "",
+            "[signal]",
+            "195662",
+            "0",
+            "[entry]",
+            "3001",
+            "0",
+            "237",
+            "6",
+            "[entry]",
+            "3002",
+            "0",
+            "237",
+            "15",
+            "1:",
+            "[signalroute]",
+            "",
+            "[future_extension]",
+            "preserve-this-value"),
+        Encoding.Unicode);
+
+    var signalRoutes =
+        OmsiSignalRoutesReader.ReadFile(
+            signalRoutesPath);
+
+    Require(
+        signalRoutes.Sections.Count ==
+            6 &&
+        signalRoutes.Sections[0].RouteIndex ==
+            0 &&
+        signalRoutes.Sections[0].Name.Equals(
+            "signalroute",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[1].RouteIndex ==
+            0 &&
+        signalRoutes.Sections[1].Name.Equals(
+            "signal",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[1].Lines
+            .Where(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line))
+            .SequenceEqual(
+                ["195662", "0"]) &&
+        signalRoutes.Sections[2].RouteIndex ==
+            0 &&
+        signalRoutes.Sections[2].Name.Equals(
+            "entry",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[2].Lines
+            .Where(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line))
+            .SequenceEqual(
+                ["3001", "0", "237", "6"]) &&
+        signalRoutes.Sections[3].RouteIndex ==
+            0 &&
+        signalRoutes.Sections[3].Name.Equals(
+            "entry",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[3].Lines
+            .Where(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line))
+            .SequenceEqual(
+                ["3002", "0", "237", "15"]) &&
+        signalRoutes.Sections[4].RouteIndex ==
+            1 &&
+        signalRoutes.Sections[5].RouteIndex ==
+            1 &&
+        signalRoutes.Sections[5].Name.Equals(
+            "future_extension",
+            StringComparison.OrdinalIgnoreCase) &&
+        signalRoutes.Sections[5].Lines
+            .Where(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line))
+            .Single() ==
+            "preserve-this-value",
+        "OMSI signalroutes.cfg parser did not preserve route indices, known sections and unknown future data.");
+
+    var railNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    3001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0)
+                    ],
+                    [1],
+                    []),
+                new WorldTrafficPathSegment(
+                    1,
+                    3002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            100.0)
+                    ],
+                    [],
+                    [0]),
+                new WorldTrafficPathSegment(
+                    2,
+                    4001,
+                    0,
+                    0,
+                    0,
+                    3.0,
+                    [
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            100.0)
+                    ],
+                    [],
+                    [])
+            ],
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var resolvedSignalRoutes =
+        WorldRailSignalRouteResolver.Resolve(
+            railNetwork,
+            signalRoutes);
+
+    Require(
+        resolvedSignalRoutes.Count ==
+            2 &&
+        resolvedSignalRoutes[0].RouteIndex ==
+            0 &&
+        resolvedSignalRoutes[0].ParsedEntryCount ==
+            2 &&
+        resolvedSignalRoutes[0].UnresolvedEntryCount ==
+            0 &&
+        resolvedSignalRoutes[0].SegmentIndices
+            .SequenceEqual(
+                [0, 1]) &&
+        resolvedSignalRoutes[0].Signal is
+            {
+                ObjectId: 195662,
+                SignalState: 0
+            } &&
+        resolvedSignalRoutes[1].RouteIndex ==
+            1 &&
+        resolvedSignalRoutes[1].ParsedEntryCount ==
+            0,
+        "OMSI signal route entries did not resolve against rail source IDs and local path indices.");
+
+    var interlockingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    10,
+                    6100,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0)
+                    ],
+                    [],
+                    []),
+                new WorldTrafficPathSegment(
+                    11,
+                    6101,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            -10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [],
+                    []),
+                new WorldTrafficPathSegment(
+                    12,
+                    6102,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [],
+                    [])
+            ],
+            0,
+            0,
+            3,
+            0,
+            0,
+            0,
+            6,
+            0);
+
+    var interlocking =
+        new WorldRailSignalRouteInterlocking(
+            interlockingNetwork,
+            [
+                new WorldRailSignalRoute(
+                    0,
+                    [10],
+                    1,
+                    0),
+                new WorldRailSignalRoute(
+                    1,
+                    [11],
+                    1,
+                    0),
+                new WorldRailSignalRoute(
+                    2,
+                    [12],
+                    1,
+                    0)
+            ]);
+
+    Require(
+        interlocking.TryReserve(
+            0,
+            100) &&
+        !interlocking.TryReserve(
+            1,
+            200) &&
+        interlocking.TryReserve(
+            2,
+            300),
+        "OMSI rail interlocking did not block the geometrically conflicting signal route while allowing a clear parallel route.");
+
+    interlocking.Release(
+        0,
+        100);
+
+    Require(
+        interlocking.TryReserve(
+            1,
+            200),
+        "OMSI rail interlocking did not release a conflicting signal route after its owner cleared it.");
+
+    interlocking.ReleaseAll(
+        200);
+
+    Require(
+        !interlocking.TryReserve(
+            0,
+            100,
+            new Dictionary<int, int>
+            {
+                [10] =
+                    999
+            }),
+        "OMSI rail interlocking reserved an occupied signal route.");
+
+    var railCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "Rail",
+                    @"trains\synthetic.zug",
+                    trainConsistPath,
+                    1.0)
+            ],
+            [],
+            [],
+            [],
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "Rail",
+                    1)
+            ]);
+
+    var railSimulation =
+        new WorldRailTrafficSimulation(
+            railNetwork,
+            railCatalog,
+            maximumAgents:
+                1);
+
+    Require(
+        railSimulation.Snapshot() is
+            [{ SegmentIndex: 0 }],
+        "OMSI rail simulation did not spawn the .zug consist on a type-2 rail path.");
+
+    var roadSimulationWithRailOnly =
+        new WorldTrafficSimulation(
+            railNetwork,
+            railCatalog,
+            maximumAgents:
+                1);
+
+    Require(
+        roadSimulationWithRailOnly.Snapshot().Count ==
+            0,
+        "OMSI road traffic simulation must not consume .zug train consists.");
+
+    railSimulation.Step(
+        6.0);
+
+    var railState =
+        railSimulation.Snapshot()
+            .Single();
+
+    Require(
+        railState.SegmentIndex ==
+            1 &&
+        railState.Position.Z >
+            50.0 &&
+        railState.TraveledDistanceMeters >
+            50.0,
+        "OMSI rail simulation did not follow the connected type-2 rail path.");
+
+    Require(
+        railSimulation.TrySampleBehind(
+            railState.AgentIndex,
+            20.0,
+            out var trailingRailSegmentIndex,
+            out _,
+            out var trailingRailPosition,
+            out _) &&
+        trailingRailSegmentIndex ==
+            0 &&
+        trailingRailPosition.Z <
+            50.0,
+        "OMSI rail consist trailing sample did not traverse back across the connected rail segment boundary.");
+
+    var railGroupRoutingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    5001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [1, 2],
+                    []),
+                new WorldTrafficPathSegment(
+                    1,
+                    5002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            -20.0,
+                            0.0,
+                            40.0)
+                    ],
+                    [],
+                    [0],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 0.0
+                        }),
+                new WorldTrafficPathSegment(
+                    2,
+                    5003,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            20.0,
+                            0.0,
+                            40.0)
+                    ],
+                    [],
+                    [0],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 1.0
+                        })
+            ],
+            0,
+            0,
+            3,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railGroupRoutingSimulation =
+        new WorldRailTrafficSimulation(
+            railGroupRoutingNetwork,
+            railCatalog,
+            maximumAgents:
+                1);
+
+    railGroupRoutingSimulation.Step(
+        4.0);
+
+    Require(
+        railGroupRoutingSimulation.Snapshot() is
+            [{ SegmentIndex: 2 }],
+        "OMSI rail traffic ignored the unscheduled-group density routing weights.");
+
+    var railSignalRouteNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    20,
+                    7000,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [21],
+                    []),
+                new WorldTrafficPathSegment(
+                    21,
+                    7001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [22, 23],
+                    [20]),
+                new WorldTrafficPathSegment(
+                    22,
+                    7002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            30.0)
+                    ],
+                    [],
+                    [21],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 0.1
+                        }),
+                new WorldTrafficPathSegment(
+                    23,
+                    7003,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            30.0)
+                    ],
+                    [],
+                    [21],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 10.0
+                        })
+            ],
+            0,
+            0,
+            4,
+            0,
+            3,
+            0,
+            2,
+            0);
+
+    var railSignalRoutes =
+        new OmsiSignalRoutesFile(
+            "synthetic-signalroutes.cfg",
+            [
+                new OmsiSignalRouteSection(
+                    7,
+                    "signal",
+                    1,
+                    ["7777", "0"]),
+                new OmsiSignalRouteSection(
+                    7,
+                    "entry",
+                    4,
+                    ["7001", "0", "237", "6"]),
+                new OmsiSignalRouteSection(
+                    7,
+                    "entry",
+                    9,
+                    ["7002", "0", "237", "7"])
+            ]);
+
+    var railSignalRouteSimulation =
+        new WorldRailTrafficSimulation(
+            railSignalRouteNetwork,
+            railCatalog,
+            maximumAgents:
+                1,
+            signalRoutes:
+                railSignalRoutes);
+
+    railSignalRouteSimulation.Step(
+        5.0);
+
+    Require(
+        railSignalRouteSimulation.Snapshot() is
+            [{ SegmentIndex: 22 }],
+        "OMSI rail traffic did not stay on the reserved signal-route path sequence.");
+
+    Require(
+        railSignalRouteSimulation.SignalRouteSnapshot() is
+            [
+                {
+                    RouteIndex: 7,
+                    Reserved: true,
+                    ReservedAgentIndex: 0,
+                    Signal:
+                    {
+                        ObjectId: 7777,
+                        SignalState: 0
+                    }
+                }
+            ],
+        "OMSI rail signal route state did not expose the reserved route owner and signal object reference.");
+
+    var railTailClearanceNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    30,
+                    8000,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [31],
+                    []),
+                new WorldTrafficPathSegment(
+                    31,
+                    8001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [32],
+                    [30]),
+                new WorldTrafficPathSegment(
+                    32,
+                    8002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0)
+                    ],
+                    [],
+                    [31])
+            ],
+            0,
+            0,
+            3,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railTailClearanceRoutes =
+        new OmsiSignalRoutesFile(
+            "synthetic-tail-signalroutes.cfg",
+            [
+                new OmsiSignalRouteSection(
+                    9,
+                    "entry",
+                    1,
+                    ["8001", "0", "237", "6"])
+            ]);
+
+    var railTailClearanceSimulation =
+        new WorldRailTrafficSimulation(
+            railTailClearanceNetwork,
+            railCatalog,
+            maximumAgents:
+                1,
+            signalRoutes:
+                railTailClearanceRoutes);
+
+    railTailClearanceSimulation
+        .SetConsistTrailingDistance(
+            trainConsistPath,
+            8.0);
+
+    railTailClearanceSimulation.Step(
+        2.0);
+
+    Require(
+        railTailClearanceSimulation.Snapshot() is
+            [{ SegmentIndex: 32 }] &&
+        railTailClearanceSimulation.IsSignalRouteReservedBy(
+            9,
+            0),
+        "OMSI rail interlocking released the signal route before the consist tail cleared it.");
+
+    railTailClearanceSimulation.Step(
+        1.0);
+
+    Require(
+        !railTailClearanceSimulation.IsSignalRouteReservedBy(
+            9,
+            0),
+        "OMSI rail interlocking did not release the signal route after the consist tail cleared it.");
+
+    var railMergeHistoryNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    40,
+                    9000,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [42],
+                    [],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 0.0
+                        }),
+                new WorldTrafficPathSegment(
+                    41,
+                    9001,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [42],
+                    [],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 1.0
+                        }),
+                new WorldTrafficPathSegment(
+                    42,
+                    9002,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0)
+                    ],
+                    [],
+                    [40, 41],
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] = 1.0
+                        })
+            ],
+            0,
+            0,
+            3,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railMergeHistorySimulation =
+        new WorldRailTrafficSimulation(
+            railMergeHistoryNetwork,
+            railCatalog,
+            maximumAgents:
+                1);
+
+    railMergeHistorySimulation.Step(
+        2.5);
+
+    var railMergeHistoryState =
+        railMergeHistorySimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        railMergeHistoryState.SegmentIndex ==
+            42 &&
+        railMergeHistorySimulation.TrySampleBehind(
+            railMergeHistoryState.AgentIndex,
+            10.0,
+            out var railMergeTrailingSegmentIndex,
+            out _,
+            out _,
+            out _) &&
+        railMergeTrailingSegmentIndex ==
+            41,
+        "OMSI rail consist tail did not follow the actual traversed branch through a merge.");
+
+    var railTwoTrainCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "Rail",
+                    @"trains\synthetic.zug",
+                    trainConsistPath,
+                    1.0),
+                new OmsiAiVehicleDefinition(
+                    "Rail",
+                    @"trains\synthetic.zug",
+                    trainConsistPath,
+                    1.0)
+            ],
+            [],
+            [],
+            [],
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "Rail",
+                    1)
+            ]);
+
+    var railTailOccupancyNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    50,
+                    9100,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [51],
+                    []),
+                new WorldTrafficPathSegment(
+                    51,
+                    9101,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [52],
+                    [50]),
+                new WorldTrafficPathSegment(
+                    52,
+                    9102,
+                    0,
+                    2,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            50.0)
+                    ],
+                    [],
+                    [51])
+            ],
+            0,
+            0,
+            3,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var railTailOccupancySimulation =
+        new WorldRailTrafficSimulation(
+            railTailOccupancyNetwork,
+            railTwoTrainCatalog,
+            maximumAgents:
+                2);
+
+    railTailOccupancySimulation
+        .SetConsistTrailingDistance(
+            trainConsistPath,
+            8.0);
+
+    railTailOccupancySimulation.Step(
+        1.2);
+
+    var railTailOccupancyStates =
+        railTailOccupancySimulation
+            .Snapshot();
+
+    Require(
+        railTailOccupancyStates
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    0)
+            .SegmentIndex ==
+            50 &&
+        railTailOccupancyStates
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    1)
+            .SegmentIndex ==
+            52,
+        "OMSI rail traffic entered a path that was still occupied by another consist tail.");
+
+    railTailOccupancySimulation.Step(
+        0.6);
+
+    Require(
+        railTailOccupancySimulation
+            .Snapshot()
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    0)
+            .SegmentIndex ==
+            51,
+        "OMSI rail traffic did not enter the path after the preceding consist tail cleared it.");
+
+    var railBlockedBrakingSimulation =
+        new WorldRailTrafficSimulation(
+            railTailOccupancyNetwork,
+            railTwoTrainCatalog,
+            maximumAgents:
+                2);
+
+    railBlockedBrakingSimulation
+        .SetConsistTrailingDistance(
+            trainConsistPath,
+            8.0);
+
+    var railBlockedInitialSpeed =
+        railBlockedBrakingSimulation
+            .Snapshot()
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    0)
+            .SpeedMetersPerSecond;
+
+    railBlockedBrakingSimulation.Step(
+        0.5);
+
+    var railBlockedBrakingState =
+        railBlockedBrakingSimulation
+            .Snapshot()
+            .Single(
+                static agent =>
+                    agent.AgentIndex ==
+                    0);
+
+    Require(
+        railBlockedBrakingState.SegmentIndex ==
+            50 &&
+        railBlockedBrakingState.SpeedMetersPerSecond >
+            0.0 &&
+        railBlockedBrakingState.SpeedMetersPerSecond <
+            railBlockedInitialSpeed,
+        "OMSI rail traffic did not brake progressively before an occupied path.");
 
     File.WriteAllText(
         Path.Combine(
@@ -197,7 +1619,7 @@ try
             @"Splines\Synthetic\road.sli",
             "2001",
             "-1",
-            "-1",
+            "2002",
             "5",
             "7",
             "6",
@@ -205,7 +1627,46 @@ try
             "100",
             "0",
             "1.5",
-            "2.5"),
+            "2.5",
+            "[rule]",
+            "0",
+            "priority",
+            "160",
+            "0",
+            "[spline]",
+            "0",
+            @"Splines\Synthetic\road.sli",
+            "2002",
+            "2001",
+            "-1",
+            "75.7106781186548",
+            "9",
+            "76.7106781186548",
+            "45",
+            "50",
+            "0",
+            "0",
+            "0",
+            "[rule]",
+            "0",
+            "speedlimit",
+            "10.000",
+            "0",
+            "[rule]",
+            "0",
+            "trafficdensity",
+            "0.500",
+            "0",
+            "[rule]",
+            "0",
+            "no_cars",
+            "0",
+            "1",
+            "[rule]",
+            "0",
+            "priority",
+            "192",
+            "0"),
         Encoding.Unicode);
 
     // This tile exists on disk but is intentionally not declared in global.cfg.
@@ -225,8 +1686,85 @@ try
         Lines(
             "[friendlyname]",
             "Synthetic Object",
-            "[onlyeditor]"),
+            "[script]",
+            "1",
+            @"script\signal.osc",
+            "[varnamelist]",
+            "1",
+            @"script\signal_varlist.txt",
+            "[onlyeditor]",
+            "[mesh]",
+            "signal_missing.o3d",
+            "[visible]",
+            "signal_lamp",
+            "1",
+            "[traffic_lights_group]",
+            "8",
+            "[traffic_light]",
+            "Main",
+            "[phase]",
+            "0",
+            "2",
+            "[phase]",
+            "6",
+            "6",
+            "[approachdist]",
+            "12",
+            "[path]",
+            "1.5",
+            "0",
+            "0.1",
+            "-90",
+            "0",
+            "3",
+            "0",
+            "0",
+            "0",
+            "2.5",
+            "0",
+            "1",
+            "[use_traffic_light]",
+            "0"),
         Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            sceneryDirectory,
+            "script",
+            "signal_varlist.txt"),
+        Lines(
+            "Signal",
+            "NextSignal",
+            "signal_lamp"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            sceneryDirectory,
+            "script",
+            "signal.osc"),
+        Lines(
+            "{frame}",
+            "(L.L.Signal)",
+            "(S.L.signal_lamp)"),
+        Encoding.Unicode);
+
+    var scenerySignalDefinition =
+        OmsiSceneryObjectReader.ReadFile(
+            Path.Combine(
+                sceneryDirectory,
+                "object.sco"));
+
+    Require(
+        scenerySignalDefinition.ScriptManifest is
+            { RegisteredFileCount: 2, MissingFileCount: 0 } &&
+        scenerySignalDefinition.ScriptManifest.ScriptFiles
+            .Single()
+            .Exists &&
+        scenerySignalDefinition.ScriptManifest.VariableLists
+            .Single()
+            .Exists,
+        "OMSI scenery script manifest did not resolve script/varnamelist files.");
 
     Directory.CreateDirectory(
         Path.Combine(
@@ -258,7 +1796,21 @@ try
 
     File.WriteAllText(
         Path.Combine(splineDirectory, "road.sli"),
-        Lines("[friendlyname]", "Synthetic Road"),
+        Lines(
+            "[friendlyname]",
+            "Synthetic Road",
+            "[path]",
+            "0",
+            "-1.5",
+            "0.1",
+            "2.5",
+            "0",
+            "[path]",
+            "1",
+            "3.0",
+            "0.25",
+            "1.5",
+            "2"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -332,7 +1884,7 @@ try
             "(L.L.engine_speed)",
             "(F.L.engine_curve)",
             "(S.L.engine_output)",
-            "(M.L.helper)",
+            "(M.L.HeLpEr)",
             "\"Linha 342P\"",
             "(S.$.IBIS_line)",
             "(L.$.IBIS_line)",
@@ -350,6 +1902,8 @@ try
             "(L.S.GetTime)",
             "\"announcement.wav\"",
             "(T.F.ev_IBIS_Ansagen)",
+            "\"\"",
+            "(T.F.ev_DefaultConfiguredSound)",
             "(L.L.horn_timer)",
             "3",
             "+",
@@ -358,6 +1912,12 @@ try
             "0",
             "(S.L.horn_timer)",
             "{endif}",
+            "{end}",
+            "{frame_ai}",
+            "(L.L.ai_counter)",
+            "1",
+            "+",
+            "(S.L.ai_counter)",
             "{end}",
             "{trigger:collision}",
             "(L.L.horn_timer)",
@@ -370,7 +1930,7 @@ try
             "{endif}",
             "{end}",
             "{macro:helper}",
-            "(C.L.engine_idle)",
+            "(C.L.ENGINE_IDLE)",
             "(S.L.idle_copy)",
             "{end}"),
         Encoding.Unicode);
@@ -390,7 +1950,8 @@ try
             "mesh_visible",
             "mesh_alpha",
             "lights_stand",
-            "cockpit_light_test"),
+            "cockpit_light_test",
+            "ai_counter"),
         Encoding.Unicode);
 
     File.WriteAllText(
@@ -446,6 +2007,10 @@ try
             "triangle.o3d",
             "[mesh_ident]",
             "steering_parent",
+            "[smoothskin]",
+            "[setbone]",
+            "SyntheticBone",
+            "0",
             "[viewpoint]",
             "3",
             "[visible]",
@@ -584,7 +2149,9 @@ try
     WriteSyntheticO3d(
         Path.Combine(
             vehicleModelDirectory,
-            "triangle.o3d"));
+            "triangle.o3d"),
+        includeBones:
+            true);
 
     var zeroKeyO3dPath =
         Path.Combine(
@@ -1105,26 +2672,32 @@ try
         Path.GetFileName(
             vehicleAsset.Meshes[0].Materials[0].MaterialChangeTexturePath!) ==
             "panel_n.bmp" &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeIsNightMap &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets is
             { Count: 1 } &&
         vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].VariableName ==
             "cockpit_light_test" &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items.Count == 1 &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].ItemIndex == 1 &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].AlphaMode == 1 &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].HasTransMapDirective &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].NoZWrite &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items.Count == 2 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].ItemIndex == 0 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].AlphaMode is null &&
+        !vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].HasTransMapDirective &&
+        !vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].MaterialChangeIsNightMap &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].ItemIndex == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].AlphaMode == 1 &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].HasTransMapDirective &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].NoZWrite &&
         Path.GetFileName(
-            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].TransMapTexturePath!) ==
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].TransMapTexturePath!) ==
             "panel_mask.bmp" &&
-        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].LightMapVariable ==
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].LightMapVariable ==
             "lights_stand" &&
         Path.GetFileName(
-            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].LightMapTexturePath!) ==
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].LightMapTexturePath!) ==
             "panel_item_lm.bmp" &&
         Path.GetFileName(
-            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[0].MaterialChangeTexturePath!) ==
+            vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].MaterialChangeTexturePath!) ==
             "panel_n.bmp" &&
+        vehicleAsset.Meshes[0].Materials[0].MaterialChangeSets![0].Items[1].MaterialChangeIsNightMap &&
         Math.Abs(
             vehicleAsset.Meshes[0].Materials[0].EnvMapStrength -
             0.5) < 0.0001 &&
@@ -1156,9 +2729,44 @@ try
         Math.Abs(
             vehicleAsset.Meshes[0].SourceTransform.M43 -
             3.75f) < 0.0001 &&
+        vehicleAsset.Meshes[0].ModelOrdinal == 0 &&
+        vehicleAsset.Meshes[0].SkinBoneMeshOrdinals is
+            { Count: 1 } &&
+        vehicleAsset.Meshes[0].SkinBoneMeshOrdinals![0] == 0 &&
+        vehicleAsset.Meshes[0].SkinWeights is
+            { Length: 12 } &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].SkinWeights![0] -
+            0.5f) < 0.0001 &&
+        Math.Abs(
+            vehicleAsset.Meshes[0].SkinWeights![4] -
+            0.75f) < 0.0001 &&
         vehicleAsset.ProtectedMeshCount == 0 &&
         vehicleAsset.FailedMeshCount == 0,
         "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
+
+    var trailerSoundDirectory =
+        Path.Combine(
+            vehicleDirectory,
+            "sound");
+
+    Directory.CreateDirectory(
+        trailerSoundDirectory);
+
+    File.WriteAllText(
+        Path.Combine(
+            trailerSoundDirectory,
+            "trailer.cfg"),
+        Lines(
+            "[loopsound]",
+            "idle.wav",
+            "44100",
+            "engine_n",
+            "600",
+            "0.7",
+            "[viewpoint]",
+            "5"),
+        Encoding.Unicode);
 
     File.WriteAllText(
         Path.Combine(
@@ -1167,10 +2775,37 @@ try
         Lines(
             "[model]",
             @"model\model.cfg",
+            "[sound]",
+            @"sound\trailer.cfg",
             "[friendlyname]",
             "Synthetic Coachworks",
             "Camera Bus Trailer",
             "Test Skin",
+            "[mass]",
+            "6",
+            "[momentofintertia]",
+            "150",
+            "40",
+            "150",
+            "[schwerpunkt]",
+            "1.2",
+            "[rollwiderstand]",
+            "500",
+            "[rot_pnt_long]",
+            "-0.39",
+            "[newachse]",
+            "achse_long",
+            "-1.19687",
+            "achse_raddurchmesser",
+            "1.02",
+            "achse_feder",
+            "280",
+            "achse_maxforce",
+            "116",
+            "achse_daempfer",
+            "20",
+            "achse_antrieb",
+            "1",
             "[coupling_front]",
             "0",
             "3.5",
@@ -1203,10 +2838,39 @@ try
             trailerCharacter.MaximumYawDegrees -
             52.5) <
         0.0001 &&
+        Math.Abs(
+            trailerCharacter.MinimumPitchDegrees +
+            20.0) <
+        0.0001 &&
+        Math.Abs(
+            trailerCharacter.MaximumPitchDegrees -
+            20.0) <
+        0.0001 &&
         trailerCharacter.Type ==
             1 &&
-        trailerBus.FrontCouplingOpenForSound,
-        "OMSI trailer coupling point, articulation limits and open-for-sound flag must be parsed.");
+        trailerBus.FrontCouplingOpenForSound &&
+        trailerBus.SoundConfigPath is
+            { Length: > 0 } &&
+        Path.GetFileName(
+            trailerBus.SoundConfigPath) ==
+            "trailer.cfg" &&
+        Math.Abs(
+            trailerBus.Physics.MassTonnes!.Value -
+            6.0) <
+        0.0001 &&
+        Math.Abs(
+            trailerBus.Physics.MomentOfInertiaZ!.Value -
+            150.0) <
+        0.0001 &&
+        Math.Abs(
+            trailerBus.Physics.RotationPointLongitudinalMeters!.Value +
+            0.39) <
+        0.0001 &&
+        Math.Abs(
+            trailerBus.Physics.AverageWheelDiameterMeters!.Value -
+            1.02) <
+        0.0001,
+        "OMSI trailer coupling, sound and per-section physical data must be parsed from the coupled .bus file.");
 
     var articulatedAsset =
         OmsiArticulatedVehicleAssetLoader.Load(
@@ -1229,6 +2893,54 @@ try
         Math.Abs(
             articulatedAsset.Sections[0].MaximumYawDegrees -
             52.5) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].MinimumPitchDegrees +
+            20.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].MaximumPitchDegrees -
+            20.0) <
+        0.0001 &&
+        articulatedAsset.Sections[0].CouplingType ==
+            1 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].OriginY +
+            8.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].FollowerLengthMeters -
+            3.89) <
+        0.0001 &&
+        articulatedAsset.Sections[0].OpenForSound &&
+        articulatedAsset.Sections[0].SoundConfigPath is
+            { Length: > 0 } &&
+        Path.GetFileName(
+            articulatedAsset.Sections[0].SoundConfigPath) ==
+            "trailer.cfg" &&
+        Math.Abs(
+            articulatedAsset.Sections[0].MassTonnes!.Value -
+            6.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].YawInertiaTonneSquareMeters!.Value -
+            150.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Sections[0].AverageWheelDiameterMeters!.Value -
+            1.02) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Bus.Physics.MassTonnes!.Value -
+            16.9) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Bus.Physics.RollingResistanceNewtons!.Value -
+            1500.0) <
+        0.0001 &&
+        Math.Abs(
+            articulatedAsset.Bus.Physics.MomentOfInertiaZ!.Value -
+            300.0) <
         0.0001 &&
         articulatedAsset.Meshes.Count ==
             vehicleAsset.Meshes.Count * 2 &&
@@ -1375,13 +3087,50 @@ try
     Require(
         scriptCatalog.Program.InitBlocks.Count == 1 &&
         scriptCatalog.Program.FrameBlocks.Count == 1 &&
+        scriptCatalog.Program.FrameAiBlocks.Count == 1 &&
         scriptCatalog.Program.Macros.ContainsKey(
-            "helper"),
+            "HELPER") &&
+        scriptCatalog.NumericVariables.Contains(
+            "ENGINE_SPEED") &&
+        scriptCatalog.Constants.ContainsKey(
+            "ENGINE_IDLE") &&
+        scriptCatalog.Curves.ContainsKey(
+            "ENGINE_CURVE"),
         "Synthetic OMSI script entry points were not parsed.");
 
     var scriptRuntime =
         new OmsiScriptRuntime(
             scriptCatalog);
+
+    Require(
+        scriptRuntime.WritesLocalVariable(
+            "engine_speed"),
+        "OMSI script write analysis did not detect an S.L. target.");
+
+    Require(
+        scriptRuntime.WritesLocalVariable(
+            "mesh_visible"),
+        "OMSI script write analysis missed an init-block S.L. target.");
+
+    Require(
+        scriptRuntime.WritesLocalVariable(
+            "ai_counter"),
+        "OMSI script write analysis missed a frame_ai S.L. target.");
+
+    Require(
+        !scriptRuntime.WritesLocalVariable(
+            "Throttle"),
+        "OMSI script write analysis incorrectly marked a read-only host variable as script-authored.");
+
+    Require(
+        scriptRuntime.WritesStringLocalVariable(
+            "IBIS_line"),
+        "OMSI script write analysis did not detect an S.$. target.");
+
+    Require(
+        !scriptRuntime.WritesStringLocalVariable(
+            "Matrix_SchildFrnt"),
+        "OMSI script write analysis incorrectly marked an unwritten string variable as script-authored.");
 
     var invokedSystemMacros =
         new List<string>();
@@ -1441,12 +3190,16 @@ try
             650.0) < 0.0001,
         "OMSI script macro/constant execution failed.");
     Require(
-        fileSoundTriggers.Count == 1 &&
+        fileSoundTriggers.Count == 2 &&
         fileSoundTriggers[0].Trigger ==
             "ev_IBIS_Ansagen" &&
         fileSoundTriggers[0].File ==
-            "announcement.wav",
-        "OMSI T.F file sound trigger execution failed.");
+            "announcement.wav" &&
+        fileSoundTriggers[1].Trigger ==
+            "ev_DefaultConfiguredSound" &&
+        fileSoundTriggers[1].File ==
+            string.Empty,
+        "OMSI T.F file/default sound trigger execution failed.");
     Require(
         scriptRuntime.GetStringLocal(
             "IBIS_line") ==
@@ -1478,6 +3231,16 @@ try
             125.0) < 0.0001,
         "OMSI string-to-float conversion failed.");
 
+    scriptRuntime.ExecuteFrameAi();
+
+    Require(
+        Math.Abs(
+            scriptRuntime.GetLocal(
+                "ai_counter") -
+            1.0) <
+            0.0001,
+        "OMSI {frame_ai} execution failed.");
+
     var requestedSoundTriggers =
         new List<string>();
 
@@ -1497,10 +3260,15 @@ try
             scriptRuntime.GetLocal(
                 "ENGINE_SPEED") -
             660.0) < 0.0001,
-        "OMSI variable names must be case-insensitive.");
+        "OMSI variables and system variables must resolve case-insensitively.");
+
+    Require(
+        scriptRuntime.HasTrigger(
+            "CoLlIsIoN"),
+        "OMSI trigger lookup must be case-insensitive.");
 
     scriptRuntime.ExecuteTrigger(
-        "collision");
+        "CoLlIsIoN");
 
     Require(
         requestedSoundTriggers.SequenceEqual(
@@ -1574,8 +3342,80 @@ try
         bus.Physics.MaximumSteeringAngleDegrees is > 35.0 and < 40.0,
         "Vehicle steering angle was not derived from OMSI turn radius.");
 
+    var catalogTrafficVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "traffic.bus");
+
+    var catalogTaxiVehiclePath =
+        Path.Combine(
+            vehicleDirectory,
+            "taxi.bus");
+
+    File.WriteAllText(
+        catalogTrafficVehiclePath,
+        string.Empty);
+
+    File.WriteAllText(
+        catalogTaxiVehiclePath,
+        string.Empty);
+
+    File.WriteAllText(
+        Path.Combine(
+            mapDirectory,
+            "unsched_vehgroups.txt"),
+        Lines(
+            "[group]",
+            "<aigroup-name>",
+            "<default density class>",
+            "[group]",
+            "NormalCars",
+            "1",
+            "[group]",
+            "Taxi",
+            "1"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            mapDirectory,
+            "ailists.cfg"),
+        Lines(
+            "[aigroup_2]",
+            "NormalCars",
+            @"Vehicles\Synthetic\traffic.bus 1",
+            "[end]",
+            "[aigroup_2]",
+            "Taxi",
+            @"Vehicles\Synthetic\taxi.bus 1",
+            "[end]"),
+        Encoding.Unicode);
+
     var map = maps[0];
     var world = WorldLoader.Load(contentRoot, map);
+
+    Require(
+        world.SignalRoutes is
+            { Sections.Count: 6 } &&
+        world.SignalRoutes.Sections[2].Name.Equals(
+            "entry",
+            StringComparison.OrdinalIgnoreCase) &&
+        world.SignalRoutes.Sections[2].RouteIndex ==
+            0,
+        "World load did not retain the parsed OMSI signalroutes.cfg data.");
+
+    Require(
+        world.AiCatalog.UnscheduledVehicleGroups is
+            { Count: 2 } &&
+        world.AiCatalog.UnscheduledVehicleGroups[0].Index ==
+            0 &&
+        world.AiCatalog.UnscheduledVehicleGroups[0].Name ==
+            "NormalCars" &&
+        world.AiCatalog.UnscheduledVehicleGroups[1].Index ==
+            1 &&
+        world.AiCatalog.UnscheduledVehicleGroups[1].Name ==
+            "Taxi",
+        "unsched_vehgroups.txt order was not preserved as OMSI group indices.");
 
     Require(
         world.Tiles.Count == 1,
@@ -1584,8 +3424,8 @@ try
         world.Objects.Count == 2,
         $"Expected 2 objects, found {world.Objects.Count}.");
     Require(
-        world.Splines.Count == 1,
-        $"Expected 1 spline, found {world.Splines.Count}.");
+        world.Splines.Count == 2,
+        $"Expected 2 splines, found {world.Splines.Count}.");
     Require(
         world.PlacementParseIssueCount == 0,
         "Synthetic placements should parse without issues.");
@@ -1623,12 +3463,1963 @@ try
         "Spline start gradient was not preserved.");
 
     Require(
+        worldSpline.NextId == 2002,
+        "Spline next-link ID was not preserved.");
+
+    var trafficPaths =
+        world.TrafficPaths;
+
+    Require(
+        trafficPaths.Segments.Count == 5 &&
+        trafficPaths.RoadVehicleSegmentCount == 3 &&
+        trafficPaths.PedestrianSegmentCount == 2 &&
+        trafficPaths.RailSegmentCount == 0 &&
+        trafficPaths.AircraftSegmentCount == 0,
+        "Synthetic spline/scenery [path] lanes were not expanded into the expected world traffic network.");
+
+    Require(
+        trafficPaths.ConnectedEndpointCount == 3 &&
+        trafficPaths.TerminalEndpointCount == 4 &&
+        trafficPaths.BoundaryEndpointCount == 0 &&
+        trafficPaths.UnmatchedEndpointCount == 0,
+        "Synthetic traffic path endpoint connectivity is incorrect.");
+
+    var firstRoadPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SplineId == 2001 &&
+                segment.Type == 0);
+
+    var secondRoadPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SplineId == 2002 &&
+                segment.Type == 0);
+
+    Require(
+        secondRoadPath.SpeedLimitKilometersPerHour.HasValue &&
+        Math.Abs(
+            secondRoadPath.SpeedLimitKilometersPerHour.Value -
+            10.0) <
+            0.0001,
+        "Synthetic OMSI [rule] speedlimit was not attached to the matching path.");
+
+    Require(
+        secondRoadPath.TrafficDensityWeights is not null &&
+        secondRoadPath.TrafficDensityWeights.TryGetValue(
+            0,
+            out var normalDensity) &&
+        Math.Abs(
+            normalDensity -
+            0.5) <
+            0.0001,
+        "Synthetic OMSI [rule] trafficdensity was not attached to the matching group/path.");
+
+    Require(
+        secondRoadPath.BlockedUnscheduledGroupIndices is not null &&
+        secondRoadPath.BlockedUnscheduledGroupIndices.Contains(
+            1),
+        "Synthetic OMSI [rule] no_cars was not attached to the matching group/path.");
+
+    Require(
+        secondRoadPath.TrafficPriority ==
+            192,
+        "Synthetic OMSI [rule] priority was not attached to the matching path.");
+
+    Require(
+        firstRoadPath.TrafficPriority ==
+            128,
+        "Unknown OMSI priority encoding did not fall back to normal priority.");
+
+    Require(
+        firstRoadPath.ForwardConnections.Count == 1 &&
+        firstRoadPath.ForwardConnections[0] ==
+            secondRoadPath.Index,
+        "Forward road path did not connect across linked OMSI splines.");
+
+    var firstPedestrianPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SplineId == 2001 &&
+                segment.Type == 1);
+
+    var secondPedestrianPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SplineId == 2002 &&
+                segment.Type == 1);
+
+    Require(
+        firstPedestrianPath.ForwardConnections.Contains(
+            secondPedestrianPath.Index) &&
+        secondPedestrianPath.ReverseConnections.Contains(
+            firstPedestrianPath.Index),
+        "Bidirectional pedestrian paths did not connect in both travel directions.");
+
+    var syntheticAiVehiclePath =
+        Path.Combine(
+            contentRoot.RootPath,
+            "Vehicles",
+            "Synthetic",
+            "traffic.bus");
+
+    Directory.CreateDirectory(
+        Path.GetDirectoryName(
+            syntheticAiVehiclePath)!);
+
+    var syntheticAiTrainPath =
+        Path.Combine(
+            contentRoot.RootPath,
+            "Vehicles",
+            "Synthetic",
+            "A_train.zug");
+
+    File.WriteAllText(
+        syntheticAiTrainPath,
+        string.Empty);
+
+    var trafficSimulation =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\A_train.zug",
+                        syntheticAiTrainPath,
+                        10.0),
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    var initialTraffic =
+        trafficSimulation.Snapshot();
+
+    Require(
+        initialTraffic.Count ==
+            1 &&
+        initialTraffic[0].SegmentIndex ==
+            firstRoadPath.Index &&
+        initialTraffic[0].SpeedMetersPerSecond >
+            0.0 &&
+        initialTraffic[0].VehiclePath ==
+            syntheticAiVehiclePath,
+        "Traffic simulation did not spawn a road-compatible vehicle on the first resolved road path.");
+
+    trafficSimulation.Step(
+        20.0);
+
+    var movedTraffic =
+        trafficSimulation.Snapshot();
+
+    Require(
+        movedTraffic.Count ==
+            1 &&
+        movedTraffic[0].SegmentIndex ==
+            secondRoadPath.Index &&
+        movedTraffic[0].Position.Z >
+            initialTraffic[0].Position.Z &&
+        movedTraffic[0].SpeedMetersPerSecond <=
+            10.0 /
+            3.6 +
+            0.0001 &&
+        movedTraffic[0].TraveledDistanceMeters >
+            0.0 &&
+        double.IsFinite(
+            movedTraffic[0].HeadingRadians),
+        "Traffic simulation did not advance through the connected road path graph while honoring speedlimit.");
+
+    var sceneryRoadPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.SceneryObjectId ==
+                    1001 &&
+                segment.Type ==
+                    0);
+
+    Require(
+        sceneryRoadPath.SplineId ==
+            -1 &&
+        sceneryRoadPath.Points.Count >=
+            2 &&
+        sceneryRoadPath.ForwardConnections.Count ==
+            0,
+        "Crossing/scenery [path] was not represented as a world traffic segment.");
+
+    var bridgeSplineAsset =
+        new WorldSplineAsset(
+            @"Splines\Synthetic\bridge.sli",
+            null,
+            true,
+            Array.Empty<WorldSplineSurface>(),
+            [
+                new WorldSplinePath(
+                    0,
+                    0.0,
+                    0.0,
+                    2.5,
+                    0)
+            ]);
+
+    var bridgeSplines =
+        new[]
+        {
+            new WorldSplinePlacement(
+                new WorldTileCoordinate(
+                    0,
+                    0),
+                3001,
+                -1,
+                -1,
+                @"Splines\Synthetic\bridge.sli",
+                new WorldVector3(
+                    0.0,
+                    0.0,
+                    0.0),
+                0.0,
+                10.0,
+                0.0,
+                0.0,
+                0.0,
+                false,
+                0),
+            new WorldSplinePlacement(
+                new WorldTileCoordinate(
+                    0,
+                    0),
+                3002,
+                -1,
+                -1,
+                @"Splines\Synthetic\bridge.sli",
+                new WorldVector3(
+                    0.0,
+                    0.0,
+                    15.0),
+                0.0,
+                10.0,
+                0.0,
+                0.0,
+                0.0,
+                false,
+                0)
+        };
+
+    var bridgeObject =
+        new WorldObjectPlacement(
+            new WorldTileCoordinate(
+                0,
+                0),
+            4001,
+            @"Sceneryobjects\Synthetic\bridge.sco",
+            new WorldVector3(
+                0.0,
+                0.0,
+                10.0),
+            0.0,
+            0.0,
+            0.0,
+            Array.Empty<string>(),
+            0);
+
+    var bridgeSceneryAsset =
+        new WorldSceneryAsset(
+            @"Sceneryobjects\Synthetic\bridge.sco",
+            null,
+            true,
+            true,
+            false,
+            null,
+            Array.Empty<WorldSceneryMeshAsset>(),
+            null,
+            [
+                new WorldSceneryPath(
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    5.0,
+                    0.0,
+                    0.0,
+                    0,
+                    2.5,
+                    0,
+                    Array.Empty<string>())
+            ]);
+
+    var bridgeNetwork =
+        WorldTrafficPathNetworkBuilder.Build(
+            bridgeSplines,
+            new Dictionary<string, WorldSplineAsset>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [@"Splines\Synthetic\bridge.sli"] =
+                    bridgeSplineAsset
+            },
+            [
+                bridgeObject
+            ],
+            new Dictionary<string, WorldSceneryAsset>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [@"Sceneryobjects\Synthetic\bridge.sco"] =
+                    bridgeSceneryAsset
+            },
+            Array.Empty<WorldTile>());
+
+    var bridgeFirst =
+        bridgeNetwork.Segments.Single(
+            static segment =>
+                segment.SplineId ==
+                    3001);
+
+    var bridgeCrossing =
+        bridgeNetwork.Segments.Single(
+            static segment =>
+                segment.SceneryObjectId ==
+                    4001);
+
+    var bridgeSecond =
+        bridgeNetwork.Segments.Single(
+            static segment =>
+                segment.SplineId ==
+                    3002);
+
+    Require(
+        bridgeFirst.ForwardConnections.Contains(
+            bridgeCrossing.Index) &&
+        bridgeCrossing.ForwardConnections.Contains(
+            bridgeSecond.Index),
+        "Crossing/scenery traffic path did not bridge adjacent spline endpoints.");
+
+    var bridgeSimulation =
+        new WorldTrafficSimulation(
+            bridgeNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    bridgeSimulation.Step(
+        3.0);
+
+    var bridgedTraffic =
+        bridgeSimulation.Snapshot();
+
+    Require(
+        bridgedTraffic.Count ==
+            1 &&
+        bridgedTraffic[0].SegmentIndex ==
+            bridgeSecond.Index,
+        "Traffic simulation did not traverse spline -> crossing/scenery -> spline.");
+
+    var reverseSplineAsset =
+        new WorldSplineAsset(
+            @"Splines\Synthetic\reverse.sli",
+            null,
+            true,
+            Array.Empty<WorldSplineSurface>(),
+            [
+                new WorldSplinePath(
+                    0,
+                    0.0,
+                    0.0,
+                    2.5,
+                    1)
+            ]);
+
+    var reverseNetwork =
+        WorldTrafficPathNetworkBuilder.Build(
+            [
+                new WorldSplinePlacement(
+                    new WorldTileCoordinate(
+                        0,
+                        0),
+                    5002,
+                    5001,
+                    -1,
+                    @"Splines\Synthetic\reverse.sli",
+                    new WorldVector3(
+                        0.0,
+                        0.0,
+                        10.0),
+                    0.0,
+                    10.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    false,
+                    0),
+                new WorldSplinePlacement(
+                    new WorldTileCoordinate(
+                        0,
+                        0),
+                    5001,
+                    -1,
+                    5002,
+                    @"Splines\Synthetic\reverse.sli",
+                    new WorldVector3(
+                        0.0,
+                        0.0,
+                        0.0),
+                    0.0,
+                    10.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    false,
+                    0)
+            ],
+            new Dictionary<string, WorldSplineAsset>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [@"Splines\Synthetic\reverse.sli"] =
+                    reverseSplineAsset
+            });
+
+    var reverseStartSegment =
+        reverseNetwork.Segments.Single(
+            static segment =>
+                segment.SplineId ==
+                    5002);
+
+    var reverseNextSegment =
+        reverseNetwork.Segments.Single(
+            static segment =>
+                segment.SplineId ==
+                    5001);
+
+    Require(
+        reverseStartSegment.ReverseConnections.Contains(
+            reverseNextSegment.Index),
+        "Reverse-only OMSI path did not resolve its previous-spline connection.");
+
+    var reverseSimulation =
+        new WorldTrafficSimulation(
+            reverseNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    var reverseInitial =
+        reverseSimulation.Snapshot();
+
+    reverseSimulation.Step(
+        2.0);
+
+    var reverseMoved =
+        reverseSimulation.Snapshot();
+
+    Require(
+        reverseInitial.Count ==
+            1 &&
+        reverseInitial[0].SegmentIndex ==
+            reverseStartSegment.Index &&
+        reverseMoved.Count ==
+            1 &&
+        reverseMoved[0].SegmentIndex ==
+            reverseNextSegment.Index &&
+        reverseMoved[0].Position.Z <
+            reverseInitial[0].Position.Z &&
+        Math.Abs(
+            Math.Abs(
+                reverseMoved[0].HeadingRadians) -
+            Math.PI) <
+            0.001,
+        "Reverse-only OMSI traffic path did not move End -> Start through ReverseConnections.");
+
+    var blockedSpawnNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8100,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    BlockedUnscheduledGroupIndices:
+                        new HashSet<int>
+                        {
+                            0
+                        }),
+                new WorldTrafficPathSegment(
+                    1,
+                    8101,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>())
+            ],
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0);
+
+    var normalGroupCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "NormalCars",
+                    @"Vehicles\Synthetic\traffic.bus",
+                    syntheticAiVehiclePath,
+                    1.0)
+            ],
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "NormalCars",
+                    1),
+                new OmsiUnscheduledVehicleGroup(
+                    1,
+                    "Taxi",
+                    1)
+            ]);
+
+    var blockedSpawnSimulation =
+        new WorldTrafficSimulation(
+            blockedSpawnNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    var blockedSpawnAgent =
+        blockedSpawnSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        blockedSpawnAgent.GroupIndex ==
+            0 &&
+        blockedSpawnAgent.SegmentIndex ==
+            1,
+        "no_cars did not prevent the matching unscheduled group from spawning on a blocked path.");
+
+    var groupRoutingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8200,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8201,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    BlockedUnscheduledGroupIndices:
+                        new HashSet<int>
+                        {
+                            0
+                        }),
+                new WorldTrafficPathSegment(
+                    2,
+                    8202,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    BlockedUnscheduledGroupIndices:
+                        new HashSet<int>
+                        {
+                            1
+                        })
+            ],
+            3,
+            0,
+            0,
+            0,
+            1,
+            0,
+            2,
+            0);
+
+    var normalRoutingSimulation =
+        new WorldTrafficSimulation(
+            groupRoutingNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    var normalApproachAgent =
+        normalRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        normalApproachAgent.AiBlinkerRight &&
+        !normalApproachAgent.AiBlinkerLeft,
+        "NormalCars AI did not signal right before the +X branch.");
+
+    normalRoutingSimulation.Step(
+        2.0);
+
+    var normalRoutedAgent =
+        normalRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        normalRoutedAgent.GroupIndex ==
+            0 &&
+        normalRoutedAgent.SegmentIndex ==
+            2 &&
+        normalRoutedAgent.Position.X >
+            0.0,
+        "no_cars did not exclude a blocked route for the NormalCars group.");
+
+    var taxiVehiclePath =
+        Path.Combine(
+            contentRoot.RootPath,
+            "Vehicles",
+            "Synthetic",
+            "taxi.bus");
+
+    var taxiGroupCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "Taxi",
+                    @"Vehicles\Synthetic\taxi.bus",
+                    taxiVehiclePath,
+                    1.0)
+            ],
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "NormalCars",
+                    1),
+                new OmsiUnscheduledVehicleGroup(
+                    1,
+                    "Taxi",
+                    1)
+            ]);
+
+    var taxiRoutingSimulation =
+        new WorldTrafficSimulation(
+            groupRoutingNetwork,
+            taxiGroupCatalog,
+            maximumAgents:
+                1);
+
+    var taxiApproachAgent =
+        taxiRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        taxiApproachAgent.AiBlinkerLeft &&
+        !taxiApproachAgent.AiBlinkerRight,
+        "Taxi AI did not signal left before the -X branch.");
+
+    taxiRoutingSimulation.Step(
+        2.0);
+
+    var taxiRoutedAgent =
+        taxiRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        taxiRoutedAgent.GroupIndex ==
+            1 &&
+        taxiRoutedAgent.SegmentIndex ==
+            1 &&
+        taxiRoutedAgent.Position.X <
+            0.0,
+        "no_cars did not exclude a blocked route for the Taxi group.");
+
+    var curvedSteeringNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8250,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            2.0),
+                        new WorldVector3(
+                            3.0,
+                            0.0,
+                            8.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>())
+            ],
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0);
+
+    var curvedSteeringSimulation =
+        new WorldTrafficSimulation(
+            curvedSteeringNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    var curvedSteeringAgent =
+        curvedSteeringSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        curvedSteeringAgent.PathCurvaturePerMeter >
+            0.01 &&
+        double.IsFinite(
+            curvedSteeringAgent.PathCurvaturePerMeter),
+        "AI path curvature was not derived from the upcoming right-hand bend.");
+
+    var defaultDisabledCatalog =
+        new OmsiMapAiCatalog(
+            [
+                new OmsiAiVehicleDefinition(
+                    "Service",
+                    @"Vehicles\Synthetic\traffic.bus",
+                    syntheticAiVehiclePath,
+                    1.0)
+            ],
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            Array.Empty<OmsiAiFileReference>(),
+            [
+                new OmsiUnscheduledVehicleGroup(
+                    0,
+                    "NormalCars",
+                    1),
+                new OmsiUnscheduledVehicleGroup(
+                    1,
+                    "Taxi",
+                    1),
+                new OmsiUnscheduledVehicleGroup(
+                    2,
+                    "Service",
+                    0)
+            ]);
+
+    var defaultDisabledSpawnNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8300,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8301,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            10.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [2] =
+                                1.0
+                        })
+            ],
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0);
+
+    var defaultDisabledSpawnSimulation =
+        new WorldTrafficSimulation(
+            defaultDisabledSpawnNetwork,
+            defaultDisabledCatalog,
+            maximumAgents:
+                1);
+
+    var defaultDisabledSpawnAgent =
+        defaultDisabledSpawnSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        defaultDisabledSpawnAgent.GroupIndex ==
+            2 &&
+        defaultDisabledSpawnAgent.SegmentIndex ==
+            1,
+        "Default-disabled OMSI unscheduled group spawned on a path without explicit trafficdensity.");
+
+    var defaultDisabledRoutingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8400,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    Array.Empty<int>(),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [2] =
+                                1.0
+                        }),
+                new WorldTrafficPathSegment(
+                    1,
+                    8401,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    2,
+                    8402,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [2] =
+                                0.5
+                        })
+            ],
+            3,
+            0,
+            0,
+            0,
+            1,
+            0,
+            2,
+            0);
+
+    var defaultDisabledRoutingSimulation =
+        new WorldTrafficSimulation(
+            defaultDisabledRoutingNetwork,
+            defaultDisabledCatalog,
+            maximumAgents:
+                1);
+
+    defaultDisabledRoutingSimulation.Step(
+        2.0);
+
+    var defaultDisabledRoutedAgent =
+        defaultDisabledRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        defaultDisabledRoutedAgent.GroupIndex ==
+            2 &&
+        defaultDisabledRoutedAgent.SegmentIndex ==
+            2 &&
+        defaultDisabledRoutedAgent.Position.X >
+            0.0,
+        "Default-disabled OMSI unscheduled group entered a path without explicit trafficdensity.");
+
+    var crossingReservationNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8500,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        2
+                    ],
+                    Array.Empty<int>(),
+                    TrafficPriority:
+                        64),
+                new WorldTrafficPathSegment(
+                    1,
+                    8501,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        3
+                    ],
+                    Array.Empty<int>(),
+                    TrafficPriority:
+                        192),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [
+                        4
+                    ],
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9001),
+                new WorldTrafficPathSegment(
+                    3,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        5
+                    ],
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9001),
+                new WorldTrafficPathSegment(
+                    4,
+                    8504,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    5,
+                    8505,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            15.0,
+                            0.0,
+                            5.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>())
+            ],
+            6,
+            0,
+            0,
+            0,
+            4,
+            0,
+            2,
+            0);
+
+    var crossingReservationSimulation =
+        new WorldTrafficSimulation(
+            crossingReservationNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                2);
+
+    crossingReservationSimulation.Step(
+        1.0);
+
+    var crossingReservationFirst =
+        crossingReservationSimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        crossingReservationFirst.Length ==
+            2 &&
+        crossingReservationFirst[0].SegmentIndex ==
+            0 &&
+        crossingReservationFirst[0].SpeedMetersPerSecond ==
+            0.0 &&
+        crossingReservationFirst[1].SegmentIndex ==
+            3,
+        "OMSI priority did not let the higher-priority AI agent reserve the crossing first.");
+
+    crossingReservationSimulation.Step(
+        2.0);
+
+    var crossingReservationReleased =
+        crossingReservationSimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        crossingReservationReleased[0].SegmentIndex is
+            2 or 4 &&
+        crossingReservationReleased[1].SegmentIndex ==
+            5,
+        "Crossing reservation did not release the lower-priority AI only after the higher-priority agent left.");
+
+    var parallelCrossingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8600,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            0.0)
+                    ],
+                    [
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8601,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        3
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            0.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9002),
+                new WorldTrafficPathSegment(
+                    3,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            5.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9002)
+            ],
+            4,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var parallelCrossingSimulation =
+        new WorldTrafficSimulation(
+            parallelCrossingNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                2);
+
+    parallelCrossingSimulation.Step(
+        1.0);
+
+    var parallelCrossingAgents =
+        parallelCrossingSimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        parallelCrossingAgents.Length ==
+            2 &&
+        parallelCrossingAgents[0].SegmentIndex ==
+            2 &&
+        parallelCrossingAgents[1].SegmentIndex ==
+            3 &&
+        parallelCrossingAgents.All(
+            static agent =>
+                agent.SpeedMetersPerSecond >
+                0.0),
+        "Non-conflicting paths inside the same OMSI crossing were unnecessarily interlocked.");
+
+    var rightBeforeLeftNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8700,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            -5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0)
+                    ],
+                    [
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8701,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0)
+                    ],
+                    [
+                        3
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9003),
+                new WorldTrafficPathSegment(
+                    3,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            -10.0,
+                            0.0,
+                            0.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        9003)
+            ],
+            4,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0);
+
+    var rightBeforeLeftSimulation =
+        new WorldTrafficSimulation(
+            rightBeforeLeftNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                2);
+
+    rightBeforeLeftSimulation.Step(
+        1.0);
+
+    var rightBeforeLeftAgents =
+        rightBeforeLeftSimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        rightBeforeLeftAgents.Length ==
+            2 &&
+        rightBeforeLeftAgents[0].SegmentIndex ==
+            0 &&
+        rightBeforeLeftAgents[1].SegmentIndex ==
+            3,
+        "Equal-priority OMSI crossing traffic did not yield to the vehicle approaching from the right.");
+
+    var signalProgram =
+        new WorldTrafficSignalProgram(
+            "Main",
+            8.0,
+            [
+                new WorldTrafficSignalPhase(
+                    0,
+                    2.0),
+                new WorldTrafficSignalPhase(
+                    6,
+                    6.0)
+            ],
+            12.0);
+
+    var signalNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8300,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        1
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            15.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        8301,
+                    TrafficSignal:
+                        signalProgram)
+            ],
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            0);
+
+    var signalSimulation =
+        new WorldTrafficSimulation(
+            signalNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    var initialSignalAgent =
+        signalSimulation
+            .Snapshot()
+            .Single();
+
+    signalSimulation.Step(
+        0.5);
+
+    var brakingSignalAgent =
+        signalSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        brakingSignalAgent.SegmentIndex ==
+            0 &&
+        brakingSignalAgent.Position.Z >
+            initialSignalAgent.Position.Z &&
+        brakingSignalAgent.Position.Z <
+            5.0 &&
+        brakingSignalAgent.SpeedMetersPerSecond >
+            0.0 &&
+        brakingSignalAgent.SpeedMetersPerSecond <
+            initialSignalAgent.SpeedMetersPerSecond &&
+        brakingSignalAgent.AiBrakeLight,
+        "Traffic agent did not brake progressively before a red OMSI traffic-light path.");
+
+    signalSimulation.Step(
+        1.0);
+
+    var redSignalAgent =
+        signalSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        redSignalAgent.SegmentIndex ==
+            0 &&
+        redSignalAgent.Position.Z <
+            5.0 &&
+        redSignalAgent.SpeedMetersPerSecond <
+            0.5 &&
+        redSignalAgent.AiBrakeLight &&
+        redSignalAgent.TraveledDistanceMeters >=
+            brakingSignalAgent.TraveledDistanceMeters,
+        "Traffic agent did not stop smoothly before the red OMSI traffic-light path.");
+
+    signalSimulation.Step(
+        1.5);
+
+    var greenSignalAgent =
+        signalSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        greenSignalAgent.SegmentIndex ==
+            1 &&
+        greenSignalAgent.Position.Z >
+            redSignalAgent.Position.Z &&
+        greenSignalAgent.TraveledDistanceMeters >
+            redSignalAgent.TraveledDistanceMeters &&
+        !greenSignalAgent.AiBrakeLight,
+        "Traffic agent did not enter the OMSI traffic-light path during the green phase.");
+
+    var densityRoutingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8000,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    8001,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            -5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] =
+                                0.0,
+                            [1] =
+                                4.0
+                        }),
+                new WorldTrafficPathSegment(
+                    2,
+                    8002,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            20.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TrafficDensityWeights:
+                        new Dictionary<int, double>
+                        {
+                            [0] =
+                                3.0,
+                            [1] =
+                                0.0
+                        })
+            ],
+            3,
+            0,
+            0,
+            0,
+            1,
+            0,
+            2,
+            0);
+
+    var densityRoutingSimulation =
+        new WorldTrafficSimulation(
+            densityRoutingNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                [
+                    new OmsiUnscheduledVehicleGroup(
+                        0,
+                        "NormalCars",
+                        1),
+                    new OmsiUnscheduledVehicleGroup(
+                        1,
+                        "Taxi",
+                        1)
+                ]),
+            maximumAgents:
+                1);
+
+    densityRoutingSimulation.Step(
+        2.0);
+
+    var densityRoutedAgent =
+        densityRoutingSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        densityRoutedAgent.GroupIndex ==
+            0 &&
+        densityRoutedAgent.GroupName ==
+            "NormalCars" &&
+        densityRoutedAgent.SegmentIndex ==
+            2 &&
+        densityRoutedAgent.Position.X >
+            0.0,
+        "OMSI trafficdensity=0 path was not excluded for the agent's unscheduled vehicle group.");
+
+    var followingNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    7002,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            40.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    7001,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            20.0)
+                    ],
+                    [
+                        0
+                    ],
+                    Array.Empty<int>())
+            ],
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            0);
+
+    var followingSimulation =
+        new WorldTrafficSimulation(
+            followingNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                2);
+
+    var followingInitial =
+        followingSimulation.Snapshot();
+
+    followingSimulation.Step(
+        8.0);
+
+    var followingMoved =
+        followingSimulation.Snapshot();
+
+    var frontAgent =
+        followingMoved.Single(
+            static agent =>
+                agent.AgentIndex ==
+                    0);
+
+    var rearAgent =
+        followingMoved.Single(
+            static agent =>
+                agent.AgentIndex ==
+                    1);
+
+    var centerSeparation =
+        frontAgent.Position.Z -
+        rearAgent.Position.Z;
+
+    Require(
+        followingInitial.Count ==
+            2 &&
+        followingMoved.Count ==
+            2 &&
+        rearAgent.Position.Z <
+            frontAgent.Position.Z &&
+        centerSeparation >=
+            5.9 &&
+        rearAgent.SpeedMetersPerSecond <
+            30.0 /
+            3.6,
+        "Traffic following control did not preserve separation or slow the faster rear agent.");
+
+    var firstRoadStart =
+        firstRoadPath.Points[0];
+
+    Require(
+        Math.Abs(
+            firstRoadStart.X -
+            3.9393398) <
+            0.01 &&
+        Math.Abs(
+            firstRoadStart.Y -
+            7.1) <
+            0.01 &&
+        Math.Abs(
+            firstRoadStart.Z -
+            7.0606602) <
+            0.01,
+        "Traffic path world transform does not match the spline frame/lateral offset.");
+
+    Require(
         world.SceneryAssets.TryGetValue(
             @"Sceneryobjects\Synthetic\object.sco",
             out var editorOnlyAsset) &&
         editorOnlyAsset.OnlyEditor &&
         !editorOnlyAsset.IsRenderable,
         "[onlyeditor] scenery must remain in the world but be hidden in game rendering.");
+
+    var verifiedEditorOnlyAsset =
+        editorOnlyAsset ??
+        throw new InvalidOperationException(
+            "Synthetic editor-only scenery asset was not loaded.");
+
+    Require(
+        verifiedEditorOnlyAsset.Paths.Count == 1,
+        "Crossing/scenery [path] metadata was not preserved.");
+
+    Require(
+        verifiedEditorOnlyAsset.ScriptManifest is
+            { RegisteredFileCount: 2, MissingFileCount: 0 } &&
+        verifiedEditorOnlyAsset.Meshes is
+            [{ VisibilityConditions.Count: 1 }] &&
+        verifiedEditorOnlyAsset.Meshes[0].VisibilityConditions![0].VariableName ==
+            "signal_lamp" &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.Meshes[0].VisibilityConditions![0].Value -
+            1.0) <
+            0.0001,
+        "World scenery asset did not retain OMSI signal script and [visible] directive.");
+
+    var crossingPath =
+        verifiedEditorOnlyAsset.Paths[0];
+
+    Require(
+        Math.Abs(crossingPath.X - 1.5) < 0.0001 &&
+        Math.Abs(crossingPath.Z - 0.1) < 0.0001 &&
+        Math.Abs(crossingPath.HeadingDegrees + 90.0) < 0.0001 &&
+        Math.Abs(crossingPath.LengthMeters - 3.0) < 0.0001 &&
+        crossingPath.Type == 0 &&
+        Math.Abs(crossingPath.WidthMeters - 2.5) < 0.0001 &&
+        crossingPath.Direction == 0 &&
+        crossingPath.ExtraValues.Count == 1 &&
+        crossingPath.ExtraValues[0] == "1" &&
+        crossingPath.TrafficLightIndex ==
+            0,
+        "Crossing/scenery [path] field mapping is incorrect.");
+
+    Require(
+        Math.Abs(
+            (verifiedEditorOnlyAsset.TrafficLightCycleSeconds ??
+             0.0) -
+            8.0) <
+            0.0001 &&
+        verifiedEditorOnlyAsset.TrafficLights is
+            { Count: 1 } &&
+        verifiedEditorOnlyAsset.TrafficLights[0].Name ==
+            "Main" &&
+        verifiedEditorOnlyAsset.TrafficLights[0].Phases.Count ==
+            2 &&
+        verifiedEditorOnlyAsset.TrafficLights[0].Phases[0].Phase ==
+            0 &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.TrafficLights[0].Phases[0].DurationSeconds -
+            2.0) <
+            0.0001 &&
+        verifiedEditorOnlyAsset.TrafficLights[0].Phases[1].Phase ==
+            6 &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.TrafficLights[0].ApproachDistanceMeters -
+            12.0) <
+            0.0001,
+        "Crossing traffic-light cycle/phases were not preserved.");
 
     Require(
         world.SceneryAssets.TryGetValue(
@@ -1697,7 +5488,8 @@ static string Lines(params string[] values)
 static void WriteSyntheticO3d(
     string path,
     bool extendedHeader = false,
-    uint protectionKey = uint.MaxValue)
+    uint protectionKey = uint.MaxValue,
+    bool includeBones = false)
 {
     using var stream =
         File.Create(path);
@@ -1817,6 +5609,36 @@ static void WriteSyntheticO3d(
         (byte)textureName.Length);
     writer.Write(
         textureName);
+
+    if (includeBones)
+    {
+        writer.Write(
+            (byte)0x54);
+        writer.Write(
+            (ushort)1);
+
+        var boneName =
+            Encoding.Latin1.GetBytes(
+                "SyntheticBone");
+
+        writer.Write(
+            (byte)boneName.Length);
+        writer.Write(
+            boneName);
+
+        writer.Write(
+            (ushort)2);
+
+        writer.Write(
+            (ushort)0);
+        writer.Write(
+            0.5f);
+
+        writer.Write(
+            (ushort)1);
+        writer.Write(
+            0.75f);
+    }
 
     writer.Write((byte)0x79);
 

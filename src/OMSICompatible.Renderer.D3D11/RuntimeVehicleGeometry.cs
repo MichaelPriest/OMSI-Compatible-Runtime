@@ -10,7 +10,8 @@ internal static class RuntimeVehicleGeometry
 
     public static RuntimeObjectGeometry Build(
         RuntimeVehicleInfo? vehicle,
-        int viewpointBit)
+        int viewpointBit,
+        bool forceMaterialAlphaOpaque = false)
     {
         if (vehicle is null)
         {
@@ -105,7 +106,9 @@ internal static class RuntimeVehicleGeometry
                     StringComparer.OrdinalIgnoreCase)
                 {
                     [VehicleAssetKey] = asset
-                });
+                },
+                forceMaterialAlphaOpaque:
+                    forceMaterialAlphaOpaque);
 
         if (geometry.Vertices.Length > 0)
         {

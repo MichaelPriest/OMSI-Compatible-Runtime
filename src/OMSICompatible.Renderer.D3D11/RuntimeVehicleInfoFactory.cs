@@ -105,10 +105,12 @@ public static class RuntimeVehicleInfoFactory
                                                                                             freeTexture.SourceTextureName,
                                                                                             freeTexture.VariableName))
                                                                                 .ToArray(),
-                                                                            item.TextTextureIndex))
+                                                                            item.TextTextureIndex,
+                                                                            item.MaterialChangeIsNightMap))
                                                                 .ToArray()))
                                                 .ToArray(),
-                                            material.HasTransMapDirective))
+                                            material.HasTransMapDirective,
+                                            material.MaterialChangeIsNightMap))
                                 .ToArray(),
                             mesh.ViewpointFlag,
                             mesh.LodThreshold,
@@ -173,7 +175,11 @@ public static class RuntimeVehicleInfoFactory
                                 .ToArray(),
                             mesh.MeshIdentifier,
                             mesh.AnimationParent,
-                            mesh.SectionIndex))
+                            mesh.SectionIndex,
+                            mesh.ModelOrdinal,
+                            mesh.SkinWeights,
+                            mesh.SkinBoneMeshOrdinals,
+                            mesh.MouseEventTrigger))
                 .ToArray(),
             vehicle.Bus.DriverCameras
                 .Select(
@@ -184,7 +190,7 @@ public static class RuntimeVehicleInfoFactory
                             camera.Y,
                             camera.EyeDistance,
                             camera.FieldOfViewDegrees,
-                            camera.HeadingDegrees,
+                            -camera.HeadingDegrees,
                             camera.PitchDegrees))
                 .ToArray(),
             vehicle.Bus.PassengerCameras
@@ -196,7 +202,7 @@ public static class RuntimeVehicleInfoFactory
                             camera.Y,
                             camera.EyeDistance,
                             camera.FieldOfViewDegrees,
-                            camera.HeadingDegrees,
+                            -camera.HeadingDegrees,
                             camera.PitchDegrees))
                 .ToArray(),
             vehicle.Bus.StandardDriverCameraIndex,
@@ -218,31 +224,14 @@ public static class RuntimeVehicleInfoFactory
                             camera.Y,
                             camera.EyeDistance,
                             camera.FieldOfViewDegrees,
-                            camera.HeadingDegrees,
+                            -camera.HeadingDegrees,
                             camera.PitchDegrees,
                             camera.MaximumRenderDistanceMeters,
                             camera.RuntimeTextureName,
                             camera.RuntimeTextureKey))
                 .ToArray(),
-            new RuntimeVehiclePhysicsInfo(
-                vehicle.Bus.Physics.WheelBaseMeters,
-                vehicle.Bus.Physics.MaximumSteeringAngleDegrees,
-                vehicle.Bus.Physics.MassTonnes,
-                vehicle.Bus.Physics.CenterOfGravityHeightMeters,
-                vehicle.Bus.Physics.RollingResistanceNewtons,
-                vehicle.Bus.Physics.TrackWidthMeters,
-                vehicle.Bus.Physics.AverageWheelDiameterMeters,
-                AverageAxleValue(
-                    vehicle.Bus.Physics.Axles,
-                    static axle =>
-                        axle.SpringRateKilonewtonsPerMeter),
-                AverageAxleValue(
-                    vehicle.Bus.Physics.Axles,
-                    static axle =>
-                        axle.DamperRateKilonewtonSecondsPerMeter),
-                vehicle.Bus.Physics.MomentOfInertiaZ,
-                vehicle.Bus.Physics.RotationPointLongitudinalMeters,
-                vehicle.Bus.Physics.InverseMinimumTurnRadius),
+            ConvertPhysics(
+                vehicle.Bus.Physics),
             vehicle.DriverPosition is null
                 ? null
                 : new RuntimeDriverPositionInfo(
@@ -277,11 +266,98 @@ public static class RuntimeVehicleInfoFactory
                             -section.JointX,
                             section.JointZ,
                             section.JointY,
+                            -section.OriginX,
+                            section.OriginZ,
+                            section.OriginY,
                             section.FollowerLengthMeters,
                             section.MaximumYawDegrees,
-                            section.Reverse))
+                            section.MinimumPitchDegrees,
+                            section.MaximumPitchDegrees,
+                            section.CouplingType,
+                            section.Reverse,
+                            section.SoundConfigPath,
+                            section.OpenForSound,
+                            section.MassTonnes,
+                            section.YawInertiaTonneSquareMeters,
+                            section.RotationPointLongitudinalMeters,
+                            section.WheelBaseMeters,
+                            section.RollingResistanceNewtons,
+                            section.AverageWheelDiameterMeters,
+                            section.Physics is null
+                                ? null
+                                : ConvertPhysics(
+                                    section.Physics)))
                 .ToArray());
     }
+
+    private static RuntimeVehiclePhysicsInfo ConvertPhysics(
+        OmsiVehiclePhysics physics) =>
+        new RuntimeVehiclePhysicsInfo(
+                physics.WheelBaseMeters,
+                physics.MaximumSteeringAngleDegrees,
+                physics.MassTonnes,
+                physics.CenterOfGravityHeightMeters,
+                physics.RollingResistanceNewtons,
+                physics.TrackWidthMeters,
+                physics.AverageWheelDiameterMeters,
+                AverageAxleValue(
+                    physics.Axles,
+                    static axle =>
+                        axle.SpringRateKilonewtonsPerMeter),
+                AverageAxleValue(
+                    physics.Axles,
+                    static axle =>
+                        axle.DamperRateKilonewtonSecondsPerMeter),
+                physics.MomentOfInertiaZ,
+                physics.RotationPointLongitudinalMeters,
+                physics.InverseMinimumTurnRadius,
+                physics.Axles.Count > 0
+                    ? physics.Axles.Max(
+                        static axle =>
+                            axle.LongitudinalPositionMeters)
+                    : null,
+                physics.Axles.Count > 0
+                    ? physics.Axles.Min(
+                        static axle =>
+                            axle.LongitudinalPositionMeters)
+                    : null,
+                AxleValueByPosition(
+                    physics.Axles,
+                    front: true,
+                    static axle =>
+                        axle.SpringRateKilonewtonsPerMeter),
+                AxleValueByPosition(
+                    physics.Axles,
+                    front: false,
+                    static axle =>
+                        axle.SpringRateKilonewtonsPerMeter),
+                AxleValueByPosition(
+                    physics.Axles,
+                    front: true,
+                    static axle =>
+                        axle.DamperRateKilonewtonSecondsPerMeter),
+                AxleValueByPosition(
+                    physics.Axles,
+                    front: false,
+                    static axle =>
+                        axle.DamperRateKilonewtonSecondsPerMeter),
+                physics.MomentOfInertiaX,
+                physics.MomentOfInertiaY,
+                physics.MomentOfInertiaZ,
+                physics.Axles
+                    .Select(
+                        static axle =>
+                            new RuntimeVehicleAxleInfo(
+                                axle.LongitudinalPositionMeters,
+                                axle.WheelDiameterMeters,
+                                axle.DriveFactor,
+                                axle.MaximumWidthMeters,
+                                axle.MinimumWidthMeters,
+                                axle.SpringRateKilonewtonsPerMeter,
+                                axle.MaximumForceKilonewtons,
+                                axle.DamperRateKilonewtonSecondsPerMeter))
+                    .ToArray(),
+                physics.AiDeltaHeightMeters);
 
     private static double? AverageAxleValue(
         IReadOnlyList<OmsiVehicleAxle> axles,
@@ -304,6 +380,42 @@ public static class RuntimeVehicleInfoFactory
         return values.Length == 0
             ? null
             : values.Average();
+    }
+
+    private static double? AxleValueByPosition(
+        IReadOnlyList<OmsiVehicleAxle> axles,
+        bool front,
+        Func<OmsiVehicleAxle, double?> selector)
+    {
+        var candidates =
+            axles
+                .Where(
+                    axle =>
+                        double.IsFinite(
+                            axle.LongitudinalPositionMeters))
+                .OrderBy(
+                    axle =>
+                        front
+                            ? -axle.LongitudinalPositionMeters
+                            : axle.LongitudinalPositionMeters)
+                .ToArray();
+
+        foreach (var axle in
+                 candidates)
+        {
+            var value =
+                selector(
+                    axle);
+
+            if (value.HasValue &&
+                double.IsFinite(
+                    value.Value))
+            {
+                return value.Value;
+            }
+        }
+
+        return null;
     }
 
     private static RuntimeVehicleMaterialColorInfo?

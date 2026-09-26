@@ -3,6 +3,7 @@ using OmsiCompat.Map;
 using OmsiCompat.Models;
 using OmsiCompat.Scenery;
 using OmsiCompat.Splines;
+using OmsiCompat.Vehicles;
 
 namespace OMSICompatible.World;
 
@@ -84,7 +85,9 @@ public static class WorldLoader
                     source.PitchDegrees,
                     source.BankDegrees,
                     source.ExtraValues,
-                    source.SourceLineNumber))
+                    source.SourceLineNumber,
+                    ConvertTrafficRules(
+                        source.TrafficRules)))
                 .ToArray();
 
             var tileSplines = placements.Splines
@@ -101,7 +104,9 @@ public static class WorldLoader
                     source.GradientStartPercent,
                     source.GradientEndPercent,
                     source.UsesHeightProfile,
-                    source.SourceLineNumber))
+                    source.SourceLineNumber,
+                    ConvertTrafficRules(
+                        source.TrafficRules)))
                 .ToArray();
 
             var resources = new WorldTileResources(
@@ -193,6 +198,20 @@ public static class WorldLoader
             allObjects,
             dependencies);
 
+        progress?.Report(
+            new WorldLoadProgress(
+                86,
+                "Conectando tráfego",
+                "Integrando paths de splines e crossings/scenery..."));
+
+        var trafficPaths =
+            WorldTrafficPathNetworkBuilder.Build(
+                allSplines,
+                splineAssets,
+                allObjects,
+                sceneryAssets,
+                tiles);
+
         var groundTextures =
             LoadGroundTextures(
                 contentRoot,
@@ -203,11 +222,15 @@ public static class WorldLoader
                 contentRoot,
                 map);
 
+        var signalRoutes =
+            OmsiSignalRoutesReader.ReadMap(
+                map);
+
         progress?.Report(
             new WorldLoadProgress(
                 90,
                 "Montando mundo",
-                $"Cenário: {sceneryAssets.Values.Count(static asset => asset.IsRenderable):N0} assets renderizáveis · terreno {groundTextures.Count:N0} camada(s) · finalizando modelo x64..."));
+                $"Cenário: {sceneryAssets.Values.Count(static asset => asset.IsRenderable):N0} assets renderizáveis · paths {trafficPaths.Segments.Count:N0} · terreno {groundTextures.Count:N0} camada(s) · finalizando modelo x64..."));
 
         return new WorldDefinition(
             map.FolderName,
@@ -223,11 +246,13 @@ public static class WorldLoader
             splineAssets,
             sceneryAssets,
             groundTextures,
+            trafficPaths,
             aiCatalog,
             dependencies,
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
-            bounds);
+            bounds,
+            signalRoutes);
     }
 
     private static IReadOnlyList<OmsiMapTileInfo>
@@ -530,7 +555,8 @@ public static class WorldLoader
                         false,
                         null,
                         Array.Empty<WorldSceneryMeshAsset>(),
-                        null);
+                        null,
+                        Array.Empty<WorldSceneryPath>());
 
                 continue;
             }
@@ -540,6 +566,16 @@ public static class WorldLoader
                 var definition =
                     OmsiSceneryObjectReader.ReadFile(
                         dependency.ResolvedPath);
+
+                var dynamicModel =
+                    OmsiVehicleModelReader.ReadFile(
+                        dependency.ResolvedPath);
+
+                var dynamicMeshesByOrdinal =
+                    dynamicModel.Meshes
+                        .ToDictionary(
+                            static mesh =>
+                                mesh.Ordinal);
 
                 var lodThresholds =
                     definition.Meshes
@@ -566,6 +602,10 @@ public static class WorldLoader
                 {
                     var mesh =
                         definition.Meshes[meshOrdinal];
+
+                    dynamicMeshesByOrdinal.TryGetValue(
+                        meshOrdinal,
+                        out var dynamicMesh);
                     if (mesh.LodThreshold.HasValue &&
                         lodThresholds.Length > 0 &&
                         Math.Abs(
@@ -588,7 +628,8 @@ public static class WorldLoader
                             CreateMissingMesh(
                                 mesh.Path,
                                 mesh.Transform,
-                                "missingO3d"));
+                                "missingO3d",
+                                dynamicMesh));
 
                         continue;
                     }
@@ -703,7 +744,14 @@ public static class WorldLoader
                                             materialOverride?.NoZCheck ??
                                                 false);
                                     })
-                                .ToArray()));
+                                .ToArray(),
+                            dynamicMesh?.VisibilityConditions,
+                            dynamicMesh?.Animations,
+                            dynamicMesh?.LightEffects,
+                            dynamicMesh?.MeshIdentifier,
+                            dynamicMesh?.AnimationParent,
+                            dynamicMesh?.Ordinal ??
+                                meshOrdinal));
                 }
 
                 result[declaredPath] =
@@ -726,7 +774,42 @@ public static class WorldLoader
                                 definition.Tree.MinimumHeight,
                                 definition.Tree.MaximumHeight,
                                 definition.Tree.MinimumAspect,
-                                definition.Tree.MaximumAspect));
+                                definition.Tree.MaximumAspect),
+                        definition.Paths
+                            .Select(
+                                static path =>
+                                    new WorldSceneryPath(
+                                        path.X,
+                                        path.Y,
+                                        path.Z,
+                                        path.HeadingDegrees,
+                                        path.RadiusMeters,
+                                        path.LengthMeters,
+                                        path.GradientStart,
+                                        path.GradientEnd,
+                                        path.Type,
+                                        path.WidthMeters,
+                                        path.Direction,
+                                        path.ExtraValues,
+                                        path.TrafficLightIndex))
+                            .ToArray(),
+                        definition.TrafficLightCycleSeconds,
+                        (definition.TrafficLights ??
+                         Array.Empty<OmsiSceneryTrafficLightProgram>())
+                            .Select(
+                                static trafficLight =>
+                                    new WorldTrafficLightProgram(
+                                        trafficLight.Name,
+                                        trafficLight.Phases
+                                            .Select(
+                                                static phase =>
+                                                    new WorldTrafficLightPhase(
+                                                        phase.Phase,
+                                                        phase.DurationSeconds))
+                                            .ToArray(),
+                                        trafficLight.ApproachDistanceMeters))
+                            .ToArray(),
+                        definition.ScriptManifest);
             }
             catch (Exception ex) when (
                 ex is IOException or
@@ -744,7 +827,8 @@ public static class WorldLoader
                         false,
                         null,
                         Array.Empty<WorldSceneryMeshAsset>(),
-                        null);
+                        null,
+                        Array.Empty<WorldSceneryPath>());
             }
         }
 
@@ -800,7 +884,8 @@ public static class WorldLoader
     private static WorldSceneryMeshAsset CreateMissingMesh(
         string declaredPath,
         OmsiSceneryMeshTransform transform,
-        string errorCode) =>
+        string errorCode,
+        OmsiVehicleMeshReference? dynamicMesh = null) =>
         new(
             declaredPath,
             null,
@@ -812,7 +897,14 @@ public static class WorldLoader
             Array.Empty<float>(),
             Array.Empty<uint>(),
             Array.Empty<ushort>(),
-            Array.Empty<WorldO3dMaterial>());
+            Array.Empty<WorldO3dMaterial>(),
+            dynamicMesh?.VisibilityConditions,
+            dynamicMesh?.Animations,
+            dynamicMesh?.LightEffects,
+            dynamicMesh?.MeshIdentifier,
+            dynamicMesh?.AnimationParent,
+            dynamicMesh?.Ordinal ??
+                -1);
 
     private static string? ResolveTreeTexturePath(
         string contentRoot,
@@ -994,6 +1086,26 @@ public static class WorldLoader
             return (null, "terrainAccessDenied");
         }
     }
+
+    private static IReadOnlyList<WorldTrafficRule>
+        ConvertTrafficRules(
+            IReadOnlyList<OmsiTrafficRule>? rules) =>
+        rules is null ||
+        rules.Count ==
+            0
+            ? Array.Empty<
+                WorldTrafficRule>()
+            : rules
+                .Select(
+                    static rule =>
+                        new WorldTrafficRule(
+                            rule.PathIndex,
+                            rule.Name,
+                            rule.Value,
+                            rule.GroupIndex,
+                            rule.ExtraValues,
+                            rule.SourceLineNumber))
+                .ToArray();
 
     private static WorldVector3 ToWorldVector(OmsiSourceVector3 source)
     {
