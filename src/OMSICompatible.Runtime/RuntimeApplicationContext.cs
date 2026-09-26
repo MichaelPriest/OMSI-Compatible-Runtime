@@ -419,6 +419,10 @@ internal sealed class RuntimeApplicationContext :
                         _options.AutomaticSteeringCenter,
                     maximumSoundCount:
                         _options.MaximumSoundCount,
+                    aiVehicleSoundsEnabled:
+                        _options.AiVehicleSounds,
+                    vehicleToVehicleCollisionsEnabled:
+                        _options.VehicleToVehicleCollisions,
                     materialLightMapEnabled:
                         _options.MaterialLightMap,
                     materialReflectionMapEnabled:
@@ -1466,14 +1470,45 @@ internal sealed class RuntimeApplicationContext :
             : null;
     }
 
-    private static WorldTrafficSimulation
+    private WorldTrafficSimulation
         CreateTrafficSimulation(
-            WorldDefinition world) =>
-        new(
+            WorldDefinition world)
+    {
+        // Keep the active streamed window bounded while still honoring the
+        // OMSI random-traffic count/factor controls. With the stock default
+        // 100 @ 50%, this remains 12 agents in the active window instead of
+        // exploding to 50 simultaneous vehicles around a single tile group.
+        var configuredMaximum =
+            Math.Clamp(
+                _options.MaximumUnscheduledTraffic,
+                0,
+                24);
+
+        var configuredFactor =
+            Math.Clamp(
+                _options.RoadTrafficFactorPercent,
+                0,
+                100) /
+            100.0;
+
+        var maximumAgents =
+            (int)Math.Round(
+                configuredMaximum *
+                configuredFactor);
+
+        return new WorldTrafficSimulation(
             world.TrafficPaths,
             world.AiCatalog,
             maximumAgents:
-                12);
+                maximumAgents,
+            spawnExclusionCenter:
+                new WorldVector3(
+                    _entryPoint.WorldX,
+                    _entryPoint.WorldY,
+                    _entryPoint.WorldZ),
+            spawnExclusionRadiusMeters:
+                45.0);
+    }
 
     private static WorldRailTrafficSimulation
         CreateRailTrafficSimulation(
@@ -1686,6 +1721,23 @@ internal sealed class RuntimeApplicationContext :
         if (_trafficSimulation is
             { } roadSimulation)
         {
+            var playerObstacle =
+                _runtimeWindow?
+                    .PlayerTrafficObstacle;
+
+            roadSimulation.SetExternalObstacle(
+                playerObstacle is null
+                    ? null
+                    : new WorldTrafficObstacleState(
+                        new WorldVector3(
+                            -playerObstacle.X,
+                            playerObstacle.Y,
+                            playerObstacle.Z),
+                        -playerObstacle.HeadingRadians,
+                        playerObstacle.SpeedMetersPerSecond,
+                        playerObstacle.HalfLengthMeters,
+                        playerObstacle.HalfWidthMeters));
+
             if (double.IsFinite(
                     deltaSeconds) &&
                 deltaSeconds >
@@ -2417,7 +2469,9 @@ internal sealed class RuntimeApplicationContext :
                                                 point.Z))
                                     .ToArray(),
                                 segment.ForwardConnections,
-                                segment.ReverseConnections))
+                                segment.ReverseConnections,
+                                segment.SpeedLimitKilometersPerHour,
+                                segment.TrafficPriority))
                     .ToArray(),
                 world.TrafficPaths.RoadVehicleSegmentCount,
                 world.TrafficPaths.PedestrianSegmentCount,
