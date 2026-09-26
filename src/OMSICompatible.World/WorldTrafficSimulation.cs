@@ -592,9 +592,11 @@ public sealed class WorldTrafficSimulation
                     index);
 
             var initialSpeed =
-                ResolveSegmentMaximumSpeed(
-                    segment,
-                    cruiseSpeed);
+                spawnExclusionCenter.HasValue
+                    ? 0.0
+                    : ResolveSegmentMaximumSpeed(
+                        segment,
+                        cruiseSpeed);
 
             var activationTimeSeconds =
                 spawnExclusionCenter.HasValue
