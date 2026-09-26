@@ -160,6 +160,30 @@ public sealed class WorldTrafficSimulation
                 maximumAgents,
                 roadSegments.Length);
 
+        if (spawnExclusionCenter.HasValue)
+        {
+            // Runtime traffic must scale with the amount of drivable road
+            // currently streamed, otherwise a small map/window receives the
+            // same population as a dense city and looks like random spawn
+            // spam. Preserve the historical deterministic constructor path
+            // used by synthetic tests when no player spawn context is given.
+            var activeRoadLengthMeters =
+                roadSegments.Sum(
+                    SegmentLength);
+
+            var networkCapacity =
+                Math.Max(
+                    1,
+                    (int)Math.Floor(
+                        activeRoadLengthMeters /
+                        140.0));
+
+            count =
+                Math.Min(
+                    count,
+                    networkCapacity);
+        }
+
         var activationIntervalSeconds =
             double.IsFinite(
                 spawnIntervalSeconds)
