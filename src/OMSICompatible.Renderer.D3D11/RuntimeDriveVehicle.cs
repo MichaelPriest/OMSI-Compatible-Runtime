@@ -760,6 +760,55 @@ internal sealed class RuntimeDriveVehicle :
     public float SpeedKph =>
         SpeedMetersPerSecond * 3.6f;
 
+    public void ApplyTrafficCollisionResponse()
+    {
+        AcceleratorLevel =
+            0.0f;
+
+        BrakeLevel =
+            Math.Max(
+                BrakeLevel,
+                0.75f);
+
+        SpeedMetersPerSecond =
+            0.0f;
+
+        _longitudinalAccelerationMetersPerSecondSquared =
+            Math.Min(
+                _longitudinalAccelerationMetersPerSecondSquared,
+                -4.0f);
+
+        var body =
+            _odeBody;
+
+        if (body is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var velocity =
+                body.LinearVelocity;
+
+            body.SetLinearVelocity(
+                new Vector3(
+                    0.0f,
+                    0.0f,
+                    Math.Min(
+                        velocity.Z,
+                        0.0f)));
+
+            body.SetAngularVelocity(
+                Vector3.Zero);
+        }
+        catch
+        {
+            // Collision response is a safety clamp on top of the ODE
+            // vehicle. Never let an unavailable body invalidate the frame.
+        }
+    }
+
     public float LongitudinalAccelerationMetersPerSecondSquared =>
         _longitudinalAccelerationMetersPerSecondSquared;
 
