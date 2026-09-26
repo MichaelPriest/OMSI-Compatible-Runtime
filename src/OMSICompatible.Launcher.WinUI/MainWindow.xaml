@@ -141,14 +141,26 @@
                             </StackPanel>
                         </Button>
 
-                        <Button Height="48" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <Button x:Name="ControlsNavButton"
+                                Height="48"
+                                HorizontalContentAlignment="Stretch"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CornerRadius="10"
+                                Click="ControlsNavButton_Click">
                             <StackPanel Orientation="Horizontal" Spacing="14">
                                 <FontIcon Glyph="&#xE7FC;" Foreground="#C8D4E2" FontSize="20"/>
                                 <TextBlock Text="Controles" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
-                        <Button Height="48" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <Button x:Name="SettingsNavButton"
+                                Height="48"
+                                HorizontalContentAlignment="Stretch"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CornerRadius="10"
+                                Click="SettingsNavButton_Click">
                             <StackPanel Orientation="Horizontal" Spacing="14">
                                 <FontIcon Glyph="&#xE713;" Foreground="#C8D4E2" FontSize="20"/>
                                 <TextBlock Text="Configurações" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
@@ -710,6 +722,335 @@
                         </GridView.ItemTemplate>
                     </GridView>
                 </Grid>
+            </Grid>
+
+            <!-- CONTROLS -->
+            <Grid x:Name="ControlsView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <Grid MaxWidth="1360"
+                      HorizontalAlignment="Center"
+                      Padding="28,24,28,28">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="Controles"
+                                       Foreground="White"
+                                       FontSize="34"
+                                       FontWeight="Bold"/>
+                            <TextBlock Text="Configuração real lida diretamente de Inputs\keyboard.cfg e Inputs\gamectrler.cfg."
+                                       Foreground="#92A4B8"
+                                       FontSize="13"/>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Content="Atualizar"
+                                Padding="16,9"
+                                Click="RefreshControlsButton_Click"
+                                VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid Grid.Row="1"
+                          Margin="0,20,0,0"
+                          ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Comandos de teclado" Foreground="#8FA2B7" FontSize="11"/>
+                                <TextBlock x:Name="ControlsKeyboardCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
+                                <TextBlock Text="entradas [entry]" Foreground="#6F8499" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Tabela de teclas" Foreground="#8FA2B7" FontSize="11"/>
+                                <TextBlock x:Name="ControlsKeyTableCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
+                                <TextBlock x:Name="ControlsKeyTableFileText" Text=".kyb" Foreground="#6F8499" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Controladores" Foreground="#8FA2B7" FontSize="11"/>
+                                <TextBlock x:Name="ControlsControllerCountText" Text="0" Foreground="White" FontSize="28" FontWeight="Bold"/>
+                                <TextBlock Text="blocos [ctrl]" Foreground="#6F8499" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="3" Background="#111E2D" BorderBrush="#233A50" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Game Controller" Foreground="#8FA2B7" FontSize="11"/>
+                                <TextBlock x:Name="ControlsGameControllerStateText" Text="—" Foreground="White" FontSize="18" FontWeight="Bold"/>
+                                <TextBlock Text="runtime-options.json" Foreground="#6F8499" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Grid Grid.Row="2"
+                          Margin="0,14,0,0"
+                          ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.25*"/>
+                            <ColumnDefinition Width="0.75*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Background="#111E2D"
+                                BorderBrush="#233A50"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Mapeamento de teclado"
+                                           Foreground="White"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"/>
+                                <ListView x:Name="ControlsKeyboardList"
+                                          Grid.Row="1"
+                                          Margin="0,12,0,0"
+                                          SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="4,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="180"/>
+                                                    <ColumnDefinition Width="130"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Trigger}" Foreground="#DCE7F2" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Key}" Foreground="#9FC8FF" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Flags}" Foreground="#788DA2" FontSize="11"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="1"
+                                Background="#111E2D"
+                                BorderBrush="#233A50"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Arquivos OMSI"
+                                           Foreground="White"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock x:Name="ControlsKeyboardPathText" Text="keyboard.cfg" Foreground="#AFC0D2" FontSize="11" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="ControlsControllerPathText" Text="gamectrler.cfg" Foreground="#AFC0D2" FontSize="11" TextWrapping="Wrap"/>
+                                <TextBlock Text="A edição visual completa com captura de tecla, eixos, botões e FFScale será migrada preservando a mesma semântica do launcher atual."
+                                           Foreground="#75899E"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <!-- SETTINGS -->
+            <Grid x:Name="SettingsView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid MaxWidth="1320"
+                          HorizontalAlignment="Center"
+                          Padding="28,24,28,32">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="Configurações"
+                                           Foreground="White"
+                                           FontSize="34"
+                                           FontWeight="Bold"/>
+                                <TextBlock Text="Opções reais do runtime x64, salvas em runtime-options.json."
+                                           Foreground="#92A4B8"
+                                           FontSize="13"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button Content="Importar options.cfg"
+                                        Padding="14,9"
+                                        Click="ImportOmsiOptionsButton_Click"/>
+                                <Button Content="Salvar"
+                                        Background="#0B65F4"
+                                        Foreground="White"
+                                        Padding="18,9"
+                                        Click="SaveRuntimeOptionsButton_Click"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Grid.Row="1"
+                                Margin="0,20,0,0"
+                                Background="#111E2D"
+                                BorderBrush="#233A50"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="18">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Geral"
+                                           Foreground="White"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
+                                <Grid ColumnSpacing="16" RowSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBox x:Name="SettingsLanguageBox" Grid.Column="0" Header="Idioma"/>
+                                    <NumberBox x:Name="SettingsTargetFpsBox" Grid.Column="1" Header="FPS alvo" Minimum="15" Maximum="240" SpinButtonPlacementMode="Compact"/>
+                                    <NumberBox x:Name="SettingsNeighborTilesBox" Grid.Column="2" Header="Tiles vizinhos" Minimum="0" Maximum="8" SpinButtonPlacementMode="Compact"/>
+
+                                    <CheckBox x:Name="SettingsAutoSaveCheck" Grid.Row="1" Grid.Column="0" Content="Auto Save"/>
+                                    <CheckBox x:Name="SettingsCurrentTimeCheck" Grid.Row="1" Grid.Column="1" Content="Usar hora atual"/>
+                                    <CheckBox x:Name="SettingsCurrentDateCheck" Grid.Row="1" Grid.Column="2" Content="Usar data atual"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="2"
+                                Margin="0,12,0,0"
+                                Background="#111E2D"
+                                BorderBrush="#233A50"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="18">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Gráficos"
+                                           Foreground="White"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
+                                <Grid ColumnSpacing="16" RowSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <NumberBox x:Name="SettingsObjectDistanceBox" Grid.Column="0" Header="Distância de objetos (m)" Minimum="100" Maximum="10000" SpinButtonPlacementMode="Compact"/>
+                                    <NumberBox x:Name="SettingsTextureMemoryBox" Grid.Column="1" Header="Memória de textura (MB)" Minimum="128" Maximum="32768" SpinButtonPlacementMode="Compact"/>
+                                    <NumberBox x:Name="SettingsAnisotropicBox" Grid.Column="2" Header="Filtro anisotrópico" Minimum="1" Maximum="16" SpinButtonPlacementMode="Compact"/>
+
+                                    <CheckBox x:Name="SettingsShadowsCheck" Grid.Row="1" Grid.Column="0" Content="Sombras"/>
+                                    <CheckBox x:Name="SettingsNightMapCheck" Grid.Row="1" Grid.Column="1" Content="Night maps"/>
+                                    <CheckBox x:Name="SettingsLightMapCheck" Grid.Row="1" Grid.Column="2" Content="Light maps"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="3"
+                                Margin="0,12,0,0"
+                                Background="#111E2D"
+                                BorderBrush="#233A50"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="18">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Som e IA"
+                                           Foreground="White"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
+                                <Grid ColumnSpacing="16" RowSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <NumberBox x:Name="SettingsMasterVolumeBox" Grid.Column="0" Header="Volume mestre (%)" Minimum="0" Maximum="100" SpinButtonPlacementMode="Compact"/>
+                                    <NumberBox x:Name="SettingsRoadTrafficBox" Grid.Column="1" Header="Tráfego rodoviário (%)" Minimum="0" Maximum="500" SpinButtonPlacementMode="Compact"/>
+                                    <NumberBox x:Name="SettingsPassengerFactorBox" Grid.Column="2" Header="Passageiros (%)" Minimum="0" Maximum="500" SpinButtonPlacementMode="Compact"/>
+
+                                    <CheckBox x:Name="SettingsAiSoundsCheck" Grid.Row="1" Grid.Column="0" Content="Som dos veículos IA"/>
+                                    <CheckBox x:Name="SettingsScenerySoundsCheck" Grid.Row="1" Grid.Column="1" Content="Sons de cenário"/>
+                                    <CheckBox x:Name="SettingsGameControllerCheck" Grid.Row="1" Grid.Column="2" Content="Game Controller habilitado"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="4"
+                                Margin="0,12,0,0"
+                                Background="#111E2D"
+                                BorderBrush="#233A50"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Padding="18">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="Runtime x64"
+                                           Foreground="White"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
+                                <Grid ColumnSpacing="16" RowSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <NumberBox x:Name="SettingsStreamingRadiusBox" Grid.Column="0" Header="Raio de streaming" Minimum="1" Maximum="8" SpinButtonPlacementMode="Compact"/>
+                                    <CheckBox x:Name="SettingsVsyncCheck" Grid.Column="1" Content="VSync" VerticalAlignment="Bottom" Margin="0,0,0,8"/>
+                                    <CheckBox x:Name="SettingsBorderlessCheck" Grid.Column="2" Content="Fullscreen borderless" VerticalAlignment="Bottom" Margin="0,0,0,8"/>
+
+                                    <CheckBox x:Name="SettingsHardwareGpuCheck" Grid.Row="1" Grid.Column="0" Content="Preferir GPU dedicada"/>
+                                    <CheckBox x:Name="SettingsShowFpsCheck" Grid.Row="1" Grid.Column="1" Content="Mostrar FPS"/>
+                                    <CheckBox x:Name="SettingsDiagnosticsCheck" Grid.Row="1" Grid.Column="2" Content="Diagnóstico do runtime"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
             </Grid>
 
             <!-- COMPATIBILITY -->
