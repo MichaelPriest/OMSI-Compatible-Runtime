@@ -30,6 +30,7 @@ internal sealed class RuntimeDriveVehicle :
     private const float DefaultYawInertiaKilogramSquareMeters = 300_000.0f;
 
     private RuntimeTerrainSampler _terrain;
+    private readonly bool _terrainCollisionsEnabled;
     private RuntimeSplineSurfaceSampler _splineSurfaces =
         RuntimeSplineSurfaceSampler.Empty;
     private readonly RuntimeVehicleSectionInfo[] _sections;
@@ -113,8 +114,12 @@ internal sealed class RuntimeDriveVehicle :
     public RuntimeDriveVehicle(
         IReadOnlyList<RuntimeTileInfo> tiles,
         RuntimeVehiclePhysicsInfo? physics,
-        IReadOnlyList<RuntimeVehicleSectionInfo>? sections = null)
+        IReadOnlyList<RuntimeVehicleSectionInfo>? sections = null,
+        bool terrainCollisionsEnabled = true)
     {
+        _terrainCollisionsEnabled =
+            terrainCollisionsEnabled;
+
         _terrain =
             new RuntimeTerrainSampler(tiles);
 
@@ -700,7 +705,8 @@ internal sealed class RuntimeDriveVehicle :
                 true;
         }
 
-        if (_terrain.TrySample(
+        if (_terrainCollisionsEnabled &&
+            _terrain.TrySample(
                 worldX,
                 worldZ,
                 out var terrainHeight) &&
