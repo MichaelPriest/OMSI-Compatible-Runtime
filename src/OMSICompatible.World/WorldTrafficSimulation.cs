@@ -164,17 +164,20 @@ public sealed class WorldTrafficSimulation
         }
 
         var count =
-            Math.Min(
-                maximumAgents,
-                roadSegments.Length);
+            spawnExclusionCenter.HasValue
+                ? maximumAgents
+                : Math.Min(
+                    maximumAgents,
+                    roadSegments.Length);
 
         if (spawnExclusionCenter.HasValue)
         {
-            // Runtime traffic must scale with the amount of drivable road
-            // currently streamed, otherwise a small map/window receives the
-            // same population as a dense city and looks like random spawn
-            // spam. Preserve the historical deterministic constructor path
-            // used by synthetic tests when no player spawn context is given.
+            // Runtime traffic scales with the amount of drivable road
+            // currently streamed. Do not cap by path count here: a long
+            // avenue may be represented by only one or two OMSI path
+            // segments but can legitimately carry many AI vehicles.
+            // Preserve the historical deterministic constructor path used by
+            // synthetic tests when no player spawn context is given.
             var activeRoadLengthMeters =
                 roadSegments.Sum(
                     SegmentLength);
