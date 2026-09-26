@@ -96,6 +96,9 @@ public sealed partial class MainWindow :
         SessionView.Visibility =
             Visibility.Collapsed;
 
+        SetNavigationSelection(
+            HomeNavButton);
+
         UpdateHomeSummary();
     }
 
@@ -108,6 +111,55 @@ public sealed partial class MainWindow :
 
         SessionView.Visibility =
             Visibility.Visible;
+
+        SetNavigationSelection(
+            PlayNavButton);
+    }
+
+    private void SetNavigationSelection(
+        Button selectedButton)
+    {
+        Button[] primaryButtons =
+        [
+            HomeNavButton,
+            PlayNavButton
+        ];
+
+        foreach (var button in primaryButtons)
+        {
+            var selected =
+                ReferenceEquals(
+                    button,
+                    selectedButton);
+
+            button.Background =
+                new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                    Windows.UI.Color.FromArgb(
+                        selected
+                            ? (byte)255
+                            : (byte)0,
+                        23,
+                        71,
+                        153));
+
+            button.BorderBrush =
+                new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                    Windows.UI.Color.FromArgb(
+                        selected
+                            ? (byte)255
+                            : (byte)0,
+                        36,
+                        87,
+                        175));
+
+            button.BorderThickness =
+                selected
+                    ? new Thickness(1)
+                    : new Thickness(0);
+
+            button.CornerRadius =
+                new CornerRadius(10);
+        }
     }
 
     private void ContinueButton_Click(
