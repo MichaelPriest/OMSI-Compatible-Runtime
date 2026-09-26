@@ -537,6 +537,21 @@ public sealed class WorldTrafficSimulation
                     continue;
                 }
 
+                if (agent.PendingRespawn)
+                {
+                    if (!TryPlaceRecycledAgent(
+                            agent))
+                    {
+                        agent.ActivationTimeSeconds =
+                            _simulationElapsedSeconds +
+                            _spawnIntervalSeconds;
+                        continue;
+                    }
+
+                    agent.PendingRespawn =
+                        false;
+                }
+
                 var leading =
                     FindLeadingObservation(
                         agent);
@@ -786,6 +801,33 @@ public sealed class WorldTrafficSimulation
             return false;
         }
 
+        agent.SpeedMetersPerSecond =
+            0.0;
+        agent.BrakeLight =
+            true;
+        agent.PendingRespawn =
+            true;
+        agent.ActivationTimeSeconds =
+            _simulationElapsedSeconds +
+            _spawnIntervalSeconds *
+            (1.0 +
+             (agent.AgentIndex %
+              3) *
+             0.35);
+
+        return true;
+    }
+
+    private bool TryPlaceRecycledAgent(
+        Agent agent)
+    {
+        if (!_runtimeRecyclingEnabled ||
+            _roadSegments.Length ==
+                0)
+        {
+            return false;
+        }
+
         var candidates =
             _roadSegments
                 .Where(
@@ -965,12 +1007,7 @@ public sealed class WorldTrafficSimulation
             agent.BrakeLight =
                 false;
             agent.ActivationTimeSeconds =
-                _simulationElapsedSeconds +
-                _spawnIntervalSeconds *
-                (1.0 +
-                 (agent.AgentIndex %
-                  3) *
-                 0.35);
+                _simulationElapsedSeconds;
 
             return true;
         }
@@ -2989,6 +3026,12 @@ public sealed class WorldTrafficSimulation
                 0.0);
 
         public bool BrakeLight
+        {
+            get;
+            set;
+        }
+
+        public bool PendingRespawn
         {
             get;
             set;
