@@ -284,10 +284,13 @@ public sealed class WorldRailTrafficSimulation
             .Select(
                 route =>
                 {
+                    var owner =
+                        default(int);
+
                     var reserved =
                         _interlocking?.Reservations.TryGetValue(
                             route.RouteIndex,
-                            out var owner) ==
+                            out owner) ==
                         true;
 
                     return new WorldRailSignalRouteState(
