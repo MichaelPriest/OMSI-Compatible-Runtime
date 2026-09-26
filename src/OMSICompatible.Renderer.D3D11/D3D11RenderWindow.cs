@@ -3715,6 +3715,16 @@ public sealed class D3D11RenderWindow : Form
                     0,
                     texture.View);
             }
+            else if (!string.IsNullOrWhiteSpace(
+                         batch.TexturePath))
+            {
+                // A textured OMSI surface with an unresolved texture is not
+                // an untextured white polygon. Path markings, decals and
+                // transparent helper surfaces otherwise become large white
+                // rectangles. Keep the missing asset visible in diagnostics,
+                // but do not fabricate a color fallback.
+                continue;
+            }
             else
             {
                 _deviceContext.PSSetShader(
@@ -9542,6 +9552,15 @@ public sealed class D3D11RenderWindow : Form
 
     private bool ResolveLeadEngineRunning()
     {
+        // The player vehicle always starts electrically and mechanically
+        // off. Script init blocks may seed engine_on/engine_n with non-zero
+        // values before the user starts the engine; those values must not
+        // make propulsion loops audible by themselves.
+        if (!_vehicle.EngineRunning)
+        {
+            return false;
+        }
+
         if (_scriptRuntime is not null)
         {
             // Presence in the OMSI varlist is enough for engine audio state.
@@ -9570,6 +9589,11 @@ public sealed class D3D11RenderWindow : Form
     private bool ResolveSectionEngineRunning(
         OmsiScriptRuntime? runtime)
     {
+        if (!_vehicle.EngineRunning)
+        {
+            return false;
+        }
+
         if (runtime is not null &&
             runtime.HasLocalVariable(
                 "engine_on") &&
