@@ -105,7 +105,7 @@ internal sealed class RuntimeOmsiAudioHost :
         public LoopVoice(
             MixingSampleProvider mixer,
             AudioFileReader reader,
-            SmbPitchShiftingSampleProvider pitch,
+            VariableRateSampleProvider rate,
             StereoPanSampleProvider spatial,
             VolumeSampleProvider volume,
             float configuredSampleRateFactor)
@@ -114,8 +114,8 @@ internal sealed class RuntimeOmsiAudioHost :
                 mixer;
             _reader =
                 reader;
-            Pitch =
-                pitch;
+            Rate =
+                rate;
             Spatial =
                 spatial;
             Volume =
@@ -124,7 +124,7 @@ internal sealed class RuntimeOmsiAudioHost :
                 configuredSampleRateFactor;
         }
 
-        public SmbPitchShiftingSampleProvider Pitch { get; }
+        public VariableRateSampleProvider Rate { get; }
 
         public float ConfiguredSampleRateFactor { get; }
 
@@ -206,6 +206,194 @@ internal sealed class RuntimeOmsiAudioHost :
             }
 
             return written;
+        }
+    }
+
+    private sealed class VariableRateSampleProvider :
+        ISampleProvider
+    {
+        private readonly ISampleProvider _source;
+        private readonly int _channels;
+        private readonly float[] _sourceBuffer;
+        private readonly float[] _currentFrame;
+        private readonly float[] _nextFrame;
+        private int _sourceOffset;
+        private int _sourceCount;
+        private double _phase;
+        private bool _primed;
+        private float _playbackRate =
+            1.0f;
+
+        public VariableRateSampleProvider(
+            ISampleProvider source)
+        {
+            _source =
+                source;
+            _channels =
+                Math.Max(
+                    source.WaveFormat.Channels,
+                    1);
+            _sourceBuffer =
+                new float[
+                    4096 *
+                    _channels];
+            _currentFrame =
+                new float[
+                    _channels];
+            _nextFrame =
+                new float[
+                    _channels];
+        }
+
+        public WaveFormat WaveFormat =>
+            _source.WaveFormat;
+
+        public float PlaybackRate
+        {
+            get =>
+                Volatile.Read(
+                    ref _playbackRate);
+            set =>
+                Volatile.Write(
+                    ref _playbackRate,
+                    Math.Clamp(
+                        value,
+                        0.125f,
+                        8.0f));
+        }
+
+        public int Read(
+            float[] buffer,
+            int offset,
+            int count)
+        {
+            var frameCount =
+                count /
+                _channels;
+
+            if (frameCount <=
+                    0 ||
+                !EnsurePrimed())
+            {
+                return 0;
+            }
+
+            var framesWritten =
+                0;
+
+            while (framesWritten <
+                   frameCount)
+            {
+                var fraction =
+                    (float)_phase;
+
+                var destination =
+                    offset +
+                    framesWritten *
+                    _channels;
+
+                for (var channel = 0;
+                     channel <
+                         _channels;
+                     channel++)
+                {
+                    buffer[
+                        destination +
+                        channel] =
+                        _currentFrame[
+                            channel] +
+                        (_nextFrame[
+                             channel] -
+                         _currentFrame[
+                             channel]) *
+                        fraction;
+                }
+
+                framesWritten++;
+
+                _phase +=
+                    PlaybackRate;
+
+                while (_phase >=
+                       1.0)
+                {
+                    Array.Copy(
+                        _nextFrame,
+                        _currentFrame,
+                        _channels);
+
+                    if (!ReadNextFrame(
+                            _nextFrame))
+                    {
+                        return framesWritten *
+                               _channels;
+                    }
+
+                    _phase -=
+                        1.0;
+                }
+            }
+
+            return framesWritten *
+                   _channels;
+        }
+
+        private bool EnsurePrimed()
+        {
+            if (_primed)
+            {
+                return true;
+            }
+
+            if (!ReadNextFrame(
+                    _currentFrame) ||
+                !ReadNextFrame(
+                    _nextFrame))
+            {
+                return false;
+            }
+
+            _phase =
+                0.0;
+            _primed =
+                true;
+
+            return true;
+        }
+
+        private bool ReadNextFrame(
+            float[] destination)
+        {
+            if (_sourceCount -
+                    _sourceOffset <
+                _channels)
+            {
+                _sourceCount =
+                    _source.Read(
+                        _sourceBuffer,
+                        0,
+                        _sourceBuffer.Length);
+                _sourceOffset =
+                    0;
+
+                if (_sourceCount <
+                    _channels)
+                {
+                    return false;
+                }
+            }
+
+            Array.Copy(
+                _sourceBuffer,
+                _sourceOffset,
+                destination,
+                0,
+                _channels);
+
+            _sourceOffset +=
+                _channels;
+
+            return true;
         }
     }
 
@@ -398,7 +586,7 @@ internal sealed class RuntimeOmsiAudioHost :
                 $"sounds={SoundCount}",
                 $"existingFiles={ExistingFileCount}",
                 $"loops={_sounds.Count(static sound => sound.Loop)}",
-                $"engineLoops={_sounds.Count(sound => sound.Loop && IsEngineSpeedVariable(sound.PitchVariable))}"
+                $"engineLoops={_sounds.Count(sound => sound.Loop && IsEngineRelatedLoop(sound))}"
             };
 
         foreach (var sound in
@@ -737,17 +925,15 @@ internal sealed class RuntimeOmsiAudioHost :
                 spatial.Gain *
                 viewpointGain;
 
-            // OMSI engine loops identify their playback-speed source in the
-            // [loopsound] declaration (normally engine_n). Do not allow a
-            // stale/init RPM variable to make the engine audibly idle while
-            // the host/script engine state is still off. This deliberately
-            // does not mute unrelated loops such as doors, electrics or
-            // ambient equipment.
+            // Do not let stale initialization values make propulsion audio
+            // audible before the vehicle scripts actually report a running
+            // engine. OMSI sound.cfg files are not consistent about putting
+            // engine_on directly in every loop; some identify an engine loop
+            // only through engine_n / engine_M volume curves. Starter loops
+            // remain exempt so the crank sound can play before engine_on.
             if (!engineRunning &&
                 sound.Loop &&
-                IsEngineSpeedVariable(
-                    sound.PitchVariable) &&
-                !HasExplicitEngineStateCondition(
+                IsEngineRelatedLoop(
                     sound) &&
                 !HasStarterCondition(
                     sound))
@@ -801,17 +987,6 @@ internal sealed class RuntimeOmsiAudioHost :
         }
     }
 
-    private static bool HasExplicitEngineStateCondition(
-        RuntimeOmsiSoundDefinition sound) =>
-        sound.Conditions.Any(
-            static condition =>
-                condition.Variable.Equals(
-                    "engine_on",
-                    StringComparison.OrdinalIgnoreCase) ||
-                condition.Variable.Equals(
-                    "engine_injection_on",
-                    StringComparison.OrdinalIgnoreCase));
-
     private static bool HasStarterCondition(
         RuntimeOmsiSoundDefinition sound) =>
         sound.Conditions.Any(
@@ -846,6 +1021,52 @@ internal sealed class RuntimeOmsiAudioHost :
                    StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith(
                    "engine_speed_",
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsEngineRelatedLoop(
+        RuntimeOmsiSoundDefinition sound) =>
+        IsEngineSpeedVariable(
+            sound.PitchVariable) ||
+        sound.VolumeCurves.Any(
+            static curve =>
+                IsEngineAudioVariable(
+                    curve.Variable)) ||
+        sound.Conditions.Any(
+            static condition =>
+                IsEngineAudioVariable(
+                    condition.Variable));
+
+    private static bool IsEngineAudioVariable(
+        string? variable)
+    {
+        if (string.IsNullOrWhiteSpace(
+                variable) ||
+            variable ==
+                "-1")
+        {
+            return false;
+        }
+
+        var normalized =
+            variable.Trim();
+
+        return IsEngineSpeedVariable(
+                   normalized) ||
+               normalized.Equals(
+                   "engine_on",
+                   StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals(
+                   "engine_injection_on",
+                   StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals(
+                   "engine_M",
+                   StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(
+                   "engine_M_",
+                   StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(
+                   "engine_throttle",
                    StringComparison.OrdinalIgnoreCase);
     }
 
@@ -983,15 +1204,17 @@ internal sealed class RuntimeOmsiAudioHost :
                 deltaSeconds,
                 0.080f);
 
-        // SmbPitchShiftingSampleProvider is relatively expensive to retune
-        // and abrupt per-frame changes can create grainy/chopped output.
-        // Update it only after the smoothed value moved materially.
+        // OMSI changes loop playback rate, which changes pitch and duration
+        // together. SmbPitchShiftingSampleProvider preserves duration and
+        // is expensive to retune every frame; under load that caused the
+        // engine to sound granular/chopped. The lightweight streaming rate
+        // provider keeps a continuous sample phase while RPM changes.
         if (Math.Abs(
-                voice.Pitch.PitchFactor -
+                voice.Rate.PlaybackRate -
                 voice.CurrentPitchFactor) >
-            0.0015f)
+            0.0005f)
         {
-            voice.Pitch.PitchFactor =
+            voice.Rate.PlaybackRate =
                 voice.CurrentPitchFactor;
         }
 
@@ -1112,17 +1335,17 @@ internal sealed class RuntimeOmsiAudioHost :
                 return null;
             }
 
-            var pitch =
-                new SmbPitchShiftingSampleProvider(
+            var rate =
+                new VariableRateSampleProvider(
                     normalized)
                 {
-                    PitchFactor =
+                    PlaybackRate =
                         1.0f
                 };
 
             var spatial =
                 new StereoPanSampleProvider(
-                    pitch);
+                    rate);
 
             var volume =
                 new VolumeSampleProvider(
@@ -1152,7 +1375,7 @@ internal sealed class RuntimeOmsiAudioHost :
             return new LoopVoice(
                 _mixer,
                 reader,
-                pitch,
+                rate,
                 spatial,
                 volume,
                 configuredSampleRateFactor);
