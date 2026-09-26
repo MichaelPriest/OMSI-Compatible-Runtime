@@ -416,11 +416,11 @@ public sealed class D3D11RenderWindow : Form
             double,
             IReadOnlyList<RuntimeTrafficAgentInfo>>?
             trafficStep = null,
-        Action<int, float>?
-            trafficCollisionResponse = null,
         Func<
             IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
-            railSignalStateProvider = null)
+            railSignalStateProvider = null,
+        Action<int, float>?
+            trafficCollisionResponse = null)
     {
         _windowInfo = windowInfo;
         _trafficStep =
