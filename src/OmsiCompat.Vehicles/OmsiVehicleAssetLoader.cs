@@ -419,7 +419,12 @@ public static class OmsiVehicleAssetLoader
                                                 item =>
                                                     new OmsiVehicleMaterialChangeItem(
                                                         item.MaterialChangeItemIndex,
-                                                        item.AlphaMode,
+                                                        item.AlphaMode ??
+                                                            (item.HasTransMapDirective &&
+                                                             !string.IsNullOrWhiteSpace(
+                                                                 item.TransMapSource)
+                                                                ? 1
+                                                                : null),
                                                         ResolveOptionalVehicleTexture(
                                                             contentRoot.RootPath,
                                                             bus,
@@ -739,11 +744,53 @@ public static class OmsiVehicleAssetLoader
         bool rejectLeadingSlash = false)
     {
         if (string.IsNullOrWhiteSpace(
-                source) ||
-            (rejectLeadingSlash &&
-             source.StartsWith(
-                 "\\",
-                 StringComparison.Ordinal)))
+                source))
+        {
+            return null;
+        }
+
+        var normalized =
+            source
+                .Trim()
+                .Trim('"');
+
+        if (rejectLeadingSlash)
+        {
+            normalized =
+                normalized.TrimStart(
+                    '\\',
+                    '/');
+        }
+
+        if (normalized.Length ==
+                0 ||
+            normalized.Contains(
+                ':',
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+                omsiRoot,
+                bus.DirectoryPath,
+                modelConfigPath,
+                meshPath,
+                normalized,
+                out var resolved))
+        {
+            return resolved;
+        }
+
+        var leafName =
+            Path.GetFileName(
+                normalized);
+
+        if (string.IsNullOrWhiteSpace(
+                leafName) ||
+            leafName.Equals(
+                normalized,
+                StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
@@ -753,8 +800,8 @@ public static class OmsiVehicleAssetLoader
             bus.DirectoryPath,
             modelConfigPath,
             meshPath,
-            source,
-            out var resolved)
+            leafName,
+            out resolved)
             ? resolved
             : null;
     }
