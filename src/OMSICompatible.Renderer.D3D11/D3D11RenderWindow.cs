@@ -7883,7 +7883,40 @@ public sealed class D3D11RenderWindow : Form
                 .ApplyTrafficCollisionResponse(
                     relativeImpactSpeedKph);
 
-            if (!_activeTrafficCollisionAgents.Contains(
+            var playerLikelyAtFault =
+                false;
+
+            if (delta.LengthSquared() >
+                0.0001f)
+            {
+                var impactNormal =
+                    Vector2.Normalize(
+                        delta);
+
+                var playerClosingSpeed =
+                    Vector2.Dot(
+                        playerVelocity,
+                        impactNormal);
+
+                var aiClosingSpeed =
+                    Vector2.Dot(
+                        aiVelocity,
+                        -impactNormal);
+
+                // Do not automatically fine a stationary bus that is struck
+                // by AI traffic. Attribute a collision infraction only when
+                // the player's closing component materially dominates the AI
+                // vehicle's own movement into the contact.
+                playerLikelyAtFault =
+                    playerClosingSpeed >
+                        1.0f &&
+                    playerClosingSpeed >
+                        aiClosingSpeed +
+                            0.5f;
+            }
+
+            if (playerLikelyAtFault &&
+                !_activeTrafficCollisionAgents.Contains(
                     agent.AgentIndex) &&
                 (!_lastTrafficCollisionSeconds.TryGetValue(
                      agent.AgentIndex,
