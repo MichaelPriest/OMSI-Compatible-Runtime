@@ -2320,9 +2320,12 @@ public sealed class WorldTrafficSimulation
         }
 
         var selector =
-            ((agent.AgentIndex +
-              1) *
-             0.6180339887498949 %
+            (((agent.AgentIndex +
+               1) *
+              0.6180339887498949 +
+              (segment.Index +
+               1) *
+              0.4142135623730950) %
              1.0) *
             totalWeight;
 
