@@ -7501,9 +7501,14 @@ public sealed class D3D11RenderWindow : Form
     private static bool ResolveTrafficEngineRunning(
         OmsiScriptRuntime? runtime)
     {
+        // Never invent an active AI engine. Some lightweight AI vehicles do
+        // not expose engine_on/engine_injection_on at all; treating that as
+        // true makes an engine loop start immediately when the map opens and
+        // sounds like the player's bus is already running. Only an explicit
+        // OMSI script state may enable the propulsion loop.
         if (runtime is null)
         {
-            return true;
+            return false;
         }
 
         if (runtime.HasLocalVariable(
@@ -7522,7 +7527,7 @@ public sealed class D3D11RenderWindow : Form
                    0.5;
         }
 
-        return true;
+        return false;
     }
 
     private void UpdateTrafficCollisionAndRules(
