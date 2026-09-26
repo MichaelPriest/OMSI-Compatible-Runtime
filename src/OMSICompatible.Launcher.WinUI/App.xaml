@@ -4,6 +4,10 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/>
+            </ResourceDictionary.MergedDictionaries>
+
             <SolidColorBrush x:Key="CardBrush" Color="#171C24"/>
             <SolidColorBrush x:Key="MutedBrush" Color="#93A2B6"/>
             <SolidColorBrush x:Key="AccentBrush" Color="#178BDB"/>
