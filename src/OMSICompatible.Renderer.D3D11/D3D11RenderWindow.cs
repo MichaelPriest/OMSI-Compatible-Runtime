@@ -7873,7 +7873,8 @@ public sealed class D3D11RenderWindow : Form
                 3.6f;
 
             _vehicle
-                .ApplyTrafficCollisionResponse();
+                .ApplyTrafficCollisionResponse(
+                    relativeImpactSpeedKph);
 
             if (!_activeTrafficCollisionAgents.Contains(
                     agent.AgentIndex) &&
