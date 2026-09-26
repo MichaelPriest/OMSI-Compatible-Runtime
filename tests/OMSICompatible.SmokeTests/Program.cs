@@ -3676,6 +3676,49 @@ try
             syntheticAiVehiclePath,
         "Traffic simulation did not spawn a road-compatible vehicle on the first resolved road path.");
 
+    var zeroWeightVehiclePath =
+        Path.Combine(
+            contentRoot.RootPath,
+            "Vehicles",
+            "Synthetic",
+            "disabled.bus");
+
+    File.WriteAllText(
+        zeroWeightVehiclePath,
+        string.Empty);
+
+    var zeroWeightSimulation =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\disabled.bus",
+                        zeroWeightVehiclePath,
+                        0.0),
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    var zeroWeightAgent =
+        zeroWeightSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        zeroWeightAgent.VehiclePath ==
+            syntheticAiVehiclePath,
+        "Zero-weight AI entry must not be selected for unscheduled traffic.");
+
     var obstacleSimulation =
         new WorldTrafficSimulation(
             trafficPaths,
