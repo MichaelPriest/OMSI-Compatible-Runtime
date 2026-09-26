@@ -390,6 +390,86 @@ internal sealed class RuntimeOmsiAudioHost :
                 File.Exists(
                     sound.FilePath));
 
+    public IReadOnlyList<string> BuildConfigurationDiagnostics()
+    {
+        var lines =
+            new List<string>
+            {
+                $"sounds={SoundCount}",
+                $"existingFiles={ExistingFileCount}",
+                $"loops={_sounds.Count(static sound => sound.Loop)}",
+                $"engineLoops={_sounds.Count(sound => sound.Loop && IsEngineSpeedVariable(sound.PitchVariable))}"
+            };
+
+        foreach (var sound in
+                 _sounds
+                     .Where(
+                         static sound =>
+                             sound.Loop)
+                     .OrderBy(
+                         static sound =>
+                             sound.Id))
+        {
+            int? fileSampleRate =
+                null;
+
+            if (File.Exists(
+                    sound.FilePath))
+            {
+                try
+                {
+                    using var reader =
+                        new AudioFileReader(
+                            sound.FilePath);
+
+                    fileSampleRate =
+                        reader.WaveFormat.SampleRate;
+                }
+                catch
+                {
+                }
+            }
+
+            var sampleRateFactor =
+                sound.DeclaredSampleRate is
+                    { } declaredRate &&
+                declaredRate >
+                    0 &&
+                fileSampleRate is
+                    { } actualRate &&
+                actualRate >
+                    0
+                    ? declaredRate /
+                      (double)actualRate
+                    : 1.0;
+
+            var conditions =
+                sound.Conditions.Count ==
+                        0
+                    ? "<none>"
+                    : string.Join(
+                        ";",
+                        sound.Conditions.Select(
+                            static condition =>
+                                $"{condition.Variable}:{condition.Operator}:{condition.Value.ToString("0.###", CultureInfo.InvariantCulture)}"));
+
+            var curves =
+                sound.VolumeCurves.Count ==
+                        0
+                    ? "<none>"
+                    : string.Join(
+                        ";",
+                        sound.VolumeCurves.Select(
+                            static curve =>
+                                $"{curve.Variable}[{curve.Points.Count}]"));
+
+            lines.Add(
+                $"loop#{sound.Id}|file={Path.GetFileName(sound.FilePath)}|exists={File.Exists(sound.FilePath)}|declaredHz={sound.DeclaredSampleRate?.ToString(CultureInfo.InvariantCulture) ?? "<none>"}|fileHz={fileSampleRate?.ToString(CultureInfo.InvariantCulture) ?? "<unknown>"}|rateFactor={sampleRateFactor.ToString("0.######", CultureInfo.InvariantCulture)}|pitchVar={sound.PitchVariable ?? "<none>"}|pitchRef={sound.PitchReferenceValue.ToString("0.###", CultureInfo.InvariantCulture)}|volume={sound.BaseVolume.ToString("0.###", CultureInfo.InvariantCulture)}|viewpoint={sound.Viewpoint}|conditions={conditions}|curves={curves}");
+        }
+
+        return lines;
+    }
+
     public static RuntimeOmsiAudioHost?
         TryCreate(
             string? soundConfigPath,
