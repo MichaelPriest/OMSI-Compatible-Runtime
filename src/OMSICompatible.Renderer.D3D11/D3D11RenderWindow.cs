@@ -362,6 +362,15 @@ public sealed class D3D11RenderWindow : Form
     private readonly bool _vsync;
     private readonly float _masterVolume;
     private readonly int _maximumSoundCount;
+    private readonly bool _aiVehicleSoundsEnabled;
+    private readonly bool _vehicleToVehicleCollisionsEnabled;
+    private readonly HashSet<int> _activeTrafficCollisionAgents = [];
+    private int _trafficCollisionCount;
+    private int _speedViolationCount;
+    private double _trafficRuleSampleSeconds;
+    private double _speedingSeconds;
+    private double _lastSpeedViolationSeconds =
+        double.NegativeInfinity;
     private readonly bool _materialLightMapEnabled;
     private readonly bool _materialReflectionMapEnabled;
     private readonly bool _materialBumpMapEnabled;
@@ -380,6 +389,8 @@ public sealed class D3D11RenderWindow : Form
         int masterVolumePercent = 100,
         bool automaticSteeringCenter = false,
         int maximumSoundCount = 400,
+        bool aiVehicleSoundsEnabled = true,
+        bool vehicleToVehicleCollisionsEnabled = true,
         bool materialLightMapEnabled = true,
         bool materialReflectionMapEnabled = true,
         bool materialBumpMapEnabled = true,
@@ -433,6 +444,10 @@ public sealed class D3D11RenderWindow : Form
                 maximumSoundCount,
                 1,
                 10_000);
+        _aiVehicleSoundsEnabled =
+            aiVehicleSoundsEnabled;
+        _vehicleToVehicleCollisionsEnabled =
+            vehicleToVehicleCollisionsEnabled;
         _materialLightMapEnabled =
             materialLightMapEnabled;
         _materialReflectionMapEnabled =
@@ -606,6 +621,66 @@ public sealed class D3D11RenderWindow : Form
 
         Shown += OnWindowShown;
         ClientSizeChanged += OnClientSizeChanged;
+    }
+
+    public RuntimeTrafficObstacleInfo?
+        PlayerTrafficObstacle
+    {
+        get
+        {
+            if (!_driveMode ||
+                _vehicleRemoved ||
+                _windowInfo.Vehicle is null)
+            {
+                return null;
+            }
+
+            var wheelBase =
+                _windowInfo.Vehicle
+                    .Physics
+                    .WheelBaseMeters ??
+                6.0;
+
+            var trackWidth =
+                _windowInfo.Vehicle
+                    .Physics
+                    .TrackWidthMeters ??
+                2.4;
+
+            var sectionAllowance =
+                (_windowInfo.Vehicle.Sections?
+                     .Count ??
+                 0) >
+                    0
+                    ? 1.75
+                    : 0.0;
+
+            var halfLength =
+                Math.Clamp(
+                    wheelBase *
+                        0.5 +
+                    2.8 +
+                    sectionAllowance,
+                    4.5,
+                    12.0);
+
+            var halfWidth =
+                Math.Clamp(
+                    trackWidth *
+                        0.5 +
+                    0.25,
+                    1.15,
+                    1.75);
+
+            return new RuntimeTrafficObstacleInfo(
+                _vehicle.Position.X,
+                _vehicle.Position.Y,
+                _vehicle.Position.Z,
+                _vehicle.HeadingRadians,
+                _vehicle.SpeedMetersPerSecond,
+                halfLength,
+                halfWidth);
+        }
     }
 
     public void ApplyStreamedWorld(
@@ -7287,6 +7362,10 @@ public sealed class D3D11RenderWindow : Form
         UpdateTrafficOmsiAudio(
             listenerPosition);
 
+        UpdateTrafficCollisionAndRules(
+            now,
+            deltaSeconds);
+
         UpdateVehicleAnimationStates(
             deltaSeconds);
 
@@ -7297,6 +7376,18 @@ public sealed class D3D11RenderWindow : Form
     private void UpdateTrafficOmsiAudio(
         Vector3 listenerPosition)
     {
+        if (!_aiVehicleSoundsEnabled)
+        {
+            foreach (var state in
+                     _trafficOmsiAudio.Values)
+            {
+                state.Audio.Dispose();
+            }
+
+            _trafficOmsiAudio.Clear();
+            return;
+        }
+
         var activeAgentIds =
             _trafficAgents
                 .Select(
@@ -7397,7 +7488,9 @@ public sealed class D3D11RenderWindow : Form
                     (float)agent.X,
                     (float)agent.Y,
                     (float)agent.Z),
-                (float)agent.HeadingRadians);
+                (float)agent.HeadingRadians,
+                forceVehicleSpatial:
+                    true);
         }
     }
 
@@ -7426,6 +7519,347 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return true;
+    }
+
+    private void UpdateTrafficCollisionAndRules(
+        double nowSeconds,
+        float deltaSeconds)
+    {
+        if (!_driveMode ||
+            _vehicleRemoved ||
+            _windowInfo.Vehicle is null)
+        {
+            _activeTrafficCollisionAgents.Clear();
+            _speedingSeconds =
+                0.0;
+            return;
+        }
+
+        UpdateTrafficCollisionState(
+            nowSeconds);
+
+        _trafficRuleSampleSeconds +=
+            Math.Max(
+                deltaSeconds,
+                0.0f);
+
+        if (_trafficRuleSampleSeconds <
+            0.25)
+        {
+            return;
+        }
+
+        var sampledSeconds =
+            _trafficRuleSampleSeconds;
+
+        _trafficRuleSampleSeconds =
+            0.0;
+
+        var speedLimit =
+            ResolveNearestRoadSpeedLimit();
+
+        if (!speedLimit.HasValue)
+        {
+            _speedingSeconds =
+                0.0;
+            return;
+        }
+
+        var speedKph =
+            Math.Abs(
+                _vehicle.SpeedKph);
+
+        if (speedKph >
+            speedLimit.Value +
+                5.0)
+        {
+            _speedingSeconds +=
+                sampledSeconds;
+
+            if (_speedingSeconds >=
+                    3.0 &&
+                nowSeconds -
+                    _lastSpeedViolationSeconds >=
+                8.0)
+            {
+                _lastSpeedViolationSeconds =
+                    nowSeconds;
+
+                _speedViolationCount++;
+
+                Console.WriteLine(
+                    $"[traffic-rule] speeding violation #{_speedViolationCount}; speed={speedKph:0.0} km/h; limit={speedLimit.Value:0.0} km/h");
+
+                _speedingSeconds =
+                    0.0;
+            }
+        }
+        else
+        {
+            _speedingSeconds =
+                0.0;
+        }
+    }
+
+    private void UpdateTrafficCollisionState(
+        double nowSeconds)
+    {
+        if (!_vehicleToVehicleCollisionsEnabled ||
+            PlayerTrafficObstacle is not
+                { } player)
+        {
+            _activeTrafficCollisionAgents.Clear();
+            return;
+        }
+
+        var collided =
+            new HashSet<int>();
+
+        var heading =
+            (float)player.HeadingRadians;
+
+        var forward =
+            new Vector2(
+                MathF.Sin(
+                    heading),
+                MathF.Cos(
+                    heading));
+
+        var right =
+            new Vector2(
+                forward.Y,
+                -forward.X);
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            // Rail consists are encoded in a separate high index range.
+            if (agent.AgentIndex >=
+                2_000_000)
+            {
+                continue;
+            }
+
+            if (Math.Abs(
+                    agent.Y -
+                    player.Y) >
+                3.5)
+            {
+                continue;
+            }
+
+            var delta =
+                new Vector2(
+                    (float)(agent.X -
+                            player.X),
+                    (float)(agent.Z -
+                            player.Z));
+
+            var longitudinal =
+                Math.Abs(
+                    Vector2.Dot(
+                        delta,
+                        forward));
+
+            var lateral =
+                Math.Abs(
+                    Vector2.Dot(
+                        delta,
+                        right));
+
+            const double aiHalfLength =
+                2.6;
+            const double aiHalfWidth =
+                1.15;
+
+            if (longitudinal >
+                    player.HalfLengthMeters +
+                        aiHalfLength ||
+                lateral >
+                    player.HalfWidthMeters +
+                        aiHalfWidth)
+            {
+                continue;
+            }
+
+            collided.Add(
+                agent.AgentIndex);
+
+            _vehicle
+                .ApplyTrafficCollisionResponse();
+
+            if (!_activeTrafficCollisionAgents.Contains(
+                    agent.AgentIndex))
+            {
+                _trafficCollisionCount++;
+
+                Console.WriteLine(
+                    $"[traffic-rule] vehicle collision #{_trafficCollisionCount}; ai={agent.AgentIndex}; speed={_vehicle.SpeedKph:0.0} km/h; t={nowSeconds:0.00}");
+            }
+        }
+
+        _activeTrafficCollisionAgents
+            .RemoveWhere(
+                id =>
+                    !collided.Contains(
+                        id));
+
+        foreach (var id in
+                 collided)
+        {
+            _activeTrafficCollisionAgents.Add(
+                id);
+        }
+    }
+
+    private double? ResolveNearestRoadSpeedLimit()
+    {
+        var position =
+            _vehicle.Position;
+
+        var nearestDistanceSquared =
+            double.PositiveInfinity;
+
+        double? nearestLimit =
+            null;
+
+        foreach (var segment in
+                 _windowInfo
+                     .TrafficPaths
+                     .Segments)
+        {
+            if (segment.Type !=
+                    0 ||
+                !segment.SpeedLimitKilometersPerHour.HasValue ||
+                segment.SpeedLimitKilometersPerHour.Value <=
+                    0.0 ||
+                segment.Points.Count <
+                    2)
+            {
+                continue;
+            }
+
+            for (var index = 1;
+                 index <
+                     segment.Points.Count;
+                 index++)
+            {
+                var a =
+                    segment.Points[
+                        index -
+                        1];
+
+                var b =
+                    segment.Points[
+                        index];
+
+                if (Math.Abs(
+                        position.Y -
+                        (a.Y +
+                         b.Y) *
+                        0.5) >
+                    5.0)
+                {
+                    continue;
+                }
+
+                var distanceSquared =
+                    PointToSegmentDistanceSquared(
+                        position.X,
+                        position.Z,
+                        a.X,
+                        a.Z,
+                        b.X,
+                        b.Z);
+
+                if (distanceSquared <
+                    nearestDistanceSquared)
+                {
+                    nearestDistanceSquared =
+                        distanceSquared;
+
+                    nearestLimit =
+                        segment
+                            .SpeedLimitKilometersPerHour;
+                }
+            }
+        }
+
+        return nearestDistanceSquared <=
+                   64.0
+            ? nearestLimit
+            : null;
+    }
+
+    private static double PointToSegmentDistanceSquared(
+        double px,
+        double pz,
+        double ax,
+        double az,
+        double bx,
+        double bz)
+    {
+        var dx =
+            bx -
+            ax;
+        var dz =
+            bz -
+            az;
+
+        var lengthSquared =
+            dx *
+                dx +
+            dz *
+                dz;
+
+        if (lengthSquared <=
+            0.000001)
+        {
+            var ex =
+                px -
+                ax;
+            var ez =
+                pz -
+                az;
+
+            return ex *
+                       ex +
+                   ez *
+                       ez;
+        }
+
+        var t =
+            Math.Clamp(
+                ((px -
+                  ax) *
+                     dx +
+                 (pz -
+                  az) *
+                     dz) /
+                lengthSquared,
+                0.0,
+                1.0);
+
+        var cx =
+            ax +
+            dx *
+                t;
+        var cz =
+            az +
+            dz *
+                t;
+
+        var ox =
+            px -
+            cx;
+        var oz =
+            pz -
+            cz;
+
+        return ox *
+                   ox +
+               oz *
+                   oz;
     }
 
     private void ResetArticulatedSections()
@@ -13391,7 +13825,15 @@ public sealed class D3D11RenderWindow : Form
               $"{driveInputMode} · RMB drag look/orbit · F3 wheel zoom · S views · F1/F2/F3/F4 cameras · ←/→ perspectives · C/Space reset · P pause · D/N/R · E/M · Tab clutch"
             : $"{pauseState}FREE CAM · RMB look · MMB pan · wheel zoom · Ctrl+wheel speed · S views · F1/F2/F3/F4 cameras · C reset · O:{(_mouseDriveMode ? "LOCKED" : "OFF")}";
 
+        var trafficRuleStatus =
+            _trafficCollisionCount +
+                _speedViolationCount >
+            0
+                ? $" · infrações {_trafficCollisionCount + _speedViolationCount} (colisões {_trafficCollisionCount}, velocidade {_speedViolationCount})"
+                : string.Empty;
+
         control +=
+            trafficRuleStatus +
             " · Alt menu";
 
         Text =
