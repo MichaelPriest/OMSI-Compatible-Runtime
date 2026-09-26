@@ -385,6 +385,7 @@ public sealed class D3D11RenderWindow : Form
         double.NegativeInfinity;
     private double _trafficRuleSampleSeconds;
     private double _speedingSeconds;
+    private double? _lastSpeedLimitKilometersPerHour;
     private double _lastSpeedViolationSeconds =
         double.NegativeInfinity;
     private readonly bool _materialLightMapEnabled;
@@ -7711,7 +7712,21 @@ public sealed class D3D11RenderWindow : Form
         {
             _speedingSeconds =
                 0.0;
+            _lastSpeedLimitKilometersPerHour =
+                null;
             return;
+        }
+
+        if (!_lastSpeedLimitKilometersPerHour.HasValue ||
+            Math.Abs(
+                _lastSpeedLimitKilometersPerHour.Value -
+                speedLimit.Value) >
+            0.1)
+        {
+            _speedingSeconds =
+                0.0;
+            _lastSpeedLimitKilometersPerHour =
+                speedLimit.Value;
         }
 
         var speedKph =
