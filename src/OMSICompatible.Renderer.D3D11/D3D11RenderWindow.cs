@@ -3439,7 +3439,9 @@ public sealed class D3D11RenderWindow : Form
 
         foreach (var batch in batches)
         {
-            if (batch.VertexCount == 0)
+            if (batch.VertexCount == 0 ||
+                !IsDynamicSceneryBatchVisible(
+                    batch))
             {
                 continue;
             }
@@ -3508,6 +3510,63 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.PSUnsetShaderResource(2);
         _deviceContext.RSSetState(null);
+    }
+
+    private bool IsDynamicSceneryBatchVisible(
+        RuntimeObjectBatch batch)
+    {
+        var conditions =
+            batch.VisibilityConditions;
+
+        if (conditions is null ||
+            conditions.Count ==
+                0 ||
+            batch.ObjectId <
+                0)
+        {
+            return true;
+        }
+
+        var runtime =
+            _railSignalRouteStates
+                .Where(
+                    state =>
+                        state.SignalObjectId ==
+                            batch.ObjectId &&
+                        state.ScriptRuntime is not null)
+                .Select(
+                    static state =>
+                        state.ScriptRuntime)
+                .FirstOrDefault();
+
+        if (runtime is null)
+        {
+            return true;
+        }
+
+        foreach (var condition in
+                 conditions)
+        {
+            if (!runtime.HasLocalVariable(
+                    condition.VariableName))
+            {
+                return false;
+            }
+
+            var value =
+                runtime.GetLocal(
+                    condition.VariableName);
+
+            if (Math.Abs(
+                    value -
+                    condition.Value) >
+                0.000001)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private bool UseExteriorVehicleView() =>
