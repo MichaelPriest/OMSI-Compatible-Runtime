@@ -88,7 +88,7 @@ jobs:
           OMSI_REQUIRE_ODE: "1"
         run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
 
-      - name: Publish Launcher x64
+      - name: Publish legacy Launcher x64
         run: >
           dotnet publish src/OMSICompatible.Launcher/OMSICompatible.Launcher.csproj
           -c Release
@@ -98,9 +98,9 @@ jobs:
           -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
-          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Launcher-Legacy
 
-      - name: Publish WinUI Launcher preview x64
+      - name: Publish WinUI Launcher x64
         run: >
           dotnet publish src/OMSICompatible.Launcher.WinUI/OMSICompatible.Launcher.WinUI.csproj
           -c Release
@@ -112,7 +112,7 @@ jobs:
           -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
-          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Launcher-WinUI-Preview
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
 
       - name: Publish Runtime x64
         run: >
@@ -144,20 +144,24 @@ jobs:
           Extraia TODO o conteúdo do ZIP antes de executar.
           Não execute o EXE de dentro do ZIP.
 
-          Launcher funcional atual:
+          LAUNCHER PRINCIPAL — NOVA INTERFACE WINUI 3
+          ============================================
+          Abra:
             OMSICompatible.Launcher.exe
 
-          NOVO LAUNCHER WINUI 3 (PREVIEW DA INTERFACE APROVADA)
-          =====================================================
-          Abra:
-            Launcher-WinUI-Preview\OMSICompatible.Launcher.WinUI.exe
+          A nova interface WinUI 3 agora é o launcher principal do pacote,
+          com Home, Mapas, Veículos, Controles, Configurações,
+          Compatibilidade e Diagnóstico.
 
-          O WinUI preview contém o novo shell/sidebar e a nova Home.
-          O launcher funcional atual permanece na raiz deste pacote enquanto
-          a prévia 3D D3D11 e as demais telas são migradas sem regressão.
-          Não removemos nem simulamos a funcionalidade 3D existente.
+          LAUNCHER LEGADO — FALLBACK TEMPORÁRIO
+          ======================================
+          Para comparar ou usar a prévia 3D D3D11 antiga durante a migração:
+            Launcher-Legacy\OMSICompatible.Launcher.Legacy.exe
 
-          No launcher funcional atual:
+          O legado permanece somente como fallback até a prévia 3D real
+          estar integrada ao WinUI, sem remover a funcionalidade existente.
+
+          No launcher principal:
           1. Clique em Procurar.
           2. Selecione a pasta raiz do conteúdo OMSI.
              Exemplo: G:\Games\OMSI 2 Steam Edition
@@ -392,12 +396,12 @@ jobs:
           - Smoke test: obrigatório
 
           O ZIP contém:
-          - `OMSICompatible.Launcher.exe`: launcher funcional atual com prévia 3D D3D11;
-          - `Launcher-WinUI-Preview/OMSICompatible.Launcher.WinUI.exe`: novo launcher WinUI 3 em migração;
+          - `OMSICompatible.Launcher.exe`: novo launcher principal WinUI 3;
+          - `Launcher-Legacy/OMSICompatible.Launcher.Legacy.exe`: launcher anterior preservado como fallback com prévia 3D D3D11;
           - `Runtime/OMSICompatible.Runtime.exe`: runtime x64;
           - ODE e dependências necessárias.
 
-          O launcher WinUI é publicado lado a lado enquanto a prévia 3D real é migrada, para não remover funcionalidades existentes.
+          A nova interface é agora a entrada padrão do pacote. O launcher legado continua incluído apenas para preservar a prévia 3D enquanto ela é migrada ao WinUI.
           EOF
 
           if gh release view "$tag" >/dev/null 2>&1; then
