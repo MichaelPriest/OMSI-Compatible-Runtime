@@ -212,18 +212,80 @@ public static class OmsiVehicleAssetLoader
                         materialOverride?.TransMapSource;
 
                     if (!string.IsNullOrWhiteSpace(
-                            transMapSource) &&
-                        !transMapSource.StartsWith(
-                            "\\",
-                            StringComparison.Ordinal))
+                            transMapSource))
                     {
-                        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
-                            contentRoot.RootPath,
-                            bus.DirectoryPath,
-                            model.SourcePath,
-                            meshPath,
-                            transMapSource,
-                            out transMapPath);
+                        var normalizedTransMapSource =
+                            transMapSource
+                                .Trim()
+                                .Trim('"')
+                                .TrimStart(
+                                    '\\',
+                                    '/');
+
+                        if (!normalizedTransMapSource.Contains(
+                                ':',
+                                StringComparison.Ordinal) &&
+                            normalizedTransMapSource.Length >
+                                0)
+                        {
+                            if (!OmsiTextureAssetPathResolver
+                                    .TryResolveVehicleTexture(
+                                        contentRoot.RootPath,
+                                        bus.DirectoryPath,
+                                        model.SourcePath,
+                                        meshPath,
+                                        normalizedTransMapSource,
+                                        out transMapPath))
+                            {
+                                var transMapLeafName =
+                                    Path.GetFileName(
+                                        normalizedTransMapSource);
+
+                                if (!string.IsNullOrWhiteSpace(
+                                        transMapLeafName) &&
+                                    !transMapLeafName.Equals(
+                                        normalizedTransMapSource,
+                                        StringComparison.OrdinalIgnoreCase))
+                                {
+                                    OmsiTextureAssetPathResolver
+                                        .TryResolveVehicleTexture(
+                                            contentRoot.RootPath,
+                                            bus.DirectoryPath,
+                                            model.SourcePath,
+                                            meshPath,
+                                            transMapLeafName,
+                                            out transMapPath);
+                                }
+
+                                if (string.IsNullOrWhiteSpace(
+                                        transMapPath) &&
+                                    !string.IsNullOrWhiteSpace(
+                                        transMapLeafName) &&
+                                    !string.IsNullOrWhiteSpace(
+                                        texturePath))
+                                {
+                                    var diffuseDirectory =
+                                        Path.GetDirectoryName(
+                                            texturePath);
+
+                                    if (!string.IsNullOrWhiteSpace(
+                                            diffuseDirectory))
+                                    {
+                                        var siblingMaskPath =
+                                            Path.Combine(
+                                                diffuseDirectory,
+                                                transMapLeafName);
+
+                                        if (File.Exists(
+                                                siblingMaskPath))
+                                        {
+                                            transMapPath =
+                                                siblingMaskPath;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     string? lightMapPath = null;
