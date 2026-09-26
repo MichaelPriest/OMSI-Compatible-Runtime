@@ -40,7 +40,8 @@ internal sealed record RuntimeObjectBatch(
     IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
     string? MouseEventTrigger = null,
     bool MaterialChangeIsNightMap = false,
-    long ObjectId = -1);
+    long ObjectId = -1,
+    string? RenderType = null);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -105,7 +106,8 @@ internal static class RuntimeObjectGeometryBuilder
         IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
         string? MouseEventTrigger = null,
         bool MaterialChangeIsNightMap = false,
-        long ObjectId = -1);
+        long ObjectId = -1,
+        string? RenderType = null);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -257,8 +259,22 @@ internal static class RuntimeObjectGeometryBuilder
                             mesh.Transform,
                             useNativeOmsiModelSpace);
 
+                    // The runtime world mirrors OMSI source X to preserve a
+                    // right-handed X/Z ground plane. Reflect the complete
+                    // local scenery result as well; otherwise asymmetric
+                    // objects (lamp arms, signs, shelters) keep their source
+                    // handedness and point to the wrong side of the road.
+                    var localWorldMirror =
+                        useNativeOmsiModelSpace
+                            ? Matrix4x4.CreateScale(
+                                -1.0f,
+                                1.0f,
+                                1.0f)
+                            : Matrix4x4.Identity;
+
                     var worldTransform =
                         localTransform *
+                        localWorldMirror *
                         objectTransform;
 
                     var appended =
@@ -267,6 +283,7 @@ internal static class RuntimeObjectGeometryBuilder
                             worldTransform,
                             useNativeOmsiModelSpace,
                             batchObjectId,
+                            asset.RenderType,
                             batches,
                             batchOrder,
                             ref totalVertices);
@@ -294,6 +311,7 @@ internal static class RuntimeObjectGeometryBuilder
                 else if (AppendTree(
                     instance,
                     asset.Tree,
+                    asset.RenderType,
                     worldX,
                     worldZ,
                     (float)instance.Y +
@@ -381,7 +399,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.SkinBoneMeshOrdinals,
                     key.MouseEventTrigger,
                     key.MaterialChangeIsNightMap,
-                    key.ObjectId));
+                    key.ObjectId,
+                    key.RenderType));
         }
 
         return new RuntimeObjectGeometry(
@@ -404,6 +423,7 @@ internal static class RuntimeObjectGeometryBuilder
         Matrix4x4 worldTransform,
         bool useNativeOmsiModelSpace,
         long objectId,
+        string? renderType,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
         ref int totalVertices)
@@ -491,7 +511,8 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.SkinBoneMeshOrdinals,
                     mesh.MouseEventTrigger,
                     material?.MaterialChangeIsNightMap ?? false,
-                    objectId);
+                    objectId,
+                    renderType);
 
             var output =
                 GetBatch(
@@ -727,6 +748,7 @@ internal static class RuntimeObjectGeometryBuilder
     private static bool AppendTree(
         RuntimeObjectInfo instance,
         RuntimeTreeInfo tree,
+        string? renderType,
         double worldX,
         double worldZ,
         float baseY,
@@ -801,7 +823,9 @@ internal static class RuntimeObjectGeometryBuilder
                 tree.TexturePath,
                 hasTexture,
                 ObjectId:
-                    objectId);
+                    objectId,
+                RenderType:
+                    renderType);
 
         var output =
             GetBatch(
