@@ -674,7 +674,36 @@ internal sealed class RuntimeOmsiAudioHost :
                     sound.Id)
             .Select(
                 sound =>
-                    $"loop#{sound.Id}:{Path.GetFileName(sound.FilePath)}:{(IsEngineRelatedLoop(sound) ? "engine" : "other")}")
+                {
+                    var curveVariables =
+                        sound.VolumeCurves.Count ==
+                                0
+                            ? "<none>"
+                            : string.Join(
+                                ",",
+                                sound.VolumeCurves
+                                    .Select(
+                                        static curve =>
+                                            curve.Variable)
+                                    .Distinct(
+                                        StringComparer.OrdinalIgnoreCase));
+
+                    var conditionVariables =
+                        sound.Conditions.Count ==
+                                0
+                            ? "<none>"
+                            : string.Join(
+                                ",",
+                                sound.Conditions
+                                    .Select(
+                                        static condition =>
+                                            condition.Variable)
+                                    .Distinct(
+                                        StringComparer.OrdinalIgnoreCase));
+
+                    return
+                        $"loop#{sound.Id}:{Path.GetFileName(sound.FilePath)}:{(IsEngineRelatedLoop(sound) ? "engine" : "other")}:pitch={sound.PitchVariable ?? "<none>"}:curves={curveVariables}:conditions={conditionVariables}";
+                })
             .ToArray();
 
     public static RuntimeOmsiAudioHost?
