@@ -110,7 +110,11 @@ public static class RuntimeVehicleInfoFactory
                                                                 .ToArray()))
                                                 .ToArray(),
                                             material.HasTransMapDirective,
-                                            material.MaterialChangeIsNightMap))
+                                            material.MaterialChangeIsNightMap,
+                                            RequiresExternalTransMap:
+                                                material.HasTransMapDirective &&
+                                                !string.IsNullOrWhiteSpace(
+                                                    material.TransMapTexturePath)))
                                 .ToArray(),
                             mesh.ViewpointFlag,
                             mesh.LodThreshold,
