@@ -7624,7 +7624,7 @@ public sealed class D3D11RenderWindow : Form
                 Path.Combine(
                     AppContext.BaseDirectory,
                     "traffic-audio.log"),
-                $"{DateTimeOffset.Now:O}|agent={agent.AgentIndex}|vehicle={Path.GetFileName(agent.VehiclePath)}|{diagnosticSignature}{Environment.NewLine}");
+                $"{DateTimeOffset.Now:O}|agent={agent.AgentIndex}|vehicle={agent.VehiclePath}|position={agent.X:0.00},{agent.Y:0.00},{agent.Z:0.00}|{diagnosticSignature}{Environment.NewLine}");
         }
         catch (Exception exception)
         {
