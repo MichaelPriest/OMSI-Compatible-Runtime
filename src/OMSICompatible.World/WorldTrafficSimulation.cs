@@ -1156,31 +1156,57 @@ public sealed class WorldTrafficSimulation
                         _spawnIntervalSeconds,
                         0.25)));
 
-        for (var attempt = 0;
-             attempt <
-                 candidates.Length *
-                 3;
-             attempt++)
+        var orderedCandidates =
+            candidates
+                .Select(
+                    candidate =>
+                    {
+                        var unitSelector =
+                            ((agent.AgentIndex +
+                              1) *
+                             0.6180339887498949 +
+                             (recycleEpoch +
+                              1) *
+                             0.3819660112501051 +
+                             (candidate.Segment.Index +
+                              1) *
+                             0.4142135623730950) %
+                            1.0;
+
+                        unitSelector =
+                            Math.Clamp(
+                                unitSelector,
+                                0.000001,
+                                0.999999);
+
+                        return
+                            (
+                                candidate.Segment,
+                                Rank:
+                                    -Math.Log(
+                                        unitSelector) /
+                                    Math.Max(
+                                        candidate.Weight,
+                                        0.000001)
+                            );
+                    })
+                .OrderBy(
+                    static candidate =>
+                        candidate.Rank)
+                .ThenBy(
+                    static candidate =>
+                        candidate.Segment.Index)
+                .ToArray();
+
+        for (var segmentAttempt = 0;
+             segmentAttempt <
+                 orderedCandidates.Length;
+             segmentAttempt++)
         {
-            var selector =
-                ((agent.AgentIndex +
-                  1) *
-                 0.6180339887498949 +
-                 (recycleEpoch +
-                  attempt +
-                  1) *
-                 0.3819660112501051) %
-                1.0;
-
             var segment =
-                SelectWeightedSpawnSegment(
-                    candidates,
-                    selector);
-
-            if (segment is null)
-            {
-                continue;
-            }
+                orderedCandidates[
+                    segmentAttempt]
+                    .Segment;
 
             var length =
                 SegmentLength(
@@ -1200,130 +1226,139 @@ public sealed class WorldTrafficSimulation
                     2 =>
                         ((agent.AgentIndex +
                           recycleEpoch +
-                          attempt) &
+                          segmentAttempt) &
                          1) ==
                         0,
                     _ =>
                         true
                 };
 
-            var offset =
-                Math.Clamp(
-                    length *
-                        (0.15 +
-                         0.70 *
-                         (((agent.AgentIndex +
-                            recycleEpoch +
-                            attempt +
-                            1) *
-                           0.4142135623730950) %
-                          1.0)),
-                    0.1,
-                    Math.Max(
-                        length -
-                            0.1,
-                        0.1));
-
-            var distance =
-                travelForward
-                    ? offset
-                    : Math.Max(
-                        length -
-                            offset,
-                        0.0);
-
-            SampleSegment(
-                segment,
-                distance,
-                out var spawnPosition,
-                out _);
-
-            var exclusionCenter =
-                _externalObstacle?.Position;
-
-            if (exclusionCenter.HasValue &&
-                _spawnExclusionRadiusMeters >
-                    0.0 &&
-                HorizontalDistance(
-                    spawnPosition,
-                    exclusionCenter.Value) <
-                    _spawnExclusionRadiusMeters)
+            for (var placementAttempt = 0;
+                 placementAttempt <
+                     3;
+                 placementAttempt++)
             {
-                continue;
-            }
+                var offset =
+                    Math.Clamp(
+                        length *
+                            (0.15 +
+                             0.70 *
+                             (((agent.AgentIndex +
+                                recycleEpoch +
+                                segmentAttempt +
+                                placementAttempt +
+                                1) *
+                               0.4142135623730950) %
+                              1.0)),
+                        0.1,
+                        Math.Max(
+                            length -
+                                0.1,
+                            0.1));
 
-            if (_externalObstacle is
-                    { } playerObstacle &&
-                IsVisibleRespawnPop(
-                    spawnPosition,
-                    playerObstacle))
-            {
-                continue;
-            }
+                var distance =
+                    travelForward
+                        ? offset
+                        : Math.Max(
+                            length -
+                                offset,
+                            0.0);
 
-            var tooCloseToTraffic =
-                _agents.Any(
-                    other =>
-                    {
-                        if (ReferenceEquals(
-                                other,
-                                agent) ||
-                            other.PendingRespawn ||
-                            other.ActivationTimeSeconds >
-                                _simulationElapsedSeconds ||
-                            !_segmentsByIndex.TryGetValue(
-                                other.SegmentIndex,
-                                out var otherSegment))
+                SampleSegment(
+                    segment,
+                    distance,
+                    out var spawnPosition,
+                    out _);
+
+                var exclusionCenter =
+                    _externalObstacle?.Position;
+
+                if (exclusionCenter.HasValue &&
+                    _spawnExclusionRadiusMeters >
+                        0.0 &&
+                    HorizontalDistance(
+                        spawnPosition,
+                        exclusionCenter.Value) <
+                        _spawnExclusionRadiusMeters)
+                {
+                    continue;
+                }
+
+                if (_externalObstacle is
+                        { } playerObstacle &&
+                    IsVisibleRespawnPop(
+                        spawnPosition,
+                        playerObstacle))
+                {
+                    continue;
+                }
+
+                var tooCloseToTraffic =
+                    _agents.Any(
+                        other =>
                         {
-                            return false;
-                        }
+                            if (ReferenceEquals(
+                                    other,
+                                    agent) ||
+                                other.PendingRespawn ||
+                                other.ActivationTimeSeconds >
+                                    _simulationElapsedSeconds ||
+                                !_segmentsByIndex.TryGetValue(
+                                    other.SegmentIndex,
+                                    out var otherSegment))
+                            {
+                                return false;
+                            }
 
-                        SampleSegment(
-                            otherSegment,
-                            other.DistanceMeters,
-                            out var otherPosition,
-                            out _);
+                            SampleSegment(
+                                otherSegment,
+                                other.DistanceMeters,
+                                out var otherPosition,
+                                out _);
 
-                        var horizontalDistance =
-                            HorizontalDistance(
-                                spawnPosition,
-                                otherPosition);
+                            var horizontalDistance =
+                                HorizontalDistance(
+                                    spawnPosition,
+                                    otherPosition);
 
-                        if (horizontalDistance <
-                            22.0)
-                        {
-                            return true;
-                        }
+                            if (horizontalDistance <
+                                22.0)
+                            {
+                                return true;
+                            }
 
-                        return other.SegmentIndex ==
-                                   segment.Index &&
-                               other.SpeedMetersPerSecond <=
-                                   2.5 &&
-                               Math.Abs(
-                                   other.DistanceMeters -
-                                   distance) <
-                                   35.0;
-                    });
+                            return other.SegmentIndex ==
+                                       segment.Index &&
+                                   other.SpeedMetersPerSecond <=
+                                       2.5 &&
+                                   Math.Abs(
+                                       other.DistanceMeters -
+                                       distance) <
+                                       35.0;
+                        });
 
-            if (tooCloseToTraffic)
-            {
-                continue;
+                if (tooCloseToTraffic)
+                {
+                    continue;
+                }
+
+                agent.SegmentIndex =
+                    segment.Index;
+                agent.DistanceMeters =
+                    distance;
+                agent.TravelForward =
+                    travelForward;
+                agent.SpeedMetersPerSecond =
+                    0.0;
+                agent.BrakeLight =
+                    false;
+                agent.CollisionHoldUntilSeconds =
+                    0.0;
+                agent.ActivationTimeSeconds =
+                    _simulationElapsedSeconds;
+
+                return true;
             }
-
-            agent.SegmentIndex =
-                segment.Index;
-            agent.DistanceMeters =
-                distance;
-            agent.TravelForward =
-                travelForward;
-            agent.SpeedMetersPerSecond =
-                0.0;
-            agent.BrakeLight =
-                false;
-            agent.ActivationTimeSeconds =
-                _simulationElapsedSeconds;
-
-            return true;
         }
 
         return false;
