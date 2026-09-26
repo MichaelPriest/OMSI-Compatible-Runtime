@@ -97,7 +97,12 @@ public sealed record WorldSceneryAsset(
     IReadOnlyList<WorldSceneryPath> Paths,
     double? TrafficLightCycleSeconds = null,
     IReadOnlyList<WorldTrafficLightProgram>? TrafficLights = null,
-    OmsiSceneryScriptManifest? ScriptManifest = null)
+    OmsiSceneryScriptManifest? ScriptManifest = null,
+    bool NoCollision = false,
+    bool Fixed = false,
+    bool Surface = false,
+    string? CollisionMeshSource = null,
+    OmsiSceneryBoundingBox? BoundingBox = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(
