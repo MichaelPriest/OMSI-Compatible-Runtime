@@ -190,7 +190,7 @@ public static class RuntimeVehicleInfoFactory
                             camera.Y,
                             camera.EyeDistance,
                             camera.FieldOfViewDegrees,
-                            camera.HeadingDegrees,
+                            -camera.HeadingDegrees,
                             camera.PitchDegrees))
                 .ToArray(),
             vehicle.Bus.PassengerCameras
@@ -202,7 +202,7 @@ public static class RuntimeVehicleInfoFactory
                             camera.Y,
                             camera.EyeDistance,
                             camera.FieldOfViewDegrees,
-                            camera.HeadingDegrees,
+                            -camera.HeadingDegrees,
                             camera.PitchDegrees))
                 .ToArray(),
             vehicle.Bus.StandardDriverCameraIndex,
@@ -224,7 +224,7 @@ public static class RuntimeVehicleInfoFactory
                             camera.Y,
                             camera.EyeDistance,
                             camera.FieldOfViewDegrees,
-                            camera.HeadingDegrees,
+                            -camera.HeadingDegrees,
                             camera.PitchDegrees,
                             camera.MaximumRenderDistanceMeters,
                             camera.RuntimeTextureName,
