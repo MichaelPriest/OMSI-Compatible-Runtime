@@ -8257,22 +8257,81 @@ public sealed class D3D11RenderWindow : Form
             Math.Abs(
                 _vehicle.SpeedMetersPerSecond);
 
-        // At normal frame cadence, reaching the stop line while still
-        // moving faster than walking pace means the front of the bus is
-        // crossing the controlled entry. A stopped/creeping bus at the
-        // line is not penalized.
-        var crossingThreshold =
-            Math.Clamp(
-                0.75 +
-                speedMetersPerSecond *
-                    0.20,
-                1.0,
-                3.0);
+        if (speedMetersPerSecond <
+                1.5 ||
+            segment.Points.Count <
+                2)
+        {
+            return;
+        }
 
-        if (distance >
-                crossingThreshold ||
-            speedMetersPerSecond <
-                1.5)
+        var approachA =
+            travelForward
+                ? segment.Points[^2]
+                : segment.Points[1];
+
+        var approachB =
+            travelForward
+                ? segment.Points[^1]
+                : segment.Points[0];
+
+        var approachX =
+            approachB.X -
+            approachA.X;
+
+        var approachZ =
+            approachB.Z -
+            approachA.Z;
+
+        var approachLength =
+            Math.Sqrt(
+                approachX *
+                    approachX +
+                approachZ *
+                    approachZ);
+
+        if (approachLength <=
+            0.0001)
+        {
+            return;
+        }
+
+        var forwardX =
+            approachX /
+            approachLength;
+
+        var forwardZ =
+            approachZ /
+            approachLength;
+
+        var playerHalfLength =
+            PlayerTrafficObstacle?
+                .HalfLengthMeters ??
+            5.5;
+
+        var frontX =
+            _vehicle.Position.X +
+            forwardX *
+                playerHalfLength;
+
+        var frontZ =
+            _vehicle.Position.Z +
+            forwardZ *
+                playerHalfLength;
+
+        var signedFrontDistance =
+            (frontX -
+             stopPoint.X) *
+                forwardX +
+            (frontZ -
+             stopPoint.Z) *
+                forwardZ;
+
+        // Penalize only when the front of the bus has actually crossed the
+        // stop-line plane while the signal is red. Being close to the line,
+        // but still behind it, is not a violation.
+        if (signedFrontDistance <
+            0.0)
         {
             return;
         }
