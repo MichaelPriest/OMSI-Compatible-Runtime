@@ -711,20 +711,29 @@ public static class WorldLoader
                                             null;
 
                                         if (materialOverride?.TransMapSource is
-                                                { Length: > 0 } transMapSource &&
-                                            !transMapSource.StartsWith(
-                                                "\\",
-                                                StringComparison.Ordinal) &&
-                                            OmsiTextureAssetPathResolver
-                                                .TryResolveSceneryTexture(
-                                                    contentRoot.RootPath,
-                                                    dependency.ResolvedPath,
-                                                    meshPath,
-                                                    transMapSource,
-                                                    out var resolvedTransMap))
+                                                { Length: > 0 } transMapSource)
                                         {
-                                            transMapTexturePath =
-                                                resolvedTransMap;
+                                            var normalizedTransMapSource =
+                                                transMapSource
+                                                    .Trim()
+                                                    .Trim('"')
+                                                    .TrimStart(
+                                                        '\\',
+                                                        '/');
+
+                                            if (normalizedTransMapSource.Length >
+                                                    0 &&
+                                                OmsiTextureAssetPathResolver
+                                                    .TryResolveSceneryTexture(
+                                                        contentRoot.RootPath,
+                                                        dependency.ResolvedPath,
+                                                        meshPath,
+                                                        normalizedTransMapSource,
+                                                        out var resolvedTransMap))
+                                            {
+                                                transMapTexturePath =
+                                                    resolvedTransMap;
+                                            }
                                         }
 
                                         return new WorldO3dMaterial(
