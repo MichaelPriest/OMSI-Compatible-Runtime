@@ -544,7 +544,7 @@
                                                   SelectionChanged="CarroceriaBox_SelectionChanged"/>
                                         <ComboBox x:Name="ModeloBox" Grid.Column="1" Header="Modelo"
                                                   SelectionChanged="ModeloBox_SelectionChanged"/>
-                                        <ComboBox x:Name="SkinBox" Grid.Column="2" Header="Skin" DisplayMemberPath="Skin"
+                                        <ComboBox x:Name="SkinBox" Grid.Column="2" Header="Skin / repaint" DisplayMemberPath="Name"
                                                   SelectionChanged="SkinBox_SelectionChanged"/>
                                     </Grid>
 
