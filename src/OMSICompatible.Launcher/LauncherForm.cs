@@ -90,7 +90,7 @@ internal sealed class LauncherForm : Form
     private readonly RuntimeProcessHost _runtime =
         new();
 
-    private readonly LauncherSettings _settings;
+    private LauncherSettings _settings;
 
     private IReadOnlyList<OmsiMapInfo> _maps =
         Array.Empty<OmsiMapInfo>();
@@ -1983,6 +1983,33 @@ internal sealed class LauncherForm : Form
                     "O runtime não pôde ser iniciado.");
             }
 
+            _settings =
+                _settings with
+                {
+                    LastSessionMapName =
+                        map.FolderName,
+                    LastSessionBusRelativePath =
+                        noBus
+                            ? null
+                            : bus?.RelativePath,
+                    LastSessionSkin =
+                        noBus
+                            ? null
+                            : bus?.Skin,
+                    LastSessionRepaintName =
+                        repaint?.Name,
+                    LastSessionRepaintCtiRelativePath =
+                        repaint?.RelativeCtiPath,
+                    LastSessionEntryPointName =
+                        entryPoint.Name,
+                    LastSessionWithoutBus =
+                        noBus,
+                    LastSessionStartedAt =
+                        DateTimeOffset.Now
+                };
+
+            SaveSettings();
+
             _statusValue.Text =
                 "Em execução";
         }
@@ -2087,16 +2114,27 @@ internal sealed class LauncherForm : Form
         var repaint =
             SelectedRepaint();
 
-        new LauncherSettings(
-            _contentPathBox.Text,
-            _mapBox.SelectedItem
-                ?.ToString(),
-            SelectedBus()?.RelativePath,
-            SelectedEntryPoint()?.Name,
-            _noBusCheckBox.Checked,
-            repaint?.Name,
-            repaint?.RelativeCtiPath)
-            .Save();
+        _settings =
+            _settings with
+            {
+                ContentPath =
+                    _contentPathBox.Text,
+                MapName =
+                    _mapBox.SelectedItem
+                        ?.ToString(),
+                BusRelativePath =
+                    SelectedBus()?.RelativePath,
+                EntryPointName =
+                    SelectedEntryPoint()?.Name,
+                StartWithoutBus =
+                    _noBusCheckBox.Checked,
+                RepaintName =
+                    repaint?.Name,
+                RepaintCtiRelativePath =
+                    repaint?.RelativeCtiPath
+            };
+
+        _settings.Save();
     }
 
     private void ShowError(
