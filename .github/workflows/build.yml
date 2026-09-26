@@ -126,6 +126,23 @@ jobs:
           Copy-Item $source $target -Force
           if (-not (Test-Path $target)) { throw "Primary WinUI launcher alias was not created." }
 
+      - name: Smoke test WinUI XAML startup
+        shell: pwsh
+        run: |
+          $root = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64"
+          $launcher = Join-Path $root "OMSICompatible.Launcher.WinUI.exe"
+          if (-not (Test-Path $launcher)) { throw "WinUI launcher apphost is missing." }
+
+          $process = Start-Process -FilePath $launcher -ArgumentList "--xaml-smoke" -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "WinUI XAML smoke test timed out."
+          }
+
+          if ($process.ExitCode -ne 0) {
+            throw "WinUI XAML smoke test failed with exit code $($process.ExitCode)."
+          }
+
       - name: Publish Runtime x64
         run: >
           dotnet publish src/OMSICompatible.Runtime/OMSICompatible.Runtime.csproj
