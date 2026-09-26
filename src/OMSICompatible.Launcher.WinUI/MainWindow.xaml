@@ -761,6 +761,13 @@
                     <TextBlock x:Name="ControlsControllerPathText"
                                Text="gamectrler.cfg"
                                TextWrapping="Wrap"/>
+
+                    <StackPanel Visibility="Collapsed">
+                        <TextBlock x:Name="ControlsKeyboardCountText" Text="0"/>
+                        <TextBlock x:Name="ControlsKeyTableCountText" Text="0"/>
+                        <TextBlock x:Name="ControlsKeyTableFileText" Text=""/>
+                        <TextBlock x:Name="ControlsGameControllerStateText" Text=""/>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
 
