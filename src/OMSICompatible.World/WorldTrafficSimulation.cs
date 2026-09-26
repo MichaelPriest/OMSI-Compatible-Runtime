@@ -1594,6 +1594,19 @@ public sealed class WorldTrafficSimulation
             if (otherSegment.TrafficPriority ==
                 currentSegment.TrafficPriority)
             {
+                var otherRemainingDistance =
+                    ResolveApproachRemainingDistance(
+                        other,
+                        otherSegment);
+
+                if (other.SpeedMetersPerSecond <=
+                        0.75 &&
+                    otherRemainingDistance >
+                        2.0)
+                {
+                    continue;
+                }
+
                 var currentArrival =
                     EstimateApproachArrivalSeconds(
                         agent,
