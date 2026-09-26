@@ -201,6 +201,7 @@ public sealed class D3D11RenderWindow : Form
     private float _mouseDriveSteering;
     private bool _simulationPaused;
     private bool _vehiclePanelAuditWritten;
+    private bool _suppressVehicleInitAudio;
     private int _statusInfoLevel = 1;
     private bool _specialViewActive;
     private bool _specialPreviousDriveMode;
@@ -3210,6 +3211,8 @@ public sealed class D3D11RenderWindow : Form
                 DrawTerrain();
                 DrawSplines();
                 DrawObjects();
+                DrawTrafficVehicles();
+                DrawTrafficVehicleLights();
             }
         }
         finally
@@ -8645,54 +8648,67 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        UpdateScriptHostVariables(
-            0.0,
-            0.0);
+        // OMSI scripts can emit T.L/T.F during {init}. Those initialization
+        // triggers must not become audible "engine already running" sounds
+        // before the player actually starts the vehicle. Keep sound.cfg
+        // loaded so the script host is complete, but suppress trigger output
+        // until all lead/section init macros have finished and host state is
+        // synchronized from the scripts.
+        _suppressVehicleInitAudio =
+            true;
 
-        _scriptRuntime.ExecuteInit();
-
-        if (_initialVehicleVariables is
-            { Count: > 0 })
+        try
         {
-            foreach (var pair in
-                     _initialVehicleVariables)
-            {
-                _scriptRuntime.SetLocal(
-                    pair.Key,
-                    pair.Value);
-            }
-        }
-
-        // From this point the OMSI vehicle script is authoritative.
-        // Do not overwrite engine/electrical/gearbox state after {init};
-        // synchronize the x64 host from the state the original scripts
-        // established, exactly as the runtime frame path does.
-        SynchronizeHostVehicleStateFromScripts();
-        SynchronizeOmsiScriptDynamics();
-        AcknowledgeOmsiStringRefresh();
-
-        foreach (var pair in
-                 _sectionScriptRuntimes)
-        {
-            var section =
-                ResolveVehicleSection(
-                    pair.Key);
-
-            if (section is null)
-            {
-                continue;
-            }
-
-            UpdateSectionScriptHostVariables(
-                pair.Value,
-                section,
+            UpdateScriptHostVariables(
                 0.0,
                 0.0);
 
-            pair.Value.ExecuteInit();
+            _scriptRuntime.ExecuteInit();
 
-            AcknowledgeOmsiStringRefresh(
-                pair.Value);
+            if (_initialVehicleVariables is
+                { Count: > 0 })
+            {
+                foreach (var pair in
+                         _initialVehicleVariables)
+                {
+                    _scriptRuntime.SetLocal(
+                        pair.Key,
+                        pair.Value);
+                }
+            }
+
+            SynchronizeHostVehicleStateFromScripts();
+            SynchronizeOmsiScriptDynamics();
+            AcknowledgeOmsiStringRefresh();
+
+            foreach (var pair in
+                     _sectionScriptRuntimes)
+            {
+                var section =
+                    ResolveVehicleSection(
+                        pair.Key);
+
+                if (section is null)
+                {
+                    continue;
+                }
+
+                UpdateSectionScriptHostVariables(
+                    pair.Value,
+                    section,
+                    0.0,
+                    0.0);
+
+                pair.Value.ExecuteInit();
+
+                AcknowledgeOmsiStringRefresh(
+                    pair.Value);
+            }
+        }
+        finally
+        {
+            _suppressVehicleInitAudio =
+                false;
         }
 
         WriteVehicleRuntimeStateDiagnostics();
@@ -10944,6 +10960,11 @@ public sealed class D3D11RenderWindow : Form
     private void OnScriptSoundTriggerRequested(
         string trigger)
     {
+        if (_suppressVehicleInitAudio)
+        {
+            return;
+        }
+
         TriggerOmsiAudio(
             trigger);
     }
@@ -10952,6 +10973,11 @@ public sealed class D3D11RenderWindow : Form
         string trigger,
         string declaredFile)
     {
+        if (_suppressVehicleInitAudio)
+        {
+            return;
+        }
+
         // OMSI accepts an empty string on T.F as the configured trigger
         // sound, equivalent to T.L. Dynamic filenames remain relative to
         // the lead vehicle's sound directory.
@@ -10974,6 +11000,11 @@ public sealed class D3D11RenderWindow : Form
         string trigger,
         string declaredFile)
     {
+        if (_suppressVehicleInitAudio)
+        {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(
                 declaredFile))
         {
@@ -10998,7 +11029,8 @@ public sealed class D3D11RenderWindow : Form
         int sectionIndex,
         string trigger)
     {
-        if (_vehicleRemoved ||
+        if (_suppressVehicleInitAudio ||
+            _vehicleRemoved ||
             string.IsNullOrWhiteSpace(
                 trigger) ||
             !_articulatedOmsiAudio.TryGetValue(
