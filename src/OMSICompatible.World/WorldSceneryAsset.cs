@@ -1,4 +1,5 @@
 using OmsiCompat.Scenery;
+using OmsiCompat.Vehicles;
 
 namespace OMSICompatible.World;
 
@@ -36,7 +37,13 @@ public sealed record WorldSceneryMeshAsset(
     float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
-    IReadOnlyList<WorldO3dMaterial> Materials)
+    IReadOnlyList<WorldO3dMaterial> Materials,
+    IReadOnlyList<OmsiVehicleVisibilityCondition>? VisibilityConditions = null,
+    IReadOnlyList<OmsiVehicleAnimation>? Animations = null,
+    IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
+    string? MeshIdentifier = null,
+    string? AnimationParent = null,
+    int ModelOrdinal = -1)
 {
     public bool IsRenderable =>
         Exists &&
