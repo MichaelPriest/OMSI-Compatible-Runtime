@@ -4,6 +4,30 @@ namespace OmsiCompat.Vehicles;
 
 public static class BusDiscovery
 {
+    public static IReadOnlyList<OmsiBusInfo> DiscoverPlayerSelectable(
+        OmsiContentRoot contentRoot) =>
+        Discover(
+            contentRoot)
+            .Where(
+                IsPlayerSelectable)
+            .ToArray();
+
+    public static bool IsPlayerSelectable(
+        OmsiBusInfo bus)
+    {
+        ArgumentNullException.ThrowIfNull(
+            bus);
+
+        // AI-only .bus variants often contain a renderable model so they
+        // belong in ailists.cfg, but they do not define a driver viewpoint.
+        // Keep them available to the traffic loader while excluding them
+        // from Carroceria / Modelo / Skin in the player launcher.
+        return !string.IsNullOrWhiteSpace(
+                   bus.ModelConfigPath) &&
+               bus.DriverCameras.Count >
+                   0;
+    }
+
     public static IReadOnlyList<OmsiBusInfo> Discover(
         OmsiContentRoot contentRoot)
     {
