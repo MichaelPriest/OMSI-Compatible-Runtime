@@ -7006,7 +7006,7 @@ public sealed class D3D11RenderWindow : Form
             _omsiAudio?.Update(
                 _scriptRuntime,
                 IsInteriorSoundView(),
-                _vehicle.EngineRunning,
+                ResolveLeadEngineRunning(),
                 listenerPosition,
                 _vehicle.Position,
                 _vehicle.HeadingRadians);
@@ -9258,6 +9258,34 @@ public sealed class D3D11RenderWindow : Form
             variableName,
             _scriptRuntime.GetLocal(
                 variableName));
+    }
+
+    private bool ResolveLeadEngineRunning()
+    {
+        if (_scriptRuntime is not null)
+        {
+            if (_scriptRuntime.HasLocalVariable(
+                    "engine_on") &&
+                _scriptRuntime.WritesLocalVariable(
+                    "engine_on"))
+            {
+                return _scriptRuntime.GetLocal(
+                           "engine_on") >
+                       0.5;
+            }
+
+            if (_scriptRuntime.HasLocalVariable(
+                    "engine_injection_on") &&
+                _scriptRuntime.WritesLocalVariable(
+                    "engine_injection_on"))
+            {
+                return _scriptRuntime.GetLocal(
+                           "engine_injection_on") >
+                       0.5;
+            }
+        }
+
+        return _vehicle.EngineRunning;
     }
 
     private bool ResolveSectionEngineRunning(
@@ -12716,12 +12744,13 @@ public sealed class D3D11RenderWindow : Form
         var centerY =
             ClientSize.Height * 0.5f;
 
-        // RuntimeDriveVehicle uses positive steering for a right turn
-        // (positive heading/curvature). Keep the mouse axis in that same
-        // user-facing direction: mouse right -> right, mouse left -> left.
+        // Physical alpha testing is the authority for the screen-space
+        // steering direction. The renderer/vehicle coordinate conversion
+        // makes the previous screen-X sign feel reversed in OMSI mouse
+        // steering mode, so map cursor-right to the opposite raw axis here.
         var horizontal =
             Math.Clamp(
-                (location.X - centerX) /
+                (centerX - location.X) /
                 halfWidth,
                 -1.0f,
                 1.0f);
