@@ -24,10 +24,29 @@ public partial class App : Application
     protected override void OnLaunched(
         LaunchActivatedEventArgs args)
     {
+        var xamlSmoke =
+            Environment
+                .GetCommandLineArgs()
+                .Any(
+                    static argument =>
+                        string.Equals(
+                            argument,
+                            "--xaml-smoke",
+                            StringComparison.OrdinalIgnoreCase));
+
         try
         {
             _window =
-                new MainWindow();
+                new MainWindow(
+                    xamlSmokeOnly:
+                        xamlSmoke);
+
+            if (xamlSmoke)
+            {
+                Environment.Exit(
+                    0);
+                return;
+            }
 
             _window.Activate();
         }
@@ -35,6 +54,14 @@ public partial class App : Application
         {
             ReportStartupFailure(
                 exception);
+
+            if (xamlSmoke)
+            {
+                Environment.Exit(
+                    86);
+                return;
+            }
+
             throw;
         }
     }
@@ -65,6 +92,21 @@ public partial class App : Application
         catch
         {
             // Startup reporting must never hide the original exception.
+        }
+
+        var xamlSmoke =
+            Environment
+                .GetCommandLineArgs()
+                .Any(
+                    static argument =>
+                        string.Equals(
+                            argument,
+                            "--xaml-smoke",
+                            StringComparison.OrdinalIgnoreCase));
+
+        if (xamlSmoke)
+        {
+            return;
         }
 
         try
