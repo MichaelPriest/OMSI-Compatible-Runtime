@@ -242,8 +242,9 @@ public sealed class WorldTrafficSimulation
                                 segment,
                                 groupIndex,
                                 defaultDensityClassIndex) &&
-                            HasUsableTrafficExit(
-                                segment))
+                            (!spawnExclusionCenter.HasValue ||
+                             HasUsableTrafficExit(
+                                 segment)))
                     .ToArray();
 
             if (allowedSegments.Length ==
