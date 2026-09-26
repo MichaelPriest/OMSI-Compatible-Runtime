@@ -897,7 +897,8 @@ internal sealed class RuntimeOmsiAudioHost :
         bool engineRunning,
         Vector3 listenerPosition,
         Vector3 vehiclePosition,
-        float vehicleHeadingRadians)
+        float vehicleHeadingRadians,
+        bool forceVehicleSpatial = false)
     {
         var controlDeltaSeconds =
             ResolveControlDeltaSeconds();
@@ -916,7 +917,8 @@ internal sealed class RuntimeOmsiAudioHost :
                     sound,
                     listenerPosition,
                     vehiclePosition,
-                    vehicleHeadingRadians);
+                    vehicleHeadingRadians,
+                    forceVehicleSpatial);
 
             var volume =
                 EvaluateVolume(
@@ -1521,45 +1523,73 @@ internal sealed class RuntimeOmsiAudioHost :
         RuntimeOmsiSoundDefinition sound,
         Vector3 listenerPosition,
         Vector3 vehiclePosition,
-        float vehicleHeadingRadians)
+        float vehicleHeadingRadians,
+        bool forceVehicleSpatial = false)
     {
+        Vector3 emitter;
+        float fullVolumeDistance;
+
         if (!sound.SourceX.HasValue ||
             !sound.SourceY.HasValue ||
             !sound.SourceZ.HasValue)
         {
-            return new SpatialMix(
-                1.0f,
-                0.0f);
+            if (!forceVehicleSpatial)
+            {
+                return new SpatialMix(
+                    1.0f,
+                    0.0f);
+            }
+
+            // AI sound.cfg files frequently omit [3d] source coordinates.
+            // Treat those sounds as coming from the vehicle centre instead
+            // of mixing every AI engine at full listener volume.
+            emitter =
+                vehiclePosition;
+
+            fullVolumeDistance =
+                (float)Math.Max(
+                    sound.MaximumDistanceMeters ??
+                    8.0,
+                    1.0);
         }
+        else
+        {
+            // OMSI vehicle coordinates: X lateral, Y longitudinal,
+            // Z vertical. Runtime vehicle space mirrors X and maps
+            // longitudinal Y to world Z.
+            var localX =
+                (float)-sound.SourceX.Value;
+            var localZ =
+                (float)sound.SourceY.Value;
+            var localY =
+                (float)sound.SourceZ.Value;
 
-        // OMSI vehicle coordinates: X lateral, Y longitudinal, Z vertical.
-        // Runtime vehicle space mirrors X and maps longitudinal Y to world Z.
-        var localX =
-            (float)-sound.SourceX.Value;
-        var localZ =
-            (float)sound.SourceY.Value;
-        var localY =
-            (float)sound.SourceZ.Value;
+            var sine =
+                MathF.Sin(
+                    vehicleHeadingRadians);
+            var cosine =
+                MathF.Cos(
+                    vehicleHeadingRadians);
 
-        var sine =
-            MathF.Sin(
-                vehicleHeadingRadians);
-        var cosine =
-            MathF.Cos(
-                vehicleHeadingRadians);
+            emitter =
+                vehiclePosition +
+                new Vector3(
+                    localX *
+                        cosine +
+                    localZ *
+                        sine,
+                    localY,
+                    -localX *
+                        sine +
+                    localZ *
+                        cosine);
 
-        var emitter =
-            vehiclePosition +
-            new Vector3(
-                localX *
-                    cosine +
-                localZ *
-                    sine,
-                localY,
-                -localX *
-                    sine +
-                localZ *
-                    cosine);
+            fullVolumeDistance =
+                (float)Math.Max(
+                    sound.MaximumDistanceMeters ??
+                    0.0,
+                    0.0);
+        }
 
         var offset =
             emitter -
@@ -1568,11 +1598,14 @@ internal sealed class RuntimeOmsiAudioHost :
         var distance =
             offset.Length();
 
-        var fullVolumeDistance =
-            (float)Math.Max(
-                sound.MaximumDistanceMeters ??
-                0.0,
-                0.0);
+        if (forceVehicleSpatial &&
+            distance >
+                120.0f)
+        {
+            return new SpatialMix(
+                0.0f,
+                0.0f);
+        }
 
         var gain =
             fullVolumeDistance <=
@@ -1602,6 +1635,13 @@ internal sealed class RuntimeOmsiAudioHost :
             horizontal =
                 Vector2.Normalize(
                     horizontal);
+
+            var sine =
+                MathF.Sin(
+                    vehicleHeadingRadians);
+            var cosine =
+                MathF.Cos(
+                    vehicleHeadingRadians);
 
             var vehicleRight =
                 new Vector2(
