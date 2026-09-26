@@ -42,11 +42,19 @@ public sealed partial class MainWindow :
         string Detail,
         BitmapImage? Preview);
 
+    private sealed record KeyboardDisplayRow(
+        string Trigger,
+        string Key,
+        string Flags);
+
     private readonly RuntimeProcessHost _runtime =
         new();
 
     private LauncherSettings _settings =
         LauncherSettings.Load();
+
+    private OmsiRuntimeOptions _runtimeOptions =
+        OmsiRuntimeOptions.Load();
 
     private IReadOnlyList<OmsiMapInfo> _maps =
         Array.Empty<OmsiMapInfo>();
@@ -124,6 +132,8 @@ public sealed partial class MainWindow :
                 _settings.MapName);
         }
 
+        LoadRuntimeOptionsIntoUi();
+        UpdateControlsView();
         UpdateRuntimeStatusCards();
         UpdateHomeSummary();
     }
@@ -170,6 +180,31 @@ public sealed partial class MainWindow :
             VehiclesNavButton);
     }
 
+    private void ControlsNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        UpdateControlsView();
+
+        ShowView(
+            ControlsView,
+            ControlsNavButton);
+    }
+
+    private void SettingsNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        _runtimeOptions =
+            OmsiRuntimeOptions.Load();
+
+        LoadRuntimeOptionsIntoUi();
+
+        ShowView(
+            SettingsView,
+            SettingsNavButton);
+    }
+
     private void CompatibilityNavButton_Click(
         object sender,
         RoutedEventArgs e)
@@ -202,6 +237,8 @@ public sealed partial class MainWindow :
             SessionView,
             MapsView,
             VehiclesView,
+            ControlsView,
+            SettingsView,
             CompatibilityView,
             DiagnosticsView
         ];
@@ -229,6 +266,8 @@ public sealed partial class MainWindow :
             PlayNavButton,
             MapsNavButton,
             VehiclesNavButton,
+            ControlsNavButton,
+            SettingsNavButton,
             CompatibilityNavButton,
             DiagnosticsNavButton
         ];
@@ -453,6 +492,7 @@ public sealed partial class MainWindow :
 
             UpdatePlayAvailability();
             UpdateHomeSummary();
+            UpdateControlsView();
             UpdateCompatibilityAndDiagnostics();
 
             SetStatus(
@@ -1445,6 +1485,7 @@ public sealed partial class MainWindow :
 
         UpdateLibraryViews();
         UpdateHero(null);
+        UpdateControlsView();
         UpdateCompatibilityAndDiagnostics();
     }
 
@@ -1648,6 +1689,713 @@ public sealed partial class MainWindow :
         {
             return null;
         }
+    }
+
+    private void RefreshControlsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        _runtimeOptions =
+            OmsiRuntimeOptions.Load();
+
+        UpdateControlsView();
+
+        SetStatus(
+            "Controles recarregados dos arquivos OMSI.");
+    }
+
+    private void UpdateControlsView()
+    {
+        var contentRoot =
+            ContentPathBox.Text
+                ?.Trim();
+
+        var keyboardPath =
+            string.IsNullOrWhiteSpace(
+                contentRoot)
+                ? string.Empty
+                : Path.Combine(
+                    contentRoot,
+                    "Inputs",
+                    "keyboard.cfg");
+
+        var controllerPath =
+            string.IsNullOrWhiteSpace(
+                contentRoot)
+                ? string.Empty
+                : Path.Combine(
+                    contentRoot,
+                    "Inputs",
+                    "gamectrler.cfg");
+
+        ControlsKeyboardPathText.Text =
+            File.Exists(
+                keyboardPath)
+                ? keyboardPath
+                : $"Não encontrado: {keyboardPath}";
+
+        ControlsControllerPathText.Text =
+            File.Exists(
+                controllerPath)
+                ? controllerPath
+                : $"Não encontrado: {controllerPath}";
+
+        var keyboardText =
+            TryReadText(
+                keyboardPath);
+
+        var keyTable =
+            ReadOmsiKeyTable(
+                contentRoot,
+                _runtimeOptions.Language,
+                out var keyTablePath);
+
+        var rows =
+            ParseKeyboardDisplayRows(
+                keyboardText,
+                keyTable);
+
+        ControlsKeyboardList.ItemsSource =
+            rows;
+
+        ControlsKeyboardCountText.Text =
+            rows.Count.ToString(
+                "N0");
+
+        ControlsKeyTableCountText.Text =
+            keyTable.Count.ToString(
+                "N0");
+
+        ControlsKeyTableFileText.Text =
+            string.IsNullOrWhiteSpace(
+                keyTablePath)
+                ? "nenhum .kyb encontrado"
+                : Path.GetFileName(
+                    keyTablePath);
+
+        var controllerText =
+            TryReadText(
+                controllerPath);
+
+        var controllerCount =
+            CountSectionMarkers(
+                controllerText,
+                "[ctrl]");
+
+        ControlsControllerCountText.Text =
+            controllerCount.ToString(
+                "N0");
+
+        ControlsGameControllerStateText.Text =
+            _runtimeOptions.GameControllerEnabled
+                ? "Habilitado"
+                : "Desabilitado";
+    }
+
+    private static string TryReadText(
+        string? path)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(
+                       path) &&
+                   File.Exists(
+                       path)
+                ? File.ReadAllText(
+                    path)
+                : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static IReadOnlyDictionary<int, string>
+        ReadOmsiKeyTable(
+            string? contentRoot,
+            string? preferredLanguage,
+            out string? selectedPath)
+    {
+        selectedPath =
+            null;
+
+        if (string.IsNullOrWhiteSpace(
+                contentRoot))
+        {
+            return new Dictionary<int, string>();
+        }
+
+        var inputs =
+            Path.Combine(
+                contentRoot,
+                "Inputs");
+
+        if (!Directory.Exists(
+                inputs))
+        {
+            return new Dictionary<int, string>();
+        }
+
+        var candidates =
+            new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(
+                preferredLanguage))
+        {
+            candidates.Add(
+                Path.Combine(
+                    inputs,
+                    preferredLanguage +
+                    ".kyb"));
+        }
+
+        candidates.Add(
+            Path.Combine(
+                inputs,
+                "PTB.kyb"));
+
+        candidates.Add(
+            Path.Combine(
+                inputs,
+                "ENG.kyb"));
+
+        candidates.Add(
+            Path.Combine(
+                inputs,
+                "DEU.kyb"));
+
+        selectedPath =
+            candidates.FirstOrDefault(
+                File.Exists);
+
+        try
+        {
+            selectedPath ??=
+                Directory
+                    .EnumerateFiles(
+                        inputs,
+                        "*.kyb",
+                        SearchOption.TopDirectoryOnly)
+                    .FirstOrDefault();
+        }
+        catch
+        {
+        }
+
+        if (selectedPath is null)
+        {
+            return new Dictionary<int, string>();
+        }
+
+        var result =
+            new Dictionary<int, string>();
+
+        try
+        {
+            foreach (var raw in
+                     File.ReadLines(
+                         selectedPath))
+            {
+                var line =
+                    raw.Trim();
+
+                if (line.Length == 0 ||
+                    line.StartsWith(
+                        '#') ||
+                    line.StartsWith(
+                        "//",
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var split =
+                    line.Split(
+                        [' ', '\t'],
+                        2,
+                        StringSplitOptions.RemoveEmptyEntries);
+
+                if (split.Length < 2 ||
+                    !int.TryParse(
+                        split[0],
+                        out var index))
+                {
+                    continue;
+                }
+
+                result.TryAdd(
+                    index,
+                    split[1].Trim());
+            }
+        }
+        catch
+        {
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<KeyboardDisplayRow>
+        ParseKeyboardDisplayRows(
+            string text,
+            IReadOnlyDictionary<int, string> keys)
+    {
+        if (string.IsNullOrWhiteSpace(
+                text))
+        {
+            return Array.Empty<KeyboardDisplayRow>();
+        }
+
+        var lines =
+            text
+                .Replace(
+                    "\r\n",
+                    "\n")
+                .Replace(
+                    '\r',
+                    '\n')
+                .Split(
+                    '\n');
+
+        var result =
+            new List<KeyboardDisplayRow>();
+
+        for (var index = 0;
+             index < lines.Length;
+             index++)
+        {
+            if (!string.Equals(
+                    lines[index].Trim(),
+                    "[entry]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                new List<string>(
+                    3);
+
+            for (var cursor = index + 1;
+                 cursor < lines.Length &&
+                 values.Count < 3;
+                 cursor++)
+            {
+                var value =
+                    lines[cursor]
+                        .Trim();
+
+                if (value.Length == 0 ||
+                    value.StartsWith(
+                        '#') ||
+                    value.StartsWith(
+                        "//",
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (value.StartsWith(
+                        '[') &&
+                    value.EndsWith(
+                        ']'))
+                {
+                    break;
+                }
+
+                values.Add(
+                    value);
+            }
+
+            if (values.Count < 3 ||
+                !int.TryParse(
+                    values[1],
+                    out var keyIndex) ||
+                !int.TryParse(
+                    values[2],
+                    out var flags))
+            {
+                continue;
+            }
+
+            var keyName =
+                keys.TryGetValue(
+                    keyIndex,
+                    out var known)
+                    ? known
+                    : $"OMSI #{keyIndex}";
+
+            var flagNames =
+                new List<string>();
+
+            if ((flags & 1) != 0)
+            {
+                flagNames.Add(
+                    "Contínuo");
+            }
+
+            if ((flags & 2) != 0)
+            {
+                flagNames.Add(
+                    "Shift");
+            }
+
+            if ((flags & 4) != 0)
+            {
+                flagNames.Add(
+                    "Ctrl");
+            }
+
+            result.Add(
+                new KeyboardDisplayRow(
+                    values[0],
+                    keyName,
+                    flagNames.Count == 0
+                        ? "—"
+                        : string.Join(
+                            " · ",
+                            flagNames)));
+        }
+
+        return result;
+    }
+
+    private static int CountSectionMarkers(
+        string text,
+        string marker)
+    {
+        if (string.IsNullOrWhiteSpace(
+                text))
+        {
+            return 0;
+        }
+
+        return text
+            .Replace(
+                "\r\n",
+                "\n")
+            .Replace(
+                '\r',
+                '\n')
+            .Split(
+                '\n')
+            .Count(
+                line =>
+                    string.Equals(
+                        line.Trim(),
+                        marker,
+                        StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void LoadRuntimeOptionsIntoUi()
+    {
+        SettingsLanguageBox.Text =
+            _runtimeOptions.Language;
+
+        SettingsTargetFpsBox.Value =
+            _runtimeOptions.TargetFps;
+
+        SettingsNeighborTilesBox.Value =
+            _runtimeOptions.NeighborTiles;
+
+        SettingsAutoSaveCheck.IsChecked =
+            _runtimeOptions.AutoSave;
+
+        SettingsCurrentTimeCheck.IsChecked =
+            _runtimeOptions.UseCurrentTime;
+
+        SettingsCurrentDateCheck.IsChecked =
+            _runtimeOptions.UseCurrentDate;
+
+        SettingsObjectDistanceBox.Value =
+            _runtimeOptions.MaximumObjectVisibilityMeters;
+
+        SettingsTextureMemoryBox.Value =
+            _runtimeOptions.HighResolutionTextureMemoryMb;
+
+        SettingsAnisotropicBox.Value =
+            _runtimeOptions.AnisotropicFiltering;
+
+        SettingsShadowsCheck.IsChecked =
+            _runtimeOptions.Shadows;
+
+        SettingsNightMapCheck.IsChecked =
+            _runtimeOptions.MaterialNightMap;
+
+        SettingsLightMapCheck.IsChecked =
+            _runtimeOptions.MaterialLightMap;
+
+        SettingsMasterVolumeBox.Value =
+            _runtimeOptions.MasterVolumePercent;
+
+        SettingsRoadTrafficBox.Value =
+            _runtimeOptions.RoadTrafficFactorPercent;
+
+        SettingsPassengerFactorBox.Value =
+            _runtimeOptions.PassengerFactorPercent;
+
+        SettingsAiSoundsCheck.IsChecked =
+            _runtimeOptions.AiVehicleSounds;
+
+        SettingsScenerySoundsCheck.IsChecked =
+            _runtimeOptions.ScenerySounds;
+
+        SettingsGameControllerCheck.IsChecked =
+            _runtimeOptions.GameControllerEnabled;
+
+        SettingsStreamingRadiusBox.Value =
+            _runtimeOptions.RuntimeStreamingRadius;
+
+        SettingsVsyncCheck.IsChecked =
+            _runtimeOptions.RuntimeVSync;
+
+        SettingsBorderlessCheck.IsChecked =
+            _runtimeOptions.RuntimeBorderlessFullscreen;
+
+        SettingsHardwareGpuCheck.IsChecked =
+            _runtimeOptions.RuntimePreferHardwareGpu;
+
+        SettingsShowFpsCheck.IsChecked =
+            _runtimeOptions.RuntimeShowFps;
+
+        SettingsDiagnosticsCheck.IsChecked =
+            _runtimeOptions.RuntimeDiagnostics;
+    }
+
+    private void SaveRuntimeOptionsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        try
+        {
+            ApplyRuntimeOptionsFromUi();
+
+            _runtimeOptions.Save();
+
+            UpdateControlsView();
+
+            SetStatus(
+                $"Configurações salvas em {OmsiRuntimeOptions.SettingsPath}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                $"Falha ao salvar configurações: {ex.Message}");
+        }
+    }
+
+    private void ImportOmsiOptionsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var contentRoot =
+            ContentPathBox.Text
+                ?.Trim();
+
+        if (string.IsNullOrWhiteSpace(
+                contentRoot) ||
+            !Directory.Exists(
+                contentRoot))
+        {
+            SetStatus(
+                "Configure primeiro uma biblioteca OMSI válida.");
+            return;
+        }
+
+        var optionsPath =
+            Path.Combine(
+                contentRoot,
+                "options.cfg");
+
+        if (!File.Exists(
+                optionsPath))
+        {
+            SetStatus(
+                $"options.cfg não encontrado em {contentRoot}");
+            return;
+        }
+
+        _runtimeOptions =
+            OmsiRuntimeOptions.ImportFromOmsi(
+                contentRoot,
+                _runtimeOptions);
+
+        LoadRuntimeOptionsIntoUi();
+        UpdateControlsView();
+
+        SetStatus(
+            $"options.cfg importado: {optionsPath}");
+    }
+
+    private void ApplyRuntimeOptionsFromUi()
+    {
+        var language =
+            SettingsLanguageBox.Text
+                ?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(
+                language))
+        {
+            _runtimeOptions.Language =
+                language;
+        }
+
+        _runtimeOptions.TargetFps =
+            ToInt(
+                SettingsTargetFpsBox.Value,
+                15,
+                240,
+                _runtimeOptions.TargetFps);
+
+        _runtimeOptions.NeighborTiles =
+            ToInt(
+                SettingsNeighborTilesBox.Value,
+                0,
+                8,
+                _runtimeOptions.NeighborTiles);
+
+        _runtimeOptions.AutoSave =
+            SettingsAutoSaveCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.UseCurrentTime =
+            SettingsCurrentTimeCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.UseCurrentDate =
+            SettingsCurrentDateCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.MaximumObjectVisibilityMeters =
+            ToDouble(
+                SettingsObjectDistanceBox.Value,
+                100,
+                10000,
+                _runtimeOptions.MaximumObjectVisibilityMeters);
+
+        _runtimeOptions.HighResolutionTextureMemoryMb =
+            ToDouble(
+                SettingsTextureMemoryBox.Value,
+                128,
+                32768,
+                _runtimeOptions.HighResolutionTextureMemoryMb);
+
+        _runtimeOptions.AnisotropicFiltering =
+            ToInt(
+                SettingsAnisotropicBox.Value,
+                1,
+                16,
+                _runtimeOptions.AnisotropicFiltering);
+
+        _runtimeOptions.Shadows =
+            SettingsShadowsCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.MaterialNightMap =
+            SettingsNightMapCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.MaterialLightMap =
+            SettingsLightMapCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.MasterVolumePercent =
+            ToInt(
+                SettingsMasterVolumeBox.Value,
+                0,
+                100,
+                _runtimeOptions.MasterVolumePercent);
+
+        _runtimeOptions.RoadTrafficFactorPercent =
+            ToInt(
+                SettingsRoadTrafficBox.Value,
+                0,
+                500,
+                _runtimeOptions.RoadTrafficFactorPercent);
+
+        _runtimeOptions.PassengerFactorPercent =
+            ToInt(
+                SettingsPassengerFactorBox.Value,
+                0,
+                500,
+                _runtimeOptions.PassengerFactorPercent);
+
+        _runtimeOptions.AiVehicleSounds =
+            SettingsAiSoundsCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.ScenerySounds =
+            SettingsScenerySoundsCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.GameControllerEnabled =
+            SettingsGameControllerCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.RuntimeStreamingRadius =
+            ToInt(
+                SettingsStreamingRadiusBox.Value,
+                1,
+                8,
+                _runtimeOptions.RuntimeStreamingRadius);
+
+        _runtimeOptions.RuntimeVSync =
+            SettingsVsyncCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.RuntimeBorderlessFullscreen =
+            SettingsBorderlessCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.RuntimePreferHardwareGpu =
+            SettingsHardwareGpuCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.RuntimeShowFps =
+            SettingsShowFpsCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.RuntimeDiagnostics =
+            SettingsDiagnosticsCheck.IsChecked ==
+            true;
+    }
+
+    private static int ToInt(
+        double value,
+        int minimum,
+        int maximum,
+        int fallback)
+    {
+        if (!double.IsFinite(
+                value))
+        {
+            return fallback;
+        }
+
+        return Math.Clamp(
+            (int)Math.Round(
+                value),
+            minimum,
+            maximum);
+    }
+
+    private static double ToDouble(
+        double value,
+        double minimum,
+        double maximum,
+        double fallback)
+    {
+        if (!double.IsFinite(
+                value))
+        {
+            return fallback;
+        }
+
+        return Math.Clamp(
+            value,
+            minimum,
+            maximum);
     }
 
     private void UpdateCompatibilityAndDiagnostics()
