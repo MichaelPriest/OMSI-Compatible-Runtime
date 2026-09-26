@@ -18,7 +18,7 @@ public sealed partial class MainWindow :
     private readonly RuntimeProcessHost _runtime =
         new();
 
-    private readonly LauncherSettings _settings =
+    private LauncherSettings _settings =
         LauncherSettings.Load();
 
     private IReadOnlyList<OmsiMapInfo> _maps =
@@ -81,6 +81,9 @@ public sealed partial class MainWindow :
             await RefreshContentAsync(
                 _settings.MapName);
         }
+
+        UpdateRuntimeStatusCards();
+        UpdateHomeSummary();
     }
 
     private void HomeNavButton_Click(
@@ -709,6 +712,31 @@ public sealed partial class MainWindow :
                 throw new InvalidOperationException(
                     "O runtime não pôde ser iniciado.");
             }
+
+            _settings =
+                _settings with
+                {
+                    LastSessionMapName =
+                        map.FolderName,
+                    LastSessionBusRelativePath =
+                        noBus
+                            ? null
+                            : bus?.RelativePath,
+                    LastSessionSkin =
+                        noBus
+                            ? null
+                            : bus?.Skin,
+                    LastSessionEntryPointName =
+                        spawn.Name,
+                    LastSessionWithoutBus =
+                        noBus,
+                    LastSessionStartedAt =
+                        DateTimeOffset.Now
+                };
+
+            SaveSettings();
+            UpdateHomeSummary();
+            UpdateRuntimeStatusCards();
         }
         catch (Exception ex)
         {
@@ -766,6 +794,7 @@ public sealed partial class MainWindow :
                     HideLoading();
                     SetStatus(
                         "Em execução");
+                    UpdateRuntimeStatusCards();
                     return;
                 }
 
@@ -788,6 +817,7 @@ public sealed partial class MainWindow :
                         : $"Runtime encerrado com erro {exitCode}.");
 
                 UpdatePlayAvailability();
+                UpdateRuntimeStatusCards();
             });
     }
 
@@ -858,32 +888,6 @@ public sealed partial class MainWindow :
                 ? null
                 : SelectedBus();
 
-        var spawn =
-            SelectedSpawn();
-
-        LastMapText.Text =
-            map?.FolderName ??
-            "Nenhum mapa selecionado";
-
-        LastBusText.Text =
-            NoBusCheckBox.IsChecked ==
-                    true
-                ? "Sem ônibus"
-                : bus?.Modelo ??
-                  "Nenhum veículo selecionado";
-
-        LastSpawnText.Text =
-            spawn?.Name ??
-            "Nenhum ponto inicial";
-
-        LastTimeText.Text =
-            DateTime.Now.ToString(
-                "HH:mm");
-
-        LastSessionDateText.Text =
-            DateTime.Now.ToString(
-                "dd MMM yyyy · HH:mm");
-
         var mapImage =
             map is null
                 ? null
@@ -900,9 +904,76 @@ public sealed partial class MainWindow :
             HeroImage,
             heroImage);
 
+        var lastMap =
+            _maps.FirstOrDefault(
+                item =>
+                    string.Equals(
+                        item.FolderName,
+                        _settings.LastSessionMapName,
+                        StringComparison.OrdinalIgnoreCase));
+
+        var lastBus =
+            _buses.FirstOrDefault(
+                item =>
+                    string.Equals(
+                        item.RelativePath,
+                        _settings.LastSessionBusRelativePath,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrWhiteSpace(
+                         _settings.LastSessionSkin) ||
+                     string.Equals(
+                         item.Skin,
+                         _settings.LastSessionSkin,
+                         StringComparison.OrdinalIgnoreCase)));
+
+        var hasLastSession =
+            _settings.LastSessionStartedAt
+                is not null;
+
+        LastMapText.Text =
+            hasLastSession
+                ? lastMap?.FolderName ??
+                  _settings.LastSessionMapName ??
+                  "Mapa indisponível"
+                : "Nenhuma sessão iniciada";
+
+        LastBusText.Text =
+            !hasLastSession
+                ? "—"
+                : _settings.LastSessionWithoutBus
+                    ? "Sem ônibus"
+                    : lastBus?.Modelo ??
+                      "Veículo indisponível";
+
+        LastSpawnText.Text =
+            hasLastSession
+                ? _settings.LastSessionEntryPointName ??
+                  "Ponto não registrado"
+                : "—";
+
+        var localStartedAt =
+            _settings.LastSessionStartedAt?
+                .ToLocalTime();
+
+        LastTimeText.Text =
+            localStartedAt?.ToString(
+                "HH:mm") ??
+            "—";
+
+        LastSessionDateText.Text =
+            localStartedAt?.ToString(
+                "dd MMM yyyy · HH:mm") ??
+            "Nenhuma sessão";
+
+        var lastMapImage =
+            lastMap is null
+                ? null
+                : ResolveMapImage(
+                    lastMap.DirectoryPath);
+
         ApplyImage(
             LastSessionImage,
-            mapImage);
+            lastMapImage);
 
         CompatibilityStatusText.Text =
             _maps.Count ==
@@ -910,7 +981,9 @@ public sealed partial class MainWindow :
                 _buses.Count ==
                     0
                 ? "Aguardando conteúdo"
-                : "Boa";
+                : "Conteúdo carregado";
+
+        UpdateRuntimeStatusCards();
     }
 
     private static int CountSceneryObjects(
@@ -1046,21 +1119,99 @@ public sealed partial class MainWindow :
 
     private void SaveSettings()
     {
-        new LauncherSettings(
-            ContentPathBox.Text,
-            SelectedMap()?.FolderName,
-            SelectedBus()?.RelativePath,
-            SelectedSpawn()?.Name,
-            NoBusCheckBox.IsChecked ==
-                true)
-            .Save();
+        _settings =
+            _settings with
+            {
+                ContentPath =
+                    ContentPathBox.Text,
+                MapName =
+                    SelectedMap()?.FolderName,
+                BusRelativePath =
+                    SelectedBus()?.RelativePath,
+                EntryPointName =
+                    SelectedSpawn()?.Name,
+                StartWithoutBus =
+                    NoBusCheckBox.IsChecked ==
+                    true
+            };
+
+        _settings.Save();
+    }
+
+    private void UpdateRuntimeStatusCards()
+    {
+        var runtimePath =
+            _runtime.ResolveRuntimePath();
+
+        var runtimeExists =
+            File.Exists(
+                runtimePath);
+
+        RuntimeStatusText.Text =
+            _runtime.IsRunning
+                ? "Em execução"
+                : runtimeExists
+                    ? "Pronto"
+                    : "Não encontrado";
+
+        var runtimeDirectory =
+            Path.GetDirectoryName(
+                runtimePath) ??
+            AppContext.BaseDirectory;
+
+        OdeStatusText.Text =
+            ContainsRuntimeFile(
+                runtimeDirectory,
+                "ode_single.dll")
+                ? "Disponível"
+                : "Não encontrado";
+
+        D3D11StatusText.Text =
+            ContainsRuntimeFile(
+                runtimeDirectory,
+                "OMSICompatible.Renderer.D3D11.dll")
+                ? "Disponível"
+                : "Não encontrado";
+
+        UpdateStatusText.Text =
+            "Canal alpha";
+    }
+
+    private static bool ContainsRuntimeFile(
+        string root,
+        string fileName)
+    {
+        try
+        {
+            return Directory.Exists(root) &&
+                   Directory
+                       .EnumerateFiles(
+                           root,
+                           fileName,
+                           SearchOption.AllDirectories)
+                       .Any();
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void SetStatus(
         string text)
     {
+        FooterStatusTitle.Text =
+            _runtime.IsRunning
+                ? "Runtime"
+                : "Launcher";
+
+        FooterStatusDetail.Text =
+            text;
+
         AppendLog(
             text);
+
+        UpdateRuntimeStatusCards();
     }
 
     private void AppendLog(
