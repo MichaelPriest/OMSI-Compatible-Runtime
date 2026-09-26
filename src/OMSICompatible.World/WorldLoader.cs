@@ -726,17 +726,49 @@ public static class WorldLoader
                                                         '/');
 
                                             if (normalizedTransMapSource.Length >
-                                                    0 &&
-                                                OmsiTextureAssetPathResolver
+                                                0)
+                                            {
+                                                if (OmsiTextureAssetPathResolver
                                                     .TryResolveSceneryTexture(
                                                         contentRoot.RootPath,
                                                         dependency.ResolvedPath,
                                                         meshPath,
                                                         normalizedTransMapSource,
                                                         out var resolvedTransMap))
-                                            {
-                                                transMapTexturePath =
-                                                    resolvedTransMap;
+                                                {
+                                                    transMapTexturePath =
+                                                        resolvedTransMap;
+                                                }
+                                                else
+                                                {
+                                                    // Legacy OMSI scenery often stores
+                                                    // [matl_transmap] with a rooted or
+                                                    // stale subdirectory while the mask
+                                                    // itself lives beside the diffuse
+                                                    // texture / in the object's Texture
+                                                    // folder. Retry with the leaf name
+                                                    // before declaring the mask missing.
+                                                    var transMapLeafName =
+                                                        Path.GetFileName(
+                                                            normalizedTransMapSource);
+
+                                                    if (!string.IsNullOrWhiteSpace(
+                                                            transMapLeafName) &&
+                                                        !transMapLeafName.Equals(
+                                                            normalizedTransMapSource,
+                                                            StringComparison.OrdinalIgnoreCase) &&
+                                                        OmsiTextureAssetPathResolver
+                                                            .TryResolveSceneryTexture(
+                                                                contentRoot.RootPath,
+                                                                dependency.ResolvedPath,
+                                                                meshPath,
+                                                                transMapLeafName,
+                                                                out resolvedTransMap))
+                                                    {
+                                                        transMapTexturePath =
+                                                            resolvedTransMap;
+                                                    }
+                                                }
                                             }
                                         }
 
