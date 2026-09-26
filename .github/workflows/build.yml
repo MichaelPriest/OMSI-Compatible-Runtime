@@ -140,6 +140,12 @@ jobs:
           }
 
           if ($process.ExitCode -ne 0) {
+            $log = Join-Path $env:LOCALAPPDATA "OMSI-Compatible-Runtime\launcher-winui.log"
+            if (Test-Path $log) {
+              Write-Host "===== launcher-winui.log ====="
+              Get-Content $log
+              Write-Host "===== end launcher-winui.log ====="
+            }
             throw "WinUI XAML smoke test failed with exit code $($process.ExitCode)."
           }
 
