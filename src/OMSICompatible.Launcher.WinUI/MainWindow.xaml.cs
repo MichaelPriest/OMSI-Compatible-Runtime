@@ -29,6 +29,19 @@ public sealed partial class MainWindow :
                 : $"{Bus.Carroceria} · Repaint CTI: {Repaint.Name}";
     }
 
+    private sealed record MapLibraryCard(
+        OmsiMapInfo Map,
+        string Title,
+        string Detail,
+        BitmapImage? Preview);
+
+    private sealed record VehicleLibraryCard(
+        OmsiBusInfo Bus,
+        string Title,
+        string Subtitle,
+        string Detail,
+        BitmapImage? Preview);
+
     private readonly RuntimeProcessHost _runtime =
         new();
 
@@ -40,6 +53,12 @@ public sealed partial class MainWindow :
 
     private IReadOnlyList<OmsiBusInfo> _buses =
         Array.Empty<OmsiBusInfo>();
+
+    private IReadOnlyList<MapLibraryCard> _mapLibraryCards =
+        Array.Empty<MapLibraryCard>();
+
+    private IReadOnlyList<VehicleLibraryCard> _vehicleLibraryCards =
+        Array.Empty<VehicleLibraryCard>();
 
     private readonly Dictionary<
         string,
@@ -111,13 +130,8 @@ public sealed partial class MainWindow :
         object sender,
         RoutedEventArgs e)
     {
-        HomeView.Visibility =
-            Visibility.Visible;
-
-        SessionView.Visibility =
-            Visibility.Collapsed;
-
-        SetNavigationSelection(
+        ShowView(
+            HomeView,
             HomeNavButton);
 
         UpdateHomeSummary();
@@ -127,14 +141,57 @@ public sealed partial class MainWindow :
         object sender,
         RoutedEventArgs e)
     {
-        HomeView.Visibility =
-            Visibility.Collapsed;
+        ShowView(
+            SessionView,
+            PlayNavButton);
+    }
 
-        SessionView.Visibility =
-            Visibility.Visible;
+    private void MapsNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        UpdateLibraryViews();
+
+        ShowView(
+            MapsView,
+            MapsNavButton);
+    }
+
+    private void VehiclesNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        UpdateLibraryViews();
+
+        ShowView(
+            VehiclesView,
+            VehiclesNavButton);
+    }
+
+    private void ShowView(
+        FrameworkElement visibleView,
+        Button selectedButton)
+    {
+        FrameworkElement[] views =
+        [
+            HomeView,
+            SessionView,
+            MapsView,
+            VehiclesView
+        ];
+
+        foreach (var view in views)
+        {
+            view.Visibility =
+                ReferenceEquals(
+                    view,
+                    visibleView)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
 
         SetNavigationSelection(
-            PlayNavButton);
+            selectedButton);
     }
 
     private void SetNavigationSelection(
@@ -143,7 +200,9 @@ public sealed partial class MainWindow :
         Button[] primaryButtons =
         [
             HomeNavButton,
-            PlayNavButton
+            PlayNavButton,
+            MapsNavButton,
+            VehiclesNavButton
         ];
 
         foreach (var button in primaryButtons)
@@ -298,6 +357,9 @@ public sealed partial class MainWindow :
 
             _buses =
                 discovery.Buses;
+
+            RebuildLibraryCards();
+            UpdateLibraryViews();
 
             MapBox.ItemsSource =
                 _maps;
@@ -1320,6 +1382,12 @@ public sealed partial class MainWindow :
         _buses =
             Array.Empty<OmsiBusInfo>();
 
+        _mapLibraryCards =
+            Array.Empty<MapLibraryCard>();
+
+        _vehicleLibraryCards =
+            Array.Empty<VehicleLibraryCard>();
+
         _entryPoints =
             Array.Empty<OmsiMapEntryPointGroup>();
 
@@ -1341,7 +1409,210 @@ public sealed partial class MainWindow :
         FooterBusCountText.Text = "0";
         FooterObjectCountText.Text = "0";
 
+        UpdateLibraryViews();
         UpdateHero(null);
+    }
+
+    private void RebuildLibraryCards()
+    {
+        _mapLibraryCards =
+            _maps
+                .Select(
+                    map =>
+                        new MapLibraryCard(
+                            map,
+                            map.FolderName,
+                            $"global.cfg · {FormatBytes(map.GlobalConfigBytes)}",
+                            CreateBitmapImage(
+                                ResolveMapImage(
+                                    map.DirectoryPath))))
+                .ToArray();
+
+        _vehicleLibraryCards =
+            _buses
+                .Select(
+                    bus =>
+                    {
+                        var couplingDetail =
+                            bus.CoupledBack is null
+                                ? string.Empty
+                                : " · acoplamento traseiro";
+
+                        var scriptDetail =
+                            $"{bus.ScriptManifest.RegisteredFileCount:N0} arquivo(s) de script · " +
+                            $"{bus.ScriptManifest.MissingFileCount:N0} ausente(s)";
+
+                        return new VehicleLibraryCard(
+                            bus,
+                            bus.Modelo,
+                            $"{bus.Carroceria} · {bus.Skin}",
+                            $"{bus.Physics.Axles.Count:N0} eixo(s) · {scriptDetail}{couplingDetail}",
+                            CreateBitmapImage(
+                                bus.PreviewImagePath));
+                    })
+                .ToArray();
+    }
+
+    private void UpdateLibraryViews()
+    {
+        var mapQuery =
+            MapsSearchBox.Text
+                ?.Trim();
+
+        var maps =
+            _mapLibraryCards
+                .Where(
+                    item =>
+                        string.IsNullOrWhiteSpace(
+                            mapQuery) ||
+                        item.Title.Contains(
+                            mapQuery,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        item.Map.DirectoryPath.Contains(
+                            mapQuery,
+                            StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        MapsGrid.ItemsSource =
+            maps;
+
+        MapsResultCountText.Text =
+            $"{maps.Length:N0} " +
+            (maps.Length == 1
+                ? "mapa"
+                : "mapas");
+
+        var vehicleQuery =
+            VehiclesSearchBox.Text
+                ?.Trim();
+
+        var vehicles =
+            _vehicleLibraryCards
+                .Where(
+                    item =>
+                        string.IsNullOrWhiteSpace(
+                            vehicleQuery) ||
+                        item.Title.Contains(
+                            vehicleQuery,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        item.Subtitle.Contains(
+                            vehicleQuery,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        item.Bus.RelativePath.Contains(
+                            vehicleQuery,
+                            StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        VehiclesGrid.ItemsSource =
+            vehicles;
+
+        VehiclesResultCountText.Text =
+            $"{vehicles.Length:N0} " +
+            (vehicles.Length == 1
+                ? "veículo"
+                : "veículos");
+    }
+
+    private void MapsSearchBox_TextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        UpdateLibraryViews();
+    }
+
+    private void VehiclesSearchBox_TextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        UpdateLibraryViews();
+    }
+
+    private void MapLibraryItem_Click(
+        object sender,
+        ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not
+            MapLibraryCard card)
+        {
+            return;
+        }
+
+        MapBox.SelectedItem =
+            card.Map;
+
+        ShowView(
+            SessionView,
+            PlayNavButton);
+
+        SetStatus(
+            $"Mapa selecionado: {card.Map.FolderName}");
+    }
+
+    private void VehicleLibraryItem_Click(
+        object sender,
+        ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not
+            VehicleLibraryCard card)
+        {
+            return;
+        }
+
+        NoBusCheckBox.IsChecked =
+            false;
+
+        SelectBus(
+            card.Bus);
+
+        ApplyNoBusMode();
+        UpdatePlayAvailability();
+        UpdateHomeSummary();
+        SaveSettings();
+
+        ShowView(
+            SessionView,
+            PlayNavButton);
+
+        SetStatus(
+            $"Veículo selecionado: {card.Bus.SelectionLabel}");
+    }
+
+    private static string FormatBytes(
+        long bytes)
+    {
+        if (bytes < 1024)
+        {
+            return $"{bytes:N0} B";
+        }
+
+        if (bytes < 1024L * 1024L)
+        {
+            return $"{bytes / 1024d:N1} KB";
+        }
+
+        return $"{bytes / (1024d * 1024d):N1} MB";
+    }
+
+    private static BitmapImage? CreateBitmapImage(
+        string? path)
+    {
+        if (string.IsNullOrWhiteSpace(
+                path) ||
+            !File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new BitmapImage(
+                new Uri(
+                    path));
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void SaveSettings()
