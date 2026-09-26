@@ -1069,6 +1069,13 @@ public sealed class WorldTrafficSimulation
         var crossingId =
             nextSegment.SceneryObjectId.Value;
 
+        if (IsCrossingExitBlocked(
+                agent,
+                nextSegment))
+        {
+            return false;
+        }
+
         foreach (var other in
                  _agents)
         {
@@ -1187,6 +1194,64 @@ public sealed class WorldTrafficSimulation
         }
 
         return true;
+    }
+
+    private bool IsCrossingExitBlocked(
+        Agent agent,
+        WorldTrafficPathSegment crossingSegment)
+    {
+        var exitIndex =
+            ResolveNextSegmentIndex(
+                agent,
+                crossingSegment);
+
+        if (!exitIndex.HasValue ||
+            !_segmentsByIndex.TryGetValue(
+                exitIndex.Value,
+                out var exitSegment))
+        {
+            return false;
+        }
+
+        var exitLength =
+            SegmentLength(
+                exitSegment);
+
+        foreach (var other in
+                 _agents)
+        {
+            if (ReferenceEquals(
+                    other,
+                    agent) ||
+                other.PendingRespawn ||
+                other.ActivationTimeSeconds >
+                    _simulationElapsedSeconds ||
+                other.SegmentIndex !=
+                    exitSegment.Index)
+            {
+                continue;
+            }
+
+            var distanceFromEntry =
+                agent.TravelForward
+                    ? Math.Max(
+                        other.DistanceMeters,
+                        0.0)
+                    : Math.Max(
+                        exitLength -
+                            other.DistanceMeters,
+                        0.0);
+
+            if (distanceFromEntry <=
+                    14.0 &&
+                other.SpeedMetersPerSecond <=
+                    2.5)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static double EstimateApproachArrivalSeconds(
