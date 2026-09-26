@@ -7879,9 +7879,21 @@ public sealed class D3D11RenderWindow : Form
                     .Length() *
                 3.6f;
 
-            _vehicle
-                .ApplyTrafficCollisionResponse(
-                    relativeImpactSpeedKph);
+            var newCollisionContact =
+                !_activeTrafficCollisionAgents.Contains(
+                    agent.AgentIndex);
+
+            if (newCollisionContact)
+            {
+                _vehicle
+                    .ApplyTrafficCollisionResponse(
+                        relativeImpactSpeedKph);
+            }
+            else
+            {
+                _vehicle
+                    .HoldTrafficCollisionContact();
+            }
 
             var playerLikelyAtFault =
                 false;
@@ -7916,8 +7928,7 @@ public sealed class D3D11RenderWindow : Form
             }
 
             if (playerLikelyAtFault &&
-                !_activeTrafficCollisionAgents.Contains(
-                    agent.AgentIndex) &&
+                newCollisionContact &&
                 (!_lastTrafficCollisionSeconds.TryGetValue(
                      agent.AgentIndex,
                      out var previousCollisionSeconds) ||
