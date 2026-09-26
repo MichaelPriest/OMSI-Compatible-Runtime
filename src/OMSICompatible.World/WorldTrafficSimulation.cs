@@ -835,7 +835,10 @@ public sealed class WorldTrafficSimulation
                         IsTrafficGroupAllowed(
                             segment,
                             agent.GroupIndex,
-                            agent.DefaultDensityClassIndex))
+                            agent.DefaultDensityClassIndex) &&
+                        !IsCriticalRespawnApproach(
+                            agent,
+                            segment))
                 .Select(
                     segment =>
                         (
@@ -1013,6 +1016,30 @@ public sealed class WorldTrafficSimulation
         }
 
         return false;
+    }
+
+    private bool IsCriticalRespawnApproach(
+        Agent agent,
+        WorldTrafficPathSegment segment)
+    {
+        var nextIndex =
+            ResolveNextSegmentIndex(
+                agent,
+                segment);
+
+        if (!nextIndex.HasValue ||
+            !_segmentsByIndex.TryGetValue(
+                nextIndex.Value,
+                out var nextSegment))
+        {
+            return false;
+        }
+
+        return nextSegment.TrafficSignal is
+                   not null ||
+               (nextSegment.SceneryObjectId.HasValue &&
+                _crossingSceneryObjectIds.Contains(
+                    nextSegment.SceneryObjectId.Value));
     }
 
     private bool CanEnterSegment(
