@@ -118,6 +118,8 @@ public sealed class WorldTrafficSimulation
                 .Where(
                     static vehicle =>
                         vehicle.Exists &&
+                        vehicle.Weight >
+                            0.0 &&
                         IsRoadVehicle(
                             vehicle))
                 .OrderBy(
@@ -2723,7 +2725,7 @@ public sealed class WorldTrafficSimulation
                 static vehicle =>
                     Math.Max(
                         vehicle.Weight,
-                        0.0001));
+                        0.0));
 
         var selector =
             ((index *
@@ -2737,7 +2739,7 @@ public sealed class WorldTrafficSimulation
             selector -=
                 Math.Max(
                     vehicle.Weight,
-                    0.0001);
+                    0.0);
 
             if (selector <=
                 0.0)
