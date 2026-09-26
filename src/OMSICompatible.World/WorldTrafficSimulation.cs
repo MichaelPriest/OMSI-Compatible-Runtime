@@ -3131,7 +3131,8 @@ public sealed class WorldTrafficSimulation
                         0.0));
 
         var selector =
-            ((index *
+            (((index +
+               1) *
               0.6180339887498949) %
              1.0) *
             totalWeight;
