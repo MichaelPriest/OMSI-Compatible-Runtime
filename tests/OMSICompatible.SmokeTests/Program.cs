@@ -3745,6 +3745,38 @@ try
             syntheticAiVehiclePath,
         "Zero-weight AI entry must not be selected for unscheduled traffic.");
 
+    var weightedVehicleSimulation =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\disabled.bus",
+                        zeroWeightVehiclePath,
+                        0.1),
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        10.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    var weightedVehicleAgent =
+        weightedVehicleSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        weightedVehicleAgent.VehiclePath ==
+            syntheticAiVehiclePath,
+        "Weighted AI selection remained biased toward the first vehicle entry.");
+
     var longRoadNetwork =
         new WorldTrafficPathNetwork(
             [
