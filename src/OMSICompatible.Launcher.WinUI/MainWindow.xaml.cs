@@ -2099,11 +2099,13 @@ public sealed partial class MainWindow :
         SettingsLanguageBox.Text =
             _runtimeOptions.Language;
 
-        SettingsTargetFpsBox.Value =
-            _runtimeOptions.TargetFps;
+        SettingsTargetFpsBox.Text =
+            _runtimeOptions.TargetFps.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
-        SettingsNeighborTilesBox.Value =
-            _runtimeOptions.NeighborTiles;
+        SettingsNeighborTilesBox.Text =
+            _runtimeOptions.NeighborTiles.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
         SettingsAutoSaveCheck.IsChecked =
             _runtimeOptions.AutoSave;
@@ -2114,14 +2116,17 @@ public sealed partial class MainWindow :
         SettingsCurrentDateCheck.IsChecked =
             _runtimeOptions.UseCurrentDate;
 
-        SettingsObjectDistanceBox.Value =
-            _runtimeOptions.MaximumObjectVisibilityMeters;
+        SettingsObjectDistanceBox.Text =
+            _runtimeOptions.MaximumObjectVisibilityMeters.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
-        SettingsTextureMemoryBox.Value =
-            _runtimeOptions.HighResolutionTextureMemoryMb;
+        SettingsTextureMemoryBox.Text =
+            _runtimeOptions.HighResolutionTextureMemoryMb.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
-        SettingsAnisotropicBox.Value =
-            _runtimeOptions.AnisotropicFiltering;
+        SettingsAnisotropicBox.Text =
+            _runtimeOptions.AnisotropicFiltering.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
         SettingsShadowsCheck.IsChecked =
             _runtimeOptions.Shadows;
@@ -2132,14 +2137,17 @@ public sealed partial class MainWindow :
         SettingsLightMapCheck.IsChecked =
             _runtimeOptions.MaterialLightMap;
 
-        SettingsMasterVolumeBox.Value =
-            _runtimeOptions.MasterVolumePercent;
+        SettingsMasterVolumeBox.Text =
+            _runtimeOptions.MasterVolumePercent.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
-        SettingsRoadTrafficBox.Value =
-            _runtimeOptions.RoadTrafficFactorPercent;
+        SettingsRoadTrafficBox.Text =
+            _runtimeOptions.RoadTrafficFactorPercent.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
-        SettingsPassengerFactorBox.Value =
-            _runtimeOptions.PassengerFactorPercent;
+        SettingsPassengerFactorBox.Text =
+            _runtimeOptions.PassengerFactorPercent.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
         SettingsAiSoundsCheck.IsChecked =
             _runtimeOptions.AiVehicleSounds;
@@ -2150,8 +2158,9 @@ public sealed partial class MainWindow :
         SettingsGameControllerCheck.IsChecked =
             _runtimeOptions.GameControllerEnabled;
 
-        SettingsStreamingRadiusBox.Value =
-            _runtimeOptions.RuntimeStreamingRadius;
+        SettingsStreamingRadiusBox.Text =
+            _runtimeOptions.RuntimeStreamingRadius.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
 
         SettingsVsyncCheck.IsChecked =
             _runtimeOptions.RuntimeVSync;
@@ -2249,14 +2258,16 @@ public sealed partial class MainWindow :
 
         _runtimeOptions.TargetFps =
             ToInt(
-                SettingsTargetFpsBox.Value,
+                ParseNumber(
+                SettingsTargetFpsBox.Text),
                 15,
                 240,
                 _runtimeOptions.TargetFps);
 
         _runtimeOptions.NeighborTiles =
             ToInt(
-                SettingsNeighborTilesBox.Value,
+                ParseNumber(
+                SettingsNeighborTilesBox.Text),
                 0,
                 8,
                 _runtimeOptions.NeighborTiles);
@@ -2275,21 +2286,24 @@ public sealed partial class MainWindow :
 
         _runtimeOptions.MaximumObjectVisibilityMeters =
             ToDouble(
-                SettingsObjectDistanceBox.Value,
+                ParseNumber(
+                SettingsObjectDistanceBox.Text),
                 100,
                 10000,
                 _runtimeOptions.MaximumObjectVisibilityMeters);
 
         _runtimeOptions.HighResolutionTextureMemoryMb =
             ToDouble(
-                SettingsTextureMemoryBox.Value,
+                ParseNumber(
+                SettingsTextureMemoryBox.Text),
                 128,
                 32768,
                 _runtimeOptions.HighResolutionTextureMemoryMb);
 
         _runtimeOptions.AnisotropicFiltering =
             ToInt(
-                SettingsAnisotropicBox.Value,
+                ParseNumber(
+                SettingsAnisotropicBox.Text),
                 1,
                 16,
                 _runtimeOptions.AnisotropicFiltering);
@@ -2308,21 +2322,24 @@ public sealed partial class MainWindow :
 
         _runtimeOptions.MasterVolumePercent =
             ToInt(
-                SettingsMasterVolumeBox.Value,
+                ParseNumber(
+                SettingsMasterVolumeBox.Text),
                 0,
                 100,
                 _runtimeOptions.MasterVolumePercent);
 
         _runtimeOptions.RoadTrafficFactorPercent =
             ToInt(
-                SettingsRoadTrafficBox.Value,
+                ParseNumber(
+                SettingsRoadTrafficBox.Text),
                 0,
                 500,
                 _runtimeOptions.RoadTrafficFactorPercent);
 
         _runtimeOptions.PassengerFactorPercent =
             ToInt(
-                SettingsPassengerFactorBox.Value,
+                ParseNumber(
+                SettingsPassengerFactorBox.Text),
                 0,
                 500,
                 _runtimeOptions.PassengerFactorPercent);
@@ -2341,7 +2358,8 @@ public sealed partial class MainWindow :
 
         _runtimeOptions.RuntimeStreamingRadius =
             ToInt(
-                SettingsStreamingRadiusBox.Value,
+                ParseNumber(
+                SettingsStreamingRadiusBox.Text),
                 1,
                 8,
                 _runtimeOptions.RuntimeStreamingRadius);
@@ -2365,6 +2383,39 @@ public sealed partial class MainWindow :
         _runtimeOptions.RuntimeDiagnostics =
             SettingsDiagnosticsCheck.IsChecked ==
             true;
+    }
+
+    private static double ParseNumber(
+        string? text)
+    {
+        if (string.IsNullOrWhiteSpace(
+                text))
+        {
+            return double.NaN;
+        }
+
+        var normalized =
+            text.Trim();
+
+        if (double.TryParse(
+                normalized,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var invariant))
+        {
+            return invariant;
+        }
+
+        if (double.TryParse(
+                normalized,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.CurrentCulture,
+                out var current))
+        {
+            return current;
+        }
+
+        return double.NaN;
     }
 
     private static int ToInt(
