@@ -1451,6 +1451,33 @@ public sealed class WorldTrafficSimulation
             return null;
         }
 
+        var obstacleHeadingDelta =
+            Math.Abs(
+                NormalizeHeadingDelta(
+                    obstacle.HeadingRadians -
+                    agentHeading));
+
+        var obstacleCrossesLane =
+            obstacleHeadingDelta >=
+                Math.PI /
+                    4.0 &&
+            obstacleHeadingDelta <=
+                3.0 *
+                Math.PI /
+                    4.0 &&
+            lateral <=
+                maximumLateral;
+
+        if (obstacleCrossesLane)
+        {
+            // A long vehicle already crossing the AI corridor is not a
+            // conventional lead vehicle: letting the AI consume a normal
+            // following distance still allows it to enter the player's
+            // oriented footprint. Treat the occupied corridor as an
+            // immediate hard block and brake before any further advance.
+            return 0.0;
+        }
+
         return Math.Max(
             longitudinal -
                 Math.Max(
