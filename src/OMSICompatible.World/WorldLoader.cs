@@ -3,6 +3,7 @@ using OmsiCompat.Map;
 using OmsiCompat.Models;
 using OmsiCompat.Scenery;
 using OmsiCompat.Splines;
+using OmsiCompat.Vehicles;
 
 namespace OMSICompatible.World;
 
@@ -566,6 +567,16 @@ public static class WorldLoader
                     OmsiSceneryObjectReader.ReadFile(
                         dependency.ResolvedPath);
 
+                var dynamicModel =
+                    OmsiVehicleModelReader.ReadFile(
+                        dependency.ResolvedPath);
+
+                var dynamicMeshesByOrdinal =
+                    dynamicModel.Meshes
+                        .ToDictionary(
+                            static mesh =>
+                                mesh.Ordinal);
+
                 var lodThresholds =
                     definition.Meshes
                         .Where(
@@ -591,6 +602,10 @@ public static class WorldLoader
                 {
                     var mesh =
                         definition.Meshes[meshOrdinal];
+
+                    dynamicMeshesByOrdinal.TryGetValue(
+                        meshOrdinal,
+                        out var dynamicMesh);
                     if (mesh.LodThreshold.HasValue &&
                         lodThresholds.Length > 0 &&
                         Math.Abs(
@@ -728,7 +743,14 @@ public static class WorldLoader
                                             materialOverride?.NoZCheck ??
                                                 false);
                                     })
-                                .ToArray()));
+                                .ToArray(),
+                            dynamicMesh?.VisibilityConditions,
+                            dynamicMesh?.Animations,
+                            dynamicMesh?.LightEffects,
+                            dynamicMesh?.MeshIdentifier,
+                            dynamicMesh?.AnimationParent,
+                            dynamicMesh?.Ordinal ??
+                                meshOrdinal));
                 }
 
                 result[declaredPath] =
