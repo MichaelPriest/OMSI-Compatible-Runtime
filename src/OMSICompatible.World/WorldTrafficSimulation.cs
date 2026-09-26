@@ -1397,6 +1397,17 @@ public sealed class WorldTrafficSimulation
                 continue;
             }
 
+            // Do not let an approach reserve the crossing when its own exit
+            // is blocked by a stopped queue. Otherwise a high-priority lane
+            // that cannot clear the box can deadlock the transverse traffic
+            // even though it has no safe path through the junction.
+            if (IsCrossingExitBlocked(
+                    other,
+                    otherNextSegment))
+            {
+                continue;
+            }
+
             if (otherSegment.TrafficPriority >
                 currentSegment.TrafficPriority)
             {
