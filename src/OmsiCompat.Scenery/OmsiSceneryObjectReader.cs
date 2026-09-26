@@ -269,7 +269,117 @@ public static class OmsiSceneryObjectReader
             ReadPaths(document),
             trafficLightCycleSeconds,
             trafficLights,
-            scriptManifest);
+            scriptManifest,
+            NoCollision:
+                document.Sections.Any(
+                    static section =>
+                        section.Name.Equals(
+                            "nocollision",
+                            StringComparison.OrdinalIgnoreCase)),
+            Fixed:
+                document.Sections.Any(
+                    static section =>
+                        section.Name.Equals(
+                            "fixed",
+                            StringComparison.OrdinalIgnoreCase)),
+            Surface:
+                document.Sections.Any(
+                    static section =>
+                        section.Name.Equals(
+                            "surface",
+                            StringComparison.OrdinalIgnoreCase)),
+            CollisionMeshSource:
+                ReadCollisionMeshSource(
+                    document),
+            BoundingBox:
+                ReadBoundingBox(
+                    document));
+    }
+
+    private static string? ReadCollisionMeshSource(
+        OmsiSectionDocument document)
+    {
+        var section =
+            document.Sections
+                .FirstOrDefault(
+                    static item =>
+                        item.Name.Equals(
+                            "collision_mesh",
+                            StringComparison.OrdinalIgnoreCase));
+
+        var value =
+            section is null
+                ? null
+                : Data(section)
+                    .FirstOrDefault()
+                    ?.Value;
+
+        return string.IsNullOrWhiteSpace(
+                   value)
+            ? null
+            : value.Trim().Trim('"');
+    }
+
+    private static OmsiSceneryBoundingBox? ReadBoundingBox(
+        OmsiSectionDocument document)
+    {
+        var section =
+            document.Sections
+                .FirstOrDefault(
+                    static item =>
+                        item.Name.Equals(
+                            "boundingbox",
+                            StringComparison.OrdinalIgnoreCase));
+
+        if (section is null)
+        {
+            return null;
+        }
+
+        var values =
+            Data(section)
+                .Select(
+                    static line =>
+                        line.Value)
+                .ToArray();
+
+        if (values.Length <
+                6 ||
+            !TryDouble(
+                values[0],
+                out var lengthX) ||
+            !TryDouble(
+                values[1],
+                out var widthY) ||
+            !TryDouble(
+                values[2],
+                out var heightZ) ||
+            !TryDouble(
+                values[3],
+                out var centerX) ||
+            !TryDouble(
+                values[4],
+                out var centerY) ||
+            !TryDouble(
+                values[5],
+                out var centerZ) ||
+            lengthX <=
+                0.0 ||
+            widthY <=
+                0.0 ||
+            heightZ <=
+                0.0)
+        {
+            return null;
+        }
+
+        return new OmsiSceneryBoundingBox(
+            lengthX,
+            widthY,
+            heightZ,
+            centerX,
+            centerY,
+            centerZ);
     }
 
     private static IReadOnlyList<OmsiSceneryMaterialOverride>
