@@ -760,23 +760,43 @@ internal sealed class RuntimeDriveVehicle :
     public float SpeedKph =>
         SpeedMetersPerSecond * 3.6f;
 
-    public void ApplyTrafficCollisionResponse()
+    public void ApplyTrafficCollisionResponse(
+        float relativeImpactSpeedKph = 40.0f)
     {
+        var impactSeverity =
+            Math.Clamp(
+                relativeImpactSpeedKph /
+                    40.0f,
+                0.0f,
+                1.0f);
+
+        var velocityRetention =
+            Math.Clamp(
+                1.0f -
+                    impactSeverity *
+                    0.90f,
+                0.10f,
+                1.0f);
+
         AcceleratorLevel =
             0.0f;
 
         BrakeLevel =
             Math.Max(
                 BrakeLevel,
-                0.75f);
+                0.20f +
+                    impactSeverity *
+                    0.65f);
 
-        SpeedMetersPerSecond =
-            0.0f;
+        SpeedMetersPerSecond *=
+            velocityRetention;
 
         _longitudinalAccelerationMetersPerSecondSquared =
             Math.Min(
                 _longitudinalAccelerationMetersPerSecondSquared,
-                -4.0f);
+                -(1.5f +
+                  impactSeverity *
+                      4.5f));
 
         var body =
             _odeBody;
@@ -793,14 +813,18 @@ internal sealed class RuntimeDriveVehicle :
 
             body.SetLinearVelocity(
                 new Vector3(
-                    0.0f,
-                    0.0f,
-                    Math.Min(
-                        velocity.Z,
-                        0.0f)));
+                    velocity.X *
+                        velocityRetention,
+                    velocity.Y,
+                    velocity.Z *
+                        velocityRetention));
+
+            var angularVelocity =
+                body.AngularVelocity;
 
             body.SetAngularVelocity(
-                Vector3.Zero);
+                angularVelocity *
+                    velocityRetention);
         }
         catch
         {
