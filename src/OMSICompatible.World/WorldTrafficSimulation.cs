@@ -58,7 +58,8 @@ public sealed class WorldTrafficSimulation
         OmsiMapAiCatalog aiCatalog,
         int maximumAgents = 12,
         WorldVector3? spawnExclusionCenter = null,
-        double spawnExclusionRadiusMeters = 40.0)
+        double spawnExclusionRadiusMeters = 40.0,
+        double spawnIntervalSeconds = 2.0)
     {
         _network =
             network ??
@@ -159,6 +160,15 @@ public sealed class WorldTrafficSimulation
                 maximumAgents,
                 roadSegments.Length);
 
+        var activationIntervalSeconds =
+            double.IsFinite(
+                spawnIntervalSeconds)
+                ? Math.Clamp(
+                    spawnIntervalSeconds,
+                    0.25,
+                    60.0)
+                : 2.0;
+
         _agents =
             new List<Agent>(
                 count);
@@ -201,6 +211,30 @@ public sealed class WorldTrafficSimulation
                 continue;
             }
 
+            var weightedSegments =
+                allowedSegments
+                    .Select(
+                        segment =>
+                            (
+                                Segment: segment,
+                                Weight:
+                                    ResolveTrafficDensityWeight(
+                                        segment,
+                                        groupIndex,
+                                        defaultDensityClassIndex)
+                            ))
+                    .Where(
+                        static candidate =>
+                            candidate.Weight >
+                                0.0)
+                    .ToArray();
+
+            if (weightedSegments.Length ==
+                0)
+            {
+                continue;
+            }
+
             WorldTrafficPathSegment? segment =
                 null;
 
@@ -217,12 +251,17 @@ public sealed class WorldTrafficSimulation
             }
             else
             {
-                // Spread initial AI across the active network instead of
-                // taking the first N segments in file/index order. This
-                // avoids dense clusters around the player's entrypoint.
+                // Spread initial AI across the active network, but honor
+                // the OMSI traffic-density weights for the vehicle group.
+                // Low-density paths remain possible without being sampled as
+                // frequently as high-density paths.
+                var attemptedSegments =
+                    new HashSet<int>();
+
                 for (var attempt = 0;
                      attempt <
-                         allowedSegments.Length;
+                         weightedSegments.Length *
+                         3;
                      attempt++)
                 {
                     var selector =
@@ -233,18 +272,17 @@ public sealed class WorldTrafficSimulation
                          0.3819660112501051) %
                         1.0;
 
-                    var candidateIndex =
-                        Math.Clamp(
-                            (int)Math.Floor(
-                                selector *
-                                allowedSegments.Length),
-                            0,
-                            allowedSegments.Length -
-                                1);
-
                     var candidate =
-                        allowedSegments[
-                            candidateIndex];
+                        SelectWeightedSpawnSegment(
+                            weightedSegments,
+                            selector);
+
+                    if (candidate is null ||
+                        !attemptedSegments.Add(
+                            candidate.Index))
+                    {
+                        continue;
+                    }
 
                     var candidateLength =
                         SegmentLength(
@@ -391,7 +429,7 @@ public sealed class WorldTrafficSimulation
             var activationTimeSeconds =
                 spawnExclusionCenter.HasValue
                     ? index *
-                      2.0
+                      activationIntervalSeconds
                     : 0.0;
 
             _agents.Add(
@@ -1968,6 +2006,57 @@ public sealed class WorldTrafficSimulation
                extension.Equals(
                    ".ovh",
                    StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static WorldTrafficPathSegment?
+        SelectWeightedSpawnSegment(
+            IReadOnlyList<(WorldTrafficPathSegment Segment, double Weight)> candidates,
+            double selectorUnit)
+    {
+        if (candidates.Count ==
+            0)
+        {
+            return null;
+        }
+
+        var totalWeight =
+            candidates.Sum(
+                static candidate =>
+                    Math.Max(
+                        candidate.Weight,
+                        0.0));
+
+        if (!double.IsFinite(
+                totalWeight) ||
+            totalWeight <=
+                0.0)
+        {
+            return null;
+        }
+
+        var selector =
+            Math.Clamp(
+                selectorUnit,
+                0.0,
+                0.999999999) *
+            totalWeight;
+
+        foreach (var candidate in
+                 candidates)
+        {
+            selector -=
+                Math.Max(
+                    candidate.Weight,
+                    0.0);
+
+            if (selector <=
+                0.0)
+            {
+                return candidate.Segment;
+            }
+        }
+
+        return candidates[^1].Segment;
     }
 
     private static OmsiAiVehicleDefinition SelectVehicle(

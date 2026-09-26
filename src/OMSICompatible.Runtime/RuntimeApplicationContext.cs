@@ -1496,6 +1496,18 @@ internal sealed class RuntimeApplicationContext :
                 configuredMaximum *
                 configuredFactor);
 
+        var spawnIntervalSeconds =
+            configuredFactor <=
+                    0.0
+                ? 60.0
+                : Math.Clamp(
+                    0.75 +
+                    (1.0 -
+                     configuredFactor) *
+                    3.25,
+                    0.75,
+                    4.0);
+
         return new WorldTrafficSimulation(
             world.TrafficPaths,
             world.AiCatalog,
@@ -1507,7 +1519,9 @@ internal sealed class RuntimeApplicationContext :
                     _entryPoint.WorldY,
                     _entryPoint.WorldZ),
             spawnExclusionRadiusMeters:
-                45.0);
+                45.0,
+            spawnIntervalSeconds:
+                spawnIntervalSeconds);
     }
 
     private static WorldRailTrafficSimulation
