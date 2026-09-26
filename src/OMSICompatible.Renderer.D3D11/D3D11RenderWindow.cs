@@ -8384,6 +8384,11 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        var playerPriority =
+            ResolveCrossingApproachPriority(
+                playerSegment,
+                _vehicle.HeadingRadians);
+
         RuntimeTrafficPathSegmentInfo?
             conflictingSegment =
                 null;
@@ -8392,42 +8397,37 @@ public sealed class D3D11RenderWindow : Form
             conflictingAgent =
                 null;
 
+        var conflictingPriority =
+            0;
+
         foreach (var agent in
                  _trafficAgents)
         {
             if (agent.AgentIndex >=
                     2_000_000 ||
                 agent.SpeedMetersPerSecond <=
-                    0.5)
-            {
-                continue;
-            }
-
-            var aiSegment =
-                _windowInfo
-                    .TrafficPaths
-                    .Segments
-                    .FirstOrDefault(
-                        segment =>
-                            segment.Index ==
-                            agent.SegmentIndex);
-
-            if (aiSegment is null ||
-                aiSegment.SceneryObjectId !=
-                    crossingObjectId ||
-                aiSegment.TrafficPriority <=
-                    playerSegment.TrafficPriority ||
-                !RuntimeTrafficPathsConflict(
+                    0.5 ||
+                !TryResolveAgentCrossingConflict(
+                    agent,
+                    crossingObjectId,
                     playerSegment,
-                    aiSegment))
+                    out var aiConflictSegment,
+                    out var aiPriority,
+                    out var secondsToEntry) ||
+                aiPriority <=
+                    playerPriority ||
+                secondsToEntry >
+                    4.0)
             {
                 continue;
             }
 
             conflictingSegment =
-                aiSegment;
+                aiConflictSegment;
             conflictingAgent =
                 agent;
+            conflictingPriority =
+                aiPriority;
             break;
         }
 
@@ -8467,7 +8467,301 @@ public sealed class D3D11RenderWindow : Form
             fineCredits:
                 120,
             details:
-                $"crossing={crossingObjectId}; playerPath={playerSegment.Index}; playerPriority={playerSegment.TrafficPriority}; ai={conflictingAgent.AgentIndex}; aiPath={conflictingSegment.Index}; aiPriority={conflictingSegment.TrafficPriority}; speed={_vehicle.SpeedKph:0.0} km/h");
+                $"crossing={crossingObjectId}; playerPath={playerSegment.Index}; playerPriority={playerPriority}; ai={conflictingAgent.AgentIndex}; aiPath={conflictingSegment.Index}; aiPriority={conflictingPriority}; speed={_vehicle.SpeedKph:0.0} km/h");
+    }
+
+    private int ResolveCrossingApproachPriority(
+        RuntimeTrafficPathSegmentInfo crossingSegment,
+        float headingRadians)
+    {
+        var bestPriority =
+            crossingSegment.TrafficPriority;
+
+        var bestAlignment =
+            -1.0f;
+
+        var vehicleForward =
+            new Vector2(
+                MathF.Sin(
+                    headingRadians),
+                MathF.Cos(
+                    headingRadians));
+
+        foreach (var candidate in
+                 _windowInfo
+                     .TrafficPaths
+                     .Segments)
+        {
+            if (candidate.Type !=
+                    0 ||
+                candidate.Points.Count <
+                    2 ||
+                candidate.SceneryObjectId ==
+                    crossingSegment.SceneryObjectId)
+            {
+                continue;
+            }
+
+            var connectsForward =
+                candidate.ForwardConnections.Contains(
+                    crossingSegment.Index);
+
+            var connectsReverse =
+                candidate.ReverseConnections.Contains(
+                    crossingSegment.Index);
+
+            if (!connectsForward &&
+                !connectsReverse)
+            {
+                continue;
+            }
+
+            Vector2 direction;
+
+            if (connectsForward)
+            {
+                var a =
+                    candidate.Points[^2];
+                var b =
+                    candidate.Points[^1];
+
+                direction =
+                    new Vector2(
+                        (float)(b.X -
+                                a.X),
+                        (float)(b.Z -
+                                a.Z));
+            }
+            else
+            {
+                var a =
+                    candidate.Points[1];
+                var b =
+                    candidate.Points[0];
+
+                direction =
+                    new Vector2(
+                        (float)(b.X -
+                                a.X),
+                        (float)(b.Z -
+                                a.Z));
+            }
+
+            if (direction.LengthSquared() <
+                0.000001f)
+            {
+                continue;
+            }
+
+            direction =
+                Vector2.Normalize(
+                    direction);
+
+            var alignment =
+                Vector2.Dot(
+                    vehicleForward,
+                    direction);
+
+            if (alignment >
+                bestAlignment)
+            {
+                bestAlignment =
+                    alignment;
+
+                bestPriority =
+                    candidate.TrafficPriority;
+            }
+        }
+
+        return bestPriority;
+    }
+
+    private bool TryResolveAgentCrossingConflict(
+        RuntimeTrafficAgentInfo agent,
+        long crossingObjectId,
+        RuntimeTrafficPathSegmentInfo playerCrossingSegment,
+        out RuntimeTrafficPathSegmentInfo conflictSegment,
+        out int approachPriority,
+        out double secondsToEntry)
+    {
+        conflictSegment =
+            null!;
+        approachPriority =
+            0;
+        secondsToEntry =
+            double.PositiveInfinity;
+
+        var current =
+            _windowInfo
+                .TrafficPaths
+                .Segments
+                .FirstOrDefault(
+                    segment =>
+                        segment.Index ==
+                        agent.SegmentIndex);
+
+        if (current is null ||
+            current.Points.Count <
+                2)
+        {
+            return false;
+        }
+
+        if (current.SceneryObjectId ==
+            crossingObjectId)
+        {
+            if (!RuntimeTrafficPathsConflict(
+                    playerCrossingSegment,
+                    current))
+            {
+                return false;
+            }
+
+            conflictSegment =
+                current;
+
+            approachPriority =
+                ResolveCrossingApproachPriority(
+                    current,
+                    (float)agent.HeadingRadians);
+
+            secondsToEntry =
+                0.0;
+
+            return true;
+        }
+
+        var agentForward =
+            new Vector2(
+                (float)Math.Sin(
+                    agent.HeadingRadians),
+                (float)Math.Cos(
+                    agent.HeadingRadians));
+
+        var nearestDistanceSquared =
+            double.PositiveInfinity;
+
+        var travelForward =
+            true;
+
+        for (var index = 1;
+             index <
+                 current.Points.Count;
+             index++)
+        {
+            var a =
+                current.Points[
+                    index -
+                    1];
+
+            var b =
+                current.Points[
+                    index];
+
+            var distanceSquared =
+                PointToSegmentDistanceSquared(
+                    agent.X,
+                    agent.Z,
+                    a.X,
+                    a.Z,
+                    b.X,
+                    b.Z);
+
+            if (distanceSquared >=
+                nearestDistanceSquared)
+            {
+                continue;
+            }
+
+            var direction =
+                new Vector2(
+                    (float)(b.X -
+                            a.X),
+                    (float)(b.Z -
+                            a.Z));
+
+            if (direction.LengthSquared() <
+                0.000001f)
+            {
+                continue;
+            }
+
+            direction =
+                Vector2.Normalize(
+                    direction);
+
+            nearestDistanceSquared =
+                distanceSquared;
+
+            travelForward =
+                Vector2.Dot(
+                    agentForward,
+                    direction) >=
+                0.0f;
+        }
+
+        var connectionIndices =
+            travelForward
+                ? current.ForwardConnections
+                : current.ReverseConnections;
+
+        foreach (var connectionIndex in
+                 connectionIndices)
+        {
+            var candidate =
+                _windowInfo
+                    .TrafficPaths
+                    .Segments
+                    .FirstOrDefault(
+                        segment =>
+                            segment.Index ==
+                            connectionIndex);
+
+            if (candidate?.SceneryObjectId !=
+                    crossingObjectId ||
+                !RuntimeTrafficPathsConflict(
+                    playerCrossingSegment,
+                    candidate))
+            {
+                continue;
+            }
+
+            var entryPoint =
+                travelForward
+                    ? current.Points[^1]
+                    : current.Points[0];
+
+            var dx =
+                agent.X -
+                entryPoint.X;
+
+            var dz =
+                agent.Z -
+                entryPoint.Z;
+
+            var distanceToEntry =
+                Math.Sqrt(
+                    dx *
+                        dx +
+                    dz *
+                        dz);
+
+            conflictSegment =
+                candidate;
+
+            approachPriority =
+                current.TrafficPriority;
+
+            secondsToEntry =
+                distanceToEntry /
+                Math.Max(
+                    agent.SpeedMetersPerSecond,
+                    1.0);
+
+            return true;
+        }
+
+        return false;
     }
 
     private static bool RuntimeTrafficPathsConflict(
