@@ -509,6 +509,54 @@ public sealed class WorldTrafficSimulation
             obstacle;
     }
 
+    public void ApplyCollisionResponse(
+        int agentIndex,
+        double relativeImpactSpeedKph)
+    {
+        var agent =
+            _agents.FirstOrDefault(
+                candidate =>
+                    candidate.AgentIndex ==
+                    agentIndex);
+
+        if (agent is null ||
+            agent.PendingRespawn ||
+            agent.ActivationTimeSeconds >
+                _simulationElapsedSeconds)
+        {
+            return;
+        }
+
+        var impactSeverity =
+            Math.Clamp(
+                relativeImpactSpeedKph /
+                    40.0,
+                0.0,
+                1.0);
+
+        var speedRetention =
+            Math.Clamp(
+                1.0 -
+                    impactSeverity *
+                    0.85,
+                0.10,
+                1.0);
+
+        agent.SpeedMetersPerSecond *=
+            speedRetention;
+
+        agent.BrakeLight =
+            true;
+
+        agent.CollisionHoldUntilSeconds =
+            Math.Max(
+                agent.CollisionHoldUntilSeconds,
+                _simulationElapsedSeconds +
+                    0.35 +
+                    impactSeverity *
+                        0.65);
+    }
+
     public void Step(
         double deltaSeconds)
     {
@@ -557,6 +605,10 @@ public sealed class WorldTrafficSimulation
                         false;
                 }
 
+                var collisionHoldActive =
+                    agent.CollisionHoldUntilSeconds >
+                    _simulationElapsedSeconds;
+
                 var leading =
                     FindLeadingObservation(
                         agent);
@@ -575,10 +627,12 @@ public sealed class WorldTrafficSimulation
                 }
 
                 var targetSpeed =
-                    ResolveTargetSpeed(
-                        agent,
-                        leading,
-                        blockedEntryDistance);
+                    collisionHoldActive
+                        ? 0.0
+                        : ResolveTargetSpeed(
+                            agent,
+                            leading,
+                            blockedEntryDistance);
 
                 var previousSpeed =
                     agent.SpeedMetersPerSecond;
@@ -3332,6 +3386,12 @@ public sealed class WorldTrafficSimulation
         }
 
         public bool PendingRespawn
+        {
+            get;
+            set;
+        }
+
+        public double CollisionHoldUntilSeconds
         {
             get;
             set;
