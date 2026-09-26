@@ -1692,6 +1692,11 @@ try
             "1",
             @"script\signal_varlist.txt",
             "[onlyeditor]",
+            "[mesh]",
+            "signal_missing.o3d",
+            "[visible]",
+            "signal_lamp",
+            "1",
             "[traffic_lights_group]",
             "8",
             "[traffic_light]",
@@ -5358,6 +5363,19 @@ try
     Require(
         verifiedEditorOnlyAsset.Paths.Count == 1,
         "Crossing/scenery [path] metadata was not preserved.");
+
+    Require(
+        verifiedEditorOnlyAsset.ScriptManifest is
+            { RegisteredFileCount: 2, MissingFileCount: 0 } &&
+        verifiedEditorOnlyAsset.Meshes is
+            [{ VisibilityConditions.Count: 1 }] &&
+        verifiedEditorOnlyAsset.Meshes[0].VisibilityConditions![0].VariableName ==
+            "signal_lamp" &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.Meshes[0].VisibilityConditions![0].Value -
+            1.0) <
+            0.0001,
+        "World scenery asset did not retain OMSI signal script and [visible] directive.");
 
     var crossingPath =
         verifiedEditorOnlyAsset.Paths[0];
