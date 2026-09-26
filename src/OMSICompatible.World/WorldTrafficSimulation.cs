@@ -178,7 +178,7 @@ public sealed class WorldTrafficSimulation
             var networkCapacity =
                 Math.Max(
                     1,
-                    (int)Math.Floor(
+                    (int)Math.Ceiling(
                         activeRoadLengthMeters /
                         140.0));
 
