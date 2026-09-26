@@ -1955,7 +1955,9 @@ public sealed class D3D11RenderWindow : Form
                 RuntimeVehicleGeometry.Build(
                     pair.Value,
                     viewpointBit:
-                        4);
+                        4,
+                    forceMaterialAlphaOpaque:
+                        true);
 
             if (geometry.Vertices.Length ==
                 0)
