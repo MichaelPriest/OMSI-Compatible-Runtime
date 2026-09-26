@@ -93,6 +93,8 @@ public sealed class D3D11RenderWindow : Form
         double,
         IReadOnlyList<RuntimeTrafficAgentInfo>>?
         _trafficStep;
+    private readonly Action<int, float>?
+        _trafficCollisionResponse;
     private IReadOnlyList<RuntimeTrafficAgentInfo>
         _trafficAgents =
             Array.Empty<RuntimeTrafficAgentInfo>();
@@ -413,6 +415,8 @@ public sealed class D3D11RenderWindow : Form
             double,
             IReadOnlyList<RuntimeTrafficAgentInfo>>?
             trafficStep = null,
+        Action<int, float>?
+            trafficCollisionResponse = null,
         Func<
             IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
             railSignalStateProvider = null)
@@ -420,6 +424,8 @@ public sealed class D3D11RenderWindow : Form
         _windowInfo = windowInfo;
         _trafficStep =
             trafficStep;
+        _trafficCollisionResponse =
+            trafficCollisionResponse;
         _trafficAgents =
             _trafficStep?.Invoke(
                 0.0) ??
@@ -7888,6 +7894,10 @@ public sealed class D3D11RenderWindow : Form
                 _vehicle
                     .ApplyTrafficCollisionResponse(
                         relativeImpactSpeedKph);
+
+                _trafficCollisionResponse?.Invoke(
+                    agent.AgentIndex,
+                    relativeImpactSpeedKph);
             }
             else
             {
