@@ -2783,7 +2783,7 @@ public sealed class WorldTrafficSimulation
                 ".bus",
                 StringComparison.OrdinalIgnoreCase))
         {
-            return 5.5;
+            return 6.0;
         }
 
         if (extension.Equals(
