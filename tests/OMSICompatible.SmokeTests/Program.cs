@@ -5391,6 +5391,41 @@ try
             5,
         "Crossing reservation did not release the lower-priority AI only after the higher-priority agent left.");
 
+    var stalledPrioritySimulation =
+        new WorldTrafficSimulation(
+            crossingReservationNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                2);
+
+    stalledPrioritySimulation.ApplyCollisionResponse(
+        1,
+        80.0);
+
+    stalledPrioritySimulation.ApplyCollisionResponse(
+        1,
+        80.0);
+
+    stalledPrioritySimulation.Step(
+        0.5);
+
+    var stalledPriorityAgents =
+        stalledPrioritySimulation
+            .Snapshot()
+            .OrderBy(
+                static agent =>
+                    agent.AgentIndex)
+            .ToArray();
+
+    Require(
+        stalledPriorityAgents.Length ==
+            2 &&
+        stalledPriorityAgents[0].SegmentIndex ==
+            2 &&
+        stalledPriorityAgents[1].SegmentIndex ==
+            1,
+        "A stalled higher-priority AI approach incorrectly reserved the crossing.");
+
     var parallelCrossingNetwork =
         new WorldTrafficPathNetwork(
             [
