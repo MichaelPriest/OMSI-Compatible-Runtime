@@ -95,14 +95,26 @@
                             </StackPanel>
                         </Button>
 
-                        <Button Height="48" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <Button x:Name="MapsNavButton"
+                                Height="48"
+                                HorizontalContentAlignment="Stretch"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CornerRadius="10"
+                                Click="MapsNavButton_Click">
                             <StackPanel Orientation="Horizontal" Spacing="14">
                                 <FontIcon Glyph="&#xE707;" Foreground="#C8D4E2" FontSize="20"/>
                                 <TextBlock Text="Mapas" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
-                        <Button Height="48" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <Button x:Name="VehiclesNavButton"
+                                Height="48"
+                                HorizontalContentAlignment="Stretch"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CornerRadius="10"
+                                Click="VehiclesNavButton_Click">
                             <StackPanel Orientation="Horizontal" Spacing="14">
                                 <FontIcon Glyph="&#xE7C0;" Foreground="#C8D4E2" FontSize="20"/>
                                 <TextBlock Text="Veículos" Foreground="#E7EDF4" FontSize="15" VerticalAlignment="Center"/>
@@ -575,6 +587,235 @@
                         </Grid>
                     </Grid>
                 </ScrollViewer>
+            </Grid>
+
+            <!-- MAP LIBRARY -->
+            <Grid x:Name="MapsView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <Grid MaxWidth="1440"
+                      HorizontalAlignment="Center"
+                      Padding="28,24,28,20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="Mapas"
+                                       Foreground="White"
+                                       FontSize="34"
+                                       FontWeight="Bold"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Biblioteca OMSI detectada no conteúdo configurado."
+                                           Foreground="#92A4B8"
+                                           FontSize="13"/>
+                                <TextBlock Text="•" Foreground="#52677D"/>
+                                <TextBlock x:Name="MapsResultCountText"
+                                           Text="0 mapas"
+                                           Foreground="#76B9FF"
+                                           FontSize="13"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBox x:Name="MapsSearchBox"
+                                 Grid.Column="1"
+                                 Width="330"
+                                 Height="42"
+                                 PlaceholderText="Buscar mapa..."
+                                 TextChanged="MapsSearchBox_TextChanged"
+                                 VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <GridView x:Name="MapsGrid"
+                              Grid.Row="1"
+                              Margin="0,20,0,0"
+                              SelectionMode="None"
+                              IsItemClickEnabled="True"
+                              ItemClick="MapLibraryItem_Click"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <GridView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="326"
+                                        Height="270"
+                                        Margin="0,0,12,12"
+                                        Background="#111E2D"
+                                        BorderBrush="#233A50"
+                                        BorderThickness="1"
+                                        CornerRadius="14">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="156"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid Background="#08121D">
+                                            <FontIcon Glyph="&#xE707;"
+                                                      Foreground="#31516D"
+                                                      FontSize="40"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                            <Image Source="{Binding Preview}"
+                                                   Stretch="UniformToFill"/>
+                                        </Grid>
+                                        <Grid Grid.Row="1" Padding="15,12">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding Title}"
+                                                       Foreground="White"
+                                                       FontSize="16"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Row="1"
+                                                       Text="{Binding Detail}"
+                                                       Foreground="#8FA2B7"
+                                                       FontSize="11"
+                                                       Margin="0,5,0,0"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Grid.Row="2"
+                                                        Orientation="Horizontal"
+                                                        Spacing="7"
+                                                        VerticalAlignment="Bottom">
+                                                <FontIcon Glyph="&#xE768;"
+                                                          Foreground="#5EA4FF"
+                                                          FontSize="13"/>
+                                                <TextBlock Text="Abrir na Nova sessão"
+                                                           Foreground="#9FC8FF"
+                                                           FontSize="11"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
+                </Grid>
+            </Grid>
+
+            <!-- VEHICLE LIBRARY -->
+            <Grid x:Name="VehiclesView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <Grid MaxWidth="1440"
+                      HorizontalAlignment="Center"
+                      Padding="28,24,28,20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="Biblioteca de veículos"
+                                       Foreground="White"
+                                       FontSize="34"
+                                       FontWeight="Bold"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Veículos .bus encontrados na biblioteca OMSI."
+                                           Foreground="#92A4B8"
+                                           FontSize="13"/>
+                                <TextBlock Text="•" Foreground="#52677D"/>
+                                <TextBlock x:Name="VehiclesResultCountText"
+                                           Text="0 veículos"
+                                           Foreground="#76B9FF"
+                                           FontSize="13"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBox x:Name="VehiclesSearchBox"
+                                 Grid.Column="1"
+                                 Width="330"
+                                 Height="42"
+                                 PlaceholderText="Buscar fabricante, modelo ou skin..."
+                                 TextChanged="VehiclesSearchBox_TextChanged"
+                                 VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <GridView x:Name="VehiclesGrid"
+                              Grid.Row="1"
+                              Margin="0,20,0,0"
+                              SelectionMode="None"
+                              IsItemClickEnabled="True"
+                              ItemClick="VehicleLibraryItem_Click"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <GridView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="326"
+                                        Height="300"
+                                        Margin="0,0,12,12"
+                                        Background="#111E2D"
+                                        BorderBrush="#233A50"
+                                        BorderThickness="1"
+                                        CornerRadius="14">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="170"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid Background="#08121D">
+                                            <FontIcon Glyph="&#xE7C0;"
+                                                      Foreground="#31516D"
+                                                      FontSize="42"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                            <Image Source="{Binding Preview}"
+                                                   Stretch="UniformToFill"/>
+                                        </Grid>
+                                        <Grid Grid.Row="1" Padding="15,12">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding Title}"
+                                                       Foreground="White"
+                                                       FontSize="16"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Row="1"
+                                                       Text="{Binding Subtitle}"
+                                                       Foreground="#AFC0D2"
+                                                       FontSize="12"
+                                                       Margin="0,4,0,0"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Row="2"
+                                                       Text="{Binding Detail}"
+                                                       Foreground="#75899E"
+                                                       FontSize="10"
+                                                       Margin="0,5,0,0"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Grid.Row="3"
+                                                        Orientation="Horizontal"
+                                                        Spacing="7"
+                                                        VerticalAlignment="Bottom">
+                                                <FontIcon Glyph="&#xE768;"
+                                                          Foreground="#5EA4FF"
+                                                          FontSize="13"/>
+                                                <TextBlock Text="Selecionar para Nova sessão"
+                                                           Foreground="#9FC8FF"
+                                                           FontSize="11"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
+                </Grid>
             </Grid>
         </Grid>
 
