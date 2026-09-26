@@ -4913,6 +4913,97 @@ try
             0.0,
         "no_cars did not exclude a blocked route for the Taxi group.");
 
+    var multiPathTurnNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8240,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [1],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            8.0)
+                    ],
+                    [2],
+                    [0],
+                    SceneryObjectId:
+                        8241),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    1,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            8.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            13.0)
+                    ],
+                    Array.Empty<int>(),
+                    [1],
+                    SceneryObjectId:
+                        8241)
+            ],
+            3,
+            0,
+            0,
+            0,
+            2,
+            0,
+            1,
+            0);
+
+    var multiPathTurnSimulation =
+        new WorldTrafficSimulation(
+            multiPathTurnNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    var multiPathTurnAgent =
+        multiPathTurnSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        multiPathTurnAgent.AiBlinkerRight &&
+        !multiPathTurnAgent.AiBlinkerLeft,
+        "AI did not signal before a turn distributed across multiple junction paths.");
+
     var curvedSteeringNetwork =
         new WorldTrafficPathNetwork(
             [
