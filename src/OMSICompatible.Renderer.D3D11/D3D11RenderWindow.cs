@@ -3645,7 +3645,8 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.OMSetDepthStencilState(
                 batch.NoZCheck
                     ? _objectDepthDisabledState
-                    : batch.NoZWrite
+                    : batch.NoZWrite ||
+                      batch.AlphaBlend
                         ? _objectDepthReadState
                         : null);
 
