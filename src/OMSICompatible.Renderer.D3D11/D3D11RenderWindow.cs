@@ -71,6 +71,17 @@ public sealed class D3D11RenderWindow : Form
         Exterior
     }
 
+    private enum RuntimeSceneryRenderPass
+    {
+        PreSurface,
+        Surface,
+        OnSurface,
+        One,
+        Two,
+        Three,
+        Four
+    }
+
     private static readonly FeatureLevel[] RequestedFeatureLevels =
     [
         FeatureLevel.Level_11_1,
@@ -273,6 +284,8 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11PixelShader? _objectAlphaCutoutTransMapPixelShader;
     private ID3D11PixelShader? _objectAlphaBlendTransMapPixelShader;
     private ID3D11BlendState? _objectAlphaBlendState;
+    private ID3D11DepthStencilState? _objectDepthReadState;
+    private ID3D11DepthStencilState? _objectDepthDisabledState;
     private ID3D11InputLayout? _objectInputLayout;
     private ID3D11SamplerState? _objectSampler;
     private RuntimeGpuTextureLoader? _objectTextureLoader;
@@ -1768,6 +1781,14 @@ public sealed class D3D11RenderWindow : Form
             _device.CreateBlendState(
                 BlendDescription.NonPremultiplied);
 
+        _objectDepthReadState =
+            _device.CreateDepthStencilState(
+                DepthStencilDescription.DepthRead);
+
+        _objectDepthDisabledState =
+            _device.CreateDepthStencilState(
+                DepthStencilDescription.None);
+
         _objectInputLayout =
             _device.CreateInputLayout(
                 CreateObjectInputElements(),
@@ -3133,13 +3154,45 @@ public sealed class D3D11RenderWindow : Form
 
         if (CanDrawTerrain())
         {
+            // OMSI scenery objects have an explicit global render order.
+            // Respect it instead of drawing every .sco in one late pass:
+            // presurface -> terrain -> surface -> splines -> on_surface ->
+            // 1 -> 2(default) -> 3 -> vehicles -> 4.
+            DrawObjects(
+                RuntimeSceneryRenderPass.PreSurface);
             DrawTerrain();
+            DrawObjects(
+                RuntimeSceneryRenderPass.Surface);
             DrawSplines();
-            DrawObjects();
+            DrawObjects(
+                RuntimeSceneryRenderPass.OnSurface);
+            DrawObjects(
+                RuntimeSceneryRenderPass.One);
+            DrawObjects(
+                RuntimeSceneryRenderPass.Two);
+            DrawObjects(
+                RuntimeSceneryRenderPass.Three);
+
             DrawTrafficVehicles();
             DrawTrafficVehicleLights();
-            DrawVehicle();
-            DrawVehicleLights();
+
+            var exteriorVehicle =
+                UseExteriorVehicleView();
+
+            if (exteriorVehicle)
+            {
+                DrawVehicle();
+                DrawVehicleLights();
+            }
+
+            DrawObjects(
+                RuntimeSceneryRenderPass.Four);
+
+            if (!exteriorVehicle)
+            {
+                DrawVehicle();
+                DrawVehicleLights();
+            }
         }
         else
         {
@@ -3208,11 +3261,24 @@ public sealed class D3D11RenderWindow : Form
                     ReflectionTextureSize);
 
                 DrawSky();
+                DrawObjects(
+                    RuntimeSceneryRenderPass.PreSurface);
                 DrawTerrain();
+                DrawObjects(
+                    RuntimeSceneryRenderPass.Surface);
                 DrawSplines();
-                DrawObjects();
+                DrawObjects(
+                    RuntimeSceneryRenderPass.OnSurface);
+                DrawObjects(
+                    RuntimeSceneryRenderPass.One);
+                DrawObjects(
+                    RuntimeSceneryRenderPass.Two);
+                DrawObjects(
+                    RuntimeSceneryRenderPass.Three);
                 DrawTrafficVehicles();
                 DrawTrafficVehicleLights();
+                DrawObjects(
+                    RuntimeSceneryRenderPass.Four);
             }
         }
         finally
@@ -3423,6 +3489,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _deviceContext.OMSetBlendState(null);
+        _deviceContext.OMSetDepthStencilState(null);
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.PSUnsetShaderResource(2);
@@ -3438,18 +3505,65 @@ public sealed class D3D11RenderWindow : Form
             _splineGeometry.Batches);
     }
 
-    private void DrawObjects()
+    private void DrawObjects(
+        RuntimeSceneryRenderPass renderPass)
     {
         DrawTexturedGeometry(
             _objectVertexBuffer,
             _objectVertexCount,
-            _objectGeometry.Batches);
+            _objectGeometry.Batches,
+            renderPass);
+    }
+
+    private static bool MatchesSceneryRenderPass(
+        string? renderType,
+        RuntimeSceneryRenderPass renderPass)
+    {
+        var normalized =
+            renderType?
+                .Trim()
+                .ToLowerInvariant();
+
+        return renderPass switch
+        {
+            RuntimeSceneryRenderPass.PreSurface =>
+                normalized ==
+                    "presurface",
+            RuntimeSceneryRenderPass.Surface =>
+                normalized ==
+                    "surface",
+            RuntimeSceneryRenderPass.OnSurface =>
+                normalized ==
+                    "on_surface",
+            RuntimeSceneryRenderPass.One =>
+                normalized ==
+                    "1",
+            RuntimeSceneryRenderPass.Three =>
+                normalized ==
+                    "3",
+            RuntimeSceneryRenderPass.Four =>
+                normalized ==
+                    "4",
+            _ =>
+                string.IsNullOrWhiteSpace(
+                    normalized) ||
+                normalized ==
+                    "2" ||
+                normalized is not
+                    ("presurface" or
+                     "surface" or
+                     "on_surface" or
+                     "1" or
+                     "3" or
+                     "4")
+        };
     }
 
     private void DrawTexturedGeometry(
         ID3D11Buffer? vertexBuffer,
         uint vertexCount,
-        IReadOnlyList<RuntimeObjectBatch> batches)
+        IReadOnlyList<RuntimeObjectBatch> batches,
+        RuntimeSceneryRenderPass? sceneryRenderPass = null)
     {
         if (_deviceContext is null ||
             CurrentRenderTargetView is null ||
@@ -3496,6 +3610,10 @@ public sealed class D3D11RenderWindow : Form
         foreach (var batch in batches)
         {
             if (batch.VertexCount == 0 ||
+                (sceneryRenderPass.HasValue &&
+                 !MatchesSceneryRenderPass(
+                     batch.RenderType,
+                     sceneryRenderPass.Value)) ||
                 !IsDynamicSceneryBatchVisible(
                     batch))
             {
@@ -3506,6 +3624,13 @@ public sealed class D3D11RenderWindow : Form
                 batch.AlphaBlend
                     ? _objectAlphaBlendState
                     : null);
+
+            _deviceContext.OMSetDepthStencilState(
+                batch.NoZCheck
+                    ? _objectDepthDisabledState
+                    : batch.NoZWrite
+                        ? _objectDepthReadState
+                        : null);
 
             _deviceContext.PSUnsetShaderResource(
                 0);
@@ -13327,6 +13452,8 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAnimationParentBatches.Clear();
 
             _objectSampler?.Dispose();
+            _objectDepthDisabledState?.Dispose();
+            _objectDepthReadState?.Dispose();
             _objectAlphaBlendState?.Dispose();
             _objectInputLayout?.Dispose();
             _objectAlphaBlendTransMapPixelShader?.Dispose();
