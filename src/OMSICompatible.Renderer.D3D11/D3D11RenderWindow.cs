@@ -116,6 +116,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly HashSet<string> _reportedMissingVehicleFonts =
         new(
             StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _reportedMissingTransMaps =
+        new(
+            StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Keys> _pressedKeys = [];
     private readonly IReadOnlyList<RuntimeOmsiKeyboardBinding>
         _omsiKeyboardBindings;
@@ -2467,6 +2470,39 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private void ReportMissingTransMap(
+        string scope,
+        string? diffusePath,
+        string? transMapPath)
+    {
+        var key =
+            $"{scope}|{diffusePath}|{transMapPath}";
+
+        if (!_reportedMissingTransMaps.Add(
+                key))
+        {
+            return;
+        }
+
+        var message =
+            $"scope={scope}|diffuse={diffusePath ?? "<none>"}|transmap={transMapPath ?? "<unresolved>"}";
+
+        Console.WriteLine(
+            $"[transmap] {message}");
+
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "transmap-missing.log"),
+                $"{DateTimeOffset.Now:O}|{message}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
+    }
+
     private void AppendVehicleGeometryDiagnostics()
     {
         try
@@ -3789,6 +3825,10 @@ public sealed class D3D11RenderWindow : Form
                     // authoritative transparency source. Falling back to the
                     // diffuse texture alpha when that mask failed to load
                     // turns signs, arrows and decals into opaque rectangles.
+                    ReportMissingTransMap(
+                        "scenery",
+                        batch.TexturePath,
+                        batch.TransMapTexturePath);
                     continue;
                 }
 
@@ -4167,6 +4207,10 @@ public sealed class D3D11RenderWindow : Form
                     if (requiresExternalTransMap &&
                         !hasTransMap)
                     {
+                        ReportMissingTransMap(
+                            "vehicle",
+                            batch.TexturePath,
+                            batch.TransMapTexturePath);
                         continue;
                     }
 
