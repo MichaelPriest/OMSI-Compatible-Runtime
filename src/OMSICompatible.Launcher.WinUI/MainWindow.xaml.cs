@@ -952,8 +952,8 @@ public sealed partial class MainWindow :
                 : "—";
 
         var localStartedAt =
-            _settings.LastSessionStartedAt?
-                .ToLocalTime();
+            _settings.LastSessionStartedAt
+                ?.ToLocalTime();
 
         LastTimeText.Text =
             localStartedAt?.ToString(
