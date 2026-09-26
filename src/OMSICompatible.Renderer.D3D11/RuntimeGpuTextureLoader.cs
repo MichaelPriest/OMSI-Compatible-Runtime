@@ -236,6 +236,21 @@ internal sealed class RuntimeGpuTextureLoader
         if (
             string.Equals(
                 Path.GetExtension(path),
+                ".dds",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var dds =
+                TryLoadDds(path);
+
+            if (dds is not null)
+            {
+                return dds;
+            }
+        }
+
+        if (
+            string.Equals(
+                Path.GetExtension(path),
                 ".tga",
                 StringComparison.OrdinalIgnoreCase))
         {
@@ -321,7 +336,803 @@ internal sealed class RuntimeGpuTextureLoader
         {
             return null;
         }
-    }    private RuntimeGpuTexture? TryLoadTga(
+    }    private RuntimeGpuTexture? TryLoadDds(
+        string path)
+    {
+        try
+        {
+            using var stream =
+                new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read);
+
+            if (stream.Length <
+                128)
+            {
+                return null;
+            }
+
+            var header =
+                new byte[128];
+
+            stream.ReadExactly(
+                header);
+
+            if (header[0] !=
+                    (byte)'D' ||
+                header[1] !=
+                    (byte)'D' ||
+                header[2] !=
+                    (byte)'S' ||
+                header[3] !=
+                    (byte)' ')
+            {
+                return null;
+            }
+
+            var span =
+                header.AsSpan();
+
+            var height =
+                BinaryPrimitives
+                    .ReadInt32LittleEndian(
+                        span.Slice(
+                            12,
+                            4));
+
+            var width =
+                BinaryPrimitives
+                    .ReadInt32LittleEndian(
+                        span.Slice(
+                            16,
+                            4));
+
+            if (width <=
+                    0 ||
+                height <=
+                    0 ||
+                width >
+                    16_384 ||
+                height >
+                    16_384)
+            {
+                return null;
+            }
+
+            var fourCc =
+                BinaryPrimitives
+                    .ReadUInt32LittleEndian(
+                        span.Slice(
+                            84,
+                            4));
+
+            const uint dxt1 =
+                0x31545844;
+            const uint dxt2 =
+                0x32545844;
+            const uint dxt3 =
+                0x33545844;
+            const uint dxt4 =
+                0x34545844;
+            const uint dxt5 =
+                0x35545844;
+            const uint dx10 =
+                0x30315844;
+
+            var dataOffset =
+                128L;
+
+            if (fourCc ==
+                dx10)
+            {
+                Span<byte> dx10Header =
+                    stackalloc byte[20];
+
+                stream.ReadExactly(
+                    dx10Header);
+
+                dataOffset +=
+                    20;
+
+                var dxgiFormat =
+                    BinaryPrimitives
+                        .ReadUInt32LittleEndian(
+                            dx10Header[
+                                0..
+                                4]);
+
+                fourCc =
+                    dxgiFormat switch
+                    {
+                        71 or 72 =>
+                            dxt1,
+                        74 or 75 =>
+                            dxt3,
+                        77 or 78 =>
+                            dxt5,
+                        _ =>
+                            fourCc
+                    };
+            }
+
+            stream.Position =
+                dataOffset;
+
+            byte[]? rgba =
+                fourCc switch
+                {
+                    dxt1 =>
+                        DecodeBcTexture(
+                            stream,
+                            width,
+                            height,
+                            BcFormat.Bc1),
+                    dxt2 or dxt3 =>
+                        DecodeBcTexture(
+                            stream,
+                            width,
+                            height,
+                            BcFormat.Bc2),
+                    dxt4 or dxt5 =>
+                        DecodeBcTexture(
+                            stream,
+                            width,
+                            height,
+                            BcFormat.Bc3),
+                    _ =>
+                        null
+                };
+
+            if (rgba is null)
+            {
+                var pixelFormatFlags =
+                    BinaryPrimitives
+                        .ReadUInt32LittleEndian(
+                            span.Slice(
+                                80,
+                                4));
+
+                var bitCount =
+                    BinaryPrimitives
+                        .ReadUInt32LittleEndian(
+                            span.Slice(
+                                88,
+                                4));
+
+                const uint ddpfRgb =
+                    0x00000040;
+
+                if ((pixelFormatFlags &
+                         ddpfRgb) !=
+                        0 &&
+                    bitCount ==
+                        32)
+                {
+                    var redMask =
+                        BinaryPrimitives
+                            .ReadUInt32LittleEndian(
+                                span.Slice(
+                                    92,
+                                    4));
+                    var greenMask =
+                        BinaryPrimitives
+                            .ReadUInt32LittleEndian(
+                                span.Slice(
+                                    96,
+                                    4));
+                    var blueMask =
+                        BinaryPrimitives
+                            .ReadUInt32LittleEndian(
+                                span.Slice(
+                                    100,
+                                    4));
+                    var alphaMask =
+                        BinaryPrimitives
+                            .ReadUInt32LittleEndian(
+                                span.Slice(
+                                    104,
+                                    4));
+
+                    rgba =
+                        DecodeUncompressedDds32(
+                            stream,
+                            width,
+                            height,
+                            redMask,
+                            greenMask,
+                            blueMask,
+                            alphaMask);
+                }
+            }
+
+            return rgba is null
+                ? null
+                : CreateRgbaTexture(
+                    rgba,
+                    width,
+                    height);
+        }
+        catch (
+            Exception exception)
+            when (
+                exception is
+                    IOException or
+                    UnauthorizedAccessException or
+                    ArgumentException or
+                    NotSupportedException or
+                    OverflowException)
+        {
+            return null;
+        }
+    }
+
+    private enum BcFormat
+    {
+        Bc1,
+        Bc2,
+        Bc3
+    }
+
+    private static byte[]? DecodeBcTexture(
+        Stream stream,
+        int width,
+        int height,
+        BcFormat format)
+    {
+        var blockBytes =
+            format ==
+                BcFormat.Bc1
+                ? 8
+                : 16;
+
+        var blocksX =
+            (width +
+             3) /
+            4;
+        var blocksY =
+            (height +
+             3) /
+            4;
+
+        var requiredBytes =
+            checked(
+                blocksX *
+                blocksY *
+                blockBytes);
+
+        if (stream.Length -
+                stream.Position <
+            requiredBytes)
+        {
+            return null;
+        }
+
+        var rgba =
+            new byte[
+                checked(
+                    width *
+                    height *
+                    4)];
+
+        Span<byte> block =
+            stackalloc byte[16];
+
+        for (var blockY = 0;
+             blockY <
+                 blocksY;
+             blockY++)
+        {
+            for (var blockX = 0;
+                 blockX <
+                     blocksX;
+                 blockX++)
+            {
+                stream.ReadExactly(
+                    block[
+                        ..blockBytes]);
+
+                DecodeBcBlock(
+                    block[
+                        ..blockBytes],
+                    format,
+                    rgba,
+                    width,
+                    height,
+                    blockX *
+                        4,
+                    blockY *
+                        4);
+            }
+        }
+
+        return rgba;
+    }
+
+    private static void DecodeBcBlock(
+        ReadOnlySpan<byte> block,
+        BcFormat format,
+        byte[] rgba,
+        int width,
+        int height,
+        int originX,
+        int originY)
+    {
+        Span<byte> alpha =
+            stackalloc byte[16];
+
+        alpha.Fill(
+            255);
+
+        var colorOffset =
+            0;
+
+        if (format ==
+            BcFormat.Bc2)
+        {
+            for (var pixel = 0;
+                 pixel <
+                     16;
+                 pixel++)
+            {
+                var packed =
+                    block[
+                        pixel /
+                        2];
+
+                var nibble =
+                    (pixel &
+                     1) ==
+                            0
+                        ? packed &
+                          0x0F
+                        : packed >>
+                          4;
+
+                alpha[pixel] =
+                    (byte)(
+                        nibble *
+                        17);
+            }
+
+            colorOffset =
+                8;
+        }
+        else if (format ==
+                 BcFormat.Bc3)
+        {
+            DecodeBc3Alpha(
+                block[
+                    ..8],
+                alpha);
+
+            colorOffset =
+                8;
+        }
+
+        var colorBlock =
+            block[
+                colorOffset..
+                (colorOffset +
+                 8)];
+
+        var color0 =
+            BinaryPrimitives
+                .ReadUInt16LittleEndian(
+                    colorBlock[
+                        0..
+                        2]);
+        var color1 =
+            BinaryPrimitives
+                .ReadUInt16LittleEndian(
+                    colorBlock[
+                        2..
+                        4]);
+
+        Span<byte> palette =
+            stackalloc byte[
+                16];
+
+        DecodeRgb565(
+            color0,
+            palette,
+            0);
+        DecodeRgb565(
+            color1,
+            palette,
+            4);
+
+        var forceFourColor =
+            format !=
+            BcFormat.Bc1;
+
+        if (forceFourColor ||
+            color0 >
+                color1)
+        {
+            MixColor(
+                palette,
+                0,
+                4,
+                8,
+                2,
+                1);
+            MixColor(
+                palette,
+                0,
+                4,
+                12,
+                1,
+                2);
+        }
+        else
+        {
+            MixColor(
+                palette,
+                0,
+                4,
+                8,
+                1,
+                1);
+
+            palette[12] =
+                0;
+            palette[13] =
+                0;
+            palette[14] =
+                0;
+            palette[15] =
+                0;
+        }
+
+        var indices =
+            BinaryPrimitives
+                .ReadUInt32LittleEndian(
+                    colorBlock[
+                        4..
+                        8]);
+
+        for (var pixel = 0;
+             pixel <
+                 16;
+             pixel++)
+        {
+            var x =
+                originX +
+                pixel %
+                    4;
+            var y =
+                originY +
+                pixel /
+                    4;
+
+            if (x >=
+                    width ||
+                y >=
+                    height)
+            {
+                continue;
+            }
+
+            var paletteIndex =
+                (int)(
+                    (indices >>
+                     (pixel *
+                      2)) &
+                    0x03);
+
+            var source =
+                paletteIndex *
+                4;
+
+            var target =
+                (y *
+                     width +
+                 x) *
+                4;
+
+            rgba[target] =
+                palette[source];
+            rgba[target + 1] =
+                palette[source + 1];
+            rgba[target + 2] =
+                palette[source + 2];
+
+            rgba[target + 3] =
+                format ==
+                        BcFormat.Bc1 &&
+                    color0 <=
+                        color1 &&
+                    paletteIndex ==
+                        3
+                    ? (byte)0
+                    : alpha[pixel];
+        }
+    }
+
+    private static void DecodeBc3Alpha(
+        ReadOnlySpan<byte> block,
+        Span<byte> alpha)
+    {
+        Span<byte> palette =
+            stackalloc byte[8];
+
+        palette[0] =
+            block[0];
+        palette[1] =
+            block[1];
+
+        if (palette[0] >
+            palette[1])
+        {
+            for (var index = 1;
+                 index <=
+                     6;
+                 index++)
+            {
+                palette[index + 1] =
+                    (byte)(
+                        ((7 -
+                          index) *
+                             palette[0] +
+                         index *
+                             palette[1]) /
+                        7);
+            }
+        }
+        else
+        {
+            for (var index = 1;
+                 index <=
+                     4;
+                 index++)
+            {
+                palette[index + 1] =
+                    (byte)(
+                        ((5 -
+                          index) *
+                             palette[0] +
+                         index *
+                             palette[1]) /
+                        5);
+            }
+
+            palette[6] =
+                0;
+            palette[7] =
+                255;
+        }
+
+        ulong indices =
+            0;
+
+        for (var index = 0;
+             index <
+                 6;
+             index++)
+        {
+            indices |=
+                (ulong)block[
+                    2 +
+                    index] <<
+                (index *
+                 8);
+        }
+
+        for (var pixel = 0;
+             pixel <
+                 16;
+             pixel++)
+        {
+            alpha[pixel] =
+                palette[
+                    (int)(
+                        (indices >>
+                         (pixel *
+                          3)) &
+                        0x07)];
+        }
+    }
+
+    private static void DecodeRgb565(
+        ushort packed,
+        Span<byte> palette,
+        int offset)
+    {
+        var red =
+            (packed >>
+             11) &
+            0x1F;
+        var green =
+            (packed >>
+             5) &
+            0x3F;
+        var blue =
+            packed &
+            0x1F;
+
+        palette[offset] =
+            (byte)(
+                red *
+                255 /
+                31);
+        palette[offset + 1] =
+            (byte)(
+                green *
+                255 /
+                63);
+        palette[offset + 2] =
+            (byte)(
+                blue *
+                255 /
+                31);
+        palette[offset + 3] =
+            255;
+    }
+
+    private static void MixColor(
+        Span<byte> palette,
+        int first,
+        int second,
+        int target,
+        int firstWeight,
+        int secondWeight)
+    {
+        var denominator =
+            firstWeight +
+            secondWeight;
+
+        for (var channel = 0;
+             channel <
+                 3;
+             channel++)
+        {
+            palette[
+                target +
+                channel] =
+                (byte)(
+                    (palette[
+                         first +
+                         channel] *
+                         firstWeight +
+                     palette[
+                         second +
+                         channel] *
+                         secondWeight) /
+                    denominator);
+        }
+
+        palette[target + 3] =
+            255;
+    }
+
+    private static byte[]? DecodeUncompressedDds32(
+        Stream stream,
+        int width,
+        int height,
+        uint redMask,
+        uint greenMask,
+        uint blueMask,
+        uint alphaMask)
+    {
+        var byteCount =
+            checked(
+                width *
+                height *
+                4);
+
+        if (stream.Length -
+                stream.Position <
+            byteCount)
+        {
+            return null;
+        }
+
+        var source =
+            new byte[
+                byteCount];
+
+        stream.ReadExactly(
+            source);
+
+        var rgba =
+            new byte[
+                byteCount];
+
+        for (var pixel = 0;
+             pixel <
+                 width *
+                 height;
+             pixel++)
+        {
+            var packed =
+                BinaryPrimitives
+                    .ReadUInt32LittleEndian(
+                        source.AsSpan(
+                            pixel *
+                                4,
+                            4));
+
+            var target =
+                pixel *
+                4;
+
+            rgba[target] =
+                ExtractMaskedChannel(
+                    packed,
+                    redMask,
+                    0);
+            rgba[target + 1] =
+                ExtractMaskedChannel(
+                    packed,
+                    greenMask,
+                    0);
+            rgba[target + 2] =
+                ExtractMaskedChannel(
+                    packed,
+                    blueMask,
+                    0);
+            rgba[target + 3] =
+                ExtractMaskedChannel(
+                    packed,
+                    alphaMask,
+                    255);
+        }
+
+        return rgba;
+    }
+
+    private static byte ExtractMaskedChannel(
+        uint packed,
+        uint mask,
+        byte fallback)
+    {
+        if (mask ==
+            0)
+        {
+            return fallback;
+        }
+
+        var shift =
+            0;
+
+        var shiftedMask =
+            mask;
+
+        while ((shiftedMask &
+                1) ==
+               0)
+        {
+            shiftedMask >>=
+                1;
+            shift++;
+        }
+
+        var max =
+            shiftedMask;
+
+        if (max ==
+            0)
+        {
+            return fallback;
+        }
+
+        var value =
+            (packed &
+             mask) >>
+            shift;
+
+        return (byte)Math.Clamp(
+            (int)Math.Round(
+                value *
+                255.0 /
+                max),
+            0,
+            255);
+    }
+
+    private RuntimeGpuTexture? TryLoadTga(
         string path)
     {
         try
