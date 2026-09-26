@@ -69,11 +69,21 @@ public partial class App : Application
 
         try
         {
+            var detail =
+                exception.InnerException?.Message;
+
+            var diagnostic =
+                $"{exception.GetType().Name} · HRESULT 0x{exception.HResult:X8}\r\n" +
+                exception.Message +
+                (string.IsNullOrWhiteSpace(detail)
+                    ? string.Empty
+                    : $"\r\n\r\nInner: {detail}");
+
             MessageBox(
                 IntPtr.Zero,
                 "O novo launcher WinUI não conseguiu iniciar. " +
-                "O erro foi registrado em %LocalAppData%\\OMSI-Compatible-Runtime\\launcher-winui.log.\r\n\r\n" +
-                exception.Message,
+                "O erro completo foi registrado em %LocalAppData%\\OMSI-Compatible-Runtime\\launcher-winui.log.\r\n\r\n" +
+                diagnostic,
                 "OMSI Compatible Runtime",
                 0x00000010u);
         }
