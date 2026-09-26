@@ -3673,6 +3673,117 @@ try
             obstacleInitial.SpeedMetersPerSecond,
         "Traffic AI did not stop for the external player-vehicle obstacle.");
 
+    var crossedBusSimulation =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    var crossedBusInitial =
+        crossedBusSimulation
+            .Snapshot()
+            .Single();
+
+    var crossedBusForwardX =
+        Math.Sin(
+            crossedBusInitial.HeadingRadians);
+    var crossedBusForwardZ =
+        Math.Cos(
+            crossedBusInitial.HeadingRadians);
+    var crossedBusRightX =
+        crossedBusForwardZ;
+    var crossedBusRightZ =
+        -crossedBusForwardX;
+
+    var crossedBusCenter =
+        new WorldVector3(
+            crossedBusInitial.Position.X +
+                crossedBusForwardX *
+                    12.0 +
+                crossedBusRightX *
+                    5.0,
+            crossedBusInitial.Position.Y,
+            crossedBusInitial.Position.Z +
+                crossedBusForwardZ *
+                    12.0 +
+                crossedBusRightZ *
+                    5.0);
+
+    crossedBusSimulation.SetExternalObstacle(
+        new WorldTrafficObstacleState(
+            crossedBusCenter,
+            crossedBusInitial.HeadingRadians +
+                Math.PI /
+                    2.0,
+            0.0,
+            HalfLengthMeters:
+                6.0,
+            HalfWidthMeters:
+                1.35));
+
+    crossedBusSimulation.Step(
+        2.0);
+
+    var crossedBusStopped =
+        crossedBusSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        crossedBusStopped.TraveledDistanceMeters <
+            0.1 &&
+        crossedBusStopped.SpeedMetersPerSecond <
+            crossedBusInitial.SpeedMetersPerSecond,
+        "Traffic AI ignored the oriented footprint of a player bus crossing the lane.");
+
+    var staggeredTraffic =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                2,
+            spawnExclusionCenter:
+                new WorldVector3(
+                    10000.0,
+                    0.0,
+                    10000.0),
+            spawnExclusionRadiusMeters:
+                0.0);
+
+    Require(
+        staggeredTraffic.Snapshot().Count ==
+            1,
+        "Runtime traffic did not stagger initial AI activation.");
+
+    staggeredTraffic.Step(
+        2.1);
+
+    Require(
+        staggeredTraffic.Snapshot().Count >=
+            2,
+        "Runtime traffic did not activate the next AI after its stagger delay.");
+
     trafficSimulation.Step(
         20.0);
 
