@@ -3614,6 +3614,65 @@ try
             syntheticAiVehiclePath,
         "Traffic simulation did not spawn a road-compatible vehicle on the first resolved road path.");
 
+    var obstacleSimulation =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    var obstacleInitial =
+        obstacleSimulation
+            .Snapshot()
+            .Single();
+
+    var obstacleAhead =
+        new WorldVector3(
+            obstacleInitial.Position.X +
+                Math.Sin(
+                    obstacleInitial.HeadingRadians) *
+                12.0,
+            obstacleInitial.Position.Y,
+            obstacleInitial.Position.Z +
+                Math.Cos(
+                    obstacleInitial.HeadingRadians) *
+                12.0);
+
+    obstacleSimulation.SetExternalObstacle(
+        new WorldTrafficObstacleState(
+            obstacleAhead,
+            obstacleInitial.HeadingRadians,
+            0.0,
+            HalfLengthMeters:
+                6.0,
+            HalfWidthMeters:
+                1.35));
+
+    obstacleSimulation.Step(
+        2.0);
+
+    var obstacleStopped =
+        obstacleSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        obstacleStopped.TraveledDistanceMeters <
+            0.1 &&
+        obstacleStopped.SpeedMetersPerSecond <
+            obstacleInitial.SpeedMetersPerSecond,
+        "Traffic AI did not stop for the external player-vehicle obstacle.");
+
     trafficSimulation.Step(
         20.0);
 
