@@ -5677,8 +5677,8 @@ try
         "[tree] scenery must remain runtime-renderable even when its helper mesh is [onlyeditor].");
 
     Require(
-        world.Dependencies.RequiredCount == 3,
-        "Expected three primary dependencies.");
+        world.Dependencies.RequiredCount == 4,
+        "Expected four primary dependencies.");
     Require(
         world.Dependencies.MissingCount == 0,
         "Synthetic dependencies should resolve.");
