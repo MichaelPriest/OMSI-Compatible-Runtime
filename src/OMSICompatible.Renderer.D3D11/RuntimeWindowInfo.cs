@@ -79,7 +79,9 @@ public sealed record RuntimeTrafficPathSegmentInfo(
     double WidthMeters,
     IReadOnlyList<RuntimeTrafficPathPointInfo> Points,
     IReadOnlyList<int> ForwardConnections,
-    IReadOnlyList<int> ReverseConnections);
+    IReadOnlyList<int> ReverseConnections,
+    double? SpeedLimitKilometersPerHour = null,
+    int TrafficPriority = 128);
 
 public sealed record RuntimeTrafficPathNetworkInfo(
     IReadOnlyList<RuntimeTrafficPathSegmentInfo> Segments,
@@ -315,6 +317,15 @@ public sealed record RuntimeRailSignalRouteStateInfo(
     bool Reserved,
     int? ReservedAgentIndex,
     OmsiScriptRuntime? ScriptRuntime = null);
+
+public sealed record RuntimeTrafficObstacleInfo(
+    double X,
+    double Y,
+    double Z,
+    double HeadingRadians,
+    double SpeedMetersPerSecond,
+    double HalfLengthMeters,
+    double HalfWidthMeters);
 
 public sealed record RuntimeTrafficAgentInfo(
     int AgentIndex,
