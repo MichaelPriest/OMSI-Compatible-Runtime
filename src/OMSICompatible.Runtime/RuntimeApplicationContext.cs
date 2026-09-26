@@ -907,8 +907,14 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
+        // Renderer X mirrors OMSI's map X to keep the X/Z ground plane
+        // right-handed after converting OMSI X/Y + Z-up into X/Z + Y-up.
+        // Convert the renderer tile coordinate back to the source OMSI tile
+        // before asking WorldLoader for the next streaming window.
         _pendingStreamingCenter =
-            (tileX, tileY);
+            (SourceTileXFromRuntimeTileX(
+                 tileX),
+             tileY);
 
         if (!await _streamingGate.WaitAsync(0))
         {
@@ -1806,15 +1812,17 @@ internal sealed class RuntimeApplicationContext :
                         agent.DistanceMeters,
                         agent.SpeedMetersPerSecond,
                         agent.VehiclePath,
-                        agent.Position.X,
+                        RuntimeWorldXFromSource(
+                            agent.Position.X),
                         agent.Position.Y,
                         agent.Position.Z,
-                        agent.HeadingRadians,
+                        RuntimeHeadingRadiansFromSource(
+                            agent.HeadingRadians),
                         agent.AiBrakeLight,
                         agent.AiBlinkerLeft,
                         agent.AiBlinkerRight,
                         agent.TraveledDistanceMeters,
-                        agent.PathCurvaturePerMeter,
+                        -agent.PathCurvaturePerMeter,
                         ResolveTrafficScriptRuntime(
                             agent)))
             .ToArray();
@@ -2039,6 +2047,82 @@ internal sealed class RuntimeApplicationContext :
         string VehiclePath,
         OmsiScriptRuntime Runtime);
 
+    private const double RuntimeTileSizeMeters =
+        300.0;
+
+    private static int RuntimeTileXFromSourceTileX(
+        int sourceTileX) =>
+        -sourceTileX -
+        1;
+
+    private static int SourceTileXFromRuntimeTileX(
+        int runtimeTileX) =>
+        -runtimeTileX -
+        1;
+
+    private static double RuntimeLocalXFromSourceLocalX(
+        double sourceLocalX) =>
+        RuntimeTileSizeMeters -
+        sourceLocalX;
+
+    private static double RuntimeWorldXFromSource(
+        double sourceWorldX) =>
+        -sourceWorldX;
+
+    private static double RuntimeHeadingDegreesFromSource(
+        double sourceHeadingDegrees) =>
+        -sourceHeadingDegrees;
+
+    private static double RuntimeHeadingRadiansFromSource(
+        double sourceHeadingRadians) =>
+        -sourceHeadingRadians;
+
+    private static IReadOnlyList<float> MirrorTerrainHeightsX(
+        WorldTerrainData terrain)
+    {
+        var sampleCount =
+            terrain.CellCount +
+            1;
+
+        if (sampleCount <=
+                0 ||
+            terrain.Heights.Count !=
+                sampleCount *
+                sampleCount)
+        {
+            return terrain.Heights;
+        }
+
+        var mirrored =
+            new float[
+                terrain.Heights.Count];
+
+        for (var row = 0;
+             row <
+                 sampleCount;
+             row++)
+        {
+            for (var column = 0;
+                 column <
+                     sampleCount;
+                 column++)
+            {
+                mirrored[
+                    row *
+                        sampleCount +
+                    column] =
+                    terrain.Heights[
+                        row *
+                            sampleCount +
+                        (sampleCount -
+                         1 -
+                         column)];
+            }
+        }
+
+        return mirrored;
+    }
+
     private static RuntimeWindowInfo BuildRuntimeInfo(
         WorldDefinition world,
         OmsiVehicleAsset? vehicle,
@@ -2051,7 +2135,8 @@ internal sealed class RuntimeApplicationContext :
                 .Select(
                     static tile =>
                         new RuntimeTileInfo(
-                            tile.Coordinate.X,
+                            RuntimeTileXFromSourceTileX(
+                                tile.Coordinate.X),
                             tile.Coordinate.Y,
                             tile.Objects.Count,
                             tile.Splines.Count,
@@ -2059,7 +2144,8 @@ internal sealed class RuntimeApplicationContext :
                                 ? null
                                 : new RuntimeTerrainInfo(
                                     tile.Terrain.CellCount,
-                                    tile.Terrain.Heights,
+                                    MirrorTerrainHeightsX(
+                                        tile.Terrain),
                                     tile.Terrain.MinimumHeight,
                                     tile.Terrain.MaximumHeight),
                             tile.Resources.LightmapPath,
@@ -2087,12 +2173,12 @@ internal sealed class RuntimeApplicationContext :
                                     static surface =>
                                         new RuntimeSplineSurfaceInfo(
                                             new RuntimeSplineProfilePointInfo(
-                                                surface.From.X,
+                                                -surface.From.X,
                                                 surface.From.Z,
                                                 surface.From.TextureX,
                                                 surface.From.TextureScale),
                                             new RuntimeSplineProfilePointInfo(
-                                                surface.To.X,
+                                                -surface.To.X,
                                                 surface.To.Z,
                                                 surface.To.TextureX,
                                                 surface.To.TextureScale),
@@ -2108,7 +2194,7 @@ internal sealed class RuntimeApplicationContext :
                                     static path =>
                                         new RuntimeSplinePathInfo(
                                             path.Type,
-                                            path.X,
+                                            -path.X,
                                             path.Z,
                                             path.Width,
                                             path.Direction))
@@ -2120,14 +2206,17 @@ internal sealed class RuntimeApplicationContext :
                             spline.Id,
                             spline.PreviousId,
                             spline.NextId,
-                            spline.Tile.X,
+                            RuntimeTileXFromSourceTileX(
+                                spline.Tile.X),
                             spline.Tile.Y,
-                            spline.Position.X,
+                            RuntimeLocalXFromSourceLocalX(
+                                spline.Position.X),
                             spline.Position.Y,
                             spline.Position.Z,
-                            spline.HeadingDegrees,
+                            RuntimeHeadingDegreesFromSource(
+                                spline.HeadingDegrees),
                             spline.LengthMeters,
-                            spline.RadiusMeters,
+                            -spline.RadiusMeters,
                             spline.GradientStartPercent,
                             spline.GradientEndPercent,
                             surfaces,
@@ -2140,15 +2229,18 @@ internal sealed class RuntimeApplicationContext :
                 .Select(
                     static item =>
                         new RuntimeObjectInfo(
-                            item.Tile.X,
+                            RuntimeTileXFromSourceTileX(
+                                item.Tile.X),
                             item.Tile.Y,
                             item.AssetPath,
-                            item.Position.X,
+                            RuntimeLocalXFromSourceLocalX(
+                                item.Position.X),
                             item.Position.Y,
                             item.Position.Z,
-                            item.HeadingDegrees,
+                            RuntimeHeadingDegreesFromSource(
+                                item.HeadingDegrees),
                             item.PitchDegrees,
-                            item.BankDegrees,
+                            -item.BankDegrees,
                             item.ExtraValues,
                             item.Id))
                 .ToArray();
@@ -2296,10 +2388,12 @@ internal sealed class RuntimeApplicationContext :
         var runtimeSpawn =
             new RuntimeSpawnInfo(
                 entryPoint.Name,
-                entryPoint.WorldX,
+                RuntimeWorldXFromSource(
+                    entryPoint.WorldX),
                 entryPoint.WorldY,
                 entryPoint.WorldZ,
-                -entryPoint.HeadingDegrees);
+                RuntimeHeadingDegreesFromSource(
+                    entryPoint.HeadingDegrees));
 
         var runtimeTrafficPaths =
             new RuntimeTrafficPathNetworkInfo(
@@ -2317,7 +2411,8 @@ internal sealed class RuntimeApplicationContext :
                                     .Select(
                                         static point =>
                                             new RuntimeTrafficPathPointInfo(
-                                                point.X,
+                                                RuntimeWorldXFromSource(
+                                                    point.X),
                                                 point.Y,
                                                 point.Z))
                                     .ToArray(),
