@@ -1316,13 +1316,66 @@ public sealed partial class MainWindow :
         DispatcherQueue.TryEnqueue(
             () =>
             {
-                if (string.Equals(
-                        line,
+                if (line.StartsWith(
                         "[runtime-select-bus]",
                         StringComparison.Ordinal))
                 {
                     NoBusCheckBox.IsChecked =
                         false;
+
+                    var parts =
+                        line.Split(
+                            '|',
+                            3,
+                            StringSplitOptions.None);
+
+                    if (parts.Length >= 2 &&
+                        !string.IsNullOrWhiteSpace(
+                            parts[1]))
+                    {
+                        var requestedBus =
+                            _buses.FirstOrDefault(
+                                bus =>
+                                    string.Equals(
+                                        bus.RelativePath,
+                                        parts[1],
+                                        StringComparison.OrdinalIgnoreCase));
+
+                        if (requestedBus is not null)
+                        {
+                            SelectBus(
+                                requestedBus);
+
+                            if (parts.Length >= 3 &&
+                                !string.IsNullOrWhiteSpace(
+                                    parts[2]))
+                            {
+                                var requestedHof =
+                                    (HofBox.ItemsSource
+                                     as IEnumerable<HofSelection>)
+                                        ?.FirstOrDefault(
+                                            hof =>
+                                                string.Equals(
+                                                    hof.Name,
+                                                    parts[2],
+                                                    StringComparison.OrdinalIgnoreCase));
+
+                                if (requestedHof is not null)
+                                {
+                                    HofBox.SelectedItem =
+                                        requestedHof;
+                                }
+                            }
+
+                            SaveSettings();
+
+                            Activate();
+
+                            SetStatus(
+                                $"Ônibus selecionado no jogo: {requestedBus.SelectionLabel}. Pressione JOGAR para continuar.");
+                            return;
+                        }
+                    }
 
                     Activate();
 
