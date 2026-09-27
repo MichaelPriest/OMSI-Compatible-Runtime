@@ -73,18 +73,63 @@ internal static class Program
 
         if (vehiclePreview)
         {
-            var previewBuses =
-                BusDiscovery.DiscoverPlayerSelectable(
-                    contentRoot);
+            OmsiBusInfo? previewBus =
+                null;
 
-            var previewBus =
-                previewBuses.FirstOrDefault(
-                    bus =>
-                        string.Equals(
-                            bus.RelativePath,
-                            busRelativePath,
-                            StringComparison.OrdinalIgnoreCase))
-                ?? previewBuses.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(
+                    busRelativePath))
+            {
+                var normalizedBusPath =
+                    busRelativePath
+                        .Replace(
+                            '\\',
+                            Path.DirectorySeparatorChar)
+                        .Replace(
+                            '/',
+                            Path.DirectorySeparatorChar)
+                        .TrimStart(
+                            Path.DirectorySeparatorChar,
+                            Path.AltDirectorySeparatorChar);
+
+                var resolvedBusPath =
+                    Path.Combine(
+                        contentRoot.RootPath,
+                        normalizedBusPath);
+
+                if (File.Exists(
+                        resolvedBusPath))
+                {
+                    try
+                    {
+                        var directBus =
+                            OmsiBusReader.ReadFile(
+                                contentRoot.RootPath,
+                                resolvedBusPath);
+
+                        if (BusDiscovery.IsPlayerSelectable(
+                                directBus))
+                        {
+                            previewBus =
+                                directBus;
+                        }
+                    }
+                    catch
+                    {
+                        // Fall back to catalog discovery below.
+                    }
+                }
+            }
+
+            previewBus ??=
+                BusDiscovery
+                    .DiscoverPlayerSelectable(
+                        contentRoot)
+                    .FirstOrDefault(
+                        bus =>
+                            string.Equals(
+                                bus.RelativePath,
+                                busRelativePath,
+                                StringComparison.OrdinalIgnoreCase));
 
             if (previewBus is null)
             {
