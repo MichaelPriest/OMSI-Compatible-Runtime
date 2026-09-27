@@ -81,6 +81,8 @@ public sealed partial class MainWindow :
     private int _sceneryObjectCount;
 
     private bool _libraryCardsDirty = true;
+    private bool _contentDiscoveryRunning;
+    private int _entryPointLoadVersion;
     private bool _refreshing;
 
     public MainWindow(
@@ -377,11 +379,12 @@ public sealed partial class MainWindow :
     private async Task RefreshContentAsync(
         string? selectMap)
     {
-        if (_refreshing)
+        if (_contentDiscoveryRunning)
         {
             return;
         }
 
+        _contentDiscoveryRunning = true;
         _refreshing = true;
         PlayButton.IsEnabled = false;
         ContentDiscoveryProgress.Visibility =
@@ -455,15 +458,16 @@ public sealed partial class MainWindow :
                         CountSceneryObjects(
                             contentRoot));
 
-            var entryPointsTask =
-                map is null
-                    ? Task.FromResult(
-                        (IReadOnlyList<OmsiMapEntryPointGroup>)
-                        Array.Empty<OmsiMapEntryPointGroup>())
-                    : Task.Run(
-                        () =>
-                            MapEntryPointDiscovery.Discover(
-                                map));
+            // Programmatic map selection is complete. From here on the user
+            // can switch maps immediately while the heavier fleet/object
+            // discovery continues in parallel.
+            _refreshing = false;
+
+            if (map is not null)
+            {
+                await LoadEntryPointsAsync(
+                    map);
+            }
 
             _buses =
                 await busesTask;
@@ -476,8 +480,7 @@ public sealed partial class MainWindow :
             // data set on the next library access.
             _libraryCardsDirty = true;
 
-            _entryPoints =
-                await entryPointsTask;
+            _refreshing = true;
 
             BusCountText.Text =
                 _buses.Count.ToString(
@@ -495,18 +498,6 @@ public sealed partial class MainWindow :
                 _sceneryObjectCount.ToString(
                     "N0");
 
-            SpawnBox.ItemsSource =
-                _entryPoints;
-
-            SpawnBox.SelectedItem =
-                _entryPoints.FirstOrDefault(
-                    item =>
-                        string.Equals(
-                            item.Name,
-                            _settings.EntryPointName,
-                            StringComparison.OrdinalIgnoreCase))
-                ?? _entryPoints.FirstOrDefault();
-
             var bus =
                 _buses.FirstOrDefault(
                     item =>
@@ -520,6 +511,8 @@ public sealed partial class MainWindow :
                 bus);
 
             ApplyNoBusMode();
+
+            _refreshing = false;
 
             UpdatePlayAvailability();
             UpdateHomeSummary();
@@ -538,6 +531,7 @@ public sealed partial class MainWindow :
         {
             ContentDiscoveryProgress.Visibility =
                 Visibility.Collapsed;
+            _contentDiscoveryRunning = false;
             _refreshing = false;
             SaveSettings();
         }
@@ -992,18 +986,34 @@ public sealed partial class MainWindow :
     private async Task LoadEntryPointsAsync(
         OmsiMapInfo map)
     {
+        var loadVersion =
+            ++_entryPointLoadVersion;
+
         SpawnBox.ItemsSource = null;
         _entryPoints =
             Array.Empty<OmsiMapEntryPointGroup>();
 
         SetStatus(
-            "Lendo pontos iniciais do mapa...");
+            $"Lendo pontos iniciais de {map.FolderName}...");
 
-        _entryPoints =
+        var discovered =
             await Task.Run(
                 () =>
                     MapEntryPointDiscovery.Discover(
                         map));
+
+        if (loadVersion !=
+                _entryPointLoadVersion ||
+            !string.Equals(
+                SelectedMap()?.FolderName,
+                map.FolderName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _entryPoints =
+            discovered;
 
         SpawnBox.ItemsSource =
             _entryPoints;
@@ -1020,6 +1030,7 @@ public sealed partial class MainWindow :
         SpawnBox.SelectedItem =
             spawn;
 
+        UpdatePlayAvailability();
         UpdateHomeSummary();
     }
 
@@ -1558,6 +1569,8 @@ public sealed partial class MainWindow :
 
         _entryPoints =
             Array.Empty<OmsiMapEntryPointGroup>();
+
+        _entryPointLoadVersion++;
 
         _sceneryObjectCount = 0;
         _libraryCardsDirty = false;
