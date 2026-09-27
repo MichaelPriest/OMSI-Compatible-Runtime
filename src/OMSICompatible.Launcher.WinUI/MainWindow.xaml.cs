@@ -29,6 +29,13 @@ public sealed partial class MainWindow :
                 : $"{Bus.Carroceria} · Repaint CTI: {Repaint.Name}";
     }
 
+    private sealed record HofSelection(
+        string Name,
+        string FullPath)
+    {
+        public override string ToString() => Name;
+    }
+
     private sealed record MapLibraryCard(
         OmsiMapInfo Map,
         string Title,
@@ -611,6 +618,8 @@ public sealed partial class MainWindow :
         object sender,
         SelectionChangedEventArgs e)
     {
+        PopulateHofs();
+
         UpdateBusPreview();
 
         if (_refreshing)
@@ -620,6 +629,19 @@ public sealed partial class MainWindow :
 
         UpdatePlayAvailability();
         UpdateHomeSummary();
+        SaveSettings();
+    }
+
+    private void HofBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (_refreshing)
+        {
+            return;
+        }
+
+        UpdateBusPreview();
         SaveSettings();
     }
 
@@ -845,8 +867,87 @@ public sealed partial class MainWindow :
         SkinBox.SelectedItem =
             target;
 
+        PopulateHofs();
         UpdateBusPreview();
     }
+
+    private void PopulateHofs()
+    {
+        var bus =
+            SelectedBus();
+
+        if (bus is null)
+        {
+            HofBox.ItemsSource = null;
+            HofBox.SelectedItem = null;
+            return;
+        }
+
+        HofSelection[] hofFiles;
+
+        try
+        {
+            hofFiles =
+                Directory.Exists(
+                        bus.DirectoryPath)
+                    ? Directory
+                        .EnumerateFiles(
+                            bus.DirectoryPath,
+                            "*.hof",
+                            SearchOption.TopDirectoryOnly)
+                        .Select(
+                            path =>
+                                new HofSelection(
+                                    Path.GetFileNameWithoutExtension(
+                                        path),
+                                    path))
+                        .OrderBy(
+                            static item =>
+                                item.Name,
+                            StringComparer.OrdinalIgnoreCase)
+                        .ToArray()
+                    : Array.Empty<HofSelection>();
+        }
+        catch
+        {
+            hofFiles =
+                Array.Empty<HofSelection>();
+        }
+
+        HofBox.ItemsSource =
+            hofFiles;
+
+        var savedName =
+            _settings.HofName;
+
+        var mapName =
+            SelectedMap()?.FolderName;
+
+        var target =
+            hofFiles.FirstOrDefault(
+                item =>
+                    !string.IsNullOrWhiteSpace(
+                        savedName) &&
+                    string.Equals(
+                        item.Name,
+                        savedName,
+                        StringComparison.OrdinalIgnoreCase))
+            ?? hofFiles.FirstOrDefault(
+                item =>
+                    !string.IsNullOrWhiteSpace(
+                        mapName) &&
+                    item.Name.Contains(
+                        mapName,
+                        StringComparison.OrdinalIgnoreCase))
+            ?? hofFiles.FirstOrDefault();
+
+        HofBox.SelectedItem =
+            target;
+    }
+
+    private HofSelection? SelectedHof() =>
+        HofBox.SelectedItem
+            as HofSelection;
 
     private IReadOnlyList<OmsiVehicleRepaint> GetRepaints(
         OmsiBusInfo bus)
@@ -921,6 +1022,9 @@ public sealed partial class MainWindow :
         SkinBox.IsEnabled =
             !noBus;
 
+        HofBox.IsEnabled =
+            !noBus;
+
         UpdateBusPreview();
     }
 
@@ -960,12 +1064,18 @@ public sealed partial class MainWindow :
             selection?.Detail ??
             "Escolha carroceria, modelo e skin/repaint";
 
+        var hof =
+            SelectedHof();
+
         BusPreviewSkin.Text =
             selection is null
                 ? string.Empty
-                : selection.Repaint is null
+                : (selection.Repaint is null
                     ? $"Skin base: {bus!.Skin}"
-                    : $"Repaint CTI: {selection.Repaint.Name}";
+                    : $"Repaint CTI: {selection.Repaint.Name}") +
+                  (hof is null
+                      ? " · HOF: não selecionado"
+                      : $" · HOF: {hof.Name}");
 
         ApplyImage(
             BusPreviewImage,
@@ -1155,7 +1265,8 @@ public sealed partial class MainWindow :
                         : bus?.RelativePath,
                     spawn.Name,
                     repaint?.Name,
-                    repaint?.RelativeCtiPath))
+                    repaint?.RelativeCtiPath,
+                    SelectedHof()?.FullPath))
             {
                 throw new InvalidOperationException(
                     "O runtime não pôde ser iniciado.");
@@ -1581,6 +1692,7 @@ public sealed partial class MainWindow :
         CarroceriaBox.ItemsSource = null;
         ModeloBox.ItemsSource = null;
         SkinBox.ItemsSource = null;
+        HofBox.ItemsSource = null;
         SpawnBox.ItemsSource = null;
 
         UpdateBusPreview();
@@ -2823,6 +2935,8 @@ public sealed partial class MainWindow :
                     SelectedRepaint()?.Name,
                 RepaintCtiRelativePath =
                     SelectedRepaint()?.RelativeCtiPath,
+                HofName =
+                    SelectedHof()?.Name,
                 EntryPointName =
                     SelectedSpawn()?.Name,
                 StartWithoutBus =
