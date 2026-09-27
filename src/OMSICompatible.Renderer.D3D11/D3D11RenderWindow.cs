@@ -863,6 +863,9 @@ public sealed class D3D11RenderWindow : Form
                 isolatedObjectIds:
                     _windowInfo.DynamicSceneryObjectIds);
 
+        _vehicle.ReplaceScenerySurfaceGeometry(
+            _objectGeometry);
+
         if (_objectGeometry.Vertices.Length > 0)
         {
             _objectVertexBuffer =
