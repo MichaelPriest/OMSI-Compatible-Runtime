@@ -55,6 +55,11 @@ internal static class Program
                 args,
                 "--headless");
 
+        var vehiclePreview =
+            HasFlag(
+                args,
+                "--vehicle-preview");
+
         if (!OmsiContentRoot.TryCreate(
                 contentPath,
                 out var contentRoot,
@@ -64,6 +69,43 @@ internal static class Program
             Console.Error.WriteLine(
                 contentError);
             return 2;
+        }
+
+        if (vehiclePreview)
+        {
+            var previewBuses =
+                BusDiscovery.DiscoverPlayerSelectable(
+                    contentRoot);
+
+            var previewBus =
+                previewBuses.FirstOrDefault(
+                    bus =>
+                        string.Equals(
+                            bus.RelativePath,
+                            busRelativePath,
+                            StringComparison.OrdinalIgnoreCase))
+                ?? previewBuses.FirstOrDefault();
+
+            if (previewBus is null)
+            {
+                Console.Error.WriteLine(
+                    "No OMSI .bus vehicle was found for preview.");
+                return 4;
+            }
+
+            ApplicationConfiguration.Initialize();
+
+            using var previewContext =
+                new VehiclePreviewApplicationContext(
+                    contentRoot,
+                    previewBus,
+                    repaintName,
+                    repaintCtiRelativePath);
+
+            Application.Run(
+                previewContext);
+
+            return 0;
         }
 
         var maps =
