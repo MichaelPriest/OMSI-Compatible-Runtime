@@ -33,6 +33,8 @@ internal sealed class RuntimeDriveVehicle :
     private readonly bool _terrainCollisionsEnabled;
     private RuntimeSplineSurfaceSampler _splineSurfaces =
         RuntimeSplineSurfaceSampler.Empty;
+    private RuntimeSplineSurfaceSampler _scenerySurfaces =
+        RuntimeSplineSurfaceSampler.Empty;
     private readonly RuntimeVehicleSectionInfo[] _sections;
     private readonly float _wheelBaseMeters;
     private readonly float _frontAxleLongitudinalMeters;
@@ -601,6 +603,20 @@ internal sealed class RuntimeDriveVehicle :
         SynchronizeOdeBodyFromRuntime();
     }
 
+    public void ReplaceScenerySurfaceGeometry(
+        RuntimeObjectGeometry geometry)
+    {
+        ArgumentNullException.ThrowIfNull(
+            geometry);
+
+        _scenerySurfaces =
+            RuntimeSplineSurfaceSampler.CreateSurfaceObjects(
+                geometry);
+
+        SnapRuntimePositionToDrivingSurface();
+        SynchronizeOdeBodyFromRuntime();
+    }
+
     private void SnapRuntimePositionToDrivingSurface()
     {
         if (!TryResolveSpawnSurfaceHeight(
@@ -653,18 +669,18 @@ internal sealed class RuntimeDriveVehicle :
                         8.0f);
         }
 
-        if (_splineSurfaces.TrySampleBelow(
+        if (TrySampleRaisedSurface(
                 worldX,
                 worldZ,
                 maximumSurfaceHeight,
-                out var splineHeight))
+                out var raisedSurfaceHeight))
         {
             height =
                 hasTerrain
                     ? Math.Max(
-                        splineHeight,
+                        raisedSurfaceHeight,
                         terrainHeight)
-                    : splineHeight;
+                    : raisedSurfaceHeight;
 
             return true;
         }
@@ -693,14 +709,14 @@ internal sealed class RuntimeDriveVehicle :
         height =
             float.NegativeInfinity;
 
-        if (_splineSurfaces.TrySampleBelow(
+        if (TrySampleRaisedSurface(
                 worldX,
                 worldZ,
                 maximumSurfaceHeight,
-                out var splineHeight))
+                out var raisedSurfaceHeight))
         {
             height =
-                splineHeight;
+                raisedSurfaceHeight;
             found =
                 true;
         }
@@ -719,6 +735,50 @@ internal sealed class RuntimeDriveVehicle :
         {
             height =
                 terrainHeight;
+            found =
+                true;
+        }
+
+        return found;
+    }
+
+    private bool TrySampleRaisedSurface(
+        double worldX,
+        double worldZ,
+        float maximumSurfaceHeight,
+        out float height)
+    {
+        var found =
+            false;
+
+        height =
+            float.NegativeInfinity;
+
+        if (_splineSurfaces.TrySampleBelow(
+                worldX,
+                worldZ,
+                maximumSurfaceHeight,
+                out var splineHeight))
+        {
+            height =
+                splineHeight;
+
+            found =
+                true;
+        }
+
+        if (_scenerySurfaces.TrySampleBelow(
+                worldX,
+                worldZ,
+                maximumSurfaceHeight,
+                out var sceneryHeight) &&
+            (!found ||
+             sceneryHeight >
+                 height))
+        {
+            height =
+                sceneryHeight;
+
             found =
                 true;
         }
