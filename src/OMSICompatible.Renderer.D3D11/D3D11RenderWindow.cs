@@ -8965,9 +8965,18 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (IsRuntimeTrafficSignalGreen(
+        var currentSignalPhase =
+            ResolveRuntimeTrafficSignalPhase(
                 signal,
-                nowSeconds))
+                nowSeconds);
+
+        // OMSI TrafficLightPhase semantics:
+        // 0..2 = red, 3..5 = red-yellow, 6..8 = green,
+        // 9..11 = yellow, other values = off.
+        // Only the stop phases 0..5 are eligible for a red-light
+        // violation. Yellow is not fined automatically.
+        if (currentSignalPhase is
+                not (>= 0 and <= 5))
         {
             if (_lastRedLightSegmentIndex ==
                 signalSegment.Index)
@@ -9856,6 +9865,14 @@ public sealed class D3D11RenderWindow : Form
 
     private static bool IsRuntimeTrafficSignalGreen(
         RuntimeTrafficSignalProgramInfo signal,
+        double elapsedSeconds) =>
+        ResolveRuntimeTrafficSignalPhase(
+            signal,
+            elapsedSeconds) is
+            >= 6 and <= 8;
+
+    private static int? ResolveRuntimeTrafficSignalPhase(
+        RuntimeTrafficSignalProgramInfo signal,
         double elapsedSeconds)
     {
         if (signal.Phases.Count ==
@@ -9863,7 +9880,7 @@ public sealed class D3D11RenderWindow : Form
             !double.IsFinite(
                 elapsedSeconds))
         {
-            return true;
+            return null;
         }
 
         var phaseDuration =
@@ -9895,7 +9912,7 @@ public sealed class D3D11RenderWindow : Form
             phaseDuration <=
                 0.0)
         {
-            return true;
+            return null;
         }
 
         var position =
@@ -9930,17 +9947,14 @@ public sealed class D3D11RenderWindow : Form
             if (position <
                 phase.DurationSeconds)
             {
-                return phase.Phase is
-                    >= 6 and <= 8;
+                return phase.Phase;
             }
 
             position -=
                 phase.DurationSeconds;
         }
 
-        return lastPhase is not null &&
-               lastPhase.Phase is
-                   >= 6 and <= 8;
+        return lastPhase?.Phase;
     }
 
     private double? ResolveNearestRoadSpeedLimit()
