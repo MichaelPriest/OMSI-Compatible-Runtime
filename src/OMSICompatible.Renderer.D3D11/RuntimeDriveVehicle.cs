@@ -2738,9 +2738,7 @@ internal sealed class RuntimeDriveVehicle :
                 camera.HeadingDegrees,
                 camera.PitchDegrees),
             aspect,
-            terrainGeometry,
-            maximumRenderDistanceMeters:
-                camera.MaximumRenderDistanceMeters);
+            terrainGeometry);
     }
 
     public Matrix4x4 CreatePassengerViewProjection(
