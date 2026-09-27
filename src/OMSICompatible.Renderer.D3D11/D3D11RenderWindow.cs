@@ -366,6 +366,7 @@ public sealed class D3D11RenderWindow : Form
     private Vector3? _cameraPositionOverride;
     private Vector4? _skyViewParametersOverride;
     private bool _reflectionRenderingEnabled;
+    private bool _renderingReflectionPass;
     private readonly bool _vehiclePreviewMode;
     private float _previewYaw = 0.62f;
     private float _previewPitch = 0.16f;
