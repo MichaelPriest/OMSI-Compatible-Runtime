@@ -8253,6 +8253,32 @@ public sealed class D3D11RenderWindow : Form
                 volume.Center -
                 playerCenter;
 
+            var playerBoundingRadius =
+                MathF.Sqrt(
+                    (float)(
+                        player.HalfLengthMeters *
+                            player.HalfLengthMeters +
+                        player.HalfWidthMeters *
+                            player.HalfWidthMeters));
+
+            var volumeBoundingRadius =
+                MathF.Sqrt(
+                    volume.HalfLength *
+                        volume.HalfLength +
+                    volume.HalfWidth *
+                        volume.HalfWidth);
+
+            var maximumCenterDistance =
+                playerBoundingRadius +
+                volumeBoundingRadius;
+
+            if (centerDelta.LengthSquared() >
+                maximumCenterDistance *
+                    maximumCenterDistance)
+            {
+                continue;
+            }
+
             if (!TryResolveOrientedRectangleCorrection(
                     centerDelta,
                     playerForward,
