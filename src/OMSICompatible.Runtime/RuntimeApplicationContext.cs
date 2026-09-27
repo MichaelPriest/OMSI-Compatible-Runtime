@@ -452,6 +452,8 @@ internal sealed class RuntimeApplicationContext :
                         _options.AiVehicleSounds,
                     vehicleToVehicleCollisionsEnabled:
                         _options.VehicleToVehicleCollisions,
+                    vehicleLandscapeCollisionsEnabled:
+                        _options.VehicleLandscapeCollisions,
                     materialLightMapEnabled:
                         _options.MaterialLightMap,
                     materialReflectionMapEnabled:
