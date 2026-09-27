@@ -7868,12 +7868,20 @@ public sealed class D3D11RenderWindow : Form
                     instance.AssetPath,
                     out var asset) ||
                 asset.NoCollision ||
+                asset.Surface ||
                 (asset.CollisionBounds is null &&
                  asset.BoundingBox is null))
             {
                 continue;
             }
 
+            // OMSI [surface] scenery (crossings, road plates, bridge decks,
+            // etc.) contributes its real triangles to the driving-surface
+            // sampler in RuntimeDriveVehicle. Treating the bounds of its
+            // collision mesh as a solid OBB creates invisible walls across
+            // otherwise drivable streets, so surface objects never become
+            // blocking scenery volumes here.
+            //
             // Do not let a fallback [boundingbox] create an invisible wall
             // for missing/protected/unrenderable scenery. Explicit collision
             // meshes remain authoritative even when the visible asset itself
