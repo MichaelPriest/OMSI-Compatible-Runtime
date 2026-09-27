@@ -1563,21 +1563,14 @@ public sealed class WorldTrafficSimulation
                         other,
                         otherSegment);
 
-                var otherRemainingDistance =
-                    ResolveApproachRemainingDistance(
-                        other,
-                        otherSegment);
-
                 var otherApproachIsActive =
                     other.SpeedMetersPerSecond >
-                        0.75 ||
-                    otherRemainingDistance <=
-                        2.0;
+                        0.75;
 
-                // A stopped queue on a priority road must not reserve the
-                // conflict indefinitely. Reserve only for an approach that is
-                // actually moving, or already at the immediate stop-line
-                // area and therefore about to enter when space opens.
+                // A stopped or collision-held vehicle on a priority road
+                // must not reserve the conflict. As soon as it accelerates
+                // again, normal priority and arrival-time rules immediately
+                // restore its reservation.
                 if (otherApproachIsActive &&
                     (otherArrival <=
                          4.0 ||
