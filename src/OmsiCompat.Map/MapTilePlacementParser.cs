@@ -35,6 +35,12 @@ public sealed record OmsiSplinePlacement(
     double GradientStartPercent,
     double GradientEndPercent,
     bool UsesHeightProfile,
+    double DeltaHeightMeters,
+    double CantStartPercent,
+    double CantEndPercent,
+    double SkewStart,
+    double SkewEnd,
+    bool Mirror,
     int SourceLineNumber,
     IReadOnlyList<OmsiTrafficRule>? TrafficRules = null);
 
@@ -360,6 +366,59 @@ public static class MapTilePlacementParser
             return false;
         }
 
+        var usesHeightProfile =
+            section.Name.Equals(
+                "spline_h",
+                StringComparison.OrdinalIgnoreCase);
+
+        var extraIndex =
+            layout.GradientEndIndex + 1;
+
+        var deltaHeight =
+            0.0;
+
+        if (usesHeightProfile &&
+            values.Count > extraIndex &&
+            TryDouble(
+                values[extraIndex].Value,
+                out var parsedDeltaHeight))
+        {
+            deltaHeight =
+                parsedDeltaHeight;
+            extraIndex++;
+        }
+
+        var cantStart =
+            ReadOptionalDouble(
+                values,
+                extraIndex++);
+
+        var cantEnd =
+            ReadOptionalDouble(
+                values,
+                extraIndex++);
+
+        var skewStart =
+            ReadOptionalDouble(
+                values,
+                extraIndex++);
+
+        var skewEnd =
+            ReadOptionalDouble(
+                values,
+                extraIndex++);
+
+        // OMSI stores accumulated spline length after skew. It is not needed
+        // for geometry generation here, so skip it when present.
+        extraIndex++;
+
+        var mirror =
+            values.Count > extraIndex &&
+            string.Equals(
+                values[extraIndex].Value.Trim(),
+                "mirror",
+                StringComparison.OrdinalIgnoreCase);
+
         placement = new OmsiSplinePlacement(
             id,
             previousId,
@@ -371,9 +430,13 @@ public static class MapTilePlacementParser
             radius,
             gradientStart,
             gradientEnd,
-            section.Name.Equals(
-                "spline_h",
-                StringComparison.OrdinalIgnoreCase),
+            usesHeightProfile,
+            deltaHeight,
+            cantStart,
+            cantEnd,
+            skewStart,
+            skewEnd,
+            mirror,
             section.HeaderLineNumber);
 
         return true;
@@ -514,6 +577,22 @@ public static class MapTilePlacementParser
             section.Name,
             section.HeaderLineNumber,
             message);
+    }
+
+    private static double ReadOptionalDouble(
+        IReadOnlyList<OmsiSectionLine> values,
+        int index)
+    {
+        if (index < 0 ||
+            index >= values.Count ||
+            !TryDouble(
+                values[index].Value,
+                out var value))
+        {
+            return 0.0;
+        }
+
+        return value;
     }
 
     private static bool TryDouble(
