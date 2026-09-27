@@ -8186,6 +8186,9 @@ public sealed class D3D11RenderWindow : Form
         var collided =
             new HashSet<int>();
 
+        var impactApplied =
+            false;
+
         var heading =
             (float)player.HeadingRadians;
 
@@ -8247,13 +8250,20 @@ public sealed class D3D11RenderWindow : Form
             collided.Add(
                 volume.Key);
 
-            if (!_activeSceneryCollisionVolumes.Contains(
-                    volume.Key))
+            var newContact =
+                !_activeSceneryCollisionVolumes.Contains(
+                    volume.Key);
+
+            if (newContact &&
+                !impactApplied)
             {
                 _vehicle.ApplySceneryCollisionResponse(
                     correction,
                     Math.Abs(
                         _vehicle.SpeedKph));
+
+                impactApplied =
+                    true;
             }
             else
             {
