@@ -936,7 +936,7 @@ public sealed partial class MainWindow :
                 null;
             BusPreviewEmptyText.Text =
                 "Modo mapa";
-            BusPreviewEmptyText.Visibility =
+            BusPreviewEmptyPanel.Visibility =
                 Visibility.Visible;
 
             UpdateHomeSummary();
@@ -971,7 +971,7 @@ public sealed partial class MainWindow :
         BusPreviewEmptyText.Text =
             "Sem imagem de prévia";
 
-        BusPreviewEmptyText.Visibility =
+        BusPreviewEmptyPanel.Visibility =
             string.IsNullOrWhiteSpace(
                 bus?.PreviewImagePath)
                 ? Visibility.Visible
