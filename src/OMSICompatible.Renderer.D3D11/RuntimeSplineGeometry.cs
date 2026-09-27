@@ -448,6 +448,30 @@ internal static class RuntimeSplineGeometryBuilder
             rightUv0,
             color,
             output);
+
+        // OMSI add-on splines are not always authored with a consistent
+        // profile point order. Render the road surface from both sides so a
+        // reversed profile winding cannot make the complete street disappear
+        // or look upside-down when back-face culling is active.
+        AppendTriangle(
+            right1,
+            left1,
+            left0,
+            rightUv1,
+            leftUv1,
+            leftUv0,
+            color,
+            output);
+
+        AppendTriangle(
+            right0,
+            right1,
+            left0,
+            rightUv0,
+            rightUv1,
+            leftUv0,
+            color,
+            output);
     }
 
     private static void AppendTriangle(
