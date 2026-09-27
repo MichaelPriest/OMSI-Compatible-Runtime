@@ -2459,7 +2459,16 @@ internal sealed class RuntimeApplicationContext :
                                     pair.Value.BoundingBox.HeightZ,
                                     pair.Value.BoundingBox.CenterX,
                                     pair.Value.BoundingBox.CenterY,
-                                    pair.Value.BoundingBox.CenterZ)),
+                                    pair.Value.BoundingBox.CenterZ),
+                            pair.Value.CollisionBounds is null
+                                ? null
+                                : new RuntimeSceneryCollisionBoundsInfo(
+                                    pair.Value.CollisionBounds.MinimumX,
+                                    pair.Value.CollisionBounds.MaximumX,
+                                    pair.Value.CollisionBounds.MinimumY,
+                                    pair.Value.CollisionBounds.MaximumY,
+                                    pair.Value.CollisionBounds.MinimumZ,
+                                    pair.Value.CollisionBounds.MaximumZ)),
                     StringComparer.OrdinalIgnoreCase);
 
         var runtimeGroundTextures =
