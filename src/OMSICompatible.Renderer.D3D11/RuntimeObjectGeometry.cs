@@ -296,7 +296,8 @@ internal static class RuntimeObjectGeometryBuilder
                             useNativeOmsiModelSpace,
                             batchObjectId,
                             asset.RenderType,
-                            asset.Surface,
+                            asset.Surface &&
+                                !asset.NoCollision,
                             forceMaterialAlphaOpaque,
                             batches,
                             batchOrder,
