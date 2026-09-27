@@ -2457,6 +2457,13 @@ internal sealed class RuntimeApplicationContext :
                             -spline.RadiusMeters,
                             spline.GradientStartPercent,
                             spline.GradientEndPercent,
+                            spline.UsesHeightProfile,
+                            spline.DeltaHeightMeters,
+                            spline.CantStartPercent,
+                            spline.CantEndPercent,
+                            spline.SkewStart,
+                            spline.SkewEnd,
+                            spline.Mirror,
                             surfaces,
                             paths);
                     })
