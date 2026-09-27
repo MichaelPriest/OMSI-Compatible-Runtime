@@ -240,6 +240,7 @@ public sealed class D3D11RenderWindow : Form
     private int _specialPreviousDriverCameraIndex;
     private int _specialPreviousPassengerCameraIndex;
     private readonly RuntimeOmsiMenuBar? _omsiMenuBar;
+    private readonly RuntimeBusSelectorPanel? _busSelectorPanel;
     private int _captionFrame;
     private int? _streamingTileX;
     private int? _streamingTileY;
@@ -652,6 +653,23 @@ public sealed class D3D11RenderWindow : Form
             PerformLayout();
             LayoutOmsiMenuBar();
             SyncOmsiMenuState();
+        }
+
+        _busSelectorPanel =
+            _vehiclePreviewMode
+                ? null
+                : new RuntimeBusSelectorPanel(
+                    windowInfo.ContentRoot);
+
+        if (_busSelectorPanel is not null)
+        {
+            _busSelectorPanel.SelectionConfirmed +=
+                OnRuntimeBusSelectionConfirmed;
+
+            Controls.Add(
+                _busSelectorPanel);
+
+            LayoutRuntimeBusSelector();
         }
 
         _renderTimer = new System.Windows.Forms.Timer
@@ -2925,6 +2943,16 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (!_vehiclePreviewMode &&
+            _busSelectorPanel?.Visible ==
+                true &&
+            (keyData & Keys.KeyCode) ==
+            Keys.Escape)
+        {
+            _busSelectorPanel.HideSelector();
+            return true;
+        }
+
+        if (!_vehiclePreviewMode &&
             _omsiMenuBar?.Visible ==
                 true &&
             (keyData & Keys.KeyCode) ==
@@ -2987,6 +3015,46 @@ public sealed class D3D11RenderWindow : Form
                     12));
     }
 
+    private void LayoutRuntimeBusSelector()
+    {
+        if (_busSelectorPanel is null)
+        {
+            return;
+        }
+
+        _busSelectorPanel.Left =
+            Math.Max(
+                12,
+                (ClientSize.Width -
+                 _busSelectorPanel.Width) /
+                2);
+
+        _busSelectorPanel.Top =
+            Math.Max(
+                12,
+                (ClientSize.Height -
+                 _busSelectorPanel.Height) /
+                2);
+    }
+
+    private void OnRuntimeBusSelectionConfirmed(
+        string relativePath,
+        string? hofPath)
+    {
+        var hofName =
+            string.IsNullOrWhiteSpace(
+                hofPath)
+                ? string.Empty
+                : Path.GetFileNameWithoutExtension(
+                    hofPath);
+
+        Console.WriteLine(
+            $"[runtime-select-bus]|{relativePath}|{hofName}");
+
+        _busSelectorPanel?.HideSelector();
+        Close();
+    }
+
     private void SyncOmsiMenuState()
     {
         if (_omsiMenuBar is null)
@@ -3016,6 +3084,15 @@ public sealed class D3D11RenderWindow : Form
                 return;
 
             case RuntimeOmsiMenuCommand.NewBus:
+                _omsiMenuBar?.HideMenu();
+
+                if (_busSelectorPanel is not null)
+                {
+                    LayoutRuntimeBusSelector();
+                    _busSelectorPanel.ShowSelector();
+                    return;
+                }
+
                 Console.WriteLine(
                     "[runtime-select-bus]");
                 Close();
@@ -3158,6 +3235,7 @@ public sealed class D3D11RenderWindow : Form
         EventArgs e)
     {
         LayoutOmsiMenuBar();
+        LayoutRuntimeBusSelector();
 
         if (_swapChain is null ||
             ClientSize.Width <= 0 ||
@@ -16267,6 +16345,12 @@ public sealed class D3D11RenderWindow : Form
             {
                 _omsiMenuBar.CommandInvoked -=
                     OnOmsiMenuCommandInvoked;
+            }
+
+            if (_busSelectorPanel is not null)
+            {
+                _busSelectorPanel.SelectionConfirmed -=
+                    OnRuntimeBusSelectionConfirmed;
             }
 
             if (_scriptRuntime is not null)
