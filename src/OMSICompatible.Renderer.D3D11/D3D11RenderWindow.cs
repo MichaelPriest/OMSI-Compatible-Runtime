@@ -7849,8 +7849,8 @@ public sealed class D3D11RenderWindow : Form
                     instance.AssetPath,
                     out var asset) ||
                 asset.NoCollision ||
-                asset.BoundingBox is not
-                    { } box)
+                (asset.CollisionBounds is null &&
+                 asset.BoundingBox is null))
             {
                 continue;
             }
@@ -7888,14 +7888,84 @@ public sealed class D3D11RenderWindow : Form
                 Matrix4x4.CreateRotationY(
                     heading);
 
-            // OMSI [boundingbox]: X/Y are the horizontal object plane and Z
-            // is height. Scenery geometry mirrors native X before placement,
-            // so mirror CenterX here as well.
-            var localCenter =
-                new Vector3(
-                    (float)-box.CenterX,
-                    (float)box.CenterZ,
-                    (float)box.CenterY);
+            Vector3 localCenter;
+            float halfLength;
+            float halfWidth;
+            float halfHeight;
+
+            if (asset.CollisionBounds is
+                    { } collisionBounds)
+            {
+                // Dedicated collision meshes are O3D model-space geometry:
+                // X/Z form the ground plane and Y is vertical. Mirror X to
+                // match the scenery rendering transform.
+                localCenter =
+                    new Vector3(
+                        (float)(-
+                            (collisionBounds.MinimumX +
+                             collisionBounds.MaximumX) *
+                            0.5),
+                        (float)(
+                            (collisionBounds.MinimumY +
+                             collisionBounds.MaximumY) *
+                            0.5),
+                        (float)(
+                            (collisionBounds.MinimumZ +
+                             collisionBounds.MaximumZ) *
+                            0.5));
+
+                halfWidth =
+                    (float)Math.Max(
+                        (collisionBounds.MaximumX -
+                         collisionBounds.MinimumX) *
+                            0.5,
+                        0.05);
+
+                halfHeight =
+                    (float)Math.Max(
+                        (collisionBounds.MaximumY -
+                         collisionBounds.MinimumY) *
+                            0.5,
+                        0.05);
+
+                halfLength =
+                    (float)Math.Max(
+                        (collisionBounds.MaximumZ -
+                         collisionBounds.MinimumZ) *
+                            0.5,
+                        0.05);
+            }
+            else
+            {
+                var box =
+                    asset.BoundingBox!;
+
+                // OMSI [boundingbox]: X/Y are the horizontal object plane and
+                // Z is height. Mirror CenterX to match scenery rendering.
+                localCenter =
+                    new Vector3(
+                        (float)-box.CenterX,
+                        (float)box.CenterZ,
+                        (float)box.CenterY);
+
+                halfWidth =
+                    (float)Math.Max(
+                        box.LengthX *
+                            0.5,
+                        0.05);
+
+                halfHeight =
+                    (float)Math.Max(
+                        box.HeightZ *
+                            0.5,
+                        0.05);
+
+                halfLength =
+                    (float)Math.Max(
+                        box.WidthY *
+                            0.5,
+                        0.05);
+            }
 
             var rotatedCenter =
                 Vector3.TransformNormal(
@@ -7942,20 +8012,12 @@ public sealed class D3D11RenderWindow : Form
                     center,
                     forward,
                     right,
-                    (float)Math.Max(
-                        box.WidthY *
-                            0.5,
-                        0.05),
-                    (float)Math.Max(
-                        box.LengthX *
-                            0.5,
-                        0.05),
+                    halfLength,
+                    halfWidth,
                     centerY -
-                        (float)box.HeightZ *
-                        0.5f,
+                        halfHeight,
                     centerY +
-                        (float)box.HeightZ *
-                        0.5f));
+                        halfHeight));
         }
 
         return volumes;
