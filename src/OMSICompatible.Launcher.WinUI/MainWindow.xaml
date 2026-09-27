@@ -615,6 +615,9 @@
                         <CheckBox x:Name="SettingsAiSoundsCheck" Content="Som dos veículos IA"/>
                         <CheckBox x:Name="SettingsScenerySoundsCheck" Content="Sons de cenário"/>
                         <CheckBox x:Name="SettingsGameControllerCheck" Content="Game Controller"/>
+                        <CheckBox x:Name="SettingsLandscapeCollisionsCheck"
+                                  Content="Colisões com cenário / objetos"
+                                  ToolTipService.ToolTip="Desative para ignorar colisões do veículo com objetos e cenário, equivalente à opção de colisão desativada do OMSI."/>
                         <TextBox x:Name="SettingsStreamingRadiusBox" Header="Raio de streaming"/>
                         <CheckBox x:Name="SettingsVsyncCheck" Content="VSync"/>
                         <CheckBox x:Name="SettingsBorderlessCheck" Content="Fullscreen borderless"/>
