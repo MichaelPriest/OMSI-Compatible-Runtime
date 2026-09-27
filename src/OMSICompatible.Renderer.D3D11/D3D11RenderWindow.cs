@@ -3480,10 +3480,25 @@ public sealed class D3D11RenderWindow : Form
                 DrawTrafficVehicleLights();
                 DrawObjects(
                     RuntimeSceneryRenderPass.Four);
+
+                _renderingReflectionPass =
+                    true;
+
+                try
+                {
+                    DrawVehicle();
+                }
+                finally
+                {
+                    _renderingReflectionPass =
+                        false;
+                }
             }
         }
         finally
         {
+            _renderingReflectionPass =
+                false;
             _deviceContext.PSUnsetShaderResource(0);
             _deviceContext.PSUnsetShaderResource(1);
             _deviceContext.PSUnsetShaderResource(2);
@@ -4678,6 +4693,7 @@ public sealed class D3D11RenderWindow : Form
         // falls back to the chase camera; drawing the interior geometry in
         // that case makes the vehicle appear to be missing.
         var useExteriorGeometry =
+            _renderingReflectionPass ||
             UseExteriorVehicleView();
 
         var geometry =
@@ -4718,7 +4734,8 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (_deviceContext is null ||
-            _renderTargetView is null ||
+            CurrentRenderTargetView is null ||
+            CurrentDepthStencilView is null ||
             vertexBuffer is null ||
             _vehicleModelBuffer is null ||
             _vehicleMaterialBuffer is null ||
@@ -4750,8 +4767,8 @@ public sealed class D3D11RenderWindow : Form
             _vehicle.CreateWorldMatrix();
 
         _deviceContext.OMSetRenderTargets(
-            _renderTargetView,
-            _depthStencilView);
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
 
         _deviceContext.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
@@ -4823,6 +4840,26 @@ public sealed class D3D11RenderWindow : Form
                 draw.Batch;
             var materialState =
                 draw.Material;
+
+            if (_renderingReflectionPass)
+            {
+                var reflectionDiffuse =
+                    ResolveVehicleDiffuseTexturePath(
+                        batch,
+                        materialState.FreeTextures);
+
+                if (!string.IsNullOrWhiteSpace(
+                        reflectionDiffuse) &&
+                    reflectionDiffuse.StartsWith(
+                        "runtime-reflection://",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    // Do not feed a mirror render target back into itself.
+                    // The mirror surface is omitted from the reflected bus,
+                    // while the rest of the exterior remains visible.
+                    continue;
+                }
+            }
 
             model[0] =
                 new RuntimeModelConstants
