@@ -596,14 +596,13 @@ public sealed class WorldTrafficSimulation
                     segment,
                     cruiseSpeed);
 
+            // Match OMSI-style traffic startup: the AI appears stationary,
+            // then begins accelerating on the first active simulation step.
+            // Keep the shorter stagger so vehicles become visible promptly
+            // without popping the whole fleet at once.
             var initialSpeed =
                 spawnExclusionCenter.HasValue
-                    ? Math.Min(
-                        segmentSpeed,
-                        Math.Max(
-                            2.0,
-                            cruiseSpeed *
-                                0.35))
+                    ? 0.0
                     : segmentSpeed;
 
             var activationTimeSeconds =
