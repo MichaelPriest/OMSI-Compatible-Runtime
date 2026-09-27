@@ -1023,6 +1023,65 @@ public sealed partial class MainWindow :
         UpdateHomeSummary();
     }
 
+    private void Preview3DButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_runtime.IsPreviewRunning)
+        {
+            SetStatus(
+                "A prévia 3D já está aberta.");
+            return;
+        }
+
+        var bus =
+            SelectedBus();
+
+        var repaint =
+            SelectedRepaint();
+
+        if (bus is null)
+        {
+            SetStatus(
+                "Selecione um ônibus para abrir a prévia 3D.");
+            return;
+        }
+
+        if (!OmsiContentRoot.TryCreate(
+                ContentPathBox.Text,
+                out _,
+                out var error))
+        {
+            SetStatus(
+                error);
+            return;
+        }
+
+        try
+        {
+            if (!_runtime.StartVehiclePreview(
+                    ContentPathBox.Text,
+                    bus.RelativePath,
+                    repaint?.Name,
+                    repaint?.RelativeCtiPath))
+            {
+                SetStatus(
+                    "A prévia 3D já está em execução.");
+                return;
+            }
+
+            SetStatus(
+                $"Prévia 3D aberta: {bus.SelectionLabel}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                $"Falha ao abrir prévia 3D: {ex.Message}");
+        }
+
+        UpdatePlayAvailability();
+    }
+
     private void PlayButton_Click(
         object sender,
         RoutedEventArgs e)
@@ -1456,6 +1515,11 @@ public sealed partial class MainWindow :
 
         PlayButton.IsEnabled =
             canPlay;
+
+        Preview3DButton.IsEnabled =
+            !noBus &&
+            SelectedBus() is not null &&
+            !_runtime.IsPreviewRunning;
 
         ContinueButton.IsEnabled =
             canPlay;
