@@ -17,6 +17,7 @@ internal sealed class RuntimeApplicationContext :
     private readonly bool _externalLoading;
     private readonly string? _repaintName;
     private readonly string? _repaintCtiRelativePath;
+    private readonly string? _selectedHofPath;
     private readonly OmsiRuntimeOptions _options;
     private readonly LoadingForm _loading;
     private readonly SemaphoreSlim _streamingGate =
@@ -63,7 +64,8 @@ internal sealed class RuntimeApplicationContext :
         OmsiMapEntryPoint entryPoint,
         bool externalLoading,
         string? repaintName = null,
-        string? repaintCtiRelativePath = null)
+        string? repaintCtiRelativePath = null,
+        string? selectedHofPath = null)
     {
         _contentRoot = contentRoot;
         _map = map;
@@ -81,6 +83,14 @@ internal sealed class RuntimeApplicationContext :
                 repaintCtiRelativePath)
                 ? null
                 : repaintCtiRelativePath.Trim();
+        _selectedHofPath =
+            !string.IsNullOrWhiteSpace(
+                selectedHofPath) &&
+            File.Exists(
+                selectedHofPath)
+                ? Path.GetFullPath(
+                    selectedHofPath)
+                : null;
         _options =
             OmsiRuntimeOptions.Load();
         _loadedCenterX =
@@ -355,6 +365,13 @@ internal sealed class RuntimeApplicationContext :
                 scriptRuntime =
                     new OmsiScriptRuntime(
                         scriptCatalog);
+
+                ApplyHofToScriptRuntime(
+                    scriptRuntime,
+                    _selectedHofPath ??
+                    ResolveMapHofForBus(
+                        _bus,
+                        _map.FolderName));
             }
 
             var sectionScriptRuntimes =
@@ -379,10 +396,22 @@ internal sealed class RuntimeApplicationContext :
                             _contentRoot,
                             sectionManifest);
 
-                    sectionScriptRuntimes[
-                        section.Index] =
+                    var sectionRuntime =
                         new OmsiScriptRuntime(
                             sectionCatalog);
+
+                    ApplyHofToScriptRuntime(
+                        sectionRuntime,
+                        _selectedHofPath ??
+                        (_bus is null
+                            ? null
+                            : ResolveMapHofForBus(
+                                _bus,
+                                _map.FolderName)));
+
+                    sectionScriptRuntimes[
+                        section.Index] =
+                        sectionRuntime;
                 }
                 catch (Exception exception)
                 {
@@ -1966,6 +1995,17 @@ internal sealed class RuntimeApplicationContext :
                     agent,
                     0.0);
 
+                if (_trafficVehicleAssets.TryGetValue(
+                        agent.VehiclePath,
+                        out var trafficAsset))
+                {
+                    ApplyHofToScriptRuntime(
+                        runtime,
+                        ResolveMapHofForBus(
+                            trafficAsset.Bus,
+                            _map.FolderName));
+                }
+
                 runtime.ExecuteInit();
 
                 state =
@@ -2065,6 +2105,122 @@ internal sealed class RuntimeApplicationContext :
                 $"Wheel_RotationSpeed_{axle}_R",
                 wheelRevolutionsPerMinute);
         }
+    }
+
+    private static string? ResolveMapHofForBus(
+        OmsiBusInfo bus,
+        string mapFolderName)
+    {
+        try
+        {
+            if (!Directory.Exists(
+                    bus.DirectoryPath))
+            {
+                return null;
+            }
+
+            var hofFiles =
+                Directory
+                    .EnumerateFiles(
+                        bus.DirectoryPath,
+                        "*.hof",
+                        SearchOption.TopDirectoryOnly)
+                    .OrderBy(
+                        static path =>
+                            Path.GetFileName(
+                                path),
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            if (hofFiles.Length ==
+                0)
+            {
+                return null;
+            }
+
+            var normalizedMap =
+                mapFolderName
+                    .Replace(
+                        "_",
+                        " ",
+                        StringComparison.Ordinal)
+                    .Trim();
+
+            return hofFiles.FirstOrDefault(
+                       path =>
+                           Path.GetFileNameWithoutExtension(
+                                   path)
+                               .Contains(
+                                   mapFolderName,
+                                   StringComparison.OrdinalIgnoreCase))
+                   ?? hofFiles.FirstOrDefault(
+                       path =>
+                           Path.GetFileNameWithoutExtension(
+                                   path)
+                               .Contains(
+                                   normalizedMap,
+                                   StringComparison.OrdinalIgnoreCase))
+                   ?? hofFiles[0];
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void ApplyHofToScriptRuntime(
+        OmsiScriptRuntime runtime,
+        string? hofPath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                hofPath))
+        {
+            return;
+        }
+
+        var hofName =
+            Path.GetFileNameWithoutExtension(
+                hofPath);
+
+        string[] pathVariables =
+        [
+            "HOF",
+            "Hof",
+            "hof",
+            "HOF_File",
+            "HOF_Filename",
+            "HofDatei",
+            "Hofdatei",
+            "IBIS_HOF"
+        ];
+
+        foreach (var variable in
+                 pathVariables)
+        {
+            runtime.SetStringLocal(
+                variable,
+                hofPath);
+        }
+
+        string[] nameVariables =
+        [
+            "HOF_Name",
+            "HOFName",
+            "HofName",
+            "Hof_Name",
+            "IBIS_HOF_Name"
+        ];
+
+        foreach (var variable in
+                 nameVariables)
+        {
+            runtime.SetStringLocal(
+                variable,
+                hofName);
+        }
+
+        Console.WriteLine(
+            $"[hof] assigned={hofName}; file={hofPath}");
     }
 
     private OmsiScriptRuntime? ResolveTrafficScriptRuntime(
