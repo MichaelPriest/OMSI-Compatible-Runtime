@@ -2402,7 +2402,7 @@ internal sealed class RuntimeApplicationContext :
                                                             animation.MaxSpeed,
                                                             animation.Delay))
                                                 .ToArray(),
-                                            null,
+                                            mesh.SourceTransform,
                                             mesh.LightEffects?
                                                 .Select(
                                                     static light =>
