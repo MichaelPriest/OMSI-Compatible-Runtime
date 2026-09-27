@@ -61,7 +61,8 @@ internal sealed class RuntimeProcessHost :
         string? busRelativePath,
         string entryPointName,
         string? repaintName = null,
-        string? repaintCtiRelativePath = null)
+        string? repaintCtiRelativePath = null,
+        string? hofPath = null)
     {
         if (IsRunning)
         {
@@ -149,6 +150,17 @@ internal sealed class RuntimeProcessHost :
                 startInfo,
                 "--repaint-cti",
                 repaintCtiRelativePath);
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                hofPath) &&
+            !string.IsNullOrWhiteSpace(
+                busRelativePath))
+        {
+            Add(
+                startInfo,
+                "--hof",
+                hofPath);
         }
 
         Add(
