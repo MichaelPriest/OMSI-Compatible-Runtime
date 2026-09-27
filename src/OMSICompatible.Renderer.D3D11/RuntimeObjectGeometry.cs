@@ -42,7 +42,8 @@ internal sealed record RuntimeObjectBatch(
     bool MaterialChangeIsNightMap = false,
     long ObjectId = -1,
     string? RenderType = null,
-    bool RequiresExternalTransMap = false);
+    bool RequiresExternalTransMap = false,
+    bool Surface = false);
 
 internal sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -109,7 +110,8 @@ internal static class RuntimeObjectGeometryBuilder
         bool MaterialChangeIsNightMap = false,
         long ObjectId = -1,
         string? RenderType = null,
-        bool RequiresExternalTransMap = false);
+        bool RequiresExternalTransMap = false,
+        bool Surface = false);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -294,6 +296,7 @@ internal static class RuntimeObjectGeometryBuilder
                             useNativeOmsiModelSpace,
                             batchObjectId,
                             asset.RenderType,
+                            asset.Surface,
                             forceMaterialAlphaOpaque,
                             batches,
                             batchOrder,
@@ -412,7 +415,8 @@ internal static class RuntimeObjectGeometryBuilder
                     key.MaterialChangeIsNightMap,
                     key.ObjectId,
                     key.RenderType,
-                    key.RequiresExternalTransMap));
+                    key.RequiresExternalTransMap,
+                    key.Surface));
         }
 
         return new RuntimeObjectGeometry(
@@ -436,6 +440,7 @@ internal static class RuntimeObjectGeometryBuilder
         bool useNativeOmsiModelSpace,
         long objectId,
         string? renderType,
+        bool surface,
         bool forceMaterialAlphaOpaque,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
@@ -528,7 +533,8 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.MaterialChangeIsNightMap ?? false,
                     objectId,
                     renderType,
-                    material?.RequiresExternalTransMap ?? false);
+                    material?.RequiresExternalTransMap ?? false,
+                    surface);
 
             var output =
                 GetBatch(
