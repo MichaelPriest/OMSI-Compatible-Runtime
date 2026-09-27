@@ -8229,6 +8229,14 @@ public sealed class D3D11RenderWindow : Form
             (float)player.Y +
             3.75f;
 
+        var playerBoundingRadius =
+            MathF.Sqrt(
+                (float)(
+                    player.HalfLengthMeters *
+                        player.HalfLengthMeters +
+                    player.HalfWidthMeters *
+                        player.HalfWidthMeters));
+
         foreach (var volume in
                  _sceneryCollisionVolumes)
         {
@@ -8252,14 +8260,6 @@ public sealed class D3D11RenderWindow : Form
             var centerDelta =
                 volume.Center -
                 playerCenter;
-
-            var playerBoundingRadius =
-                MathF.Sqrt(
-                    (float)(
-                        player.HalfLengthMeters *
-                            player.HalfLengthMeters +
-                        player.HalfWidthMeters *
-                            player.HalfWidthMeters));
 
             var volumeBoundingRadius =
                 MathF.Sqrt(
