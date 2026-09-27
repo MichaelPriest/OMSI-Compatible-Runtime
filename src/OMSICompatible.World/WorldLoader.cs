@@ -1,3 +1,4 @@
+using System.Numerics;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Models;
@@ -824,7 +825,8 @@ public static class WorldLoader
                             dynamicMesh?.MeshIdentifier,
                             dynamicMesh?.AnimationParent,
                             dynamicMesh?.Ordinal ??
-                                meshOrdinal));
+                                meshOrdinal,
+                            geometry.SourceTransform));
                 }
 
                 result[declaredPath] =
@@ -981,24 +983,38 @@ public static class WorldLoader
              index +=
                  3)
         {
-            var x =
-                geometry.Positions[
-                    index];
-            var y =
-                geometry.Positions[
-                    index +
-                    1];
-            var z =
-                geometry.Positions[
-                    index +
-                    2];
+            var raw =
+                new Vector3(
+                    geometry.Positions[
+                        index],
+                    geometry.Positions[
+                        index +
+                        1],
+                    geometry.Positions[
+                        index +
+                        2]);
 
             if (!float.IsFinite(
-                    x) ||
+                    raw.X) ||
                 !float.IsFinite(
-                    y) ||
+                    raw.Y) ||
                 !float.IsFinite(
-                    z))
+                    raw.Z))
+            {
+                continue;
+            }
+
+            var transformed =
+                Vector3.Transform(
+                    raw,
+                    geometry.SourceTransform);
+
+            if (!float.IsFinite(
+                    transformed.X) ||
+                !float.IsFinite(
+                    transformed.Y) ||
+                !float.IsFinite(
+                    transformed.Z))
             {
                 continue;
             }
@@ -1006,27 +1022,27 @@ public static class WorldLoader
             minimumX =
                 Math.Min(
                     minimumX,
-                    x);
+                    transformed.X);
             maximumX =
                 Math.Max(
                     maximumX,
-                    x);
+                    transformed.X);
             minimumY =
                 Math.Min(
                     minimumY,
-                    y);
+                    transformed.Y);
             maximumY =
                 Math.Max(
                     maximumY,
-                    y);
+                    transformed.Y);
             minimumZ =
                 Math.Min(
                     minimumZ,
-                    z);
+                    transformed.Z);
             maximumZ =
                 Math.Max(
                     maximumZ,
-                    z);
+                    transformed.Z);
         }
 
         if (!double.IsFinite(
