@@ -62,6 +62,13 @@ public sealed record RuntimeSplineInfo(
     double RadiusMeters,
     double GradientStartPercent,
     double GradientEndPercent,
+    bool UsesHeightProfile,
+    double DeltaHeightMeters,
+    double CantStartPercent,
+    double CantEndPercent,
+    double SkewStart,
+    double SkewEnd,
+    bool Mirror,
     IReadOnlyList<RuntimeSplineSurfaceInfo> Surfaces,
     IReadOnlyList<RuntimeSplinePathInfo> Paths);
 
