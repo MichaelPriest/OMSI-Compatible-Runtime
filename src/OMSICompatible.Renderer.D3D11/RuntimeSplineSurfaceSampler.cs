@@ -58,91 +58,108 @@ internal sealed class RuntimeSplineSurfaceSampler
             var c =
                 geometry.Vertices[index + 2].Position;
 
-            if (!IsFinite(a) ||
-                !IsFinite(b) ||
-                !IsFinite(c))
-            {
-                continue;
-            }
-
-            var projectedArea =
-                Math.Abs(
-                    Cross2D(
-                        b.X - a.X,
-                        b.Z - a.Z,
-                        c.X - a.X,
-                        c.Z - a.Z));
-
-            if (projectedArea <
-                0.000001f)
-            {
-                continue;
-            }
-
-            var triangle =
-                new SurfaceTriangle(
+            if (!TryRegisterTriangle(
                     a,
                     b,
-                    c);
-
-            var minCellX =
-                Cell(
-                    Math.Min(
-                        a.X,
-                        Math.Min(
-                            b.X,
-                            c.X)));
-
-            var maxCellX =
-                Cell(
-                    Math.Max(
-                        a.X,
-                        Math.Max(
-                            b.X,
-                            c.X)));
-
-            var minCellZ =
-                Cell(
-                    Math.Min(
-                        a.Z,
-                        Math.Min(
-                            b.Z,
-                            c.Z)));
-
-            var maxCellZ =
-                Cell(
-                    Math.Max(
-                        a.Z,
-                        Math.Max(
-                            b.Z,
-                            c.Z)));
-
-            for (var cellX = minCellX;
-                 cellX <= maxCellX;
-                 cellX++)
+                    c,
+                    cells))
             {
-                for (var cellZ = minCellZ;
-                     cellZ <= maxCellZ;
-                     cellZ++)
-                {
-                    var key =
-                        (cellX, cellZ);
-
-                    if (!cells.TryGetValue(
-                            key,
-                            out var bucket))
-                    {
-                        bucket = [];
-                        cells[key] =
-                            bucket;
-                    }
-
-                    bucket.Add(
-                        triangle);
-                }
+                continue;
             }
 
             triangleCount++;
+        }
+
+        return triangleCount ==
+               0
+            ? Empty
+            : new RuntimeSplineSurfaceSampler(
+                cells.ToDictionary(
+                    static pair =>
+                        pair.Key,
+                    static pair =>
+                        pair.Value.ToArray()),
+                triangleCount);
+    }
+
+    public static RuntimeSplineSurfaceSampler CreateSurfaceObjects(
+        RuntimeObjectGeometry geometry)
+    {
+        ArgumentNullException.ThrowIfNull(
+            geometry);
+
+        if (geometry.Vertices.Length <
+                3 ||
+            geometry.Batches.Count ==
+                0)
+        {
+            return Empty;
+        }
+
+        var cells =
+            new Dictionary<
+                (int X, int Z),
+                List<SurfaceTriangle>>();
+
+        var triangleCount =
+            0;
+
+        foreach (var batch in
+                 geometry.Batches)
+        {
+            if (!batch.Surface ||
+                batch.VertexCount <
+                    3)
+            {
+                continue;
+            }
+
+            var start =
+                checked(
+                    (int)batch.StartVertex);
+
+            var end =
+                Math.Min(
+                    checked(
+                        start +
+                        (int)batch.VertexCount),
+                    geometry.Vertices.Length);
+
+            for (var index = start;
+                 index +
+                     2 <
+                 end;
+                 index +=
+                     3)
+            {
+                var a =
+                    geometry.Vertices[
+                        index]
+                        .Position;
+
+                var b =
+                    geometry.Vertices[
+                        index +
+                        1]
+                        .Position;
+
+                var c =
+                    geometry.Vertices[
+                        index +
+                        2]
+                        .Position;
+
+                if (!TryRegisterTriangle(
+                        a,
+                        b,
+                        c,
+                        cells))
+                {
+                    continue;
+                }
+
+                triangleCount++;
+            }
         }
 
         return triangleCount ==
@@ -225,6 +242,110 @@ internal sealed class RuntimeSplineSurfaceSampler
         }
 
         return found;
+    }
+
+    private static bool TryRegisterTriangle(
+        Vector3 a,
+        Vector3 b,
+        Vector3 c,
+        IDictionary<
+            (int X, int Z),
+            List<SurfaceTriangle>>
+            cells)
+    {
+        if (!IsFinite(a) ||
+            !IsFinite(b) ||
+            !IsFinite(c))
+        {
+            return false;
+        }
+
+        var projectedArea =
+            Math.Abs(
+                Cross2D(
+                    b.X -
+                        a.X,
+                    b.Z -
+                        a.Z,
+                    c.X -
+                        a.X,
+                    c.Z -
+                        a.Z));
+
+        if (projectedArea <
+            0.000001f)
+        {
+            return false;
+        }
+
+        var triangle =
+            new SurfaceTriangle(
+                a,
+                b,
+                c);
+
+        var minCellX =
+            Cell(
+                Math.Min(
+                    a.X,
+                    Math.Min(
+                        b.X,
+                        c.X)));
+
+        var maxCellX =
+            Cell(
+                Math.Max(
+                    a.X,
+                    Math.Max(
+                        b.X,
+                        c.X)));
+
+        var minCellZ =
+            Cell(
+                Math.Min(
+                    a.Z,
+                    Math.Min(
+                        b.Z,
+                        c.Z)));
+
+        var maxCellZ =
+            Cell(
+                Math.Max(
+                    a.Z,
+                    Math.Max(
+                        b.Z,
+                        c.Z)));
+
+        for (var cellX =
+                 minCellX;
+             cellX <=
+                 maxCellX;
+             cellX++)
+        {
+            for (var cellZ =
+                     minCellZ;
+                 cellZ <=
+                     maxCellZ;
+                 cellZ++)
+            {
+                var key =
+                    (cellX, cellZ);
+
+                if (!cells.TryGetValue(
+                        key,
+                        out var bucket))
+                {
+                    bucket = [];
+                    cells[key] =
+                        bucket;
+                }
+
+                bucket.Add(
+                    triangle);
+            }
+        }
+
+        return true;
     }
 
     private static int Cell(
