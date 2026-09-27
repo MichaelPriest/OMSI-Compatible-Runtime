@@ -1518,8 +1518,7 @@ public sealed partial class MainWindow :
 
         Preview3DButton.IsEnabled =
             !noBus &&
-            SelectedBus() is not null &&
-            !_runtime.IsPreviewRunning;
+            SelectedBus() is not null;
 
         ContinueButton.IsEnabled =
             canPlay;
