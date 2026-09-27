@@ -1180,6 +1180,7 @@ internal sealed class RuntimeDriveVehicle :
                 $"odeActive={_odeWorld is not null && _odeBody is not null}",
                 $"scriptDynamics={_omsiScriptDynamicsEnabled}",
                 $"splineSurfaceTriangles={_splineSurfaces.TriangleCount}",
+                $"scenerySurfaceTriangles={_scenerySurfaces.TriangleCount}",
                 $"position={F(Position.X)},{F(Position.Y)},{F(Position.Z)}",
                 $"speedKph={F(SpeedKph)}",
                 $"verticalAccelerationMps2={F(_verticalAccelerationMetersPerSecondSquared)}",
