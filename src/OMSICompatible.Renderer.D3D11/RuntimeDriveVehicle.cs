@@ -862,19 +862,28 @@ internal sealed class RuntimeDriveVehicle :
         ApplyTrafficCollisionResponse(
             impactSpeedKph);
 
-        if (correctionMeters.LengthSquared() >
+        CorrectSceneryCollisionPenetration(
+            correctionMeters);
+    }
+
+    public void CorrectSceneryCollisionPenetration(
+        Vector2 correctionMeters)
+    {
+        if (correctionMeters.LengthSquared() <=
             0.000001f)
         {
-            Position =
-                new Vector3(
-                    Position.X +
-                        correctionMeters.X,
-                    Position.Y,
-                    Position.Z +
-                        correctionMeters.Y);
-
-            SynchronizeOdeBodyFromRuntime();
+            return;
         }
+
+        Position =
+            new Vector3(
+                Position.X +
+                    correctionMeters.X,
+                Position.Y,
+                Position.Z +
+                    correctionMeters.Y);
+
+        SynchronizeOdeBodyFromRuntime();
     }
 
     public float LongitudinalAccelerationMetersPerSecondSquared =>
