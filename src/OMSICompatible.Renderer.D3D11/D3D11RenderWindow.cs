@@ -9548,11 +9548,16 @@ public sealed class D3D11RenderWindow : Form
                     second.Points[
                         secondIndex];
 
-                if (TrafficSegmentsIntersect2D(
+                const double conflictToleranceMeters =
+                    0.5;
+
+                if (RuntimeTrafficSegmentDistanceSquared(
                         firstStart,
                         firstEnd,
                         secondStart,
-                        secondEnd))
+                        secondEnd) <=
+                    conflictToleranceMeters *
+                        conflictToleranceMeters)
                 {
                     return true;
                 }
@@ -9560,6 +9565,235 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return false;
+    }
+
+    private static double RuntimeTrafficSegmentDistanceSquared(
+        RuntimeTrafficPathPointInfo firstStart,
+        RuntimeTrafficPathPointInfo firstEnd,
+        RuntimeTrafficPathPointInfo secondStart,
+        RuntimeTrafficPathPointInfo secondEnd)
+    {
+        var d1X =
+            firstEnd.X -
+            firstStart.X;
+        var d1Y =
+            firstEnd.Y -
+            firstStart.Y;
+        var d1Z =
+            firstEnd.Z -
+            firstStart.Z;
+
+        var d2X =
+            secondEnd.X -
+            secondStart.X;
+        var d2Y =
+            secondEnd.Y -
+            secondStart.Y;
+        var d2Z =
+            secondEnd.Z -
+            secondStart.Z;
+
+        var rX =
+            firstStart.X -
+            secondStart.X;
+        var rY =
+            firstStart.Y -
+            secondStart.Y;
+        var rZ =
+            firstStart.Z -
+            secondStart.Z;
+
+        var a =
+            d1X *
+                d1X +
+            d1Y *
+                d1Y +
+            d1Z *
+                d1Z;
+
+        var e =
+            d2X *
+                d2X +
+            d2Y *
+                d2Y +
+            d2Z *
+                d2Z;
+
+        var f =
+            d2X *
+                rX +
+            d2Y *
+                rY +
+            d2Z *
+                rZ;
+
+        const double epsilon =
+            0.000000001;
+
+        double s;
+        double t;
+
+        if (a <=
+                epsilon &&
+            e <=
+                epsilon)
+        {
+            return RuntimeTrafficPointDistanceSquared(
+                firstStart,
+                secondStart);
+        }
+
+        if (a <=
+            epsilon)
+        {
+            s =
+                0.0;
+
+            t =
+                Math.Clamp(
+                    f /
+                        e,
+                    0.0,
+                    1.0);
+        }
+        else
+        {
+            var c =
+                d1X *
+                    rX +
+                d1Y *
+                    rY +
+                d1Z *
+                    rZ;
+
+            if (e <=
+                epsilon)
+            {
+                t =
+                    0.0;
+
+                s =
+                    Math.Clamp(
+                        -c /
+                            a,
+                        0.0,
+                        1.0);
+            }
+            else
+            {
+                var b =
+                    d1X *
+                        d2X +
+                    d1Y *
+                        d2Y +
+                    d1Z *
+                        d2Z;
+
+                var denominator =
+                    a *
+                        e -
+                    b *
+                        b;
+
+                s =
+                    Math.Abs(
+                        denominator) >
+                    epsilon
+                        ? Math.Clamp(
+                            (b *
+                                 f -
+                             c *
+                                 e) /
+                                denominator,
+                            0.0,
+                            1.0)
+                        : 0.0;
+
+                t =
+                    (b *
+                         s +
+                     f) /
+                    e;
+
+                if (t <
+                    0.0)
+                {
+                    t =
+                        0.0;
+
+                    s =
+                        Math.Clamp(
+                            -c /
+                                a,
+                            0.0,
+                            1.0);
+                }
+                else if (t >
+                         1.0)
+                {
+                    t =
+                        1.0;
+
+                    s =
+                        Math.Clamp(
+                            (b -
+                             c) /
+                                a,
+                            0.0,
+                            1.0);
+                }
+            }
+        }
+
+        var firstClosest =
+            new RuntimeTrafficPathPointInfo(
+                firstStart.X +
+                    d1X *
+                        s,
+                firstStart.Y +
+                    d1Y *
+                        s,
+                firstStart.Z +
+                    d1Z *
+                        s);
+
+        var secondClosest =
+            new RuntimeTrafficPathPointInfo(
+                secondStart.X +
+                    d2X *
+                        t,
+                secondStart.Y +
+                    d2Y *
+                        t,
+                secondStart.Z +
+                    d2Z *
+                        t);
+
+        return RuntimeTrafficPointDistanceSquared(
+            firstClosest,
+            secondClosest);
+    }
+
+    private static double RuntimeTrafficPointDistanceSquared(
+        RuntimeTrafficPathPointInfo first,
+        RuntimeTrafficPathPointInfo second)
+    {
+        var x =
+            first.X -
+            second.X;
+        var y =
+            first.Y -
+            second.Y;
+        var z =
+            first.Z -
+            second.Z;
+
+        return x *
+                   x +
+               y *
+                   y +
+               z *
+                   z;
     }
 
     private static bool TrafficSegmentsIntersect2D(
