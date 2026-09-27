@@ -1712,23 +1712,10 @@ public sealed class WorldTrafficSimulation
                 crossingSegment.Points[
                     index];
 
-            var pathMidY =
-                (pathStart.Y +
-                 pathEnd.Y) *
-                0.5;
-
-            // A grade-separated player vehicle must not reserve a junction
-            // path below/above it merely because the X/Z projections cross.
-            // Use the same vertical tolerance used by traffic collision
-            // detection before applying the horizontal footprint test.
-            if (Math.Abs(
-                    obstacle.Position.Y -
-                    pathMidY) >
-                3.5)
-            {
-                continue;
-            }
-
+            // SegmentDistanceSquared is fully 3D, so grade-separated
+            // crossings are rejected by their true spatial separation while
+            // sloped ramps remain valid when they actually intersect the
+            // player's footprint.
             if (SegmentDistanceSquared(
                     pathStart,
                     pathEnd,
