@@ -108,6 +108,8 @@ internal sealed class RuntimeSplineSurfaceSampler
                  geometry.Batches)
         {
             if (!batch.Surface ||
+                batch.ObjectId >=
+                    0 ||
                 batch.VertexCount <
                     3)
             {
