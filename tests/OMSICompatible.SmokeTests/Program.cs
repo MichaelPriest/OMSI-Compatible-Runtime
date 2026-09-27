@@ -4247,6 +4247,52 @@ try
         playerOccupiedJunctionAgent.AiBrakeLight,
         "AI traffic entered an OMSI junction while the player bus occupied the conflicting crossing path.");
 
+    var gradeSeparatedJunctionSimulation =
+        new WorldTrafficSimulation(
+            playerOccupiedJunctionNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    gradeSeparatedJunctionSimulation.SetExternalObstacle(
+        new WorldTrafficObstacleState(
+            new WorldVector3(
+                0.0,
+                10.0,
+                7.5),
+            Math.PI /
+                2.0,
+            0.0,
+            HalfLengthMeters:
+                6.0,
+            HalfWidthMeters:
+                1.35));
+
+    gradeSeparatedJunctionSimulation.Step(
+        2.0);
+
+    var gradeSeparatedJunctionAgent =
+        gradeSeparatedJunctionSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        gradeSeparatedJunctionAgent.SegmentIndex !=
+            0 ||
+        gradeSeparatedJunctionAgent.Position.Z >=
+            5.0,
+        "Grade-separated player vehicle incorrectly blocked the junction below.");
+
     var staggeredTraffic =
         new WorldTrafficSimulation(
             trafficPaths,
