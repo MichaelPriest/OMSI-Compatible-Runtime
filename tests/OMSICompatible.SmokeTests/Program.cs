@@ -3580,6 +3580,20 @@ try
         maskedAsset.Meshes[0].Materials[0].RequiresExternalTransMap &&
         maskedAsset.Meshes[0].Materials[0].AlphaMode ==
             1 &&
+        maskedAsset.Meshes[0].SourceTransform is
+            { } maskedSourceTransform &&
+        Math.Abs(
+            maskedSourceTransform.M41 -
+            1.25f) <
+            0.0001f &&
+        Math.Abs(
+            maskedSourceTransform.M42 -
+            2.5f) <
+            0.0001f &&
+        Math.Abs(
+            maskedSourceTransform.M43 -
+            3.75f) <
+            0.0001f &&
         !string.IsNullOrWhiteSpace(
             maskedAsset.Meshes[0].Materials[0].TransMapTexturePath) &&
         Path.GetFileName(
