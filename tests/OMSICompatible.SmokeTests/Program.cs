@@ -3609,12 +3609,12 @@ try
             "collision_low.o3d" &&
         collisionAsset.CollisionBounds is
             {
-                MinimumX: -2.0,
-                MaximumX: 2.0,
-                MinimumY: 0.0,
-                MaximumY: 3.0,
-                MinimumZ: -1.0,
-                MaximumZ: 1.0
+                MinimumX: -1.5,
+                MaximumX: 2.5,
+                MinimumY: 1.0,
+                MaximumY: 4.0,
+                MinimumZ: -1.25,
+                MaximumZ: 0.75
             },
         "WorldLoader did not resolve OMSI [collision_mesh] into runtime collision bounds.");
 
@@ -6588,7 +6588,7 @@ static void WriteSyntheticCollisionO3d(
                  1, 0, 0, 0,
                  0, 1, 0, 0,
                  0, 0, 1, 0,
-                 0, 0, 0, 1
+                 0.5f, 1.0f, -0.25f, 1
              })
     {
         writer.Write(
