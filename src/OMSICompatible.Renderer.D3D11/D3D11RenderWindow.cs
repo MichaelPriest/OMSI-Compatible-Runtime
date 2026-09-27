@@ -7892,6 +7892,18 @@ public sealed class D3D11RenderWindow : Form
                     180.0);
 
             var rotation =
+                Matrix4x4.CreateFromYawPitchRoll(
+                    heading,
+                    (float)(
+                        instance.PitchDegrees *
+                        Math.PI /
+                        180.0),
+                    (float)(
+                        instance.BankDegrees *
+                        Math.PI /
+                        180.0));
+
+            var headingRotation =
                 Matrix4x4.CreateRotationY(
                     heading);
 
@@ -7974,27 +7986,15 @@ public sealed class D3D11RenderWindow : Form
                         0.05);
             }
 
-            var rotatedCenter =
-                Vector3.TransformNormal(
-                    localCenter,
-                    rotation);
-
-            var center =
-                new Vector2(
-                    (float)worldX +
-                        rotatedCenter.X,
-                    (float)worldZ +
-                        rotatedCenter.Z);
-
             var forward3 =
                 Vector3.TransformNormal(
                     Vector3.UnitZ,
-                    rotation);
+                    headingRotation);
 
             var right3 =
                 Vector3.TransformNormal(
                     -Vector3.UnitX,
-                    rotation);
+                    headingRotation);
 
             var forward =
                 Vector2.Normalize(
@@ -8008,10 +8008,152 @@ public sealed class D3D11RenderWindow : Form
                         right3.X,
                         right3.Z));
 
-            var centerY =
+            var minimumForward =
+                float.PositiveInfinity;
+            var maximumForward =
+                float.NegativeInfinity;
+            var minimumRight =
+                float.PositiveInfinity;
+            var maximumRight =
+                float.NegativeInfinity;
+            var minimumVertical =
+                float.PositiveInfinity;
+            var maximumVertical =
+                float.NegativeInfinity;
+
+            for (var xSign = -1;
+                 xSign <=
+                     1;
+                 xSign +=
+                     2)
+            {
+                for (var ySign = -1;
+                     ySign <=
+                         1;
+                     ySign +=
+                         2)
+                {
+                    for (var zSign = -1;
+                         zSign <=
+                             1;
+                         zSign +=
+                             2)
+                    {
+                        var localCorner =
+                            localCenter +
+                            new Vector3(
+                                xSign *
+                                    halfWidth,
+                                ySign *
+                                    halfHeight,
+                                zSign *
+                                    halfLength);
+
+                        var rotatedCorner =
+                            Vector3.TransformNormal(
+                                localCorner,
+                                rotation);
+
+                        var horizontalCorner =
+                            new Vector2(
+                                rotatedCorner.X,
+                                rotatedCorner.Z);
+
+                        var forwardProjection =
+                            Vector2.Dot(
+                                horizontalCorner,
+                                forward);
+
+                        var rightProjection =
+                            Vector2.Dot(
+                                horizontalCorner,
+                                right);
+
+                        minimumForward =
+                            Math.Min(
+                                minimumForward,
+                                forwardProjection);
+
+                        maximumForward =
+                            Math.Max(
+                                maximumForward,
+                                forwardProjection);
+
+                        minimumRight =
+                            Math.Min(
+                                minimumRight,
+                                rightProjection);
+
+                        maximumRight =
+                            Math.Max(
+                                maximumRight,
+                                rightProjection);
+
+                        minimumVertical =
+                            Math.Min(
+                                minimumVertical,
+                                rotatedCorner.Y);
+
+                        maximumVertical =
+                            Math.Max(
+                                maximumVertical,
+                                rotatedCorner.Y);
+                    }
+                }
+            }
+
+            if (!float.IsFinite(
+                    minimumForward) ||
+                !float.IsFinite(
+                    maximumForward) ||
+                !float.IsFinite(
+                    minimumRight) ||
+                !float.IsFinite(
+                    maximumRight) ||
+                !float.IsFinite(
+                    minimumVertical) ||
+                !float.IsFinite(
+                    maximumVertical))
+            {
+                continue;
+            }
+
+            var centerForward =
+                (minimumForward +
+                 maximumForward) *
+                0.5f;
+
+            var centerRight =
+                (minimumRight +
+                 maximumRight) *
+                0.5f;
+
+            var center =
+                new Vector2(
+                    (float)worldX,
+                    (float)worldZ) +
+                forward *
+                    centerForward +
+                right *
+                    centerRight;
+
+            halfLength =
+                Math.Max(
+                    (maximumForward -
+                     minimumForward) *
+                        0.5f,
+                    0.05f);
+
+            halfWidth =
+                Math.Max(
+                    (maximumRight -
+                     minimumRight) *
+                        0.5f,
+                    0.05f);
+
+            var baseY =
                 (float)instance.Y +
-                terrainOffset +
-                rotatedCenter.Y;
+                terrainOffset;
 
             volumes.Add(
                 new RuntimeSceneryCollisionVolume(
@@ -8021,10 +8163,10 @@ public sealed class D3D11RenderWindow : Form
                     right,
                     halfLength,
                     halfWidth,
-                    centerY -
-                        halfHeight,
-                    centerY +
-                        halfHeight));
+                    baseY +
+                        minimumVertical,
+                    baseY +
+                        maximumVertical));
         }
 
         return volumes;
