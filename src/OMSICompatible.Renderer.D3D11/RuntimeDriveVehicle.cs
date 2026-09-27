@@ -786,6 +786,32 @@ internal sealed class RuntimeDriveVehicle :
         return found;
     }
 
+    public bool IsSupportedByScenerySurface(
+        double worldX,
+        double worldZ,
+        float referenceHeight,
+        float toleranceMeters = 0.45f)
+    {
+        if (!_scenerySurfaces.TrySampleBelow(
+                worldX,
+                worldZ,
+                referenceHeight +
+                    Math.Max(
+                        toleranceMeters,
+                        0.05f),
+                out var surfaceHeight))
+        {
+            return false;
+        }
+
+        return Math.Abs(
+                   referenceHeight -
+                   surfaceHeight) <=
+               Math.Max(
+                   toleranceMeters,
+                   0.05f);
+    }
+
     public Vector3 Position { get; private set; }
 
     public float HeadingRadians { get; private set; }
