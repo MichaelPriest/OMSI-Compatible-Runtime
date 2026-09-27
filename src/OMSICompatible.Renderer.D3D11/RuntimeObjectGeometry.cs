@@ -275,7 +275,14 @@ internal static class RuntimeObjectGeometryBuilder
                                 1.0f)
                             : Matrix4x4.Identity;
 
+                    var sourceTransform =
+                        useNativeOmsiModelSpace
+                            ? mesh.SourceTransform ??
+                              Matrix4x4.Identity
+                            : Matrix4x4.Identity;
+
                     var worldTransform =
+                        sourceTransform *
                         localTransform *
                         localWorldMirror *
                         objectTransform;
