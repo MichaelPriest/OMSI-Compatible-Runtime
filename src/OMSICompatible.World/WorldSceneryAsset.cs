@@ -63,6 +63,10 @@ public sealed record WorldSceneryCollisionBounds(
     double MinimumZ,
     double MaximumZ);
 
+public sealed record WorldSceneryCollisionGeometry(
+    float[] Positions,
+    uint[] Indices);
+
 public sealed record WorldSceneryTreeDefinition(
     string TextureName,
     string? TexturePath,
@@ -113,7 +117,8 @@ public sealed record WorldSceneryAsset(
     bool Surface = false,
     string? CollisionMeshSource = null,
     OmsiSceneryBoundingBox? BoundingBox = null,
-    WorldSceneryCollisionBounds? CollisionBounds = null)
+    WorldSceneryCollisionBounds? CollisionBounds = null,
+    WorldSceneryCollisionGeometry? CollisionGeometry = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(
