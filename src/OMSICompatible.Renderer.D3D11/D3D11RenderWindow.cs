@@ -867,7 +867,8 @@ public sealed class D3D11RenderWindow : Form
                     _windowInfo.DynamicSceneryObjectIds);
 
         _vehicle.ReplaceScenerySurfaceGeometry(
-            _objectGeometry);
+            _objectGeometry,
+            _windowInfo);
 
         if (_objectGeometry.Vertices.Length > 0)
         {
