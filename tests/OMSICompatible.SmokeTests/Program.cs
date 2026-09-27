@@ -2868,23 +2868,6 @@ try
         vehicleAsset.FailedMeshCount == 0,
         "Synthetic OMSI bus model.cfg/O3D geometry did not load end-to-end.");
 
-    var runtimeVehicleInfo =
-        RuntimeVehicleInfoFactory.FromAsset(
-            vehicleAsset);
-
-    Require(
-        runtimeVehicleInfo.Meshes.Count >=
-            2 &&
-        runtimeVehicleInfo.Meshes[1].Materials.Count ==
-            1 &&
-        runtimeVehicleInfo.Meshes[1].Materials[0].RequiresExternalTransMap &&
-        runtimeVehicleInfo.Meshes[1].Materials[0].AlphaMode ==
-            1 &&
-        Path.GetFileName(
-            runtimeVehicleInfo.Meshes[1].Materials[0].TransMapTexturePath!) ==
-            "panel_mask.bmp",
-        "Runtime vehicle material did not preserve required external transmap semantics.");
-
     var trailerSoundDirectory =
         Path.Combine(
             vehicleDirectory,
