@@ -8257,8 +8257,14 @@ public sealed class D3D11RenderWindow : Form
             }
             else
             {
+                _vehicle.CorrectSceneryCollisionPenetration(
+                    correction);
+
                 _vehicle.HoldTrafficCollisionContact();
             }
+
+            playerCenter +=
+                correction;
         }
 
         _activeSceneryCollisionVolumes.RemoveWhere(
