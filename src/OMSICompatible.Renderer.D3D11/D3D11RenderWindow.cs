@@ -84,6 +84,8 @@ public sealed class D3D11RenderWindow : Form
 
     private readonly record struct RuntimeSceneryCollisionVolume(
         int Key,
+        long ObjectId,
+        string AssetPath,
         Vector2 Center,
         Vector2 Forward,
         Vector2 Right,
@@ -8162,6 +8164,8 @@ public sealed class D3D11RenderWindow : Form
             volumes.Add(
                 new RuntimeSceneryCollisionVolume(
                     key++,
+                    instance.ObjectId,
+                    instance.AssetPath,
                     center,
                     forward,
                     right,
@@ -8267,6 +8271,13 @@ public sealed class D3D11RenderWindow : Form
             var newContact =
                 !_activeSceneryCollisionVolumes.Contains(
                     volume.Key);
+
+            if (newContact)
+            {
+                ReportSceneryCollision(
+                    volume,
+                    player);
+            }
 
             if (newContact &&
                 !impactApplied)
@@ -8420,6 +8431,25 @@ public sealed class D3D11RenderWindow : Form
              0.02f);
 
         return true;
+    }
+
+    private static void ReportSceneryCollision(
+        RuntimeSceneryCollisionVolume volume,
+        RuntimeTrafficObstacleInfo player)
+    {
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "scenery-collision.log"),
+                $"{DateTimeOffset.Now:O}|objectId={volume.ObjectId}|asset={volume.AssetPath}|surface={volume.Surface}|position={player.X:0.00},{player.Y:0.00},{player.Z:0.00}|speed={player.SpeedMetersPerSecond * 3.6:0.0} km/h{Environment.NewLine}");
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[scenery-collision] unable to append diagnostics: {exception.Message}");
+        }
     }
 
     private void UpdateTrafficCollisionState(
