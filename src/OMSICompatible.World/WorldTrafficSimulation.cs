@@ -1704,12 +1704,34 @@ public sealed class WorldTrafficSimulation
                  crossingSegment.Points.Count;
              index++)
         {
+            var pathStart =
+                crossingSegment.Points[
+                    index -
+                        1];
+            var pathEnd =
+                crossingSegment.Points[
+                    index];
+
+            var pathMidY =
+                (pathStart.Y +
+                 pathEnd.Y) *
+                0.5;
+
+            // A grade-separated player vehicle must not reserve a junction
+            // path below/above it merely because the X/Z projections cross.
+            // Use the same vertical tolerance used by traffic collision
+            // detection before applying the horizontal footprint test.
+            if (Math.Abs(
+                    obstacle.Position.Y -
+                    pathMidY) >
+                3.5)
+            {
+                continue;
+            }
+
             if (SegmentDistanceSquared(
-                    crossingSegment.Points[
-                        index -
-                        1],
-                    crossingSegment.Points[
-                        index],
+                    pathStart,
+                    pathEnd,
                     obstacleStart,
                     obstacleEnd) <=
                 clearanceSquared)
