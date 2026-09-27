@@ -176,6 +176,211 @@ internal sealed class RuntimeSplineSurfaceSampler
                 triangleCount);
     }
 
+    public static RuntimeSplineSurfaceSampler CreateCollisionSurfaceObjects(
+        RuntimeWindowInfo windowInfo)
+    {
+        ArgumentNullException.ThrowIfNull(
+            windowInfo);
+
+        if (windowInfo.Objects.Count ==
+                0 ||
+            windowInfo.SceneryAssets.Count ==
+                0)
+        {
+            return Empty;
+        }
+
+        var terrain =
+            new RuntimeTerrainSampler(
+                windowInfo.Tiles);
+
+        var cells =
+            new Dictionary<
+                (int X, int Z),
+                List<SurfaceTriangle>>();
+
+        var triangleCount =
+            0;
+
+        const double tileSizeMeters =
+            300.0;
+
+        foreach (var instance in
+                 windowInfo.Objects)
+        {
+            if (windowInfo.DynamicSceneryObjectIds?.Contains(
+                    instance.ObjectId) ==
+                true ||
+                !windowInfo.SceneryAssets.TryGetValue(
+                    instance.AssetPath,
+                    out var asset) ||
+                !asset.Surface ||
+                asset.NoCollision ||
+                asset.CollisionGeometry is not
+                    { } collisionGeometry ||
+                collisionGeometry.Positions.Length <
+                    9 ||
+                collisionGeometry.Indices.Length <
+                    3)
+            {
+                continue;
+            }
+
+            var worldX =
+                instance.TileX *
+                    tileSizeMeters +
+                instance.X;
+
+            var worldZ =
+                instance.TileY *
+                    tileSizeMeters +
+                instance.Z;
+
+            var terrainOffset =
+                0.0f;
+
+            if (!asset.UsesAbsoluteHeight &&
+                terrain.TrySample(
+                    worldX,
+                    worldZ,
+                    out var groundHeight))
+            {
+                terrainOffset =
+                    groundHeight;
+            }
+
+            var objectTransform =
+                Matrix4x4.CreateFromYawPitchRoll(
+                    (float)(
+                        instance.HeadingDegrees *
+                        Math.PI /
+                        180.0),
+                    (float)(
+                        instance.PitchDegrees *
+                        Math.PI /
+                        180.0),
+                    (float)(
+                        instance.BankDegrees *
+                        Math.PI /
+                        180.0)) *
+                Matrix4x4.CreateTranslation(
+                    (float)worldX,
+                    (float)instance.Y +
+                        terrainOffset,
+                    (float)worldZ);
+
+            var localToWorld =
+                Matrix4x4.CreateScale(
+                    -1.0f,
+                    1.0f,
+                    1.0f) *
+                objectTransform;
+
+            var vertexCount =
+                collisionGeometry.Positions.Length /
+                3;
+
+            for (var index = 0;
+                 index + 2 <
+                     collisionGeometry.Indices.Length;
+                 index +=
+                     3)
+            {
+                var indexA =
+                    checked(
+                        (int)collisionGeometry.Indices[
+                            index]);
+
+                var indexB =
+                    checked(
+                        (int)collisionGeometry.Indices[
+                            index +
+                            1]);
+
+                var indexC =
+                    checked(
+                        (int)collisionGeometry.Indices[
+                            index +
+                            2]);
+
+                if (indexA < 0 ||
+                    indexA >=
+                        vertexCount ||
+                    indexB < 0 ||
+                    indexB >=
+                        vertexCount ||
+                    indexC < 0 ||
+                    indexC >=
+                        vertexCount)
+                {
+                    continue;
+                }
+
+                static Vector3 ReadPosition(
+                    RuntimeSceneryCollisionGeometryInfo geometry,
+                    int vertexIndex)
+                {
+                    var offset =
+                        vertexIndex *
+                        3;
+
+                    return new Vector3(
+                        geometry.Positions[
+                            offset],
+                        geometry.Positions[
+                            offset +
+                            1],
+                        geometry.Positions[
+                            offset +
+                            2]);
+                }
+
+                var a =
+                    Vector3.Transform(
+                        ReadPosition(
+                            collisionGeometry,
+                            indexA),
+                        localToWorld);
+
+                var b =
+                    Vector3.Transform(
+                        ReadPosition(
+                            collisionGeometry,
+                            indexB),
+                        localToWorld);
+
+                var c =
+                    Vector3.Transform(
+                        ReadPosition(
+                            collisionGeometry,
+                            indexC),
+                        localToWorld);
+
+                if (!TryRegisterTriangle(
+                        a,
+                        b,
+                        c,
+                        cells))
+                {
+                    continue;
+                }
+
+                triangleCount++;
+            }
+        }
+
+        return triangleCount ==
+               0
+            ? Empty
+            : new RuntimeSplineSurfaceSampler(
+                cells.ToDictionary(
+                    static pair =>
+                        pair.Key,
+                    static pair =>
+                        pair.Value.ToArray()),
+                triangleCount);
+    }
+
     public bool TrySampleBelow(
         double worldX,
         double worldZ,
