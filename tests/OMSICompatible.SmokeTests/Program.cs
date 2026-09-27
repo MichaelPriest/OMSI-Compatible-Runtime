@@ -5656,7 +5656,7 @@ try
         80.0);
 
     stalledPrioritySimulation.Step(
-        0.5);
+        0.75);
 
     var stalledPriorityAgents =
         stalledPrioritySimulation
@@ -5943,7 +5943,7 @@ try
         80.0);
 
     stalledRightPrioritySimulation.Step(
-        0.5);
+        0.75);
 
     var stalledRightPriorityAgents =
         stalledRightPrioritySimulation
