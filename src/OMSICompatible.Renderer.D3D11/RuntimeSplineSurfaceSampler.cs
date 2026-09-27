@@ -262,20 +262,38 @@ internal sealed class RuntimeSplineSurfaceSampler
             return false;
         }
 
+        var ab =
+            b -
+            a;
+
+        var ac =
+            c -
+            a;
+
+        var normal =
+            Vector3.Cross(
+                ab,
+                ac);
+
+        var normalLength =
+            normal.Length();
+
         var projectedArea =
             Math.Abs(
                 Cross2D(
-                    b.X -
-                        a.X,
-                    b.Z -
-                        a.Z,
-                    c.X -
-                        a.X,
-                    c.Z -
-                        a.Z));
+                    ab.X,
+                    ab.Z,
+                    ac.X,
+                    ac.Z));
 
         if (projectedArea <
-            0.000001f)
+                0.000001f ||
+            normalLength <
+                0.000001f ||
+            Math.Abs(
+                normal.Y) /
+                normalLength <
+                0.15f)
         {
             return false;
         }
