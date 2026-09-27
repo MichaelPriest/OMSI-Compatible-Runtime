@@ -303,6 +303,18 @@
                                     <TextBlock Text="Atualizar conteúdo"/>
                                 </StackPanel>
                             </Button>
+                            <StackPanel x:Name="ContentDiscoveryProgress"
+                                        Orientation="Horizontal"
+                                        Spacing="8"
+                                        Visibility="Collapsed"
+                                        VerticalAlignment="Center">
+                                <ProgressRing Width="18"
+                                              Height="18"
+                                              IsActive="True"/>
+                                <TextBlock Text="Carregando biblioteca..."
+                                           Foreground="#8FA2B7"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
                         </StackPanel>
                         <ComboBox x:Name="MapBox"
                                   Header="Mapa"
