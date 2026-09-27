@@ -4849,9 +4849,11 @@ public sealed class D3D11RenderWindow : Form
                 new RuntimeVehicleMaterialConstants
                 {
                     AlphaScale =
-                        ResolveVehicleAlphaScale(
-                            materialState.AlphaScaleVariable,
-                            batch.SectionIndex),
+                        _vehiclePreviewMode
+                            ? 1.0f
+                            : ResolveVehicleAlphaScale(
+                                materialState.AlphaScaleVariable,
+                                batch.SectionIndex),
                     LightMapStrength =
                         ResolveVehicleLightMapStrength(
                             materialState.LightMapTexturePath,
@@ -4992,7 +4994,8 @@ public sealed class D3D11RenderWindow : Form
                         out var transMapView);
 
                 if (requiresExternalTransMap &&
-                    !hasTransMap)
+                    !hasTransMap &&
+                    !_vehiclePreviewMode)
                 {
                     continue;
                 }
@@ -5040,9 +5043,10 @@ public sealed class D3D11RenderWindow : Form
             }
             else
             {
-                if (requiresTextTexture ||
-                    materialState.AlphaCutout ||
-                    materialState.AlphaBlend)
+                if (!_vehiclePreviewMode &&
+                    (requiresTextTexture ||
+                     materialState.AlphaCutout ||
+                     materialState.AlphaBlend))
                 {
                     continue;
                 }
