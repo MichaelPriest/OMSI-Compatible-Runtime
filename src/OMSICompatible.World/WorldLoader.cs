@@ -547,6 +547,12 @@ public static class WorldLoader
                 string.IsNullOrWhiteSpace(
                     dependency.ResolvedPath))
             {
+                var collisionGeometry =
+                    ResolveCollisionGeometry(
+                        contentRoot.RootPath,
+                        dependency.ResolvedPath,
+                        definition.CollisionMeshSource);
+
                 result[declaredPath] =
                     new WorldSceneryAsset(
                         declaredPath,
@@ -890,10 +896,8 @@ public static class WorldLoader
                         definition.Surface,
                         definition.CollisionMeshSource,
                         definition.BoundingBox,
-                        ResolveCollisionBounds(
-                            contentRoot.RootPath,
-                            dependency.ResolvedPath,
-                            definition.CollisionMeshSource));
+                        collisionGeometry?.Bounds,
+                        collisionGeometry?.Geometry);
             }
             catch (Exception ex) when (
                 ex is IOException or
@@ -919,8 +923,12 @@ public static class WorldLoader
         return result;
     }
 
-    private static WorldSceneryCollisionBounds?
-        ResolveCollisionBounds(
+    private sealed record ResolvedSceneryCollisionGeometry(
+        WorldSceneryCollisionGeometry Geometry,
+        WorldSceneryCollisionBounds? Bounds);
+
+    private static ResolvedSceneryCollisionGeometry?
+        ResolveCollisionGeometry(
             string contentRoot,
             string sceneryObjectPath,
             string? collisionMeshSource)
@@ -959,10 +967,16 @@ public static class WorldLoader
         if (!string.IsNullOrWhiteSpace(
                 geometry.ErrorCode) ||
             geometry.Positions.Length <
+                3 ||
+            geometry.Indices.Length <
                 3)
         {
             return null;
         }
+
+        var transformedPositions =
+            new float[
+                geometry.Positions.Length];
 
         var minimumX =
             double.PositiveInfinity;
@@ -1001,7 +1015,7 @@ public static class WorldLoader
                 !float.IsFinite(
                     raw.Z))
             {
-                continue;
+                return null;
             }
 
             var transformed =
@@ -1016,8 +1030,20 @@ public static class WorldLoader
                 !float.IsFinite(
                     transformed.Z))
             {
-                continue;
+                return null;
             }
+
+            transformedPositions[
+                index] =
+                transformed.X;
+            transformedPositions[
+                index +
+                1] =
+                transformed.Y;
+            transformedPositions[
+                index +
+                2] =
+                transformed.Z;
 
             minimumX =
                 Math.Min(
@@ -1056,27 +1082,40 @@ public static class WorldLoader
             !double.IsFinite(
                 minimumZ) ||
             !double.IsFinite(
-                maximumZ) ||
-            maximumX -
-                minimumX <=
-                0.0001 ||
-            maximumY -
-                minimumY <=
-                0.0001 ||
-            maximumZ -
-                minimumZ <=
-                0.0001)
+                maximumZ))
         {
             return null;
         }
 
-        return new WorldSceneryCollisionBounds(
-            minimumX,
-            maximumX,
-            minimumY,
-            maximumY,
-            minimumZ,
-            maximumZ);
+        WorldSceneryCollisionBounds?
+            bounds =
+                null;
+
+        if (maximumX -
+                minimumX >
+                0.0001 &&
+            maximumY -
+                minimumY >
+                0.0001 &&
+            maximumZ -
+                minimumZ >
+                0.0001)
+        {
+            bounds =
+                new WorldSceneryCollisionBounds(
+                    minimumX,
+                    maximumX,
+                    minimumY,
+                    maximumY,
+                    minimumZ,
+                    maximumZ);
+        }
+
+        return new ResolvedSceneryCollisionGeometry(
+            new WorldSceneryCollisionGeometry(
+                transformedPositions,
+                geometry.Indices.ToArray()),
+            bounds);
     }
 
     private static int GetTextureOccurrenceIndex(
