@@ -93,7 +93,8 @@ public sealed class D3D11RenderWindow : Form
         float HalfWidth,
         float MinimumY,
         float MaximumY,
-        bool Surface);
+        bool Surface,
+        bool UsesCollisionMesh);
 
     private static readonly FeatureLevel[] RequestedFeatureLevels =
     [
@@ -8176,7 +8177,8 @@ public sealed class D3D11RenderWindow : Form
                         minimumVertical,
                     baseY +
                         maximumVertical,
-                    asset.Surface));
+                    asset.Surface,
+                    asset.CollisionBounds is not null));
         }
 
         return volumes;
@@ -8444,7 +8446,7 @@ public sealed class D3D11RenderWindow : Form
                 Path.Combine(
                     AppContext.BaseDirectory,
                     "scenery-collision.log"),
-                $"{DateTimeOffset.Now:O}|objectId={volume.ObjectId}|asset={volume.AssetPath}|surface={volume.Surface}|position={player.X:0.00},{player.Y:0.00},{player.Z:0.00}|speed={player.SpeedMetersPerSecond * 3.6:0.0} km/h{Environment.NewLine}");
+                $"{DateTimeOffset.Now:O}|objectId={volume.ObjectId}|asset={volume.AssetPath}|source={(volume.UsesCollisionMesh ? "collision_mesh" : "boundingbox")}|surface={volume.Surface}|halfLength={volume.HalfLength:0.00}|halfWidth={volume.HalfWidth:0.00}|y={volume.MinimumY:0.00}..{volume.MaximumY:0.00}|position={player.X:0.00},{player.Y:0.00},{player.Z:0.00}|speed={player.SpeedMetersPerSecond * 3.6:0.0} km/h{Environment.NewLine}");
         }
         catch (Exception exception)
         {
