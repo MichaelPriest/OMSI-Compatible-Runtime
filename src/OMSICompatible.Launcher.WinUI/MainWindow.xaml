@@ -61,48 +61,84 @@
 
                     <StackPanel Spacing="6">
                         <Button x:Name="HomeNavButton"
-                                Content="Início"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
-                                Click="HomeNavButton_Click"/>
+                                Click="HomeNavButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE80F;"/>
+                                <TextBlock Text="Início" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="PlayNavButton"
-                                Content="Jogar"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
-                                Click="NewSessionButton_Click"/>
+                                Click="NewSessionButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE768;"/>
+                                <TextBlock Text="Jogar" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="MapsNavButton"
-                                Content="Mapas"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
-                                Click="MapsNavButton_Click"/>
+                                Click="MapsNavButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE707;"/>
+                                <TextBlock Text="Mapas" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="VehiclesNavButton"
-                                Content="Veículos"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
-                                Click="VehiclesNavButton_Click"/>
-                        <Button Content="Add-ons"
-                                Height="46"
-                                HorizontalContentAlignment="Left"/>
+                                Click="VehiclesNavButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE804;"/>
+                                <TextBlock Text="Veículos" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Height="46"
+                                HorizontalContentAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;"/>
+                                <TextBlock Text="Add-ons" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="CompatibilityNavButton"
-                                Content="Compatibilidade"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
-                                Click="CompatibilityNavButton_Click"/>
+                                Click="CompatibilityNavButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8EF;"/>
+                                <TextBlock Text="Compatibilidade" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="ControlsNavButton"
-                                Content="Controles"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
-                                Click="ControlsNavButton_Click"/>
+                                Click="ControlsNavButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE7F8;"/>
+                                <TextBlock Text="Controles" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="SettingsNavButton"
-                                Content="Configurações"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
-                                Click="SettingsNavButton_Click"/>
+                                Click="SettingsNavButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE713;"/>
+                                <TextBlock Text="Configurações" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="DiagnosticsNavButton"
-                                Content="Diagnóstico"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
-                                Click="DiagnosticsNavButton_Click"/>
+                                Click="DiagnosticsNavButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE9D9;"/>
+                                <TextBlock Text="Diagnóstico" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
 
                     <StackPanel Grid.Row="1" Spacing="3">
@@ -255,10 +291,18 @@
                                  PlaceholderText="Pasta raiz do OMSI"/>
                         <StackPanel Orientation="Horizontal"
                                     Spacing="8">
-                            <Button Content="Procurar pasta"
-                                    Click="BrowseButton_Click"/>
-                            <Button Content="Atualizar conteúdo"
-                                    Click="RefreshButton_Click"/>
+                            <Button Click="BrowseButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE838;"/>
+                                    <TextBlock Text="Procurar pasta"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Click="RefreshButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE72C;"/>
+                                    <TextBlock Text="Atualizar conteúdo"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                         <ComboBox x:Name="MapBox"
                                   Header="Mapa"
@@ -303,15 +347,24 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Border Background="#111E2D"
-                                    Height="190">
+                                    Height="190"
+                                    CornerRadius="10">
                                 <Grid>
                                     <Image x:Name="BusPreviewImage"
-                                           Stretch="UniformToFill"/>
-                                    <TextBlock x:Name="BusPreviewEmptyText"
-                                               Text="Sem imagem de prévia"
-                                               Foreground="#71869B"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
+                                           Stretch="Uniform"/>
+                                    <StackPanel x:Name="BusPreviewEmptyPanel"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Spacing="8">
+                                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                                  Glyph="&#xE804;"
+                                                  FontSize="42"
+                                                  Foreground="#71869B"/>
+                                        <TextBlock x:Name="BusPreviewEmptyText"
+                                                   Text="Sem imagem de prévia"
+                                                   Foreground="#71869B"
+                                                   HorizontalAlignment="Center"/>
+                                    </StackPanel>
                                 </Grid>
                             </Border>
                             <StackPanel Grid.Column="1"
@@ -324,9 +377,17 @@
                                 <TextBlock x:Name="BusPreviewSubtitle" Text="" Foreground="#AFC0D2"/>
                                 <TextBlock x:Name="BusPreviewSkin" Text="" Foreground="#879AAD"/>
                                 <Button x:Name="PlayButton"
-                                        Content="INICIAR SIMULAÇÃO"
                                         Height="50"
-                                        Click="PlayButton_Click"/>
+                                        Click="PlayButton_Click">
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="10"
+                                                HorizontalAlignment="Center">
+                                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                                  Glyph="&#xE768;"/>
+                                        <TextBlock Text="INICIAR SIMULAÇÃO"
+                                                   FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
