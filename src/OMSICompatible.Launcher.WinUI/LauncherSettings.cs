@@ -10,6 +10,7 @@ internal sealed record LauncherSettings(
     bool StartWithoutBus = false,
     string? RepaintName = null,
     string? RepaintCtiRelativePath = null,
+    string? HofName = null,
     string? LastSessionMapName = null,
     string? LastSessionBusRelativePath = null,
     string? LastSessionSkin = null,
