@@ -282,10 +282,17 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="28"
                                 Spacing="14">
-                        <TextBlock Text="Nova sessão"
-                                   Foreground="White"
-                                   FontSize="32"
-                                   FontWeight="Bold"/>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                      Glyph="&#xE768;"
+                                      FontSize="28"
+                                      Foreground="#8DB7FF"/>
+                            <TextBlock Text="Nova sessão"
+                                       Foreground="White"
+                                       FontSize="32"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                         <TextBox x:Name="ContentPathBox"
                                  Header="Biblioteca OMSI"
                                  PlaceholderText="Pasta raiz do OMSI"/>
@@ -431,10 +438,17 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Text="Mapas"
-                               Foreground="White"
-                               FontSize="32"
-                               FontWeight="Bold"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                  Glyph="&#xE707;"
+                                  FontSize="28"
+                                  Foreground="#8DB7FF"/>
+                        <TextBlock Text="Mapas"
+                                   Foreground="White"
+                                   FontSize="32"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Grid Grid.Row="1" Margin="0,12,0,12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -468,10 +482,17 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Text="Veículos"
-                               Foreground="White"
-                               FontSize="32"
-                               FontWeight="Bold"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                  Glyph="&#xE806;"
+                                  FontSize="28"
+                                  Foreground="#8DB7FF"/>
+                        <TextBlock Text="Veículos"
+                                   Foreground="White"
+                                   FontSize="32"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Grid Grid.Row="1" Margin="0,12,0,12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -506,7 +527,13 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <StackPanel Spacing="5">
-                        <TextBlock Text="Controles" Foreground="White" FontSize="32" FontWeight="Bold"/>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                      Glyph="&#xE7F8;"
+                                      FontSize="28"
+                                      Foreground="#8DB7FF"/>
+                            <TextBlock Text="Controles" Foreground="White" FontSize="32" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </StackPanel>
                         <TextBlock x:Name="ControlsSubtitleText" Text="Arquivos reais de entrada OMSI" Foreground="#8FA2B7"/>
                     </StackPanel>
                     <StackPanel Grid.Row="1"
@@ -547,10 +574,17 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="28"
                                 Spacing="10">
-                        <TextBlock Text="Configurações"
-                                   Foreground="White"
-                                   FontSize="32"
-                                   FontWeight="Bold"/>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon FontFamily="Segoe Fluent Icons"
+                                      Glyph="&#xE713;"
+                                      FontSize="28"
+                                      Foreground="#8DB7FF"/>
+                            <TextBlock Text="Configurações"
+                                       Foreground="White"
+                                       FontSize="32"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="Importar options.cfg" Click="ImportOmsiOptionsButton_Click"/>
                             <Button Content="Salvar" Click="SaveRuntimeOptionsButton_Click"/>
@@ -590,10 +624,17 @@
                   Background="#0A1420">
                 <StackPanel Margin="28"
                             Spacing="10">
-                    <TextBlock Text="Compatibilidade"
-                               Foreground="White"
-                               FontSize="32"
-                               FontWeight="Bold"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                  Glyph="&#xE73E;"
+                                  FontSize="28"
+                                  Foreground="#8DB7FF"/>
+                        <TextBlock Text="Compatibilidade"
+                                   Foreground="White"
+                                   FontSize="32"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="16">
                         <TextBlock x:Name="CompatibilityMapCountText" Text="0" Foreground="White"/>
                         <TextBlock x:Name="CompatibilityVehicleCountText" Text="0" Foreground="White"/>
@@ -618,10 +659,17 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Text="Diagnóstico"
-                               Foreground="White"
-                               FontSize="32"
-                               FontWeight="Bold"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon FontFamily="Segoe Fluent Icons"
+                                  Glyph="&#xE9D9;"
+                                  FontSize="28"
+                                  Foreground="#8DB7FF"/>
+                        <TextBlock Text="Diagnóstico"
+                                   Foreground="White"
+                                   FontSize="32"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
                     <StackPanel Grid.Row="1" Margin="0,10,0,10" Spacing="5">
                         <TextBlock x:Name="DiagnosticsRuntimeText" Text="Runtime" Foreground="#AFC0D2"/>
                         <TextBlock x:Name="DiagnosticsContentText" Text="Conteúdo" Foreground="#AFC0D2"/>
