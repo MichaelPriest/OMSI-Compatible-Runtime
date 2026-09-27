@@ -469,6 +469,11 @@ public sealed partial class MainWindow :
             _sceneryObjectCount =
                 await objectCountTask;
 
+            // Fleet/object discovery may finish after the user has already
+            // opened the map library. Force a lazy card rebuild with the full
+            // data set on the next library access.
+            _libraryCardsDirty = true;
+
             _entryPoints =
                 await entryPointsTask;
 
