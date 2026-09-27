@@ -82,6 +82,16 @@ public sealed class D3D11RenderWindow : Form
         Four
     }
 
+    private readonly record struct RuntimeSceneryCollisionVolume(
+        int Key,
+        Vector2 Center,
+        Vector2 Forward,
+        Vector2 Right,
+        float HalfLength,
+        float HalfWidth,
+        float MinimumY,
+        float MaximumY);
+
     private static readonly FeatureLevel[] RequestedFeatureLevels =
     [
         FeatureLevel.Level_11_1,
@@ -371,6 +381,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly bool _vehicleToVehicleCollisionsEnabled;
     private readonly HashSet<int> _activeTrafficCollisionAgents = [];
     private readonly Dictionary<int, double> _lastTrafficCollisionSeconds = [];
+    private readonly HashSet<int> _activeSceneryCollisionVolumes = [];
+    private IReadOnlyList<RuntimeSceneryCollisionVolume> _sceneryCollisionVolumes =
+        Array.Empty<RuntimeSceneryCollisionVolume>();
     private int _trafficCollisionCount;
     private int _speedViolationCount;
     private int _redLightViolationCount;
@@ -557,6 +570,10 @@ public sealed class D3D11RenderWindow : Form
             new RuntimeTerrainSampler(
                 windowInfo.Tiles);
 
+        _sceneryCollisionVolumes =
+            BuildSceneryCollisionVolumes(
+                windowInfo);
+
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
             windowInfo.Vehicle?.Physics,
@@ -734,6 +751,12 @@ public sealed class D3D11RenderWindow : Form
         _terrainSurfaceSampler =
             new RuntimeTerrainSampler(
                 windowInfo.Tiles);
+
+        _sceneryCollisionVolumes =
+            BuildSceneryCollisionVolumes(
+                windowInfo);
+
+        _activeSceneryCollisionVolumes.Clear();
 
         _vehicle.ReplaceTerrainTiles(
             windowInfo.Tiles);
@@ -7681,6 +7704,8 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        UpdateSceneryCollisionState();
+
         UpdateTrafficCollisionState(
             nowSeconds);
 
@@ -7794,6 +7819,366 @@ public sealed class D3D11RenderWindow : Form
             _speedingSeconds =
                 0.0;
         }
+    }
+
+    private IReadOnlyList<RuntimeSceneryCollisionVolume>
+        BuildSceneryCollisionVolumes(
+            RuntimeWindowInfo windowInfo)
+    {
+        if (windowInfo.Objects.Count ==
+                0 ||
+            windowInfo.SceneryAssets.Count ==
+                0)
+        {
+            return Array.Empty<RuntimeSceneryCollisionVolume>();
+        }
+
+        const double tileSizeMeters =
+            300.0;
+
+        var volumes =
+            new List<RuntimeSceneryCollisionVolume>();
+
+        var key =
+            0;
+
+        foreach (var instance in
+                 windowInfo.Objects)
+        {
+            if (!windowInfo.SceneryAssets.TryGetValue(
+                    instance.AssetPath,
+                    out var asset) ||
+                asset.NoCollision ||
+                asset.BoundingBox is not
+                    { } box)
+            {
+                continue;
+            }
+
+            var worldX =
+                instance.TileX *
+                    tileSizeMeters +
+                instance.X;
+
+            var worldZ =
+                instance.TileY *
+                    tileSizeMeters +
+                instance.Z;
+
+            var terrainOffset =
+                0.0f;
+
+            if (!asset.UsesAbsoluteHeight &&
+                _terrainSurfaceSampler.TrySample(
+                    worldX,
+                    worldZ,
+                    out var groundHeight))
+            {
+                terrainOffset =
+                    groundHeight;
+            }
+
+            var heading =
+                (float)(
+                    instance.HeadingDegrees *
+                    Math.PI /
+                    180.0);
+
+            var rotation =
+                Matrix4x4.CreateRotationY(
+                    heading);
+
+            // OMSI [boundingbox]: X/Y are the horizontal object plane and Z
+            // is height. Scenery geometry mirrors native X before placement,
+            // so mirror CenterX here as well.
+            var localCenter =
+                new Vector3(
+                    (float)-box.CenterX,
+                    (float)box.CenterZ,
+                    (float)box.CenterY);
+
+            var rotatedCenter =
+                Vector3.TransformNormal(
+                    localCenter,
+                    rotation);
+
+            var center =
+                new Vector2(
+                    (float)worldX +
+                        rotatedCenter.X,
+                    (float)worldZ +
+                        rotatedCenter.Z);
+
+            var forward3 =
+                Vector3.TransformNormal(
+                    Vector3.UnitZ,
+                    rotation);
+
+            var right3 =
+                Vector3.TransformNormal(
+                    -Vector3.UnitX,
+                    rotation);
+
+            var forward =
+                Vector2.Normalize(
+                    new Vector2(
+                        forward3.X,
+                        forward3.Z));
+
+            var right =
+                Vector2.Normalize(
+                    new Vector2(
+                        right3.X,
+                        right3.Z));
+
+            var centerY =
+                (float)instance.Y +
+                terrainOffset +
+                rotatedCenter.Y;
+
+            volumes.Add(
+                new RuntimeSceneryCollisionVolume(
+                    key++,
+                    center,
+                    forward,
+                    right,
+                    (float)Math.Max(
+                        box.WidthY *
+                            0.5,
+                        0.05),
+                    (float)Math.Max(
+                        box.LengthX *
+                            0.5,
+                        0.05),
+                    centerY -
+                        (float)box.HeightZ *
+                        0.5f,
+                    centerY +
+                        (float)box.HeightZ *
+                        0.5f));
+        }
+
+        return volumes;
+    }
+
+    private void UpdateSceneryCollisionState()
+    {
+        if (PlayerTrafficObstacle is not
+                { } player ||
+            _sceneryCollisionVolumes.Count ==
+                0)
+        {
+            _activeSceneryCollisionVolumes.Clear();
+            return;
+        }
+
+        var collided =
+            new HashSet<int>();
+
+        var heading =
+            (float)player.HeadingRadians;
+
+        var playerForward =
+            new Vector2(
+                MathF.Sin(
+                    heading),
+                MathF.Cos(
+                    heading));
+
+        var playerRight =
+            new Vector2(
+                playerForward.Y,
+                -playerForward.X);
+
+        var playerCenter =
+            new Vector2(
+                (float)player.X,
+                (float)player.Z);
+
+        var playerMinimumY =
+            (float)player.Y -
+            0.25f;
+
+        var playerMaximumY =
+            (float)player.Y +
+            3.75f;
+
+        foreach (var volume in
+                 _sceneryCollisionVolumes)
+        {
+            if (playerMaximumY <
+                    volume.MinimumY ||
+                playerMinimumY >
+                    volume.MaximumY)
+            {
+                continue;
+            }
+
+            var centerDelta =
+                volume.Center -
+                playerCenter;
+
+            if (!TryResolveOrientedRectangleCorrection(
+                    centerDelta,
+                    playerForward,
+                    playerRight,
+                    (float)player.HalfLengthMeters,
+                    (float)player.HalfWidthMeters,
+                    volume.Forward,
+                    volume.Right,
+                    volume.HalfLength,
+                    volume.HalfWidth,
+                    out var correction))
+            {
+                continue;
+            }
+
+            collided.Add(
+                volume.Key);
+
+            if (!_activeSceneryCollisionVolumes.Contains(
+                    volume.Key))
+            {
+                _vehicle.ApplySceneryCollisionResponse(
+                    correction,
+                    Math.Abs(
+                        _vehicle.SpeedKph));
+            }
+            else
+            {
+                _vehicle.HoldTrafficCollisionContact();
+            }
+        }
+
+        _activeSceneryCollisionVolumes.RemoveWhere(
+            key =>
+                !collided.Contains(
+                    key));
+
+        foreach (var key in
+                 collided)
+        {
+            _activeSceneryCollisionVolumes.Add(
+                key);
+        }
+    }
+
+    private static bool TryResolveOrientedRectangleCorrection(
+        Vector2 centerDelta,
+        Vector2 firstForward,
+        Vector2 firstRight,
+        float firstHalfLength,
+        float firstHalfWidth,
+        Vector2 secondForward,
+        Vector2 secondRight,
+        float secondHalfLength,
+        float secondHalfWidth,
+        out Vector2 correction)
+    {
+        correction =
+            Vector2.Zero;
+
+        Span<Vector2> axes =
+        [
+            firstForward,
+            firstRight,
+            secondForward,
+            secondRight
+        ];
+
+        var minimumOverlap =
+            float.PositiveInfinity;
+
+        var bestAxis =
+            Vector2.Zero;
+
+        foreach (var rawAxis in axes)
+        {
+            if (rawAxis.LengthSquared() <
+                0.000001f)
+            {
+                continue;
+            }
+
+            var axis =
+                Vector2.Normalize(
+                    rawAxis);
+
+            var distance =
+                Math.Abs(
+                    Vector2.Dot(
+                        centerDelta,
+                        axis));
+
+            var firstRadius =
+                Math.Abs(
+                    Vector2.Dot(
+                        firstForward,
+                        axis)) *
+                    firstHalfLength +
+                Math.Abs(
+                    Vector2.Dot(
+                        firstRight,
+                        axis)) *
+                    firstHalfWidth;
+
+            var secondRadius =
+                Math.Abs(
+                    Vector2.Dot(
+                        secondForward,
+                        axis)) *
+                    secondHalfLength +
+                Math.Abs(
+                    Vector2.Dot(
+                        secondRight,
+                        axis)) *
+                    secondHalfWidth;
+
+            var overlap =
+                firstRadius +
+                secondRadius -
+                distance;
+
+            if (overlap <=
+                0.0f)
+            {
+                return false;
+            }
+
+            if (overlap <
+                minimumOverlap)
+            {
+                minimumOverlap =
+                    overlap;
+
+                var sign =
+                    Vector2.Dot(
+                        centerDelta,
+                        axis) >=
+                    0.0f
+                        ? -1.0f
+                        : 1.0f;
+
+                bestAxis =
+                    axis *
+                    sign;
+            }
+        }
+
+        if (!float.IsFinite(
+                minimumOverlap) ||
+            bestAxis.LengthSquared() <
+                0.000001f)
+        {
+            return false;
+        }
+
+        correction =
+            bestAxis *
+            (minimumOverlap +
+             0.02f);
+
+        return true;
     }
 
     private void UpdateTrafficCollisionState(
