@@ -35,6 +35,8 @@ internal sealed class RuntimeDriveVehicle :
         RuntimeSplineSurfaceSampler.Empty;
     private RuntimeSplineSurfaceSampler _scenerySurfaces =
         RuntimeSplineSurfaceSampler.Empty;
+    private RuntimeSplineSurfaceSampler _collisionScenerySurfaces =
+        RuntimeSplineSurfaceSampler.Empty;
     private readonly RuntimeVehicleSectionInfo[] _sections;
     private readonly float _wheelBaseMeters;
     private readonly float _frontAxleLongitudinalMeters;
@@ -604,14 +606,22 @@ internal sealed class RuntimeDriveVehicle :
     }
 
     public void ReplaceScenerySurfaceGeometry(
-        RuntimeObjectGeometry geometry)
+        RuntimeObjectGeometry geometry,
+        RuntimeWindowInfo windowInfo)
     {
         ArgumentNullException.ThrowIfNull(
             geometry);
 
+        ArgumentNullException.ThrowIfNull(
+            windowInfo);
+
         _scenerySurfaces =
             RuntimeSplineSurfaceSampler.CreateSurfaceObjects(
                 geometry);
+
+        _collisionScenerySurfaces =
+            RuntimeSplineSurfaceSampler.CreateCollisionSurfaceObjects(
+                windowInfo);
 
         SnapRuntimePositionToDrivingSurface();
         SynchronizeOdeBodyFromRuntime();
@@ -767,7 +777,7 @@ internal sealed class RuntimeDriveVehicle :
                 true;
         }
 
-        if (_scenerySurfaces.TrySampleBelow(
+        if (TrySampleScenerySurface(
                 worldX,
                 worldZ,
                 maximumSurfaceHeight,
@@ -786,13 +796,57 @@ internal sealed class RuntimeDriveVehicle :
         return found;
     }
 
+    private bool TrySampleScenerySurface(
+        double worldX,
+        double worldZ,
+        float maximumSurfaceHeight,
+        out float height)
+    {
+        var found =
+            false;
+
+        height =
+            float.NegativeInfinity;
+
+        if (_scenerySurfaces.TrySampleBelow(
+                worldX,
+                worldZ,
+                maximumSurfaceHeight,
+                out var visualSurfaceHeight))
+        {
+            height =
+                visualSurfaceHeight;
+
+            found =
+                true;
+        }
+
+        if (_collisionScenerySurfaces.TrySampleBelow(
+                worldX,
+                worldZ,
+                maximumSurfaceHeight,
+                out var collisionSurfaceHeight) &&
+            (!found ||
+             collisionSurfaceHeight >
+                 height))
+        {
+            height =
+                collisionSurfaceHeight;
+
+            found =
+                true;
+        }
+
+        return found;
+    }
+
     public bool IsSupportedByScenerySurface(
         double worldX,
         double worldZ,
         float referenceHeight,
         float toleranceMeters = 0.45f)
     {
-        if (!_scenerySurfaces.TrySampleBelow(
+        if (!TrySampleScenerySurface(
                 worldX,
                 worldZ,
                 referenceHeight +
@@ -1181,6 +1235,7 @@ internal sealed class RuntimeDriveVehicle :
                 $"scriptDynamics={_omsiScriptDynamicsEnabled}",
                 $"splineSurfaceTriangles={_splineSurfaces.TriangleCount}",
                 $"scenerySurfaceTriangles={_scenerySurfaces.TriangleCount}",
+                $"collisionScenerySurfaceTriangles={_collisionScenerySurfaces.TriangleCount}",
                 $"position={F(Position.X)},{F(Position.Y)},{F(Position.Z)}",
                 $"speedKph={F(SpeedKph)}",
                 $"verticalAccelerationMps2={F(_verticalAccelerationMetersPerSecondSquared)}",
