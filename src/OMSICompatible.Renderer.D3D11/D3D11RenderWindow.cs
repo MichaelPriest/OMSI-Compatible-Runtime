@@ -383,6 +383,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly int _maximumSoundCount;
     private readonly bool _aiVehicleSoundsEnabled;
     private readonly bool _vehicleToVehicleCollisionsEnabled;
+    private readonly bool _vehicleLandscapeCollisionsEnabled;
     private readonly HashSet<int> _activeTrafficCollisionAgents = [];
     private readonly Dictionary<int, double> _lastTrafficCollisionSeconds = [];
     private readonly HashSet<int> _activeSceneryCollisionVolumes = [];
@@ -425,6 +426,7 @@ public sealed class D3D11RenderWindow : Form
         int maximumSoundCount = 400,
         bool aiVehicleSoundsEnabled = true,
         bool vehicleToVehicleCollisionsEnabled = true,
+        bool vehicleLandscapeCollisionsEnabled = true,
         bool materialLightMapEnabled = true,
         bool materialReflectionMapEnabled = true,
         bool materialBumpMapEnabled = true,
@@ -487,6 +489,8 @@ public sealed class D3D11RenderWindow : Form
             aiVehicleSoundsEnabled;
         _vehicleToVehicleCollisionsEnabled =
             vehicleToVehicleCollisionsEnabled;
+        _vehicleLandscapeCollisionsEnabled =
+            vehicleLandscapeCollisionsEnabled;
         _materialLightMapEnabled =
             materialLightMapEnabled;
         _materialReflectionMapEnabled =
