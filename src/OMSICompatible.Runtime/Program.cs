@@ -40,6 +40,11 @@ internal static class Program
                 args,
                 "--repaint-cti");
 
+        var hofPath =
+            GetOption(
+                args,
+                "--hof");
+
         var noBus =
             HasFlag(
                 args,
@@ -260,7 +265,8 @@ internal static class Program
                 selectedEntryPoint,
                 externalLoading,
                 repaintName,
-                repaintCtiRelativePath);
+                repaintCtiRelativePath,
+                hofPath);
 
         Application.Run(context);
         return 0;
