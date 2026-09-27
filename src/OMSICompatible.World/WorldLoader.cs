@@ -105,6 +105,12 @@ public static class WorldLoader
                     source.GradientStartPercent,
                     source.GradientEndPercent,
                     source.UsesHeightProfile,
+                    source.DeltaHeightMeters,
+                    source.CantStartPercent,
+                    source.CantEndPercent,
+                    source.SkewStart,
+                    source.SkewEnd,
+                    source.Mirror,
                     source.SourceLineNumber,
                     ConvertTrafficRules(
                         source.TrafficRules)))
