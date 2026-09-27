@@ -2468,7 +2468,12 @@ internal sealed class RuntimeApplicationContext :
                                     pair.Value.CollisionBounds.MinimumY,
                                     pair.Value.CollisionBounds.MaximumY,
                                     pair.Value.CollisionBounds.MinimumZ,
-                                    pair.Value.CollisionBounds.MaximumZ)),
+                                    pair.Value.CollisionBounds.MaximumZ),
+                            pair.Value.CollisionGeometry is null
+                                ? null
+                                : new RuntimeSceneryCollisionGeometryInfo(
+                                    pair.Value.CollisionGeometry.Positions,
+                                    pair.Value.CollisionGeometry.Indices)),
                     StringComparer.OrdinalIgnoreCase);
 
         var runtimeGroundTextures =
