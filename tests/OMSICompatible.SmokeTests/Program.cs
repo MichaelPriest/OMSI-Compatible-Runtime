@@ -4293,6 +4293,52 @@ try
             5.0,
         "Grade-separated player vehicle incorrectly blocked the junction below.");
 
+    var playerBlockedExitSimulation =
+        new WorldTrafficSimulation(
+            playerOccupiedJunctionNetwork,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1);
+
+    playerBlockedExitSimulation.SetExternalObstacle(
+        new WorldTrafficObstacleState(
+            new WorldVector3(
+                0.0,
+                0.0,
+                19.5),
+            0.0,
+            0.0,
+            HalfLengthMeters:
+                6.0,
+            HalfWidthMeters:
+                1.35));
+
+    playerBlockedExitSimulation.Step(
+        2.0);
+
+    var playerBlockedExitAgent =
+        playerBlockedExitSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        playerBlockedExitAgent.SegmentIndex ==
+            0 &&
+        playerBlockedExitAgent.Position.Z <
+            5.0 &&
+        playerBlockedExitAgent.AiBrakeLight,
+        "AI traffic entered the junction while the player bus blocked the exit.");
+
     var staggeredTraffic =
         new WorldTrafficSimulation(
             trafficPaths,
