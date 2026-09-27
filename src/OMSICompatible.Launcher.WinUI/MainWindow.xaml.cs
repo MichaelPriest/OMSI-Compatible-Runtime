@@ -564,6 +564,7 @@ public sealed partial class MainWindow :
         await LoadEntryPointsAsync(
             map);
 
+        PopulateHofs();
         UpdatePlayAvailability();
         SaveSettings();
     }
