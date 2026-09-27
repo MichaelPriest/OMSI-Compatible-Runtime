@@ -2388,6 +2388,9 @@ public sealed partial class MainWindow :
         SettingsGameControllerCheck.IsChecked =
             _runtimeOptions.GameControllerEnabled;
 
+        SettingsLandscapeCollisionsCheck.IsChecked =
+            _runtimeOptions.VehicleLandscapeCollisions;
+
         SettingsStreamingRadiusBox.Text =
             _runtimeOptions.RuntimeStreamingRadius.ToString(
                 System.Globalization.CultureInfo.InvariantCulture);
@@ -2584,6 +2587,10 @@ public sealed partial class MainWindow :
 
         _runtimeOptions.GameControllerEnabled =
             SettingsGameControllerCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.VehicleLandscapeCollisions =
+            SettingsLandscapeCollisionsCheck.IsChecked ==
             true;
 
         _runtimeOptions.RuntimeStreamingRadius =
