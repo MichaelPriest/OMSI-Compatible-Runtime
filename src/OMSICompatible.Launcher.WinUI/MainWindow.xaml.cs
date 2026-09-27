@@ -384,6 +384,8 @@ public sealed partial class MainWindow :
 
         _refreshing = true;
         PlayButton.IsEnabled = false;
+        ContentDiscoveryProgress.Visibility =
+            Visibility.Visible;
 
         try
         {
@@ -534,6 +536,8 @@ public sealed partial class MainWindow :
         }
         finally
         {
+            ContentDiscoveryProgress.Visibility =
+                Visibility.Collapsed;
             _refreshing = false;
             SaveSettings();
         }
