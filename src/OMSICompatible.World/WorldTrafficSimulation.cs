@@ -1792,6 +1792,89 @@ public sealed class WorldTrafficSimulation
             }
         }
 
+        if (_externalObstacle is
+                { } obstacle &&
+            obstacle.SpeedMetersPerSecond <=
+                2.5)
+        {
+            var requiredPlayerClearance =
+                Math.Min(
+                    exitLength,
+                    4.0 +
+                    EstimateTrafficVehicleHalfLength(
+                        agent.VehiclePath) +
+                    obstacle.HalfLengthMeters);
+
+            var entryDistance =
+                agent.TravelForward
+                    ? 0.0
+                    : exitLength;
+
+            var clearanceDistance =
+                agent.TravelForward
+                    ? requiredPlayerClearance
+                    : Math.Max(
+                        exitLength -
+                            requiredPlayerClearance,
+                        0.0);
+
+            SampleSegment(
+                exitSegment,
+                entryDistance,
+                out var exitEntry,
+                out _);
+
+            SampleSegment(
+                exitSegment,
+                clearanceDistance,
+                out var exitClearanceEnd,
+                out _);
+
+            var obstacleForwardX =
+                Math.Sin(
+                    obstacle.HeadingRadians);
+            var obstacleForwardZ =
+                Math.Cos(
+                    obstacle.HeadingRadians);
+
+            var obstacleStart =
+                new WorldVector3(
+                    obstacle.Position.X -
+                        obstacleForwardX *
+                        obstacle.HalfLengthMeters,
+                    obstacle.Position.Y,
+                    obstacle.Position.Z -
+                        obstacleForwardZ *
+                        obstacle.HalfLengthMeters);
+
+            var obstacleEnd =
+                new WorldVector3(
+                    obstacle.Position.X +
+                        obstacleForwardX *
+                        obstacle.HalfLengthMeters,
+                    obstacle.Position.Y,
+                    obstacle.Position.Z +
+                        obstacleForwardZ *
+                        obstacle.HalfLengthMeters);
+
+            var clearanceWidth =
+                obstacle.HalfWidthMeters +
+                EstimateTrafficVehicleHalfWidth(
+                    agent.VehiclePath) +
+                0.15;
+
+            if (SegmentDistanceSquared(
+                    exitEntry,
+                    exitClearanceEnd,
+                    obstacleStart,
+                    obstacleEnd) <=
+                clearanceWidth *
+                    clearanceWidth)
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
