@@ -53,13 +53,13 @@ public sealed record WorldSplinePlacement(
     double GradientStartPercent,
     double GradientEndPercent,
     bool UsesHeightProfile,
-    double DeltaHeightMeters,
-    double CantStartPercent,
-    double CantEndPercent,
-    double SkewStart,
-    double SkewEnd,
-    bool Mirror,
-    int SourceLineNumber,
+    double DeltaHeightMeters = 0.0,
+    double CantStartPercent = 0.0,
+    double CantEndPercent = 0.0,
+    double SkewStart = 0.0,
+    double SkewEnd = 0.0,
+    bool Mirror = false,
+    int SourceLineNumber = 0,
     IReadOnlyList<WorldTrafficRule>? TrafficRules = null);
 
 public sealed record WorldTerrainMask(
