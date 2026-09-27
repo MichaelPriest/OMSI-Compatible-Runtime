@@ -887,7 +887,11 @@ public static class WorldLoader
                         definition.Fixed,
                         definition.Surface,
                         definition.CollisionMeshSource,
-                        definition.BoundingBox);
+                        definition.BoundingBox,
+                        ResolveCollisionBounds(
+                            contentRoot.RootPath,
+                            dependency.ResolvedPath,
+                            definition.CollisionMeshSource));
             }
             catch (Exception ex) when (
                 ex is IOException or
@@ -911,6 +915,152 @@ public static class WorldLoader
         }
 
         return result;
+    }
+
+    private static WorldSceneryCollisionBounds?
+        ResolveCollisionBounds(
+            string contentRoot,
+            string sceneryObjectPath,
+            string? collisionMeshSource)
+    {
+        if (string.IsNullOrWhiteSpace(
+                collisionMeshSource))
+        {
+            return null;
+        }
+
+        var meshPath =
+            ResolveMeshPath(
+                contentRoot,
+                sceneryObjectPath,
+                collisionMeshSource);
+
+        if (meshPath is null ||
+            !File.Exists(
+                meshPath))
+        {
+            return null;
+        }
+
+        var geometry =
+            string.Equals(
+                Path.GetExtension(
+                    meshPath),
+                ".x",
+                StringComparison.OrdinalIgnoreCase)
+                ? new OmsiDirectXTextGeometryReader()
+                    .Read(
+                        meshPath)
+                : OmsiO3dGeometryReader.ReadFile(
+                    meshPath);
+
+        if (!string.IsNullOrWhiteSpace(
+                geometry.ErrorCode) ||
+            geometry.Positions.Length <
+                3)
+        {
+            return null;
+        }
+
+        var minimumX =
+            double.PositiveInfinity;
+        var maximumX =
+            double.NegativeInfinity;
+        var minimumY =
+            double.PositiveInfinity;
+        var maximumY =
+            double.NegativeInfinity;
+        var minimumZ =
+            double.PositiveInfinity;
+        var maximumZ =
+            double.NegativeInfinity;
+
+        for (var index = 0;
+             index + 2 <
+                 geometry.Positions.Length;
+             index +=
+                 3)
+        {
+            var x =
+                geometry.Positions[
+                    index];
+            var y =
+                geometry.Positions[
+                    index +
+                    1];
+            var z =
+                geometry.Positions[
+                    index +
+                    2];
+
+            if (!float.IsFinite(
+                    x) ||
+                !float.IsFinite(
+                    y) ||
+                !float.IsFinite(
+                    z))
+            {
+                continue;
+            }
+
+            minimumX =
+                Math.Min(
+                    minimumX,
+                    x);
+            maximumX =
+                Math.Max(
+                    maximumX,
+                    x);
+            minimumY =
+                Math.Min(
+                    minimumY,
+                    y);
+            maximumY =
+                Math.Max(
+                    maximumY,
+                    y);
+            minimumZ =
+                Math.Min(
+                    minimumZ,
+                    z);
+            maximumZ =
+                Math.Max(
+                    maximumZ,
+                    z);
+        }
+
+        if (!double.IsFinite(
+                minimumX) ||
+            !double.IsFinite(
+                maximumX) ||
+            !double.IsFinite(
+                minimumY) ||
+            !double.IsFinite(
+                maximumY) ||
+            !double.IsFinite(
+                minimumZ) ||
+            !double.IsFinite(
+                maximumZ) ||
+            maximumX -
+                minimumX <=
+                0.0001 ||
+            maximumY -
+                minimumY <=
+                0.0001 ||
+            maximumZ -
+                minimumZ <=
+                0.0001)
+        {
+            return null;
+        }
+
+        return new WorldSceneryCollisionBounds(
+            minimumX,
+            maximumX,
+            minimumY,
+            maximumY,
+            minimumZ,
+            maximumZ);
     }
 
     private static int GetTextureOccurrenceIndex(
