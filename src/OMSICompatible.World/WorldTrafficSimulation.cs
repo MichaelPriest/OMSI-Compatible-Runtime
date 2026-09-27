@@ -591,17 +591,27 @@ public sealed class WorldTrafficSimulation
                 ResolveCruiseSpeed(
                     index);
 
+            var segmentSpeed =
+                ResolveSegmentMaximumSpeed(
+                    segment,
+                    cruiseSpeed);
+
             var initialSpeed =
                 spawnExclusionCenter.HasValue
-                    ? 0.0
-                    : ResolveSegmentMaximumSpeed(
-                        segment,
-                        cruiseSpeed);
+                    ? Math.Min(
+                        segmentSpeed,
+                        Math.Max(
+                            2.0,
+                            cruiseSpeed *
+                                0.35))
+                    : segmentSpeed;
 
             var activationTimeSeconds =
                 spawnExclusionCenter.HasValue
                     ? index *
-                      activationIntervalSeconds
+                      Math.Min(
+                          activationIntervalSeconds,
+                          0.75)
                     : 0.0;
 
             _agents.Add(
@@ -3897,7 +3907,7 @@ public sealed class WorldTrafficSimulation
             set;
         } =
             activationTimeSeconds <=
-            0.0;
+                0.75;
 
         public double CollisionHoldUntilSeconds
         {
