@@ -23,9 +23,30 @@ public static class OmsiO3dGeometryReader
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
+        byte? detectedVersion = null;
+        byte detectedOptions = 0;
+        uint detectedProtectionKey = uint.MaxValue;
+        uint detectedVertexCount = 0;
+        var detectedProtectedVertices = false;
+
+        OmsiO3dGeometry Fail(string errorCode)
+        {
+            WriteDiagnostics(
+                path,
+                errorCode,
+                detectedVersion,
+                detectedOptions,
+                detectedProtectionKey,
+                detectedVertexCount,
+                detectedProtectedVertices);
+
+            return OmsiO3dGeometry.Error(
+                errorCode);
+        }
+
         if (!File.Exists(path))
         {
-            return OmsiO3dGeometry.Error("missingFile");
+            return Fail("missingFile");
         }
 
         try
@@ -40,16 +61,17 @@ public static class OmsiO3dGeometryReader
 
             if (!HasRemaining(stream, 3))
             {
-                return OmsiO3dGeometry.Error("truncatedHeader");
+                return Fail("truncatedHeader");
             }
 
             if (reader.ReadByte() != 0x84 ||
                 reader.ReadByte() != 0x19)
             {
-                return OmsiO3dGeometry.Error("invalidSignature");
+                return Fail("invalidSignature");
             }
 
             var version = reader.ReadByte();
+            detectedVersion = version;
             var longHeader = version > 3;
             var longTriangleIndices = false;
             var extendedOptions = (byte)0;
@@ -59,12 +81,14 @@ public static class OmsiO3dGeometryReader
             {
                 if (!HasRemaining(stream, 5))
                 {
-                    return OmsiO3dGeometry.Error(
+                    return Fail(
                         "truncatedExtendedHeader");
                 }
 
                 extendedOptions = reader.ReadByte();
                 protectionKey = reader.ReadUInt32();
+                detectedOptions = extendedOptions;
+                detectedProtectionKey = protectionKey;
 
                 longTriangleIndices =
                     (extendedOptions & 0x01) != 0;
@@ -73,6 +97,9 @@ public static class OmsiO3dGeometryReader
             var encryptedVertices =
                 longHeader &&
                 protectionKey != uint.MaxValue;
+
+            detectedProtectedVertices =
+                encryptedVertices;
 
             float[]? positions = null;
             float[]? normals = null;
@@ -102,9 +129,12 @@ public static class OmsiO3dGeometryReader
                                 out vertexCount) ||
                             vertexCount > MaxVertices)
                         {
-                            return OmsiO3dGeometry.Error(
+                            return Fail(
                                 "invalidVertexSection");
                         }
+
+                        detectedVertexCount =
+                            vertexCount;
 
                         positions =
                             new float[checked((int)vertexCount * 3)];
@@ -124,7 +154,7 @@ public static class OmsiO3dGeometryReader
                                 vertexCount,
                                 out vertexDecoder))
                         {
-                            return OmsiO3dGeometry.Error(
+                            return Fail(
                                 "protectedVertexCountUnsupported");
                         }
 
@@ -134,7 +164,7 @@ public static class OmsiO3dGeometryReader
                         {
                             if (!HasRemaining(stream, 32))
                             {
-                                return OmsiO3dGeometry.Error(
+                                return Fail(
                                     "invalidVertexSection");
                             }
 
@@ -182,7 +212,7 @@ public static class OmsiO3dGeometryReader
                                 out var triangleCount) ||
                             triangleCount > MaxTriangles)
                         {
-                            return OmsiO3dGeometry.Error(
+                            return Fail(
                                 "invalidTriangleSection");
                         }
 
@@ -202,7 +232,7 @@ public static class OmsiO3dGeometryReader
                                         ? 14
                                         : 8))
                             {
-                                return OmsiO3dGeometry.Error(
+                                return Fail(
                                     "invalidTriangleSection");
                             }
 
@@ -244,7 +274,7 @@ public static class OmsiO3dGeometryReader
                                 stream,
                                 out materials))
                         {
-                            return OmsiO3dGeometry.Error(
+                            return Fail(
                                 "invalidMaterialSection");
                         }
 
@@ -257,7 +287,7 @@ public static class OmsiO3dGeometryReader
                                 longTriangleIndices,
                                 out bones))
                         {
-                            return OmsiO3dGeometry.Error(
+                            return Fail(
                                 "invalidBoneSection");
                         }
 
@@ -268,7 +298,7 @@ public static class OmsiO3dGeometryReader
                                 stream,
                                 64))
                         {
-                            return OmsiO3dGeometry.Error(
+                            return Fail(
                                 "invalidTransformSection");
                         }
 
@@ -294,7 +324,7 @@ public static class OmsiO3dGeometryReader
                         break;
 
                     default:
-                        return OmsiO3dGeometry.Error(
+                        return Fail(
                             $"unexpectedSection_{section:X2}");
                 }
             }
@@ -305,7 +335,7 @@ public static class OmsiO3dGeometryReader
                 indices is null ||
                 triangleMaterialIndices is null)
             {
-                return OmsiO3dGeometry.Error(
+                return Fail(
                     "noRenderableGeometry");
             }
 
@@ -313,9 +343,21 @@ public static class OmsiO3dGeometryReader
             {
                 if (index >= vertexCount)
                 {
-                    return OmsiO3dGeometry.Error(
+                    return Fail(
                         "triangleIndexOutOfRange");
                 }
+            }
+
+            if (encryptedVertices)
+            {
+                WriteDiagnostics(
+                    path,
+                    "loaded",
+                    detectedVersion,
+                    detectedOptions,
+                    detectedProtectionKey,
+                    detectedVertexCount,
+                    true);
             }
 
             return new OmsiO3dGeometry(
@@ -332,22 +374,22 @@ public static class OmsiO3dGeometryReader
         }
         catch (EndOfStreamException)
         {
-            return OmsiO3dGeometry.Error(
+            return Fail(
                 "unexpectedEndOfFile");
         }
         catch (OverflowException)
         {
-            return OmsiO3dGeometry.Error(
+            return Fail(
                 "geometryTooLarge");
         }
         catch (IOException)
         {
-            return OmsiO3dGeometry.Error(
+            return Fail(
                 "ioError");
         }
         catch (UnauthorizedAccessException)
         {
-            return OmsiO3dGeometry.Error(
+            return Fail(
                 "accessDenied");
         }
     }
@@ -591,6 +633,33 @@ public static class OmsiO3dGeometryReader
             SeekOrigin.Current);
 
         return true;
+    }
+
+    private static void WriteDiagnostics(
+        string path,
+        string result,
+        byte? version,
+        byte options,
+        uint protectionKey,
+        uint vertexCount,
+        bool protectedVertices)
+    {
+        if (!protectedVertices &&
+            string.Equals(
+                result,
+                "loaded",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var productId =
+            protectionKey == uint.MaxValue
+                ? "none"
+                : $"0x{protectionKey:X8}";
+
+        Console.WriteLine(
+            $"[o3d] file={path}; version={(version.HasValue ? version.Value.ToString() : "unknown")}; options=0x{options:X2}; productId={productId}; protected={protectedVertices}; vertices={vertexCount}; result={result}");
     }
 
     private static bool HasRemaining(
