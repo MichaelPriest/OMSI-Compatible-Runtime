@@ -220,6 +220,19 @@ internal sealed class RuntimeProcessHost :
                 runtimePath);
         }
 
+        var logsDirectory =
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Logs");
+
+        Directory.CreateDirectory(
+            logsDirectory);
+
+        var logPath =
+            Path.Combine(
+                logsDirectory,
+                $"vehicle-preview-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+
         var startInfo =
             new ProcessStartInfo
             {
@@ -229,7 +242,9 @@ internal sealed class RuntimeProcessHost :
                         runtimePath)
                     ?? AppContext.BaseDirectory,
                 UseShellExecute = false,
-                CreateNoWindow = false
+                CreateNoWindow = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             };
 
         Add(
@@ -270,9 +285,28 @@ internal sealed class RuntimeProcessHost :
                 EnableRaisingEvents = true
             };
 
+        process.OutputDataReceived +=
+            (_, args) =>
+                HandleLine(
+                    logPath,
+                    args.Data,
+                    false);
+
+        process.ErrorDataReceived +=
+            (_, args) =>
+                HandleLine(
+                    logPath,
+                    args.Data,
+                    true);
+
         process.Exited +=
             (_, _) =>
             {
+                HandleLine(
+                    logPath,
+                    $"[preview-exit] code={process.ExitCode}",
+                    process.ExitCode != 0);
+
                 process.Dispose();
 
                 if (ReferenceEquals(
@@ -290,8 +324,16 @@ internal sealed class RuntimeProcessHost :
             return false;
         }
 
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
         _previewProcess =
             process;
+
+        HandleLine(
+            logPath,
+            $"[preview-start] content={contentPath}; bus={busRelativePath}; repaint={repaintName ?? "(base)"}",
+            false);
 
         return true;
     }
