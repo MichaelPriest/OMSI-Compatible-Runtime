@@ -6,6 +6,7 @@ internal sealed class RuntimeProcessHost :
     IDisposable
 {
     private Process? _process;
+    private Process? _previewProcess;
 
     public event Action<string>?
         OutputReceived;
@@ -15,6 +16,12 @@ internal sealed class RuntimeProcessHost :
 
     public bool IsRunning =>
         _process is
+        {
+            HasExited: false
+        };
+
+    public bool IsPreviewRunning =>
+        _previewProcess is
         {
             HasExited: false
         };
@@ -191,8 +198,109 @@ internal sealed class RuntimeProcessHost :
         return true;
     }
 
+    public bool StartVehiclePreview(
+        string contentPath,
+        string busRelativePath,
+        string? repaintName = null,
+        string? repaintCtiRelativePath = null)
+    {
+        if (IsPreviewRunning)
+        {
+            return false;
+        }
+
+        var runtimePath =
+            ResolveRuntimePath();
+
+        if (!File.Exists(
+                runtimePath))
+        {
+            throw new FileNotFoundException(
+                "Runtime executável não encontrado.",
+                runtimePath);
+        }
+
+        var startInfo =
+            new ProcessStartInfo
+            {
+                FileName = runtimePath,
+                WorkingDirectory =
+                    Path.GetDirectoryName(
+                        runtimePath)
+                    ?? AppContext.BaseDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = false
+            };
+
+        Add(
+            startInfo,
+            "--content",
+            contentPath);
+
+        Add(
+            startInfo,
+            "--bus",
+            busRelativePath);
+
+        if (!string.IsNullOrWhiteSpace(
+                repaintName))
+        {
+            Add(
+                startInfo,
+                "--repaint",
+                repaintName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                repaintCtiRelativePath))
+        {
+            Add(
+                startInfo,
+                "--repaint-cti",
+                repaintCtiRelativePath);
+        }
+
+        startInfo.ArgumentList.Add(
+            "--vehicle-preview");
+
+        var process =
+            new Process
+            {
+                StartInfo = startInfo,
+                EnableRaisingEvents = true
+            };
+
+        process.Exited +=
+            (_, _) =>
+            {
+                process.Dispose();
+
+                if (ReferenceEquals(
+                        _previewProcess,
+                        process))
+                {
+                    _previewProcess =
+                        null;
+                }
+            };
+
+        if (!process.Start())
+        {
+            process.Dispose();
+            return false;
+        }
+
+        _previewProcess =
+            process;
+
+        return true;
+    }
+
     public void Dispose()
     {
+        _previewProcess?.Dispose();
+        _previewProcess = null;
+
         _process?.Dispose();
         _process = null;
     }
