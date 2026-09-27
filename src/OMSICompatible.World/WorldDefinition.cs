@@ -53,6 +53,12 @@ public sealed record WorldSplinePlacement(
     double GradientStartPercent,
     double GradientEndPercent,
     bool UsesHeightProfile,
+    double DeltaHeightMeters,
+    double CantStartPercent,
+    double CantEndPercent,
+    double SkewStart,
+    double SkewEnd,
+    bool Mirror,
     int SourceLineNumber,
     IReadOnlyList<WorldTrafficRule>? TrafficRules = null);
 
