@@ -331,6 +331,10 @@ public sealed record RuntimeSceneryCollisionBoundsInfo(
     double MinimumZ,
     double MaximumZ);
 
+public sealed record RuntimeSceneryCollisionGeometryInfo(
+    float[] Positions,
+    uint[] Indices);
+
 public sealed record RuntimeSceneryAssetInfo(
     bool UsesAbsoluteHeight,
     bool OnlyEditor,
@@ -342,7 +346,8 @@ public sealed record RuntimeSceneryAssetInfo(
     bool Surface = false,
     string? CollisionMeshSource = null,
     RuntimeSceneryBoundingBoxInfo? BoundingBox = null,
-    RuntimeSceneryCollisionBoundsInfo? CollisionBounds = null);
+    RuntimeSceneryCollisionBoundsInfo? CollisionBounds = null,
+    RuntimeSceneryCollisionGeometryInfo? CollisionGeometry = null);
 
 public sealed record RuntimeRailSignalRouteStateInfo(
     int RouteIndex,
