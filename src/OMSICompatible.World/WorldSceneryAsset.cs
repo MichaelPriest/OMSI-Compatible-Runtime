@@ -1,3 +1,4 @@
+using System.Numerics;
 using OmsiCompat.Scenery;
 using OmsiCompat.Vehicles;
 
@@ -44,7 +45,8 @@ public sealed record WorldSceneryMeshAsset(
     IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
     string? MeshIdentifier = null,
     string? AnimationParent = null,
-    int ModelOrdinal = -1)
+    int ModelOrdinal = -1,
+    Matrix4x4? SourceTransform = null)
 {
     public bool IsRenderable =>
         Exists &&
