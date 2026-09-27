@@ -1626,6 +1626,18 @@ try
             "0",
             "0",
             "",
+            "[object]",
+            "0",
+            @"Sceneryobjects\Synthetic\collision_meta.sco",
+            "1004",
+            "35",
+            "40",
+            "0",
+            "30",
+            "0",
+            "0",
+            "0",
+            "",
             "[spline]",
             "0",
             @"Splines\Synthetic\road.sli",
@@ -1793,6 +1805,11 @@ try
             "(L.L.Signal)",
             "(S.L.signal_lamp)"),
         Encoding.Unicode);
+
+    WriteSyntheticCollisionO3d(
+        Path.Combine(
+            sceneryDirectory,
+            "collision_low.o3d"));
 
     var collisionMetadataPath =
         Path.Combine(
@@ -3544,8 +3561,8 @@ try
         world.Tiles.Count == 1,
         $"Expected 1 active tile, found {world.Tiles.Count}.");
     Require(
-        world.Objects.Count == 3,
-        $"Expected 3 objects, found {world.Objects.Count}.");
+        world.Objects.Count == 4,
+        $"Expected 4 objects, found {world.Objects.Count}.");
     Require(
         world.Splines.Count == 2,
         $"Expected 2 splines, found {world.Splines.Count}.");
@@ -3569,6 +3586,23 @@ try
             maskedAsset.Meshes[0].Materials[0].TransMapTexturePath!) ==
             "mask.bmp",
         "Bare scenery [matl_transmap] did not resolve its mask and imply alpha cutout.");
+
+    Require(
+        world.SceneryAssets.TryGetValue(
+            @"Sceneryobjects\Synthetic\collision_meta.sco",
+            out var collisionAsset) &&
+        collisionAsset.CollisionMeshSource ==
+            "collision_low.o3d" &&
+        collisionAsset.CollisionBounds is
+            {
+                MinimumX: -2.0,
+                MaximumX: 2.0,
+                MinimumY: 0.0,
+                MaximumY: 3.0,
+                MinimumZ: -1.0,
+                MaximumZ: 1.0
+            },
+        "WorldLoader did not resolve OMSI [collision_mesh] into runtime collision bounds.");
 
     var worldObject = world.Objects[0];
     Require(worldObject.Id == 1001, "Object ID was not preserved.");
@@ -6402,8 +6436,8 @@ try
         "[tree] scenery must remain runtime-renderable even when its helper mesh is [onlyeditor].");
 
     Require(
-        world.Dependencies.RequiredCount == 4,
-        "Expected four primary dependencies.");
+        world.Dependencies.RequiredCount == 5,
+        "Expected five primary dependencies.");
     Require(
         world.Dependencies.MissingCount == 0,
         "Synthetic dependencies should resolve.");
@@ -6454,6 +6488,98 @@ finally
 static string Lines(params string[] values)
 {
     return string.Join(Environment.NewLine, values) + Environment.NewLine;
+}
+
+static void WriteSyntheticCollisionO3d(
+    string path)
+{
+    using var stream =
+        File.Create(path);
+
+    using var writer =
+        new BinaryWriter(stream);
+
+    writer.Write((byte)0x84);
+    writer.Write((byte)0x19);
+    writer.Write((byte)3);
+
+    writer.Write((byte)0x17);
+    writer.Write((ushort)4);
+
+    void Vertex(
+        float x,
+        float y,
+        float z)
+    {
+        writer.Write(x);
+        writer.Write(y);
+        writer.Write(z);
+        writer.Write(0.0f);
+        writer.Write(1.0f);
+        writer.Write(0.0f);
+        writer.Write(0.0f);
+        writer.Write(0.0f);
+    }
+
+    Vertex(-2.0f, 0.0f, -1.0f);
+    Vertex(2.0f, 0.0f, -1.0f);
+    Vertex(2.0f, 3.0f, 1.0f);
+    Vertex(-2.0f, 3.0f, 1.0f);
+
+    writer.Write((byte)0x49);
+    writer.Write((ushort)2);
+
+    writer.Write((ushort)0);
+    writer.Write((ushort)1);
+    writer.Write((ushort)2);
+    writer.Write((ushort)0);
+
+    writer.Write((ushort)0);
+    writer.Write((ushort)2);
+    writer.Write((ushort)3);
+    writer.Write((ushort)0);
+
+    writer.Write((byte)0x26);
+    writer.Write((ushort)1);
+
+    writer.Write(0.7f);
+    writer.Write(0.7f);
+    writer.Write(0.7f);
+    writer.Write(1.0f);
+
+    writer.Write(0.0f);
+    writer.Write(0.0f);
+    writer.Write(0.0f);
+
+    writer.Write(0.0f);
+    writer.Write(0.0f);
+    writer.Write(0.0f);
+
+    writer.Write(0.0f);
+
+    var textureName =
+        Encoding.Latin1.GetBytes(
+            "regen.tga");
+
+    writer.Write(
+        (byte)textureName.Length);
+    writer.Write(
+        textureName);
+
+    writer.Write((byte)0x79);
+
+    foreach (var value in
+             new float[]
+             {
+                 1, 0, 0, 0,
+                 0, 1, 0, 0,
+                 0, 0, 1, 0,
+                 0, 0, 0, 1
+             })
+    {
+        writer.Write(
+            value);
+    }
 }
 
 static void WriteSyntheticO3d(
