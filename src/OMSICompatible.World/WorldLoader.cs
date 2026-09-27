@@ -547,12 +547,6 @@ public static class WorldLoader
                 string.IsNullOrWhiteSpace(
                     dependency.ResolvedPath))
             {
-                var collisionGeometry =
-                    ResolveCollisionGeometry(
-                        contentRoot.RootPath,
-                        dependency.ResolvedPath,
-                        definition.CollisionMeshSource);
-
                 result[declaredPath] =
                     new WorldSceneryAsset(
                         declaredPath,
@@ -573,6 +567,12 @@ public static class WorldLoader
                 var definition =
                     OmsiSceneryObjectReader.ReadFile(
                         dependency.ResolvedPath);
+
+                var collisionGeometry =
+                    ResolveCollisionGeometry(
+                        contentRoot.RootPath,
+                        dependency.ResolvedPath,
+                        definition.CollisionMeshSource);
 
                 var dynamicModel =
                     OmsiVehicleModelReader.ReadFile(
