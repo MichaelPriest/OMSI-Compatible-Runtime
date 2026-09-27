@@ -7874,6 +7874,25 @@ public sealed class D3D11RenderWindow : Form
                 continue;
             }
 
+            // Do not let a fallback [boundingbox] create an invisible wall
+            // for missing/protected/unrenderable scenery. Explicit collision
+            // meshes remain authoritative even when the visible asset itself
+            // cannot be rendered.
+            var hasRenderableVisual =
+                asset.Tree is not null ||
+                asset.Meshes.Any(
+                    static mesh =>
+                        string.IsNullOrWhiteSpace(
+                            mesh.ErrorCode) &&
+                        mesh.Positions.Length >= 3 &&
+                        mesh.Indices.Length >= 3);
+
+            if (asset.CollisionBounds is null &&
+                !hasRenderableVisual)
+            {
+                continue;
+            }
+
             var worldX =
                 instance.TileX *
                     tileSizeMeters +
