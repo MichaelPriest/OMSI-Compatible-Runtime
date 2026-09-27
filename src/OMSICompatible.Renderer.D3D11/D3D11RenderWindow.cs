@@ -90,7 +90,8 @@ public sealed class D3D11RenderWindow : Form
         float HalfLength,
         float HalfWidth,
         float MinimumY,
-        float MaximumY);
+        float MaximumY,
+        bool Surface);
 
     private static readonly FeatureLevel[] RequestedFeatureLevels =
     [
@@ -8169,7 +8170,8 @@ public sealed class D3D11RenderWindow : Form
                     baseY +
                         minimumVertical,
                     baseY +
-                        maximumVertical));
+                        maximumVertical,
+                    asset.Surface));
         }
 
         return volumes;
@@ -8223,6 +8225,15 @@ public sealed class D3D11RenderWindow : Form
         foreach (var volume in
                  _sceneryCollisionVolumes)
         {
+            if (volume.Surface &&
+                _vehicle.IsSupportedByScenerySurface(
+                    player.X,
+                    player.Z,
+                    (float)player.Y))
+            {
+                continue;
+            }
+
             if (playerMaximumY <
                     volume.MinimumY ||
                 playerMinimumY >
