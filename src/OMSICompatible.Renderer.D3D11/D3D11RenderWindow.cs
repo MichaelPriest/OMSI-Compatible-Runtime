@@ -7845,6 +7845,13 @@ public sealed class D3D11RenderWindow : Form
         foreach (var instance in
                  windowInfo.Objects)
         {
+            if (windowInfo.DynamicSceneryObjectIds?.Contains(
+                    instance.ObjectId) ==
+                true)
+            {
+                continue;
+            }
+
             if (!windowInfo.SceneryAssets.TryGetValue(
                     instance.AssetPath,
                     out var asset) ||
