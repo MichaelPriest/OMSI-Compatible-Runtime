@@ -80,6 +80,7 @@ public sealed partial class MainWindow :
 
     private int _sceneryObjectCount;
 
+    private bool _libraryCardsDirty = true;
     private bool _refreshing;
 
     public MainWindow(
@@ -168,6 +169,7 @@ public sealed partial class MainWindow :
         object sender,
         RoutedEventArgs e)
     {
+        EnsureLibraryCards();
         UpdateLibraryViews();
 
         ShowView(
@@ -179,6 +181,7 @@ public sealed partial class MainWindow :
         object sender,
         RoutedEventArgs e)
     {
+        EnsureLibraryCards();
         UpdateLibraryViews();
 
         ShowView(
@@ -398,44 +401,16 @@ public sealed partial class MainWindow :
             }
 
             _repaintCache.Clear();
+            _libraryCardsDirty = true;
 
             SetStatus(
-                "Descobrindo mapas e ônibus...");
-
-            var discovery =
-                await Task.Run(
-                    () =>
-                    {
-                        var maps =
-                            MapDiscovery.Discover(
-                                contentRoot);
-
-                        var buses =
-                            BusDiscovery.DiscoverPlayerSelectable(
-                                contentRoot);
-
-                        var objectCount =
-                            CountSceneryObjects(
-                                contentRoot);
-
-                        return (
-                            Maps: maps,
-                            Buses: buses,
-                            ObjectCount:
-                                objectCount);
-                    });
+                "Descobrindo mapas...");
 
             _maps =
-                discovery.Maps;
-
-            _buses =
-                discovery.Buses;
-
-            _sceneryObjectCount =
-                discovery.ObjectCount;
-
-            RebuildLibraryCards();
-            UpdateLibraryViews();
+                await Task.Run(
+                    () =>
+                        MapDiscovery.Discover(
+                            contentRoot));
 
             MapBox.ItemsSource =
                 _maps;
@@ -444,24 +419,8 @@ public sealed partial class MainWindow :
                 _maps.Count.ToString(
                     "N0");
 
-            BusCountText.Text =
-                _buses.Count.ToString(
-                    "N0");
-
-            ObjectCountText.Text =
-                discovery.ObjectCount.ToString(
-                    "N0");
-
             FooterMapCountText.Text =
                 _maps.Count.ToString(
-                    "N0");
-
-            FooterBusCountText.Text =
-                _buses.Count.ToString(
-                    "N0");
-
-            FooterObjectCountText.Text =
-                discovery.ObjectCount.ToString(
                     "N0");
 
             var map =
@@ -476,6 +435,71 @@ public sealed partial class MainWindow :
             MapBox.SelectedItem =
                 map;
 
+            // Maps are usable immediately. The heavier fleet/object scans run
+            // afterwards so the map selector no longer waits for the whole
+            // OMSI installation to be indexed.
+            SetStatus(
+                $"{_maps.Count:N0} mapa(s) encontrado(s). Carregando veículos e biblioteca...");
+
+            var busesTask =
+                Task.Run(
+                    () =>
+                        BusDiscovery.DiscoverPlayerSelectable(
+                            contentRoot));
+
+            var objectCountTask =
+                Task.Run(
+                    () =>
+                        CountSceneryObjects(
+                            contentRoot));
+
+            var entryPointsTask =
+                map is null
+                    ? Task.FromResult(
+                        (IReadOnlyList<OmsiMapEntryPointGroup>)
+                        Array.Empty<OmsiMapEntryPointGroup>())
+                    : Task.Run(
+                        () =>
+                            MapEntryPointDiscovery.Discover(
+                                map));
+
+            _buses =
+                await busesTask;
+
+            _sceneryObjectCount =
+                await objectCountTask;
+
+            _entryPoints =
+                await entryPointsTask;
+
+            BusCountText.Text =
+                _buses.Count.ToString(
+                    "N0");
+
+            ObjectCountText.Text =
+                _sceneryObjectCount.ToString(
+                    "N0");
+
+            FooterBusCountText.Text =
+                _buses.Count.ToString(
+                    "N0");
+
+            FooterObjectCountText.Text =
+                _sceneryObjectCount.ToString(
+                    "N0");
+
+            SpawnBox.ItemsSource =
+                _entryPoints;
+
+            SpawnBox.SelectedItem =
+                _entryPoints.FirstOrDefault(
+                    item =>
+                        string.Equals(
+                            item.Name,
+                            _settings.EntryPointName,
+                            StringComparison.OrdinalIgnoreCase))
+                ?? _entryPoints.FirstOrDefault();
+
             var bus =
                 _buses.FirstOrDefault(
                     item =>
@@ -489,12 +513,6 @@ public sealed partial class MainWindow :
                 bus);
 
             ApplyNoBusMode();
-
-            if (map is not null)
-            {
-                await LoadEntryPointsAsync(
-                    map);
-            }
 
             UpdatePlayAvailability();
             UpdateHomeSummary();
@@ -1470,6 +1488,7 @@ public sealed partial class MainWindow :
             Array.Empty<OmsiMapEntryPointGroup>();
 
         _sceneryObjectCount = 0;
+        _libraryCardsDirty = false;
 
         _repaintCache.Clear();
 
@@ -1493,6 +1512,17 @@ public sealed partial class MainWindow :
         UpdateHero(null);
         UpdateControlsView();
         UpdateCompatibilityAndDiagnostics();
+    }
+
+    private void EnsureLibraryCards()
+    {
+        if (!_libraryCardsDirty)
+        {
+            return;
+        }
+
+        RebuildLibraryCards();
+        _libraryCardsDirty = false;
     }
 
     private void RebuildLibraryCards()
@@ -1599,6 +1629,7 @@ public sealed partial class MainWindow :
         object sender,
         TextChangedEventArgs e)
     {
+        EnsureLibraryCards();
         UpdateLibraryViews();
     }
 
@@ -1606,6 +1637,7 @@ public sealed partial class MainWindow :
         object sender,
         TextChangedEventArgs e)
     {
+        EnsureLibraryCards();
         UpdateLibraryViews();
     }
 
