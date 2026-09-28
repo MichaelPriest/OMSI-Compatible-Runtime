@@ -1357,14 +1357,18 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
+        var assetLoadStarted =
+            Stopwatch.GetTimestamp();
+
         var loaded =
             await Task.Run(
                 () =>
                 {
                     var result =
-                        new List<KeyValuePair<
-                            string,
-                            OmsiVehicleAsset>>();
+                        new List<(
+                            string Path,
+                            OmsiVehicleAsset Asset,
+                            OmsiScriptCatalog? Catalog)>();
 
                     foreach (var path in
                              requestedPaths)
@@ -1395,12 +1399,31 @@ internal sealed class RuntimeApplicationContext :
                                 continue;
                             }
 
+                            OmsiScriptCatalog? catalog =
+                                null;
+
+                            if (asset.Bus.ScriptManifest.RegisteredFileCount >
+                                0)
+                            {
+                                try
+                                {
+                                    catalog =
+                                        OmsiScriptCatalogLoader.Load(
+                                            _contentRoot,
+                                            asset.Bus.ScriptManifest);
+                                }
+                                catch (Exception exception)
+                                {
+                                    Console.WriteLine(
+                                        $"[traffic-ai] Script catalog unavailable for {Path.GetFileName(path)}: {exception.Message}");
+                                }
+                            }
+
                             result.Add(
-                                new KeyValuePair<
-                                    string,
-                                    OmsiVehicleAsset>(
+                                (
                                     path,
-                                    asset));
+                                    asset,
+                                    catalog));
                         }
                         catch (Exception exception)
                         {
@@ -1412,17 +1435,23 @@ internal sealed class RuntimeApplicationContext :
                     return result;
                 });
 
-        foreach (var pair in
+        foreach (var item in
                  loaded)
         {
             _trafficVehicleAssets[
-                pair.Key] =
-                pair.Value;
+                item.Path] =
+                item.Asset;
 
-            CacheTrafficScriptCatalog(
-                pair.Key,
-                pair.Value);
+            if (item.Catalog is not null)
+            {
+                _trafficScriptCatalogs[
+                    item.Path] =
+                    item.Catalog;
+            }
         }
+
+        Console.WriteLine(
+            $"[traffic-ai] assetCatalogMs={Stopwatch.GetElapsedTime(assetLoadStarted).TotalMilliseconds:0.0}");
 
         Console.WriteLine(
             $"[traffic-ai] cached={_trafficVehicleAssets.Count}; requested={requestedPaths.Length}; loaded={loaded.Count}");
@@ -1533,14 +1562,18 @@ internal sealed class RuntimeApplicationContext :
         if (requestedVehiclePaths.Length >
             0)
         {
+            var railAssetLoadStarted =
+                Stopwatch.GetTimestamp();
+
             var loaded =
                 await Task.Run(
                     () =>
                     {
                         var result =
-                            new List<KeyValuePair<
-                                string,
-                                OmsiVehicleAsset>>();
+                            new List<(
+                                string Path,
+                                OmsiVehicleAsset Asset,
+                                OmsiScriptCatalog? Catalog)>();
 
                         foreach (var vehiclePath in
                                  requestedVehiclePaths)
@@ -1565,12 +1598,31 @@ internal sealed class RuntimeApplicationContext :
                                     continue;
                                 }
 
+                                OmsiScriptCatalog? catalog =
+                                    null;
+
+                                if (asset.Bus.ScriptManifest.RegisteredFileCount >
+                                    0)
+                                {
+                                    try
+                                    {
+                                        catalog =
+                                            OmsiScriptCatalogLoader.Load(
+                                                _contentRoot,
+                                                asset.Bus.ScriptManifest);
+                                    }
+                                    catch (Exception exception)
+                                    {
+                                        Console.WriteLine(
+                                            $"[rail-ai] Script catalog unavailable for {Path.GetFileName(vehiclePath)}: {exception.Message}");
+                                    }
+                                }
+
                                 result.Add(
-                                    new KeyValuePair<
-                                        string,
-                                        OmsiVehicleAsset>(
+                                    (
                                         vehiclePath,
-                                        asset));
+                                        asset,
+                                        catalog));
                             }
                             catch (Exception exception)
                             {
@@ -1582,17 +1634,23 @@ internal sealed class RuntimeApplicationContext :
                         return result;
                     });
 
-            foreach (var pair in
+            foreach (var item in
                      loaded)
             {
                 _trafficVehicleAssets[
-                    pair.Key] =
-                    pair.Value;
+                    item.Path] =
+                    item.Asset;
 
-                CacheTrafficScriptCatalog(
-                    pair.Key,
-                    pair.Value);
+                if (item.Catalog is not null)
+                {
+                    _trafficScriptCatalogs[
+                        item.Path] =
+                        item.Catalog;
+                }
             }
+
+            Console.WriteLine(
+                $"[rail-ai] vehicleAssetCatalogMs={Stopwatch.GetElapsedTime(railAssetLoadStarted).TotalMilliseconds:0.0}");
         }
 
         foreach (var trainPath in
