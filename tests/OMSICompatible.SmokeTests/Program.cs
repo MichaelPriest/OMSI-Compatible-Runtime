@@ -3851,6 +3851,24 @@ try
             secondRoadPath.Index,
         "Forward road path did not connect across linked OMSI splines.");
 
+    var signalControlledPath =
+        trafficPaths.Segments.Single(
+            static segment =>
+                segment.TrafficSignal is not null);
+
+    Require(
+        signalControlledPath.TrafficSignal is
+            { SignalIndex: 0, Jumps.Count: 1, Stops.Count: 1 } &&
+        Math.Abs(
+            signalControlledPath.TrafficSignal.ApproachDistanceMeters -
+            12.0) <
+            0.0001 &&
+        signalControlledPath.TrafficSignal.Jumps![0].CheckTrafficLightIndex ==
+            0 &&
+        signalControlledPath.TrafficSignal.Stops![0].CheckTrafficLightIndex ==
+            0,
+        "Traffic path network did not retain OMSI signal-group approach/jump/stop metadata.");
+
     var firstPedestrianPath =
         trafficPaths.Segments.Single(
             static segment =>
