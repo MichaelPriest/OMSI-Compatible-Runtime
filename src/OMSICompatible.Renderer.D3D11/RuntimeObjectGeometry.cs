@@ -5,7 +5,7 @@ using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
-internal sealed record RuntimeObjectBatch(
+public sealed record RuntimeObjectBatch(
     uint StartVertex,
     uint VertexCount,
     string? TexturePath,
@@ -46,7 +46,7 @@ internal sealed record RuntimeObjectBatch(
     bool RequiresExternalTransMap = false,
     bool Surface = false);
 
-internal sealed record RuntimeObjectGeometry(
+public sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
     IReadOnlyList<RuntimeObjectBatch> Batches,
     int RenderedObjectCount,
@@ -70,7 +70,7 @@ internal sealed record RuntimeObjectGeometry(
             false);
 }
 
-internal static class RuntimeObjectGeometryBuilder
+public static class RuntimeObjectGeometryBuilder
 {
     private const int MaximumVertices = 4_000_000;
     private const double TileSizeMeters = 300.0;
