@@ -469,7 +469,9 @@ internal sealed class RuntimeApplicationContext :
                     railSignalStateProvider:
                         GetRailSignalRouteStates,
                     terrainCollisionsEnabled:
-                        _options.TerrainCollisions);
+                        _options.TerrainCollisions,
+                    reflectionTextureSize:
+                        _options.RealTimeReflectionTextureSize);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
