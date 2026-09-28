@@ -1747,6 +1747,10 @@ try
             "2",
             "1",
             "0",
+            "[traffic_light_stop]",
+            "0",
+            "1",
+            "1",
             "[path]",
             "1.5",
             "0",
@@ -6663,8 +6667,17 @@ try
         verifiedEditorOnlyAsset.TrafficLightJumps[0].JumpIfNoApproach &&
         Math.Abs(
             verifiedEditorOnlyAsset.TrafficLightJumps[0].TargetTimeSeconds) <
-            0.0001,
-        "Crossing traffic-light cycle/phases/jumps were not preserved.");
+            0.0001 &&
+        verifiedEditorOnlyAsset.TrafficLightStops is
+            { Count: 1 } &&
+        verifiedEditorOnlyAsset.TrafficLightStops[0].CheckTrafficLightIndex ==
+            0 &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.TrafficLightStops[0].TriggerTimeSeconds -
+            1.0) <
+            0.0001 &&
+        verifiedEditorOnlyAsset.TrafficLightStops[0].StopIfNoApproach,
+        "Crossing traffic-light cycle/phases/jumps/stops were not preserved.");
 
     Require(
         world.SceneryAssets.TryGetValue(
