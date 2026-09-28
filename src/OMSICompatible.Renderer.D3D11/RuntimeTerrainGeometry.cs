@@ -18,7 +18,8 @@ internal sealed record RuntimeTerrainGeometry(
     Vector3 Center,
     float HorizontalSpan,
     float MinimumHeight,
-    float MaximumHeight)
+    float MaximumHeight,
+    int AlignedSplineSegmentCount = 0)
 {
     public int TexturedBatchCount =>
         Batches.Count(
@@ -313,7 +314,8 @@ internal static class RuntimeTerrainGeometryBuilder
                 horizontalSpan,
                 300.0f),
             alignedMinimumHeight,
-            alignedMaximumHeight);
+            alignedMaximumHeight,
+            terrainAlignment.SegmentCount);
     }
 
     private static void AppendTileLayer(
