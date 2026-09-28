@@ -3962,7 +3962,7 @@ public sealed class D3D11RenderWindow : Form
             DrawVehicle();
 
             ResolveMainSceneTarget();
-            DrawPostProcess();
+        DrawPostProcess();
 
             _swapChain.Present(
                 _vsync
