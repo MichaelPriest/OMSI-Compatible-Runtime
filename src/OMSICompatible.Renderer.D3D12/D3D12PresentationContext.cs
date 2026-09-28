@@ -13,6 +13,11 @@ namespace OMSICompatible.Renderer.D3D12;
 public sealed class D3D12PresentationContext :
     IDisposable
 {
+    private struct FrameConstants
+    {
+        public Matrix4x4 ViewProjection;
+        public Vector4 RenderOrigin;
+    }
     private const int FrameCount =
         2;
 
@@ -37,8 +42,14 @@ public sealed class D3D12PresentationContext :
     private readonly ID3D12Fence _fence;
     private readonly int _width;
     private readonly int _height;
-    private Matrix4x4 _viewProjection =
-        Matrix4x4.Identity;
+    private FrameConstants _frameConstants =
+        new()
+        {
+            ViewProjection =
+                Matrix4x4.Identity,
+            RenderOrigin =
+                Vector4.Zero
+        };
     private readonly AutoResetEvent _fenceEvent =
         new(
             false);
@@ -320,7 +331,7 @@ public sealed class D3D12PresentationContext :
                                 new RootConstants(
                                     0,
                                     0,
-                                    16),
+                                    20),
                                 ShaderVisibility.Vertex)
                         ]));
 
@@ -329,6 +340,7 @@ public sealed class D3D12PresentationContext :
                 cbuffer FrameConstants : register(b0)
                 {
                     row_major float4x4 ViewProjection;
+                    float4 RenderOrigin;
                 };
 
                 struct VsInput
@@ -349,7 +361,8 @@ public sealed class D3D12PresentationContext :
                     output.position =
                         mul(
                             float4(
-                                input.position,
+                                input.position -
+                                    RenderOrigin.xyz,
                                 1.0),
                             ViewProjection);
                     output.color = input.color;
@@ -578,8 +591,21 @@ public sealed class D3D12PresentationContext :
             _disposed,
             this);
 
-        _viewProjection =
+        _frameConstants.ViewProjection =
             viewProjection;
+    }
+
+    public void SetRenderOrigin(
+        Vector3 renderOrigin)
+    {
+        ObjectDisposedException.ThrowIf(
+            _disposed,
+            this);
+
+        _frameConstants.RenderOrigin =
+            new Vector4(
+                renderOrigin,
+                0.0f);
     }
 
     public void ClearAndPresent(
@@ -644,7 +670,7 @@ public sealed class D3D12PresentationContext :
 
         _commandList.SetGraphicsRoot32BitConstants(
             0,
-            ref _viewProjection);
+            ref _frameConstants);
 
         var renderTarget =
             _renderTargets[
