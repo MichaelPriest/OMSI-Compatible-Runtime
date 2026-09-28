@@ -1,3 +1,4 @@
+using System.Numerics;
 using Vortice.Direct3D;
 using Vortice.Direct3D12;
 using Vortice.DXGI;
@@ -11,6 +12,19 @@ namespace OMSICompatible.Renderer.D3D12;
 public sealed class D3D12PresentationContext :
     IDisposable
 {
+    private readonly struct SmokeVertex(
+        Vector3 position,
+        Color4 color)
+    {
+        public const uint SizeInBytes =
+            28;
+
+        public readonly Vector3 Position =
+            position;
+
+        public readonly Color4 Color =
+            color;
+    }
     private const int FrameCount =
         2;
 
@@ -31,6 +45,8 @@ public sealed class D3D12PresentationContext :
     private readonly ID3D12GraphicsCommandList _commandList;
     private readonly ID3D12RootSignature _rootSignature;
     private readonly ID3D12PipelineState _pipelineState;
+    private readonly ID3D12Resource _vertexBuffer;
+    private readonly VertexBufferView _vertexBufferView;
     private readonly ID3D12Fence _fence;
     private readonly int _width;
     private readonly int _height;
@@ -54,6 +70,8 @@ public sealed class D3D12PresentationContext :
         ID3D12GraphicsCommandList commandList,
         ID3D12RootSignature rootSignature,
         ID3D12PipelineState pipelineState,
+        ID3D12Resource vertexBuffer,
+        VertexBufferView vertexBufferView,
         ID3D12Fence fence,
         int width,
         int height)
@@ -80,6 +98,10 @@ public sealed class D3D12PresentationContext :
             rootSignature;
         _pipelineState =
             pipelineState;
+        _vertexBuffer =
+            vertexBuffer;
+        _vertexBufferView =
+            vertexBufferView;
         _fence =
             fence;
         _width =
@@ -310,37 +332,29 @@ public sealed class D3D12PresentationContext :
 
             const string shaderSource =
                 """
+                struct VsInput
+                {
+                    float3 position : POSITION;
+                    float4 color : COLOR0;
+                };
+
                 struct VsOutput
                 {
                     float4 position : SV_Position;
-                    float3 color : COLOR0;
+                    float4 color : COLOR0;
                 };
 
-                VsOutput VSMain(uint vertexId : SV_VertexID)
+                VsOutput VSMain(VsInput input)
                 {
-                    float2 positions[3] =
-                    {
-                        float2( 0.0,  0.65),
-                        float2( 0.65, -0.55),
-                        float2(-0.65, -0.55)
-                    };
-
-                    float3 colors[3] =
-                    {
-                        float3(0.95, 0.30, 0.20),
-                        float3(0.20, 0.80, 0.35),
-                        float3(0.20, 0.45, 0.95)
-                    };
-
                     VsOutput output;
-                    output.position = float4(positions[vertexId], 0.0, 1.0);
-                    output.color = colors[vertexId];
+                    output.position = float4(input.position, 1.0);
+                    output.color = input.color;
                     return output;
                 }
 
                 float4 PSMain(VsOutput input) : SV_Target0
                 {
-                    return float4(input.color, 1.0);
+                    return input.color;
                 }
                 """;
 
@@ -377,6 +391,22 @@ public sealed class D3D12PresentationContext :
                         vertexResult.GetObjectBytecodeMemory().Span,
                     PixelShader =
                         pixelResult.GetObjectBytecodeMemory().Span,
+                    InputLayout =
+                        new InputLayoutDescription(
+                            [
+                                new InputElementDescription(
+                                    "POSITION",
+                                    0,
+                                    Format.R32G32B32_Float,
+                                    0,
+                                    0),
+                                new InputElementDescription(
+                                    "COLOR",
+                                    0,
+                                    Format.R32G32B32A32_Float,
+                                    12,
+                                    0)
+                            ]),
                     SampleMask =
                         uint.MaxValue,
                     PrimitiveTopology =
@@ -400,6 +430,63 @@ public sealed class D3D12PresentationContext :
             var pipelineState =
                 device.CreatePipelineState(
                     pipelineStateStream);
+
+            ReadOnlySpan<SmokeVertex> vertices =
+            [
+                new SmokeVertex(
+                    new Vector3(
+                        0.0f,
+                        0.65f,
+                        0.0f),
+                    new Color4(
+                        0.95f,
+                        0.30f,
+                        0.20f,
+                        1.0f)),
+                new SmokeVertex(
+                    new Vector3(
+                        0.65f,
+                        -0.55f,
+                        0.0f),
+                    new Color4(
+                        0.20f,
+                        0.80f,
+                        0.35f,
+                        1.0f)),
+                new SmokeVertex(
+                    new Vector3(
+                        -0.65f,
+                        -0.55f,
+                        0.0f),
+                    new Color4(
+                        0.20f,
+                        0.45f,
+                        0.95f,
+                        1.0f))
+            ];
+
+            var vertexBufferSize =
+                checked(
+                    (ulong)(
+                        vertices.Length *
+                        SmokeVertex.SizeInBytes));
+
+            var vertexBuffer =
+                device.CreateCommittedResource(
+                    HeapType.Upload,
+                    ResourceDescription.Buffer(
+                        vertexBufferSize),
+                    ResourceStates.GenericRead);
+
+            vertexBuffer.SetData(
+                vertices);
+
+            var vertexBufferView =
+                new VertexBufferView(
+                    vertexBuffer.GPUVirtualAddress,
+                    checked(
+                        (uint)vertexBufferSize),
+                    SmokeVertex.SizeInBytes);
 
             var commandList =
                 device.CreateCommandList<
@@ -428,6 +515,8 @@ public sealed class D3D12PresentationContext :
                     commandList,
                     rootSignature,
                     pipelineState,
+                    vertexBuffer,
+                    vertexBufferView,
                     fence,
                     width,
                     height);
@@ -551,6 +640,10 @@ public sealed class D3D12PresentationContext :
         _commandList.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
 
+        _commandList.IASetVertexBuffers(
+            0,
+            _vertexBufferView);
+
         _commandList.DrawInstanced(
             3,
             1,
@@ -632,6 +725,7 @@ public sealed class D3D12PresentationContext :
         }
 
         _commandList.Dispose();
+        _vertexBuffer.Dispose();
         _pipelineState.Dispose();
         _rootSignature.Dispose();
         _depthStencil.Dispose();
