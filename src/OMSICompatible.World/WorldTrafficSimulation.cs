@@ -790,6 +790,9 @@ public sealed class WorldTrafficSimulation
             UpdateTrafficSignalGroups(
                 step);
 
+            var activeAgentsBySegment =
+                BuildActiveAgentBuckets();
+
             foreach (var agent in
                      _agents)
             {
@@ -846,7 +849,8 @@ public sealed class WorldTrafficSimulation
 
                 var leading =
                     FindLeadingObservation(
-                        agent);
+                        agent,
+                        activeAgentsBySegment);
 
                 double? blockedEntryDistance =
                     null;
@@ -3214,34 +3218,79 @@ public sealed class WorldTrafficSimulation
             .Index;
     }
 
-    private TrafficLead? FindLeadingObservation(
-        Agent agent)
+    private Dictionary<int, List<Agent>> BuildActiveAgentBuckets()
     {
-        TrafficLead? nearest =
-            null;
+        var buckets =
+            new Dictionary<int, List<Agent>>();
 
-        foreach (var candidate in
+        foreach (var agent in
                  _agents)
         {
-            if (ReferenceEquals(
-                    candidate,
-                    agent) ||
-                candidate.PendingRespawn ||
-                candidate.ActivationTimeSeconds >
-                    _simulationElapsedSeconds ||
-                candidate.TravelForward !=
-                    agent.TravelForward)
+            if (agent.PendingRespawn ||
+                agent.ActivationTimeSeconds >
+                    _simulationElapsedSeconds)
             {
                 continue;
             }
 
-            var distance =
-                DistanceAlongRoute(
-                    agent,
-                    candidate);
-
-            if (distance.HasValue)
+            if (!buckets.TryGetValue(
+                    agent.SegmentIndex,
+                    out var bucket))
             {
+                bucket =
+                    [];
+                buckets[
+                    agent.SegmentIndex] =
+                    bucket;
+            }
+
+            bucket.Add(
+                agent);
+        }
+
+        return buckets;
+    }
+
+    private TrafficLead? FindLeadingObservation(
+        Agent agent,
+        IReadOnlyDictionary<int, List<Agent>> activeAgentsBySegment)
+    {
+        TrafficLead? nearest =
+            null;
+
+        foreach (var segmentIndex in
+                 EnumerateTrafficLookAheadSegments(
+                     agent))
+        {
+            if (!activeAgentsBySegment.TryGetValue(
+                    segmentIndex,
+                    out var candidates))
+            {
+                continue;
+            }
+
+            foreach (var candidate in
+                     candidates)
+            {
+                if (ReferenceEquals(
+                        candidate,
+                        agent) ||
+                    candidate.TravelForward !=
+                        agent.TravelForward)
+                {
+                    continue;
+                }
+
+                var distance =
+                    DistanceAlongRoute(
+                        agent,
+                        candidate);
+
+                if (!distance.HasValue)
+                {
+                    continue;
+                }
+
                 var bumperClearance =
                     distance.Value -
                     EstimateTrafficVehicleHalfLength(
@@ -3279,6 +3328,77 @@ public sealed class WorldTrafficSimulation
         }
 
         return nearest;
+    }
+
+    private IEnumerable<int> EnumerateTrafficLookAheadSegments(
+        Agent agent)
+    {
+        if (!_segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var segment))
+        {
+            yield break;
+        }
+
+        yield return segment.Index;
+
+        var remainingLookAhead =
+            TrafficLookAheadMeters;
+
+        var segmentLength =
+            SegmentLength(
+                segment);
+
+        remainingLookAhead -=
+            agent.TravelForward
+                ? Math.Max(
+                    segmentLength -
+                        agent.DistanceMeters,
+                    0.0)
+                : Math.Max(
+                    agent.DistanceMeters,
+                    0.0);
+
+        var current =
+            segment;
+
+        var visited =
+            new HashSet<int>
+            {
+                segment.Index
+            };
+
+        for (var hop = 0;
+             hop <
+                 MaximumTrafficLookAheadSegments &&
+             remainingLookAhead >
+                 0.0;
+             hop++)
+        {
+            var nextIndex =
+                ResolveNextSegmentIndex(
+                    agent,
+                    current);
+
+            if (!nextIndex.HasValue ||
+                !visited.Add(
+                    nextIndex.Value) ||
+                !_segmentsByIndex.TryGetValue(
+                    nextIndex.Value,
+                    out var next))
+            {
+                yield break;
+            }
+
+            yield return next.Index;
+
+            remainingLookAhead -=
+                SegmentLength(
+                    next);
+
+            current =
+                next;
+        }
     }
 
     private TrafficLead? FindExternalObstacleLead(
