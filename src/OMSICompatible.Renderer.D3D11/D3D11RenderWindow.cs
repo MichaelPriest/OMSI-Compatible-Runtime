@@ -1240,8 +1240,14 @@ public sealed class D3D11RenderWindow : Form
         {
             preparedGpu =
                 await PrepareStreamedGpuResourcesAsync(
-                        prepared)
+                        prepared,
+                        generation)
                     .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            preparedGpu?.Dispose();
+            return;
         }
         catch (Exception exception)
         {
@@ -1459,7 +1465,8 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private async Task<PreparedStreamedGpuResources> PrepareStreamedGpuResourcesAsync(
-        PreparedStreamedGeometry prepared)
+        PreparedStreamedGeometry prepared,
+        int generation)
     {
         if (_device is null)
         {
@@ -1472,6 +1479,18 @@ public sealed class D3D11RenderWindow : Form
 
         try
         {
+            void ThrowIfStreamingSuperseded()
+            {
+                if (IsDisposed ||
+                    generation !=
+                        Volatile.Read(
+                            ref _streamedWorldPreparationGeneration))
+                {
+                    throw new OperationCanceledException(
+                        "Streamed GPU preparation was superseded.");
+                }
+            }
+
             async Task PaceNextUploadAsync(
                 long frameBeforeUpload)
             {
@@ -1492,7 +1511,11 @@ public sealed class D3D11RenderWindow : Form
                     await Task.Delay(1)
                         .ConfigureAwait(false);
                 }
+
+                ThrowIfStreamingSuperseded();
             }
+
+            ThrowIfStreamingSuperseded();
 
             if (prepared.TileVertices.Length >
                 0)
@@ -1514,6 +1537,8 @@ public sealed class D3D11RenderWindow : Form
                     .ConfigureAwait(false);
             }
 
+            ThrowIfStreamingSuperseded();
+
             if (prepared.Terrain.Vertices.Length >
                 0)
             {
@@ -1533,6 +1558,8 @@ public sealed class D3D11RenderWindow : Form
                         frameBeforeUpload)
                     .ConfigureAwait(false);
             }
+
+            ThrowIfStreamingSuperseded();
 
             if (prepared.Splines.Vertices.Length >
                 0)
@@ -1554,6 +1581,8 @@ public sealed class D3D11RenderWindow : Form
                     .ConfigureAwait(false);
             }
 
+            ThrowIfStreamingSuperseded();
+
             if (prepared.Objects.Vertices.Length >
                 0)
             {
@@ -1573,6 +1602,8 @@ public sealed class D3D11RenderWindow : Form
                         frameBeforeUpload)
                     .ConfigureAwait(false);
             }
+
+            ThrowIfStreamingSuperseded();
 
             foreach (var trafficVehicle in
                      prepared.TrafficVehicleGeometries)
