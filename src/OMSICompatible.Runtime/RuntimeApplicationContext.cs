@@ -61,6 +61,9 @@ internal sealed class RuntimeApplicationContext :
     private int _loadedCenterY;
     private bool _loadEntireMap;
     private bool _closing;
+    private readonly List<OmsiPluginRemoteClient>
+        _pluginClients =
+            [];
 
     private const int CompleteMapTileThreshold = 64;
 
@@ -142,6 +145,9 @@ internal sealed class RuntimeApplicationContext :
 
         Console.WriteLine(
             $"[plugins] discovered={discoveredPlugins.Count:N0}; dllResolved={pluginArchitectures.Length:N0}; x86={pluginArchitectures.Count(static architecture => architecture == OmsiPluginBinaryArchitecture.X86):N0}; x64={pluginArchitectures.Count(static architecture => architecture == OmsiPluginBinaryArchitecture.X64):N0}; vars={discoveredPlugins.Sum(static plugin => plugin.Variables.Count):N0}; strings={discoveredPlugins.Sum(static plugin => plugin.StringVariables.Count):N0}; systemVars={discoveredPlugins.Sum(static plugin => plugin.SystemVariables.Count):N0}; triggers={discoveredPlugins.Sum(static plugin => plugin.Triggers.Count):N0}");
+
+        PrepareCompatiblePluginSessions(
+            discoveredPlugins);
 
         _loadedCenterX =
             entryPoint.Tile.X;
@@ -3340,6 +3346,59 @@ internal sealed class RuntimeApplicationContext :
         return values.Length == 0
             ? null
             : values.Average();
+    }
+
+    private void PrepareCompatiblePluginSessions(
+        IReadOnlyList<OmsiPluginDefinition> plugins)
+    {
+        var hostPath =
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "PluginHost-x86",
+                "OMSICompatible.PluginHost.x86.exe");
+
+        if (!File.Exists(
+                hostPath))
+        {
+            Console.WriteLine(
+                $"[plugins] x86 host unavailable at {hostPath}; plugin execution stays disabled.");
+            return;
+        }
+
+        foreach (var plugin in
+                 plugins)
+        {
+            if (!File.Exists(
+                    plugin.DllPath) ||
+                OmsiPluginBinaryInspector.Inspect(
+                    plugin.DllPath) !=
+                    OmsiPluginBinaryArchitecture.X86)
+            {
+                continue;
+            }
+
+            try
+            {
+                var client =
+                    OmsiPluginRemoteClient.Start(
+                        hostPath,
+                        plugin.DllPath);
+
+                _pluginClients.Add(
+                    client);
+
+                Console.WriteLine(
+                    $"[plugins] host-ready opl={Path.GetFileName(plugin.OplPath)}; dll={Path.GetFileName(plugin.DllPath)}; capabilities={client.Capabilities}");
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[plugins] host failed for {Path.GetFileName(plugin.DllPath)}: {exception.Message}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[plugins] hosted={_pluginClients.Count:N0}; execution wiring pending simulation variable bridge.");
     }
 
     private static string? ResolveMapImage(
