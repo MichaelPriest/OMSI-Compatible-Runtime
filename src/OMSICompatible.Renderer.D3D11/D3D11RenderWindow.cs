@@ -17672,8 +17672,14 @@ public sealed class D3D11RenderWindow : Form
                 ? samples[^1]
                 : frameMilliseconds;
 
+        var streamingMode =
+            _pendingStreamingTextureLoads.Count >
+                    0
+                ? $"\nStream {_pendingStreamingTextureLoads.Count:N0} tex"
+                : string.Empty;
+
         _fpsLabel.Text =
-            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n1% {onePercentLowFps:0.0} FPS · max {worstFrameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}";
+            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n1% {onePercentLowFps:0.0} FPS · max {worstFrameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}{streamingMode}";
 
         _fpsFrameCount =
             0;
