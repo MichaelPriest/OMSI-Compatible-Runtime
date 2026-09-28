@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Numerics;
+using OMSICompatible.Renderer.Common;
 using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
@@ -1046,57 +1047,4 @@ internal static class RuntimeObjectGeometryBuilder
             value *
             Math.PI /
             180.0);
-}
-
-internal readonly struct RuntimeObjectVertex
-{
-    public const uint SizeInBytes = 64;
-
-    public RuntimeObjectVertex(
-        Vector3 position,
-        Color4 color,
-        Vector2 uv,
-        Vector3 normal,
-        Vector4 skinWeights)
-    {
-        Position = position;
-        Color = color;
-        Uv = uv;
-        Normal = normal;
-        SkinWeights =
-            skinWeights;
-    }
-
-    public RuntimeObjectVertex(
-        Vector3 position,
-        Color4 color,
-        Vector2 uv,
-        Vector3 normal)
-        : this(
-            position,
-            color,
-            uv,
-            normal,
-            Vector4.Zero)
-    {
-    }
-
-    public RuntimeObjectVertex(
-        Vector3 position,
-        Color4 color,
-        Vector2 uv)
-        : this(
-            position,
-            color,
-            uv,
-            Vector3.UnitY,
-            Vector4.Zero)
-    {
-    }
-
-    public readonly Vector3 Position;
-    public readonly Color4 Color;
-    public readonly Vector2 Uv;
-    public readonly Vector3 Normal;
-    public readonly Vector4 SkinWeights;
 }
