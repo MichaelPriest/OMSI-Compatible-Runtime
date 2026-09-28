@@ -424,8 +424,12 @@ public sealed class D3D11RenderWindow : Form
         512;
     private const int MaximumStreamingTextureUploadsPerFrame =
         4;
-    private const double StreamingTextureUploadBudgetMilliseconds =
+    private const double MaximumStreamingTextureUploadBudgetMilliseconds =
         2.0;
+    private int _currentStreamingTextureUploadLimit =
+        MaximumStreamingTextureUploadsPerFrame;
+    private double _currentStreamingTextureUploadBudgetMilliseconds =
+        MaximumStreamingTextureUploadBudgetMilliseconds;
     private RuntimeObjectGeometry _objectGeometry =
         RuntimeObjectGeometry.Empty;
     private uint _objectVertexCount;
@@ -496,6 +500,9 @@ public sealed class D3D11RenderWindow : Form
     private long _fpsFrameCount;
     private double _fpsSampleStartSeconds;
     private double _fpsPreviousFrameSeconds;
+    private double _previousRenderTickSeconds;
+    private double _lastObservedFrameMilliseconds;
+    private readonly double _targetFrameMilliseconds;
     private double _lastStreamingSwapMilliseconds;
     private readonly Queue<double> _frameTimeSamplesMilliseconds =
         new();
@@ -629,6 +636,14 @@ public sealed class D3D11RenderWindow : Form
             _frameClock.Elapsed.TotalSeconds;
         _fpsPreviousFrameSeconds =
             _fpsSampleStartSeconds;
+        _previousRenderTickSeconds =
+            _fpsSampleStartSeconds;
+        _targetFrameMilliseconds =
+            1000.0 /
+            Math.Clamp(
+                targetFps,
+                10,
+                240);
         _masterVolume =
             Math.Clamp(
                 masterVolumePercent,
@@ -1561,13 +1576,54 @@ public sealed class D3D11RenderWindow : Form
         var startMilliseconds =
             _frameClock.Elapsed.TotalMilliseconds;
 
+        var pressure =
+            _lastObservedFrameMilliseconds >
+                    0.0
+                ? _lastObservedFrameMilliseconds /
+                  Math.Max(
+                      _targetFrameMilliseconds,
+                      1.0)
+                : 1.0;
+
+        if (pressure >=
+            1.5)
+        {
+            _currentStreamingTextureUploadLimit =
+                1;
+            _currentStreamingTextureUploadBudgetMilliseconds =
+                0.5;
+        }
+        else if (pressure >=
+                 1.15)
+        {
+            _currentStreamingTextureUploadLimit =
+                2;
+            _currentStreamingTextureUploadBudgetMilliseconds =
+                1.0;
+        }
+        else if (pressure <=
+                 0.85)
+        {
+            _currentStreamingTextureUploadLimit =
+                MaximumStreamingTextureUploadsPerFrame;
+            _currentStreamingTextureUploadBudgetMilliseconds =
+                MaximumStreamingTextureUploadBudgetMilliseconds;
+        }
+        else
+        {
+            _currentStreamingTextureUploadLimit =
+                3;
+            _currentStreamingTextureUploadBudgetMilliseconds =
+                1.5;
+        }
+
         var processed =
             0;
 
         while (_pendingStreamingTextureLoads.Count >
                    0 &&
                processed <
-                   MaximumStreamingTextureUploadsPerFrame)
+                   _currentStreamingTextureUploadLimit)
         {
             var pending =
                 _pendingStreamingTextureLoads.Dequeue();
@@ -1615,7 +1671,7 @@ public sealed class D3D11RenderWindow : Form
                     0 &&
                 _frameClock.Elapsed.TotalMilliseconds -
                     startMilliseconds >=
-                StreamingTextureUploadBudgetMilliseconds)
+                _currentStreamingTextureUploadBudgetMilliseconds)
             {
                 break;
             }
@@ -4104,6 +4160,26 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         EventArgs e)
     {
+        var tickNowSeconds =
+            _frameClock.Elapsed.TotalSeconds;
+
+        var tickDeltaSeconds =
+            tickNowSeconds -
+            _previousRenderTickSeconds;
+
+        _previousRenderTickSeconds =
+            tickNowSeconds;
+
+        if (tickDeltaSeconds >
+                0.0 &&
+            tickDeltaSeconds <
+                1.0)
+        {
+            _lastObservedFrameMilliseconds =
+                tickDeltaSeconds *
+                1000.0;
+        }
+
         if (!_simulationPaused)
         {
             UpdateSimulation();
@@ -17799,7 +17875,7 @@ public sealed class D3D11RenderWindow : Form
         var streamingMode =
             _pendingStreamingTextureLoads.Count >
                     0
-                ? $"\nStream {_pendingStreamingTextureLoads.Count:N0} tex · swap {_lastStreamingSwapMilliseconds:0.0} ms"
+                ? $"\nStream {_pendingStreamingTextureLoads.Count:N0} tex · {_currentStreamingTextureUploadLimit}/f · {_currentStreamingTextureUploadBudgetMilliseconds:0.0} ms · swap {_lastStreamingSwapMilliseconds:0.0} ms"
                 : _lastStreamingSwapMilliseconds >
                         0.0
                     ? $"\nSwap {_lastStreamingSwapMilliseconds:0.0} ms"
