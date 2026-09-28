@@ -675,6 +675,161 @@ public sealed class D3D12PresentationContext :
             vsync);
     }
 
+    public void DrawSceneAndPresent(
+        D3D12RuntimeTerrainResources? terrain,
+        D3D12RuntimeObjectResources? splines,
+        D3D12RuntimeObjectResources? objects,
+        float red,
+        float green,
+        float blue,
+        bool vsync)
+    {
+        ObjectDisposedException.ThrowIf(
+            _disposed,
+            this);
+
+        var allocator =
+            _commandAllocators[
+                _backBufferIndex];
+
+        allocator.Reset();
+
+        _commandList.Reset(
+            allocator,
+            _pipelineState);
+
+        _commandList.SetGraphicsRootSignature(
+            _rootSignature);
+
+        _commandList.SetGraphicsRoot32BitConstants(
+            0,
+            ref _frameConstants);
+
+        var renderTarget =
+            _renderTargets[
+                _backBufferIndex];
+
+        _commandList.ResourceBarrierTransition(
+            renderTarget,
+            ResourceStates.Present,
+            ResourceStates.RenderTarget);
+
+        var rtv =
+            new CpuDescriptorHandle(
+                _rtvHeap.GetCPUDescriptorHandleForHeapStart(),
+                (int)_backBufferIndex,
+                _rtvDescriptorSize);
+
+        var dsv =
+            _dsvHeap.GetCPUDescriptorHandleForHeapStart();
+
+        _commandList.OMSetRenderTargets(
+            rtv,
+            dsv);
+
+        _commandList.ClearRenderTargetView(
+            rtv,
+            new Color4(
+                red,
+                green,
+                blue,
+                1.0f));
+
+        _commandList.ClearDepthStencilView(
+            dsv,
+            ClearFlags.Depth,
+            1.0f,
+            0);
+
+        _commandList.RSSetViewport(
+            new Viewport(
+                0.0f,
+                0.0f,
+                _width,
+                _height,
+                0.0f,
+                1.0f));
+
+        _commandList.RSSetScissorRect(
+            _width,
+            _height);
+
+        _commandList.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        if (terrain is not null)
+        {
+            _commandList.IASetVertexBuffers(
+                0,
+                terrain.Buffer.View);
+
+            foreach (var batch in
+                     terrain.Batches)
+            {
+                if (batch.VertexCount ==
+                    0)
+                {
+                    continue;
+                }
+
+                _commandList.DrawInstanced(
+                    batch.VertexCount,
+                    1,
+                    batch.StartVertex,
+                    0);
+            }
+        }
+
+        DrawObjectBuffer(
+            splines);
+
+        DrawObjectBuffer(
+            objects);
+
+        _commandList.ResourceBarrierTransition(
+            renderTarget,
+            ResourceStates.RenderTarget,
+            ResourceStates.Present);
+
+        _commandList.Close();
+
+        _queue.ExecuteCommandList(
+            _commandList);
+
+        _swapChain.Present(
+            vsync
+                ? 1u
+                : 0u,
+            PresentFlags.None);
+
+        SignalAndThrottle();
+
+        _backBufferIndex =
+            _swapChain.CurrentBackBufferIndex;
+    }
+
+    private void DrawObjectBuffer(
+        D3D12RuntimeObjectResources? resources)
+    {
+        if (resources is null ||
+            resources.Buffer.VertexCount <=
+                0)
+        {
+            return;
+        }
+
+        _commandList.IASetVertexBuffers(
+            0,
+            resources.Buffer.View);
+
+        _commandList.DrawInstanced(
+            checked(
+                (uint)resources.Buffer.VertexCount),
+            1,
+            0,
+            0);
+    }
+
     private void DrawAndPresent(
         D3D12RuntimeGeometryBuffer geometryBuffer,
         IReadOnlyList<RuntimeTerrainBatch>? batches,
