@@ -30,6 +30,8 @@ public sealed class D3D12PresentationContext :
     private readonly ID3D12RootSignature _rootSignature;
     private readonly ID3D12PipelineState _pipelineState;
     private readonly ID3D12Fence _fence;
+    private readonly int _width;
+    private readonly int _height;
     private readonly AutoResetEvent _fenceEvent =
         new(
             false);
@@ -48,7 +50,9 @@ public sealed class D3D12PresentationContext :
         ID3D12GraphicsCommandList commandList,
         ID3D12RootSignature rootSignature,
         ID3D12PipelineState pipelineState,
-        ID3D12Fence fence)
+        ID3D12Fence fence,
+        int width,
+        int height)
     {
         _factory =
             factory;
@@ -70,6 +74,14 @@ public sealed class D3D12PresentationContext :
             pipelineState;
         _fence =
             fence;
+        _width =
+            Math.Max(
+                width,
+                1);
+        _height =
+            Math.Max(
+                height,
+                1);
     }
 
     public static D3D12PresentationContext Create(
@@ -365,7 +377,9 @@ public sealed class D3D12PresentationContext :
                     commandList,
                     rootSignature,
                     pipelineState,
-                    fence);
+                    fence,
+                    width,
+                    height);
 
             for (uint index = 0;
                  index <
@@ -464,14 +478,14 @@ public sealed class D3D12PresentationContext :
             new Viewport(
                 0.0f,
                 0.0f,
-                320.0f,
-                180.0f,
+                _width,
+                _height,
                 0.0f,
                 1.0f));
 
         _commandList.RSSetScissorRect(
-            320,
-            180);
+            _width,
+            _height);
 
         _commandList.IASetPrimitiveTopology(
             PrimitiveTopology.TriangleList);
