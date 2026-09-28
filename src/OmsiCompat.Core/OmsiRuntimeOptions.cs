@@ -94,6 +94,7 @@ public sealed class OmsiRuntimeOptions
     public bool RuntimePreferHardwareGpu { get; set; } = true;
     public bool RuntimeShowFps { get; set; } = true;
     public int RuntimeMsaaSamples { get; set; } = 4;
+    public double RuntimeSharpenStrength { get; set; } = 0.15;
     public bool RuntimeDiagnostics { get; set; } = true;
 
     public static string SettingsDirectory =>
