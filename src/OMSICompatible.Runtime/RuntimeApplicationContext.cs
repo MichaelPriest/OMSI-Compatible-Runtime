@@ -4,6 +4,7 @@ using OmsiCompat.Map;
 using OmsiCompat.Scripting;
 using OmsiCompat.Vehicles;
 using OMSICompatible.Renderer.D3D11;
+using OMSICompatible.Renderer.D3D12;
 using OMSICompatible.World;
 
 namespace OMSICompatible.Runtime;
@@ -98,6 +99,30 @@ internal sealed class RuntimeApplicationContext :
                 : null;
         _options =
             OmsiRuntimeOptions.Load();
+
+        var d3d12 =
+            D3D12BackendProbe.Probe(
+                _options.RuntimePreferHardwareGpu);
+
+        var requestedGraphicsBackend =
+            string.IsNullOrWhiteSpace(
+                _options.RuntimeGraphicsBackend)
+                ? "Auto"
+                : _options.RuntimeGraphicsBackend.Trim();
+
+        Console.WriteLine(
+            $"[graphics] requested={requestedGraphicsBackend}; d3d12Available={d3d12.Available}; adapter={d3d12.AdapterName}; featureLevel={d3d12.FeatureLevel}; software={d3d12.SoftwareAdapter}; error={d3d12.Error ?? "<none>"}");
+
+        if (requestedGraphicsBackend.Equals(
+                "D3D12",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine(
+                d3d12.Available
+                    ? "[graphics] D3D12 device is available; renderer port is staged but D3D11 remains active until the D3D12 draw/resource path reaches feature parity."
+                    : "[graphics] D3D12 was requested but is unavailable; using D3D11 fallback.");
+        }
+
         _loadedCenterX =
             entryPoint.Tile.X;
         _loadedCenterY =
