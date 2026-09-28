@@ -7157,6 +7157,15 @@ public sealed class D3D11RenderWindow : Form
                 texturePath,
                 out var reflection))
         {
+            // Never sample a reflection texture while rendering a reflection
+            // target. A mirror surface can otherwise read from the same
+            // resource currently bound as the render target, producing a
+            // D3D11 read/write hazard and recursive/black mirror output.
+            if (_renderingReflectionPass)
+            {
+                return false;
+            }
+
             view =
                 reflection.ShaderResourceView;
             return true;
