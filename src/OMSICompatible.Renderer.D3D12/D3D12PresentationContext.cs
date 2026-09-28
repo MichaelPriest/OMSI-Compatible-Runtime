@@ -559,6 +559,18 @@ public sealed class D3D12PresentationContext :
         }
     }
 
+    public D3D12RuntimeTerrainResources CreateTerrainResources(
+        RuntimeTerrainGeometry geometry)
+    {
+        ObjectDisposedException.ThrowIf(
+            _disposed,
+            this);
+
+        return D3D12RuntimeTerrainResources.Create(
+            _device,
+            geometry);
+    }
+
     public void SetViewProjection(
         Matrix4x4 viewProjection)
     {
