@@ -6490,6 +6490,21 @@ try
         requestJumpAgent.AiBrakeLight,
         "OMSI traffic_light_jump did not keep the group before green when the monitored signal had no approach.");
 
+    var requestJumpSignalState =
+        requestJumpSimulation
+            .SnapshotTrafficSignals()
+            .Single(
+                static state =>
+                    state.SegmentIndex ==
+                    1);
+
+    Require(
+        requestJumpSignalState.Phase ==
+            0 &&
+        requestJumpSignalState.PositionSeconds <
+            2.0,
+        "Dynamic signal snapshot did not expose the traffic_light_jump-adjusted group clock.");
+
     var requestStop =
         new WorldTrafficLightStop(
             0,
@@ -6596,6 +6611,20 @@ try
             5.0 &&
         requestStopAgent.AiBrakeLight,
         "OMSI traffic_light_stop did not hold the group while the monitored signal had an active approach.");
+
+    var requestStopSignalState =
+        requestStopSimulation
+            .SnapshotTrafficSignals()
+            .Single();
+
+    Require(
+        requestStopSignalState.Phase ==
+            0 &&
+        Math.Abs(
+            requestStopSignalState.PositionSeconds -
+            1.0) <
+            0.001,
+        "Dynamic signal snapshot did not expose the traffic_light_stop-held group clock.");
 
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
