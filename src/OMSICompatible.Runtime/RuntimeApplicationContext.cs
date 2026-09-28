@@ -24,6 +24,7 @@ internal sealed class RuntimeApplicationContext :
         new(1, 1);
     private readonly SemaphoreSlim _prefetchGate =
         new(1, 1);
+    private (int X, int Y)? _pendingPrefetchCenter;
     private (int X, int Y)? _lastPrefetchedCenter;
 
     private D3D11RenderWindow? _runtimeWindow;
@@ -1153,23 +1154,21 @@ internal sealed class RuntimeApplicationContext :
             target.Y ==
                 _loadedCenterY ||
             _lastPrefetchedCenter ==
+                target ||
+            _pendingPrefetchCenter ==
                 target)
         {
             return;
         }
 
-        _lastPrefetchedCenter =
+        _pendingPrefetchCenter =
             target;
 
         _ =
-            PrefetchWorldCacheAsync(
-                target.X,
-                target.Y);
+            ProcessDirectionalPrefetchAsync();
     }
 
-    private async Task PrefetchWorldCacheAsync(
-        int centerX,
-        int centerY)
+    private async Task ProcessDirectionalPrefetchAsync()
     {
         if (!await _prefetchGate.WaitAsync(
                 0))
@@ -1179,37 +1178,52 @@ internal sealed class RuntimeApplicationContext :
 
         try
         {
-            if (_closing)
+            while (!_closing &&
+                   _pendingPrefetchCenter is
+                       { } requested)
             {
-                return;
+                _pendingPrefetchCenter =
+                    null;
+
+                if (_lastPrefetchedCenter ==
+                    requested)
+                {
+                    continue;
+                }
+
+                Console.WriteLine(
+                    $"[streaming-prefetch] warming {requested.X},{requested.Y}...");
+
+                try
+                {
+                    await Task.Run(
+                        () =>
+                            WorldLoader.WarmCache(
+                                _contentRoot,
+                                _map,
+                                new WorldLoadOptions(
+                                    requested.X,
+                                    requested.Y,
+                                    ActiveTileRadius:
+                                        Math.Clamp(
+                                            _options.RuntimeStreamingRadius,
+                                            0,
+                                            4),
+                                    LoadEntireMap:
+                                        false)));
+
+                    _lastPrefetchedCenter =
+                        requested;
+
+                    Console.WriteLine(
+                        $"[streaming-prefetch] ready {requested.X},{requested.Y}.");
+                }
+                catch (Exception exception)
+                {
+                    Console.Error.WriteLine(
+                        $"[streaming-prefetch] {requested.X},{requested.Y}: {exception.Message}");
+                }
             }
-
-            Console.WriteLine(
-                $"[streaming-prefetch] warming {centerX},{centerY}...");
-
-            await Task.Run(
-                () =>
-                    WorldLoader.WarmCache(
-                        _contentRoot,
-                        _map,
-                        new WorldLoadOptions(
-                            centerX,
-                            centerY,
-                            ActiveTileRadius:
-                                Math.Clamp(
-                                    _options.RuntimeStreamingRadius,
-                                    0,
-                                    4),
-                            LoadEntireMap:
-                                false)));
-
-            Console.WriteLine(
-                $"[streaming-prefetch] ready {centerX},{centerY}.");
-        }
-        catch (Exception exception)
-        {
-            Console.Error.WriteLine(
-                $"[streaming-prefetch] {exception.Message}");
         }
         finally
         {
