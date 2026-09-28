@@ -405,6 +405,10 @@ public sealed class D3D11RenderWindow : Form
 
     private FeatureLevel _featureLevel;
     private readonly bool _vsync;
+    private readonly bool _showFps;
+    private readonly Label? _fpsLabel;
+    private long _fpsFrameCount;
+    private double _fpsSampleStartSeconds;
     private readonly float _masterVolume;
     private readonly int _maximumSoundCount;
     private readonly bool _aiVehicleSoundsEnabled;
@@ -442,6 +446,7 @@ public sealed class D3D11RenderWindow : Form
         OmsiScriptRuntime? scriptRuntime = null,
         int targetFps = 60,
         bool vsync = true,
+        bool showFps = false,
         bool vehiclePreviewMode = false,
         IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
         string? inputLanguage = null,
@@ -510,6 +515,11 @@ public sealed class D3D11RenderWindow : Form
                 _initialVehicleVariables);
 
         _vsync = vsync;
+        _showFps =
+            showFps &&
+            !vehiclePreviewMode;
+        _fpsSampleStartSeconds =
+            _frameClock.Elapsed.TotalSeconds;
         _masterVolume =
             Math.Clamp(
                 masterVolumePercent,
@@ -694,6 +704,39 @@ public sealed class D3D11RenderWindow : Form
         MouseUp += OnRuntimeMouseUp;
         MouseMove += OnRuntimeMouseMove;
         MouseWheel += OnRuntimeMouseWheel;
+
+        if (_showFps)
+        {
+            _fpsLabel =
+                new Label
+                {
+                    AutoSize = true,
+                    BackColor =
+                        System.Drawing.Color.Black,
+                    ForeColor =
+                        System.Drawing.Color.White,
+                    Font =
+                        new System.Drawing.Font(
+                            "Segoe UI",
+                            10.0f,
+                            System.Drawing.FontStyle.Bold),
+                    Padding =
+                        new Padding(
+                            7,
+                            4,
+                            7,
+                            4),
+                    Location =
+                        new System.Drawing.Point(
+                            12,
+                            12),
+                    Text =
+                        "FPS --  |  --.- ms"
+                };
+
+            Controls.Add(
+                _fpsLabel);
+        }
 
         _omsiMenuBar =
             _vehiclePreviewMode
@@ -3458,12 +3501,15 @@ public sealed class D3D11RenderWindow : Form
         }
 
         RenderFrame();
+        UpdateFpsOverlay();
 
         if (_omsiMenuBar?.Visible ==
             true)
         {
             _omsiMenuBar.BringToFront();
         }
+
+        _fpsLabel?.BringToFront();
 
         _captionFrame++;
         if (_captionFrame >= 15)
@@ -16902,6 +16948,53 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.Draw(
             _tileVertexCount,
             0);
+    }
+
+    private void UpdateFpsOverlay()
+    {
+        if (!_showFps ||
+            _fpsLabel is null)
+        {
+            return;
+        }
+
+        _fpsFrameCount++;
+
+        var nowSeconds =
+            _frameClock.Elapsed.TotalSeconds;
+
+        var elapsedSeconds =
+            nowSeconds -
+            _fpsSampleStartSeconds;
+
+        if (elapsedSeconds <
+            0.5)
+        {
+            return;
+        }
+
+        var frames =
+            Math.Max(
+                _fpsFrameCount,
+                1);
+
+        var fps =
+            frames /
+            elapsedSeconds;
+
+        var frameMilliseconds =
+            elapsedSeconds *
+            1000.0 /
+            frames;
+
+        _fpsLabel.Text =
+            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms";
+
+        _fpsFrameCount =
+            0;
+
+        _fpsSampleStartSeconds =
+            nowSeconds;
     }
 
     private void UpdateCaption()
