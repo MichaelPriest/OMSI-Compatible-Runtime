@@ -606,6 +606,12 @@
                         <TextBox x:Name="SettingsObjectDistanceBox" Header="Distância de objetos (m)"/>
                         <TextBox x:Name="SettingsTextureMemoryBox" Header="Memória de textura (MB)"/>
                         <TextBox x:Name="SettingsAnisotropicBox" Header="Filtro anisotrópico"/>
+                        <TextBox x:Name="SettingsReflectionModeBox"
+                                 Header="Modo dos retrovisores (economy / full / off)"
+                                 ToolTipService.ToolTip="Controla a frequência das reflexões em tempo real. economy intercala espelhos não contínuos; full atualiza todos; off desativa os feeds."/>
+                        <TextBox x:Name="SettingsReflectionSizeBox"
+                                 Header="Resolução dos retrovisores"
+                                 ToolTipService.ToolTip="Tamanho da textura quadrada de reflexão em pixels. Valores comuns: 256, 512 ou 1024."/>
                         <CheckBox x:Name="SettingsShadowsCheck" Content="Sombras"/>
                         <CheckBox x:Name="SettingsNightMapCheck" Content="Night maps"/>
                         <CheckBox x:Name="SettingsLightMapCheck" Content="Light maps"/>
