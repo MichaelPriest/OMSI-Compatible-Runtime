@@ -425,7 +425,10 @@ public static class OmsiBusReader
                     fieldOfView,
                     heading,
                     pitch,
-                    maximumRenderDistance));
+                    maximumRenderDistance,
+                    section.Name.Equals(
+                        "add_camera_reflexion_2",
+                        StringComparison.OrdinalIgnoreCase)));
         }
 
         return result;
