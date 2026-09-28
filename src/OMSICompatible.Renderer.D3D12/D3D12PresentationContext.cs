@@ -453,6 +453,8 @@ public sealed class D3D12PresentationContext :
                         0.45f,
                         0.95f,
                         1.0f),
+                    Vector2.Zero,
+                    Vector2.Zero,
                     Vector2.Zero)
             ];
 
