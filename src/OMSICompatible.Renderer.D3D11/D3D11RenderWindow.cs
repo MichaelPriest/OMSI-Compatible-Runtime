@@ -32,6 +32,14 @@ public sealed class D3D11RenderWindow : Form
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimePostProcessConstants
+    {
+        public Vector2 TexelSize;
+        public float SharpenStrength;
+        public float Padding;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct RuntimeModelConstants
     {
         public Matrix4x4 World;
@@ -269,11 +277,19 @@ public sealed class D3D11RenderWindow : Form
     private IDXGISwapChain1? _swapChain;
     private ID3D11Texture2D? _backBuffer;
     private ID3D11Texture2D? _multisampleColorTexture;
+    private ID3D11Texture2D? _postProcessTexture;
+    private ID3D11ShaderResourceView? _postProcessShaderResourceView;
+    private ID3D11RenderTargetView? _postProcessBackBufferView;
     private ID3D11RenderTargetView? _renderTargetView;
     private ID3D11Texture2D? _depthTexture;
     private ID3D11DepthStencilView? _depthStencilView;
+    private ID3D11VertexShader? _postProcessVertexShader;
+    private ID3D11PixelShader? _postProcessPixelShader;
+    private ID3D11SamplerState? _postProcessSampler;
+    private ID3D11Buffer? _postProcessConstantsBuffer;
     private readonly int _requestedMsaaSamples;
     private int _activeMsaaSamples;
+    private readonly float _sharpenStrength;
 
     private ID3D11VertexShader? _skyVertexShader;
     private ID3D11PixelShader? _skyPixelShader;
@@ -451,6 +467,7 @@ public sealed class D3D11RenderWindow : Form
         bool vsync = true,
         bool showFps = false,
         int msaaSamples = 0,
+        double sharpenStrength = 0.0,
         bool vehiclePreviewMode = false,
         IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
         string? inputLanguage = null,
@@ -527,6 +544,11 @@ public sealed class D3D11RenderWindow : Form
                     2
                     ? 2
                     : 0;
+        _sharpenStrength =
+            (float)Math.Clamp(
+                sharpenStrength,
+                0.0,
+                1.0);
         _showFps =
             showFps &&
             !vehiclePreviewMode;
@@ -1428,6 +1450,7 @@ public sealed class D3D11RenderWindow : Form
 
         CreateSwapChain();
         CreateBackBufferResources();
+        CreatePostProcessResources();
         CreateSkyResources();
         CreateTileOverviewResources();
         CreateTerrainResources();
@@ -1500,7 +1523,8 @@ public sealed class D3D11RenderWindow : Form
 
     private void CreateBackBufferResources()
     {
-        if (_swapChain is null || _device is null)
+        if (_swapChain is null ||
+            _device is null)
         {
             return;
         }
@@ -1519,6 +1543,32 @@ public sealed class D3D11RenderWindow : Form
             _swapChain.GetBuffer<
                 ID3D11Texture2D>(
                     0);
+
+        var usePostProcess =
+            _sharpenStrength >
+            0.0001f;
+
+        if (usePostProcess)
+        {
+            _postProcessTexture =
+                _device.CreateTexture2D(
+                    Format.R8G8B8A8_UNorm,
+                    width,
+                    height,
+                    mipLevels:
+                        1,
+                    bindFlags:
+                        BindFlags.RenderTarget |
+                        BindFlags.ShaderResource);
+
+            _postProcessShaderResourceView =
+                _device.CreateShaderResourceView(
+                    _postProcessTexture);
+
+            _postProcessBackBufferView =
+                _device.CreateRenderTargetView(
+                    _backBuffer);
+        }
 
         _activeMsaaSamples =
             0;
@@ -1605,8 +1655,12 @@ public sealed class D3D11RenderWindow : Form
             0)
         {
             _renderTargetView =
-                _device.CreateRenderTargetView(
-                    _backBuffer);
+                usePostProcess &&
+                _postProcessTexture is not null
+                    ? _device.CreateRenderTargetView(
+                        _postProcessTexture)
+                    : _device.CreateRenderTargetView(
+                        _backBuffer);
 
             _depthTexture =
                 _device.CreateTexture2D(
@@ -1629,6 +1683,48 @@ public sealed class D3D11RenderWindow : Form
                     "[graphics] MSAA unavailable; using single-sample rendering.");
             }
         }
+    }
+
+    private void CreatePostProcessResources()
+    {
+        if (_device is null ||
+            _sharpenStrength <=
+                0.0001f)
+        {
+            return;
+        }
+
+        var shaderFile =
+            ShaderPath(
+                "RuntimePostProcess.hlsl");
+
+        ReadOnlyMemory<byte> vertexShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "VSMain",
+                "vs_4_0");
+
+        ReadOnlyMemory<byte> pixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSMain",
+                "ps_4_0");
+
+        _postProcessVertexShader =
+            _device.CreateVertexShader(
+                vertexShaderByteCode.Span);
+
+        _postProcessPixelShader =
+            _device.CreatePixelShader(
+                pixelShaderByteCode.Span);
+
+        _postProcessSampler =
+            _device.CreateSamplerState(
+                SamplerDescription.LinearClamp);
+
+        _postProcessConstantsBuffer =
+            _device.CreateConstantBuffer<
+                RuntimePostProcessConstants>();
     }
 
     private void CreateSkyResources()
@@ -3610,6 +3706,15 @@ public sealed class D3D11RenderWindow : Form
         _multisampleColorTexture?.Dispose();
         _multisampleColorTexture = null;
 
+        _postProcessShaderResourceView?.Dispose();
+        _postProcessShaderResourceView = null;
+
+        _postProcessTexture?.Dispose();
+        _postProcessTexture = null;
+
+        _postProcessBackBufferView?.Dispose();
+        _postProcessBackBufferView = null;
+
         _backBuffer?.Dispose();
         _backBuffer = null;
 
@@ -3692,13 +3797,24 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
-    private void ResolveMultisampleBackBuffer()
+    private void ResolveMainSceneTarget()
     {
         if (_activeMsaaSamples <
                 2 ||
             _deviceContext is null ||
-            _backBuffer is null ||
             _multisampleColorTexture is null)
+        {
+            return;
+        }
+
+        var destination =
+            _sharpenStrength >
+                    0.0001f &&
+                _postProcessTexture is not null
+                ? _postProcessTexture
+                : _backBuffer;
+
+        if (destination is null)
         {
             return;
         }
@@ -3706,11 +3822,101 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.UnsetRenderTargets();
 
         _deviceContext.ResolveSubresource(
-            _backBuffer,
+            destination,
             0,
             _multisampleColorTexture,
             0,
             Format.R8G8B8A8_UNorm);
+    }
+
+    private void DrawPostProcess()
+    {
+        if (_sharpenStrength <=
+                0.0001f ||
+            _deviceContext is null ||
+            _postProcessBackBufferView is null ||
+            _postProcessShaderResourceView is null ||
+            _postProcessVertexShader is null ||
+            _postProcessPixelShader is null ||
+            _postProcessSampler is null ||
+            _postProcessConstantsBuffer is null)
+        {
+            return;
+        }
+
+        _deviceContext.UnsetRenderTargets();
+
+        _deviceContext.OMSetRenderTargets(
+            _postProcessBackBufferView,
+            null);
+
+        _deviceContext.RSSetViewport(
+            0,
+            0,
+            (uint)Math.Max(
+                ClientSize.Width,
+                1),
+            (uint)Math.Max(
+                ClientSize.Height,
+                1));
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            null);
+
+        _deviceContext.VSSetShader(
+            _postProcessVertexShader);
+
+        _deviceContext.PSSetShader(
+            _postProcessPixelShader);
+
+        Span<RuntimePostProcessConstants> constants =
+            stackalloc RuntimePostProcessConstants[1];
+
+        constants[0] =
+            new RuntimePostProcessConstants
+            {
+                TexelSize =
+                    new Vector2(
+                        1.0f /
+                        Math.Max(
+                            ClientSize.Width,
+                            1),
+                        1.0f /
+                        Math.Max(
+                            ClientSize.Height,
+                            1)),
+                SharpenStrength =
+                    _sharpenStrength,
+                Padding =
+                    0.0f
+            };
+
+        _postProcessConstantsBuffer.SetData(
+            _deviceContext,
+            constants,
+            MapMode.WriteDiscard);
+
+        _deviceContext.PSSetConstantBuffer(
+            0,
+            _postProcessConstantsBuffer);
+
+        _deviceContext.PSSetSampler(
+            0,
+            _postProcessSampler);
+
+        _deviceContext.PSSetShaderResource(
+            0,
+            _postProcessShaderResourceView);
+
+        _deviceContext.Draw(
+            3,
+            0);
+
+        _deviceContext.PSUnsetShaderResource(
+            0);
     }
 
     private void RenderFrame()
@@ -3755,7 +3961,8 @@ public sealed class D3D11RenderWindow : Form
             UpdateVehiclePreviewCameraConstants();
             DrawVehicle();
 
-            ResolveMultisampleBackBuffer();
+            ResolveMainSceneTarget();
+            DrawPostProcess();
 
             _swapChain.Present(
                 _vsync
@@ -3816,7 +4023,8 @@ public sealed class D3D11RenderWindow : Form
             DrawTileOverview();
         }
 
-        ResolveMultisampleBackBuffer();
+        ResolveMainSceneTarget();
+            DrawPostProcess();
 
         _swapChain.Present(
             _vsync
@@ -17445,6 +17653,11 @@ public sealed class D3D11RenderWindow : Form
             _tilePixelShader?.Dispose();
             _tileVertexShader?.Dispose();
             _tileVertexBuffer?.Dispose();
+
+            _postProcessConstantsBuffer?.Dispose();
+            _postProcessSampler?.Dispose();
+            _postProcessPixelShader?.Dispose();
+            _postProcessVertexShader?.Dispose();
 
             ReleaseBackBufferResources();
 
