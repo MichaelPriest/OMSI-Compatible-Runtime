@@ -274,11 +274,28 @@ internal static class RuntimeTerrainGeometryBuilder
                 (maximumTileY + 1) *
                 TileSizeMeters);
 
+        var alignedMinimumHeight =
+            vertices.Count >
+                    0
+                ? vertices.Min(
+                    static vertex =>
+                        vertex.Position.Y)
+                : minimumHeight;
+
+        var alignedMaximumHeight =
+            vertices.Count >
+                    0
+                ? vertices.Max(
+                    static vertex =>
+                        vertex.Position.Y)
+                : maximumHeight;
+
         var center =
             new Vector3(
                 (minimumX + maximumX) *
                 0.5f,
-                (minimumHeight + maximumHeight) *
+                (alignedMinimumHeight +
+                 alignedMaximumHeight) *
                 0.5f,
                 (minimumZ + maximumZ) *
                 0.5f);
@@ -295,8 +312,8 @@ internal static class RuntimeTerrainGeometryBuilder
             MathF.Max(
                 horizontalSpan,
                 300.0f),
-            minimumHeight,
-            maximumHeight);
+            alignedMinimumHeight,
+            alignedMaximumHeight);
     }
 
     private static void AppendTileLayer(
