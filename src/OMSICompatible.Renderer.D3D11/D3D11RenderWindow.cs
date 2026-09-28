@@ -8412,7 +8412,8 @@ public sealed class D3D11RenderWindow : Form
 
     private void UpdateSceneryCollisionState()
     {
-        if (PlayerTrafficObstacle is not
+        if (!_vehicleLandscapeCollisionsEnabled ||
+            PlayerTrafficObstacle is not
                 { } player ||
             _sceneryCollisionVolumes.Count ==
                 0)
