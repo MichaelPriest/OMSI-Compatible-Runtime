@@ -459,7 +459,7 @@ internal sealed class RuntimeApplicationContext :
             Console.WriteLine(
                 $"[startup-perf] runtimeInfoMs={Stopwatch.GetElapsedTime(runtimeInfoStarted).TotalMilliseconds:0.0}");
 
-            await ValidateD3D12TerrainAsync(
+            await ValidateD3D12SceneAsync(
                 runtimeInfo);
 
             OmsiScriptRuntime? scriptRuntime =
@@ -684,7 +684,7 @@ internal sealed class RuntimeApplicationContext :
         }
     }
 
-    private async Task ValidateD3D12TerrainAsync(
+    private async Task ValidateD3D12SceneAsync(
         RuntimeWindowInfo runtimeInfo)
     {
         if (!string.Equals(
@@ -702,7 +702,7 @@ internal sealed class RuntimeApplicationContext :
         if (!support.Available)
         {
             Console.WriteLine(
-                $"[d3d12-terrain] skipped; no compatible adapter. error={support.Error ?? "<none>"}");
+                $"[d3d12-scene] skipped; no compatible adapter. error={support.Error ?? "<none>"}");
             return;
         }
 
@@ -714,20 +714,47 @@ internal sealed class RuntimeApplicationContext :
             var geometry =
                 await Task.Run(
                     () =>
-                        RuntimeTerrainGeometryBuilder.Build(
-                            runtimeInfo.Tiles,
-                            runtimeInfo.GroundTextures,
-                            runtimeInfo.Splines));
+                    {
+                        var terrain =
+                            RuntimeTerrainGeometryBuilder.Build(
+                                runtimeInfo.Tiles,
+                                runtimeInfo.GroundTextures,
+                                runtimeInfo.Splines);
+
+                        var splines =
+                            RuntimeSplineGeometryBuilder.Build(
+                                runtimeInfo.Splines);
+
+                        var objects =
+                            RuntimeObjectGeometryBuilder.Build(
+                                runtimeInfo.Tiles,
+                                runtimeInfo.Objects,
+                                runtimeInfo.SceneryAssets,
+                                useNativeOmsiModelSpace:
+                                    true,
+                                isolatedObjectIds:
+                                    runtimeInfo.DynamicSceneryObjectIds);
+
+                        return (
+                            Terrain: terrain,
+                            Splines: splines,
+                            Objects: objects
+                        );
+                    });
 
             var buildElapsed =
                 Stopwatch.GetElapsedTime(
                     buildStarted);
 
-            if (geometry.Vertices.Length ==
-                0)
+            if (geometry.Terrain.Vertices.Length ==
+                    0 &&
+                geometry.Splines.Vertices.Length ==
+                    0 &&
+                geometry.Objects.Vertices.Length ==
+                    0)
             {
                 Console.WriteLine(
-                    $"[d3d12-terrain] skipped; no terrain vertices; buildMs={buildElapsed.TotalMilliseconds:0.0}");
+                    $"[d3d12-scene] skipped; no geometry; buildMs={buildElapsed.TotalMilliseconds:0.0}");
                 return;
             }
 
@@ -735,7 +762,7 @@ internal sealed class RuntimeApplicationContext :
                 new Form
                 {
                     Text =
-                        "OMSI Compatible Runtime - D3D12 Terrain Validation",
+                        "OMSI Compatible Runtime - D3D12 Scene Validation",
                     ClientSize =
                         new Size(
                             640,
@@ -765,8 +792,25 @@ internal sealed class RuntimeApplicationContext :
                 Stopwatch.GetTimestamp();
 
             using var terrain =
-                graphics.CreateTerrainResources(
-                    geometry);
+                geometry.Terrain.Vertices.Length >
+                        0
+                    ? graphics.CreateTerrainResources(
+                        geometry.Terrain)
+                    : null;
+
+            using var splines =
+                geometry.Splines.Vertices.Length >
+                        0
+                    ? graphics.CreateObjectResources(
+                        geometry.Splines.Vertices)
+                    : null;
+
+            using var objects =
+                geometry.Objects.Vertices.Length >
+                        0
+                    ? graphics.CreateObjectResources(
+                        geometry.Objects.Vertices)
+                    : null;
 
             var uploadElapsed =
                 Stopwatch.GetElapsedTime(
@@ -774,11 +818,25 @@ internal sealed class RuntimeApplicationContext :
 
             var span =
                 MathF.Max(
-                    geometry.HorizontalSpan,
+                    geometry.Terrain.HorizontalSpan,
                     300.0f);
 
             var center =
-                geometry.Center;
+                geometry.Terrain.Vertices.Length >
+                        0
+                    ? geometry.Terrain.Center
+                    : new Vector3(
+                        runtimeInfo.Tiles.Average(
+                            static tile =>
+                                tile.X) *
+                            300.0f +
+                        150.0f,
+                        0.0f,
+                        runtimeInfo.Tiles.Average(
+                            static tile =>
+                                tile.Y) *
+                            300.0f +
+                        150.0f);
 
             graphics.SetRenderOrigin(
                 center);
@@ -820,8 +878,10 @@ internal sealed class RuntimeApplicationContext :
             var drawStarted =
                 Stopwatch.GetTimestamp();
 
-            graphics.DrawAndPresent(
+            graphics.DrawSceneAndPresent(
                 terrain,
+                splines,
+                objects,
                 0.04f,
                 0.06f,
                 0.09f,
@@ -833,12 +893,12 @@ internal sealed class RuntimeApplicationContext :
                     drawStarted);
 
             Console.WriteLine(
-                $"[d3d12-terrain] success; vertices={geometry.Vertices.Length:N0}; batches={geometry.Batches.Count:N0}; buildMs={buildElapsed.TotalMilliseconds:0.0}; uploadMs={uploadElapsed.TotalMilliseconds:0.0}; drawMs={drawElapsed.TotalMilliseconds:0.0}; span={geometry.HorizontalSpan:0.0}m");
+                $"[d3d12-scene] success; terrainVertices={geometry.Terrain.Vertices.Length:N0}; terrainBatches={geometry.Terrain.Batches.Count:N0}; splineVertices={geometry.Splines.Vertices.Length:N0}; objectVertices={geometry.Objects.Vertices.Length:N0}; buildMs={buildElapsed.TotalMilliseconds:0.0}; uploadMs={uploadElapsed.TotalMilliseconds:0.0}; drawMs={drawElapsed.TotalMilliseconds:0.0}; span={span:0.0}m");
         }
         catch (Exception exception)
         {
             Console.WriteLine(
-                $"[d3d12-terrain] validation failed; continuing with D3D11 fallback: {exception.Message}");
+                $"[d3d12-scene] validation failed; continuing with D3D11 fallback: {exception.Message}");
         }
     }
 
