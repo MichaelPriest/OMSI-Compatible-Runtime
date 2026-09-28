@@ -166,8 +166,32 @@ internal sealed class RuntimeSplineTerrainAlignmentSampler
                 continue;
             }
 
-            if (distance >=
-                bestDistance)
+            var candidateHeight =
+                height -
+                TerrainClearanceMeters;
+
+            var closerInPlan =
+                distance <
+                bestDistance -
+                    0.05f;
+
+            var samePlanDistance =
+                Math.Abs(
+                    distance -
+                    bestDistance) <=
+                0.05f;
+
+            var closerToOriginalTerrain =
+                Math.Abs(
+                    candidateHeight -
+                    originalHeight) <
+                Math.Abs(
+                    bestHeight -
+                    originalHeight);
+
+            if (!closerInPlan &&
+                !(samePlanDistance &&
+                  closerToOriginalTerrain))
             {
                 continue;
             }
@@ -176,8 +200,7 @@ internal sealed class RuntimeSplineTerrainAlignmentSampler
                 distance;
 
             bestHeight =
-                height -
-                TerrainClearanceMeters;
+                candidateHeight;
 
             bestCoreWidth =
                 segment.CoreHalfWidth;
