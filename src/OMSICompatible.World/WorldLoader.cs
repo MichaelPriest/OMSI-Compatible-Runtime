@@ -45,6 +45,28 @@ public static class WorldLoader
         long LastUsedGeneration,
         WorldSplineAsset Asset);
 
+    private static readonly object SceneryCacheGate =
+        new();
+    private static readonly Dictionary<string, CachedSceneryAsset>
+        SceneryCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private static long _sceneryCacheGeneration;
+    private const int MaximumSceneryCacheEntries =
+        512;
+
+    private sealed record CachedFileStamp(
+        string Path,
+        long Bytes,
+        DateTime LastWriteUtc);
+
+    private sealed record CachedSceneryAsset(
+        long SourceBytes,
+        DateTime SourceLastWriteUtc,
+        IReadOnlyList<CachedFileStamp> FileStamps,
+        long LastUsedGeneration,
+        WorldSceneryAsset Asset);
+
     public static WorldDefinition Load(
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
@@ -856,6 +878,15 @@ public static class WorldLoader
             new Dictionary<string, WorldSceneryAsset>(
                 StringComparer.OrdinalIgnoreCase);
 
+        var cacheHits =
+            0;
+
+        var cacheMisses =
+            0;
+
+        var cacheSkipped =
+            0;
+
         var dependencyByPath =
             dependencies.Dependencies
                 .Where(
@@ -895,21 +926,62 @@ public static class WorldLoader
                 continue;
             }
 
+            var resolvedPath =
+                resolvedPath;
+
+            var (sourceBytes, sourceLastWriteUtc) =
+                GetFileStamp(
+                    resolvedPath);
+
+            lock (SceneryCacheGate)
+            {
+                _sceneryCacheGeneration++;
+
+                if (SceneryCache.TryGetValue(
+                        resolvedPath,
+                        out var cached) &&
+                    IsSceneryCacheEntryValid(
+                        cached,
+                        sourceBytes,
+                        sourceLastWriteUtc))
+                {
+                    SceneryCache[
+                        resolvedPath] =
+                        cached with
+                        {
+                            LastUsedGeneration =
+                                _sceneryCacheGeneration
+                        };
+
+                    result[
+                        declaredPath] =
+                        cached.Asset with
+                        {
+                            DeclaredPath =
+                                declaredPath
+                        };
+
+                    cacheHits++;
+
+                    continue;
+                }
+            }
+
             try
             {
                 var definition =
                     OmsiSceneryObjectReader.ReadFile(
-                        dependency.ResolvedPath);
+                        resolvedPath);
 
                 var collisionGeometry =
                     ResolveCollisionGeometry(
                         contentRoot.RootPath,
-                        dependency.ResolvedPath,
+                        resolvedPath,
                         definition.CollisionMeshSource);
 
                 var dynamicModel =
                     OmsiVehicleModelReader.ReadFile(
-                        dependency.ResolvedPath);
+                        resolvedPath);
 
                 var dynamicMeshesByOrdinal =
                     dynamicModel.Meshes
@@ -959,7 +1031,7 @@ public static class WorldLoader
                     var meshPath =
                         ResolveMeshPath(
                             contentRoot.RootPath,
-                            dependency.ResolvedPath,
+                            resolvedPath,
                             mesh.Path);
 
                     if (meshPath is null)
@@ -1008,7 +1080,7 @@ public static class WorldLoader
                                             OmsiTextureAssetPathResolver
                                                 .TryResolveSceneryTexture(
                                                     contentRoot.RootPath,
-                                                    dependency.ResolvedPath,
+                                                    resolvedPath,
                                                     meshPath,
                                                     material.TextureName,
                                                     out var resolvedTexture))
@@ -1071,7 +1143,7 @@ public static class WorldLoader
                                                 if (OmsiTextureAssetPathResolver
                                                     .TryResolveSceneryTexture(
                                                         contentRoot.RootPath,
-                                                        dependency.ResolvedPath,
+                                                        resolvedPath,
                                                         meshPath,
                                                         normalizedTransMapSource,
                                                         out var resolvedTransMap))
@@ -1100,7 +1172,7 @@ public static class WorldLoader
                                                         OmsiTextureAssetPathResolver
                                                             .TryResolveSceneryTexture(
                                                                 contentRoot.RootPath,
-                                                                dependency.ResolvedPath,
+                                                                resolvedPath,
                                                                 meshPath,
                                                                 transMapLeafName,
                                                                 out resolvedTransMap))
@@ -1168,10 +1240,10 @@ public static class WorldLoader
                             geometry.SourceTransform));
                 }
 
-                result[declaredPath] =
+                var asset =
                     new WorldSceneryAsset(
                         declaredPath,
-                        dependency.ResolvedPath,
+                        resolvedPath,
                         definition.Exists,
                         definition.UsesAbsoluteHeight,
                         definition.OnlyEditor,
@@ -1183,7 +1255,7 @@ public static class WorldLoader
                                 definition.Tree.TextureName,
                                 ResolveTreeTexturePath(
                                     contentRoot.RootPath,
-                                    dependency.ResolvedPath,
+                                    resolvedPath,
                                     definition.Tree.TextureName),
                                 definition.Tree.MinimumHeight,
                                 definition.Tree.MaximumHeight,
@@ -1250,6 +1322,51 @@ public static class WorldLoader
                         definition.BoundingBox,
                         collisionGeometry?.Bounds,
                         collisionGeometry?.Geometry);
+
+                result[
+                    declaredPath] =
+                    asset;
+
+                cacheMisses++;
+
+                if (TryBuildSceneryCacheStamps(
+                        asset,
+                        contentRoot.RootPath,
+                        out var fileStamps))
+                {
+                    lock (SceneryCacheGate)
+                    {
+                        _sceneryCacheGeneration++;
+
+                        SceneryCache[
+                            resolvedPath] =
+                            new CachedSceneryAsset(
+                                sourceBytes,
+                                sourceLastWriteUtc,
+                                fileStamps,
+                                _sceneryCacheGeneration,
+                                asset);
+
+                        while (SceneryCache.Count >
+                               MaximumSceneryCacheEntries)
+                        {
+                            var oldest =
+                                SceneryCache
+                                    .OrderBy(
+                                        static pair =>
+                                            pair.Value
+                                                .LastUsedGeneration)
+                                    .First();
+
+                            SceneryCache.Remove(
+                                oldest.Key);
+                        }
+                    }
+                }
+                else
+                {
+                    cacheSkipped++;
+                }
             }
             catch (Exception ex) when (
                 ex is IOException or
@@ -1261,7 +1378,7 @@ public static class WorldLoader
                 result[declaredPath] =
                     new WorldSceneryAsset(
                         declaredPath,
-                        dependency.ResolvedPath,
+                        resolvedPath,
                         false,
                         false,
                         false,
@@ -1269,10 +1386,125 @@ public static class WorldLoader
                         Array.Empty<WorldSceneryMeshAsset>(),
                         null,
                         Array.Empty<WorldSceneryPath>());
+
+                cacheMisses++;
             }
         }
 
+        Console.WriteLine(
+            $"[world-cache] scenery hits={cacheHits}; misses={cacheMisses}; skipped={cacheSkipped}; retained={GetSceneryCacheCount()}");
+
         return result;
+    }
+
+    private static bool IsSceneryCacheEntryValid(
+        CachedSceneryAsset cached,
+        long sourceBytes,
+        DateTime sourceLastWriteUtc) =>
+        cached.SourceBytes ==
+            sourceBytes &&
+        cached.SourceLastWriteUtc ==
+            sourceLastWriteUtc &&
+        cached.FileStamps.All(
+            static stamp =>
+                FileStampMatches(
+                    stamp.Path,
+                    stamp.Bytes,
+                    stamp.LastWriteUtc));
+
+    private static bool TryBuildSceneryCacheStamps(
+        WorldSceneryAsset asset,
+        string contentRoot,
+        out CachedFileStamp[] fileStamps)
+    {
+        fileStamps =
+            [];
+
+        if (string.IsNullOrWhiteSpace(
+                asset.ResolvedPath) ||
+            asset.Meshes.Any(
+                static mesh =>
+                    string.IsNullOrWhiteSpace(
+                        mesh.ResolvedPath)) ||
+            asset.Meshes
+                .SelectMany(
+                    static mesh =>
+                        mesh.Materials)
+                .Any(
+                    static material =>
+                        (!string.IsNullOrWhiteSpace(
+                             material.TextureName) &&
+                         string.IsNullOrWhiteSpace(
+                             material.TexturePath)) ||
+                        (material.RequiresExternalTransMap &&
+                         string.IsNullOrWhiteSpace(
+                             material.TransMapTexturePath))) ||
+            (asset.Tree is
+                 { TextureName.Length: > 0 } tree &&
+             string.IsNullOrWhiteSpace(
+                 tree.TexturePath)))
+        {
+            return false;
+        }
+
+        var paths =
+            asset.Meshes
+                .Select(
+                    static mesh =>
+                        mesh.ResolvedPath!)
+                .ToList();
+
+        if (!string.IsNullOrWhiteSpace(
+                asset.CollisionMeshSource))
+        {
+            var collisionPath =
+                ResolveMeshPath(
+                    contentRoot,
+                    asset.ResolvedPath,
+                    asset.CollisionMeshSource);
+
+            if (string.IsNullOrWhiteSpace(
+                    collisionPath))
+            {
+                return false;
+            }
+
+            paths.Add(
+                collisionPath);
+        }
+
+        fileStamps =
+            paths
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(
+                    static filePath =>
+                    {
+                        var (bytes, lastWriteUtc) =
+                            GetFileStamp(
+                                filePath);
+
+                        return new CachedFileStamp(
+                            filePath,
+                            bytes,
+                            lastWriteUtc);
+                    })
+                .ToArray();
+
+        return fileStamps.All(
+            static stamp =>
+                stamp.Bytes >=
+                    0 &&
+                File.Exists(
+                    stamp.Path));
+    }
+
+    private static int GetSceneryCacheCount()
+    {
+        lock (SceneryCacheGate)
+        {
+            return SceneryCache.Count;
+        }
     }
 
     private sealed record ResolvedSceneryCollisionGeometry(
