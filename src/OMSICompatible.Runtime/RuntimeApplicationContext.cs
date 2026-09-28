@@ -61,9 +61,36 @@ internal sealed class RuntimeApplicationContext :
     private int _loadedCenterY;
     private bool _loadEntireMap;
     private bool _closing;
-    private readonly List<OmsiPluginRemoteClient>
-        _pluginClients =
+    private readonly List<HostedPluginSession>
+        _pluginSessions =
             [];
+
+    private sealed class HostedPluginSession(
+        OmsiPluginDefinition definition,
+        OmsiPluginRemoteClient client)
+    {
+        public OmsiPluginDefinition Definition { get; } =
+            definition;
+
+        public OmsiPluginRemoteClient Client { get; } =
+            client;
+
+        public bool[] TriggerStates { get; } =
+            new bool[
+                definition.Triggers.Count];
+
+        public double AccumulatedSeconds
+        {
+            get;
+            set;
+        }
+
+        public bool Failed
+        {
+            get;
+            set;
+        }
+    }
 
     private const int CompleteMapTileThreshold = 64;
 
@@ -553,6 +580,8 @@ internal sealed class RuntimeApplicationContext :
                         GetTrafficSignalStates,
                     trafficCollisionResponse:
                         ApplyTrafficCollisionResponse,
+                    pluginStep:
+                        StepHostedPlugins,
                     railSignalStateProvider:
                         GetRailSignalRouteStates,
                     terrainCollisionsEnabled:
@@ -3354,19 +3383,19 @@ internal sealed class RuntimeApplicationContext :
 
     private void DisposePluginClients()
     {
-        foreach (var client in
-                 _pluginClients)
+        foreach (var session in
+                 _pluginSessions)
         {
             try
             {
-                client.Dispose();
+                session.Client.Dispose();
             }
             catch
             {
             }
         }
 
-        _pluginClients.Clear();
+        _pluginSessions.Clear();
     }
 
     private void PrepareCompatiblePluginSessions(
@@ -3405,8 +3434,10 @@ internal sealed class RuntimeApplicationContext :
                         hostPath,
                         plugin.DllPath);
 
-                _pluginClients.Add(
-                    client);
+                _pluginSessions.Add(
+                    new HostedPluginSession(
+                        plugin,
+                        client));
 
                 Console.WriteLine(
                     $"[plugins] host-ready opl={Path.GetFileName(plugin.OplPath)}; dll={Path.GetFileName(plugin.DllPath)}; capabilities={client.Capabilities}");
@@ -3419,7 +3450,240 @@ internal sealed class RuntimeApplicationContext :
         }
 
         Console.WriteLine(
-            $"[plugins] hosted={_pluginClients.Count:N0}; execution wiring pending simulation variable bridge.");
+            $"[plugins] hosted={_pluginSessions.Count:N0}; variable bridge enabled for known OMSI runtime state.");
+    }
+
+    private void StepHostedPlugins(
+        double deltaSeconds,
+        OmsiScriptRuntime runtime,
+        Action<string> dispatchTrigger)
+    {
+        foreach (var session in
+                 _pluginSessions)
+        {
+            if (session.Failed)
+            {
+                continue;
+            }
+
+            session.AccumulatedSeconds +=
+                Math.Max(
+                    deltaSeconds,
+                    0.0);
+
+            var declaredAccessCount =
+                session.Definition.Variables.Count +
+                session.Definition.StringVariables.Count +
+                session.Definition.SystemVariables.Count +
+                session.Definition.Triggers.Count;
+
+            var intervalSeconds =
+                declaredAccessCount >=
+                    256
+                    ? 1.0 / 30.0
+                    : 1.0 / 60.0;
+
+            if (session.AccumulatedSeconds <
+                intervalSeconds)
+            {
+                continue;
+            }
+
+            session.AccumulatedSeconds =
+                0.0;
+
+            var numericNames =
+                session.Definition.Variables
+                    .Select(
+                        (name, index) =>
+                            (
+                                Name: name,
+                                Index: index
+                            ))
+                    .Where(
+                        item =>
+                            item.Index <=
+                                ushort.MaxValue &&
+                            runtime.HasLocalVariable(
+                                item.Name))
+                    .ToArray();
+
+            var systemNames =
+                session.Definition.SystemVariables
+                    .Select(
+                        (name, index) =>
+                            (
+                                Name: name,
+                                Index: index
+                            ))
+                    .Where(
+                        item =>
+                            item.Index <=
+                                ushort.MaxValue &&
+                            runtime.HasSystemVariable(
+                                item.Name))
+                    .ToArray();
+
+            var stringNames =
+                session.Definition.StringVariables
+                    .Select(
+                        (name, index) =>
+                            (
+                                Name: name,
+                                Index: index
+                            ))
+                    .Where(
+                        item =>
+                            item.Index <=
+                                ushort.MaxValue &&
+                            runtime.HasStringLocalVariable(
+                                item.Name))
+                    .ToArray();
+
+            var triggerIndices =
+                session.Definition.Triggers
+                    .Select(
+                        (name, index) =>
+                            (
+                                Name: name,
+                                Index: index
+                            ))
+                    .Where(
+                        static item =>
+                            item.Index <=
+                                ushort.MaxValue)
+                    .ToArray();
+
+            var frame =
+                new OmsiPluginFrame(
+                    systemNames
+                        .Select(
+                            item =>
+                                (
+                                    (ushort)item.Index,
+                                    (float)runtime.GetSystem(
+                                        item.Name)
+                                ))
+                        .ToArray(),
+                    numericNames
+                        .Select(
+                            item =>
+                                (
+                                    (ushort)item.Index,
+                                    (float)runtime.GetLocal(
+                                        item.Name)
+                                ))
+                        .ToArray(),
+                    stringNames
+                        .Select(
+                            item =>
+                                (
+                                    (ushort)item.Index,
+                                    runtime.GetStringLocal(
+                                        item.Name)
+                                ))
+                        .ToArray(),
+                    triggerIndices
+                        .Select(
+                            static item =>
+                                (ushort)item.Index)
+                        .ToArray());
+
+            try
+            {
+                var reply =
+                    session.Client.Frame(
+                        frame);
+
+                for (var index = 0;
+                     index <
+                         numericNames.Length &&
+                     index <
+                         reply.Variables.Count;
+                     index++)
+                {
+                    if (reply.Variables[index] is
+                        { } value)
+                    {
+                        runtime.SetLocal(
+                            numericNames[index].Name,
+                            value);
+                    }
+                }
+
+                for (var index = 0;
+                     index <
+                         systemNames.Length &&
+                     index <
+                         reply.SystemVariables.Count;
+                     index++)
+                {
+                    if (reply.SystemVariables[index] is
+                        { } value)
+                    {
+                        runtime.SetSystem(
+                            systemNames[index].Name,
+                            value);
+                    }
+                }
+
+                for (var index = 0;
+                     index <
+                         stringNames.Length &&
+                     index <
+                         reply.StringVariables.Count;
+                     index++)
+                {
+                    if (reply.StringVariables[index] is
+                        { } value)
+                    {
+                        runtime.SetStringLocal(
+                            stringNames[index].Name,
+                            value);
+                    }
+                }
+
+                for (var index = 0;
+                     index <
+                         triggerIndices.Length &&
+                     index <
+                         reply.TriggersActive.Count;
+                     index++)
+                {
+                    var triggerIndex =
+                        triggerIndices[index].Index;
+
+                    var active =
+                        reply.TriggersActive[
+                            index];
+
+                    if (session.TriggerStates[
+                            triggerIndex] ==
+                        active)
+                    {
+                        continue;
+                    }
+
+                    session.TriggerStates[
+                        triggerIndex] =
+                        active;
+
+                    dispatchTrigger(
+                        active
+                            ? triggerIndices[index].Name
+                            : triggerIndices[index].Name +
+                              "_off");
+                }
+            }
+            catch (Exception exception)
+            {
+                session.Failed =
+                    true;
+
+                Console.WriteLine(
+                    $"[plugins] disabled {Path.GetFileName(session.Definition.DllPath)} after frame failure: {exception.Message}");
+            }
+        }
     }
 
     private static string? ResolveMapImage(
