@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Scripting;
