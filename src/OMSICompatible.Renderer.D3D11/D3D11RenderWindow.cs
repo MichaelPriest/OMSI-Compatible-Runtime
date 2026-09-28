@@ -924,6 +924,11 @@ public sealed class D3D11RenderWindow : Form
         RuntimeGpuTextureLoader.WarmFileCache(
             paths);
 
+    public static int WarmDecodedTextureCache(
+        IEnumerable<string> paths) =>
+        RuntimeGpuTextureLoader.WarmDecodedCache(
+            paths);
+
     public static string GetTextureFileCacheDiagnostics() =>
         RuntimeGpuTextureLoader.GetFileCacheDiagnostics();
 
