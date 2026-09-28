@@ -49,6 +49,13 @@ public sealed class D3D11RenderWindow : Form
         string Path,
         RuntimeObjectGeometry Geometry);
 
+    private sealed record PreparedStreamedTileWork(
+        int X,
+        int Y,
+        RuntimeTileInfo Tile,
+        RuntimeSplineInfo[] Splines,
+        RuntimeObjectInfo[] Objects);
+
     private sealed record PreparedStreamedGeometry(
         RuntimeVertex[] TileVertices,
         RuntimeTerrainGeometry Terrain,
@@ -61,7 +68,8 @@ public sealed class D3D11RenderWindow : Form
         IReadOnlyList<RuntimeSceneryCollisionVolume> CollisionVolumes,
         string[] RegularTexturePaths,
         string[] MaskTexturePaths,
-        PreparedTrafficVehicleGeometry[] TrafficVehicleGeometries);
+        PreparedTrafficVehicleGeometry[] TrafficVehicleGeometries,
+        PreparedStreamedTileWork[] TileWork);
 
     private sealed class PreparedTrafficVehicleGpuResource :
         IDisposable
@@ -1130,6 +1138,10 @@ public sealed class D3D11RenderWindow : Form
                 await Task.Run(
                     () =>
                     {
+                        var tileWork =
+                            BuildStreamedTileWork(
+                                windowInfo);
+
                         var tileVertices =
                             BuildTileVertices(
                                 windowInfo.Tiles);
@@ -1214,7 +1226,8 @@ public sealed class D3D11RenderWindow : Form
                             collisionVolumes,
                             regularTexturePaths,
                             maskTexturePaths,
-                            trafficVehicleGeometries);
+                            trafficVehicleGeometries,
+                            tileWork);
                     });
         }
         catch (Exception exception)
@@ -1235,6 +1248,32 @@ public sealed class D3D11RenderWindow : Form
         var elapsed =
             Stopwatch.GetElapsedTime(
                 started);
+
+        if (prepared.TileWork.Length >
+            0)
+        {
+            var maximumObjects =
+                prepared.TileWork.Max(
+                    static tile =>
+                        tile.Objects.Length);
+
+            var maximumSplines =
+                prepared.TileWork.Max(
+                    static tile =>
+                        tile.Splines.Length);
+
+            var terrainTiles =
+                prepared.TileWork.Count(
+                    static tile =>
+                        tile.Tile.Terrain is
+                        {
+                            CellCount: > 0,
+                            Heights.Count: > 0
+                        });
+
+            Console.WriteLine(
+                $"[streaming-tiles] planned={prepared.TileWork.Length:N0}; terrain={terrainTiles:N0}; maxObjects={maximumObjects:N0}; maxSplines={maximumSplines:N0}");
+        }
 
         var gpuPrepareStarted =
             Stopwatch.GetTimestamp();
@@ -1436,6 +1475,55 @@ public sealed class D3D11RenderWindow : Form
 
         Console.WriteLine(
             $"[streaming-geometry] applied generation={generation}; swapMs={_lastStreamingSwapMilliseconds:0.0}; trafficMs={trafficMilliseconds:0.0}; geometryMs={geometryMilliseconds:0.0}; textureCacheMs={textureCacheMilliseconds:0.0}; captionMs={captionMilliseconds:0.0}");
+    }
+
+    private static PreparedStreamedTileWork[] BuildStreamedTileWork(
+        RuntimeWindowInfo windowInfo)
+    {
+        var splinesByTile =
+            windowInfo.Splines
+                .GroupBy(
+                    static spline =>
+                        (spline.TileX, spline.TileY))
+                .ToDictionary(
+                    static group =>
+                        group.Key,
+                    static group =>
+                        group.ToArray());
+
+        var objectsByTile =
+            windowInfo.Objects
+                .GroupBy(
+                    static item =>
+                        (item.TileX, item.TileY))
+                .ToDictionary(
+                    static group =>
+                        group.Key,
+                    static group =>
+                        group.ToArray());
+
+        return windowInfo.Tiles
+            .Select(
+                tile =>
+                {
+                    splinesByTile.TryGetValue(
+                        (tile.X, tile.Y),
+                        out var tileSplines);
+
+                    objectsByTile.TryGetValue(
+                        (tile.X, tile.Y),
+                        out var tileObjects);
+
+                    return new PreparedStreamedTileWork(
+                        tile.X,
+                        tile.Y,
+                        tile,
+                        tileSplines ??
+                            Array.Empty<RuntimeSplineInfo>(),
+                        tileObjects ??
+                            Array.Empty<RuntimeObjectInfo>());
+                })
+            .ToArray();
     }
 
     private static (
