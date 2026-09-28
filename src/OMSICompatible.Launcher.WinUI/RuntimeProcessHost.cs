@@ -194,8 +194,23 @@ internal sealed class RuntimeProcessHost :
 
         process.Exited +=
             (_, _) =>
+            {
+                var exitCode =
+                    process.ExitCode;
+
                 Exited?.Invoke(
-                    process.ExitCode);
+                    exitCode);
+
+                process.Dispose();
+
+                if (ReferenceEquals(
+                        _process,
+                        process))
+                {
+                    _process =
+                        null;
+                }
+            };
 
         if (!process.Start())
         {
