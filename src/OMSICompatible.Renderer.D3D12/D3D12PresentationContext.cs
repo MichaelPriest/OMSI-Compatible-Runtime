@@ -33,8 +33,7 @@ public sealed class D3D12PresentationContext :
     private readonly ID3D12GraphicsCommandList _commandList;
     private readonly ID3D12RootSignature _rootSignature;
     private readonly ID3D12PipelineState _pipelineState;
-    private readonly ID3D12Resource _vertexBuffer;
-    private readonly VertexBufferView _vertexBufferView;
+    private readonly D3D12RuntimeGeometryBuffer _geometryBuffer;
     private readonly ID3D12Fence _fence;
     private readonly int _width;
     private readonly int _height;
@@ -58,8 +57,7 @@ public sealed class D3D12PresentationContext :
         ID3D12GraphicsCommandList commandList,
         ID3D12RootSignature rootSignature,
         ID3D12PipelineState pipelineState,
-        ID3D12Resource vertexBuffer,
-        VertexBufferView vertexBufferView,
+        D3D12RuntimeGeometryBuffer geometryBuffer,
         ID3D12Fence fence,
         int width,
         int height)
@@ -86,10 +84,8 @@ public sealed class D3D12PresentationContext :
             rootSignature;
         _pipelineState =
             pipelineState;
-        _vertexBuffer =
-            vertexBuffer;
-        _vertexBufferView =
-            vertexBufferView;
+        _geometryBuffer =
+            geometryBuffer;
         _fence =
             fence;
         _width =
@@ -456,28 +452,10 @@ public sealed class D3D12PresentationContext :
                     Vector2.Zero)
             ];
 
-            var vertexBufferSize =
-                checked(
-                    (ulong)(
-                        vertices.Length *
-                        RuntimeObjectVertex.SizeInBytes));
-
-            var vertexBuffer =
-                device.CreateCommittedResource(
-                    HeapType.Upload,
-                    ResourceDescription.Buffer(
-                        vertexBufferSize),
-                    ResourceStates.GenericRead);
-
-            vertexBuffer.SetData(
-                vertices);
-
-            var vertexBufferView =
-                new VertexBufferView(
-                    vertexBuffer.GPUVirtualAddress,
-                    checked(
-                        (uint)vertexBufferSize),
-                    RuntimeObjectVertex.SizeInBytes);
+            var geometryBuffer =
+                D3D12RuntimeGeometryBuffer.Create(
+                    device,
+                    vertices);
 
             var commandList =
                 device.CreateCommandList<
@@ -506,8 +484,7 @@ public sealed class D3D12PresentationContext :
                     commandList,
                     rootSignature,
                     pipelineState,
-                    vertexBuffer,
-                    vertexBufferView,
+                    geometryBuffer,
                     fence,
                     width,
                     height);
@@ -633,10 +610,11 @@ public sealed class D3D12PresentationContext :
 
         _commandList.IASetVertexBuffers(
             0,
-            _vertexBufferView);
+            _geometryBuffer.View);
 
         _commandList.DrawInstanced(
-            3,
+            checked(
+                (uint)_geometryBuffer.VertexCount),
             1,
             0,
             0);
@@ -716,7 +694,7 @@ public sealed class D3D12PresentationContext :
         }
 
         _commandList.Dispose();
-        _vertexBuffer.Dispose();
+        _geometryBuffer.Dispose();
         _pipelineState.Dispose();
         _rootSignature.Dispose();
         _depthStencil.Dispose();
