@@ -496,6 +496,7 @@ public sealed class D3D11RenderWindow : Form
     private long _fpsFrameCount;
     private double _fpsSampleStartSeconds;
     private double _fpsPreviousFrameSeconds;
+    private double _lastStreamingSwapMilliseconds;
     private readonly Queue<double> _frameTimeSamplesMilliseconds =
         new();
     private const int MaximumFrameTimeSamples =
@@ -1245,8 +1246,11 @@ public sealed class D3D11RenderWindow : Form
             Stopwatch.GetElapsedTime(
                 uploadStarted);
 
+        _lastStreamingSwapMilliseconds =
+            uploadElapsed.TotalMilliseconds;
+
         Console.WriteLine(
-            $"[streaming-geometry] applied generation={generation}; gpuMs={uploadElapsed.TotalMilliseconds:0.0}");
+            $"[streaming-geometry] applied generation={generation}; swapMs={_lastStreamingSwapMilliseconds:0.0}");
     }
 
     private PreparedStreamedGpuResources PrepareStreamedGpuResources(
@@ -17795,8 +17799,11 @@ public sealed class D3D11RenderWindow : Form
         var streamingMode =
             _pendingStreamingTextureLoads.Count >
                     0
-                ? $"\nStream {_pendingStreamingTextureLoads.Count:N0} tex"
-                : string.Empty;
+                ? $"\nStream {_pendingStreamingTextureLoads.Count:N0} tex · swap {_lastStreamingSwapMilliseconds:0.0} ms"
+                : _lastStreamingSwapMilliseconds >
+                        0.0
+                    ? $"\nSwap {_lastStreamingSwapMilliseconds:0.0} ms"
+                    : string.Empty;
 
         _fpsLabel.Text =
             $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n1% {onePercentLowFps:0.0} FPS · max {worstFrameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}{streamingMode}";
