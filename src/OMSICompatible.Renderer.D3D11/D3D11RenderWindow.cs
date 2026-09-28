@@ -49,7 +49,9 @@ public sealed class D3D11RenderWindow : Form
         RuntimeVertex[] TileVertices,
         RuntimeTerrainGeometry Terrain,
         RuntimeSplineGeometry Splines,
-        RuntimeObjectGeometry Objects);
+        RuntimeObjectGeometry Objects,
+        RuntimeTerrainSampler TerrainSampler,
+        IReadOnlyList<RuntimeSceneryCollisionVolume> CollisionVolumes);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RuntimeVehicleSkinConstants
@@ -698,7 +700,8 @@ public sealed class D3D11RenderWindow : Form
 
         _sceneryCollisionVolumes =
             BuildSceneryCollisionVolumes(
-                windowInfo);
+                windowInfo,
+                _terrainSurfaceSampler);
 
         _vehicle = new RuntimeDriveVehicle(
             windowInfo.Tiles,
@@ -988,11 +991,23 @@ public sealed class D3D11RenderWindow : Form
                                 isolatedObjectIds:
                                     windowInfo.DynamicSceneryObjectIds);
 
+                        var terrainSampler =
+                            new RuntimeTerrainSampler(
+                                windowInfo.Tiles,
+                                windowInfo.Splines);
+
+                        var collisionVolumes =
+                            BuildSceneryCollisionVolumes(
+                                windowInfo,
+                                terrainSampler);
+
                         return new PreparedStreamedGeometry(
                             tileVertices,
                             terrain,
                             splines,
-                            objects);
+                            objects,
+                            terrainSampler,
+                            collisionVolumes);
                     });
         }
         catch (Exception exception)
@@ -1095,13 +1110,10 @@ public sealed class D3D11RenderWindow : Form
         EnsureTrafficVehicleResources();
 
         _terrainSurfaceSampler =
-            new RuntimeTerrainSampler(
-                windowInfo.Tiles,
-                windowInfo.Splines);
+            prepared.TerrainSampler;
 
         _sceneryCollisionVolumes =
-            BuildSceneryCollisionVolumes(
-                windowInfo);
+            prepared.CollisionVolumes;
 
         _activeSceneryCollisionVolumes.Clear();
 
@@ -8844,9 +8856,10 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
-    private IReadOnlyList<RuntimeSceneryCollisionVolume>
+    private static IReadOnlyList<RuntimeSceneryCollisionVolume>
         BuildSceneryCollisionVolumes(
-            RuntimeWindowInfo windowInfo)
+            RuntimeWindowInfo windowInfo,
+            RuntimeTerrainSampler terrainSurfaceSampler)
     {
         if (windowInfo.Objects.Count ==
                 0 ||
@@ -8926,7 +8939,7 @@ public sealed class D3D11RenderWindow : Form
                 0.0f;
 
             if (!asset.UsesAbsoluteHeight &&
-                _terrainSurfaceSampler.TrySample(
+                terrainSurfaceSampler.TrySample(
                     worldX,
                     worldZ,
                     out var groundHeight))
