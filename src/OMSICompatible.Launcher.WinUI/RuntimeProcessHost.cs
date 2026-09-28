@@ -195,6 +195,14 @@ internal sealed class RuntimeProcessHost :
         process.Exited +=
             (_, _) =>
             {
+                // With asynchronous redirected stdout/stderr, the process can
+                // signal Exited before the final OutputDataReceived callback
+                // has been delivered. The in-game bus selector writes its
+                // requested bus/HOF immediately before closing, so drain the
+                // redirected streams first or the launcher can miss the
+                // relaunch request.
+                process.WaitForExit();
+
                 var exitCode =
                     process.ExitCode;
 
