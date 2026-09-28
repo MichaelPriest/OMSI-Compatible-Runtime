@@ -1102,7 +1102,7 @@ public sealed class D3D11RenderWindow : Form
             ?? Array.Empty<
                 KeyValuePair<
                     string,
-                    OmsiVehicleAsset>>();
+                    RuntimeVehicleInfo>>();
 
         var started =
             Stopwatch.GetTimestamp();
