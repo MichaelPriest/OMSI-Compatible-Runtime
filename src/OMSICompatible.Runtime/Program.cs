@@ -1,6 +1,7 @@
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Vehicles;
+using OMSICompatible.Renderer.D3D12;
 using OMSICompatible.World;
 
 namespace OMSICompatible.Runtime;
@@ -10,6 +11,13 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (HasFlag(
+                args,
+                "--d3d12-smoke"))
+        {
+            return RunD3D12Smoke();
+        }
+
         var contentPath =
             GetOption(
                 args,
@@ -270,6 +278,67 @@ internal static class Program
 
         Application.Run(context);
         return 0;
+    }
+
+    private static int RunD3D12Smoke()
+    {
+        try
+        {
+            ApplicationConfiguration.Initialize();
+
+            using var form =
+                new Form
+                {
+                    Text =
+                        "OMSI Compatible Runtime - D3D12 Smoke",
+                    ClientSize =
+                        new Size(
+                            320,
+                            180),
+                    StartPosition =
+                        FormStartPosition.Manual,
+                    Location =
+                        new Point(
+                            -32000,
+                            -32000),
+                    ShowInTaskbar =
+                        false
+                };
+
+            form.CreateControl();
+
+            using var graphics =
+                D3D12PresentationContext.Create(
+                    form.Handle,
+                    form.ClientSize.Width,
+                    form.ClientSize.Height);
+
+            graphics.ClearAndPresent(
+                0.04f,
+                0.08f,
+                0.12f,
+                vsync:
+                    false);
+
+            graphics.ClearAndPresent(
+                0.08f,
+                0.12f,
+                0.16f,
+                vsync:
+                    false);
+
+            Console.WriteLine(
+                "[d3d12-smoke] success");
+
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"[d3d12-smoke] failed: {exception}");
+
+            return 10;
+        }
     }
 
     private static string? GetOption(
