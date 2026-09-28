@@ -51,6 +51,9 @@ internal sealed class RuntimeGpuTextureLoader
                 StringComparer.OrdinalIgnoreCase);
     private static long _textureFileCacheGeneration;
     private static long _textureFileCacheBytes;
+    private static long _textureFileCacheHits;
+    private static long _textureFileCacheMisses;
+    private static long _textureFileCacheEvictions;
 
     private const long MaximumTextureFileCacheBytes =
         512L * 1024L * 1024L;
@@ -111,6 +114,15 @@ internal sealed class RuntimeGpuTextureLoader
         }
 
         return warmed;
+    }
+
+    public static string GetFileCacheDiagnostics()
+    {
+        lock (TextureFileCacheGate)
+        {
+            return
+                $"hits={_textureFileCacheHits}; misses={_textureFileCacheMisses}; evictions={_textureFileCacheEvictions}; entries={TextureFileCache.Count}; retainedMB={_textureFileCacheBytes / (1024.0 * 1024.0):0.0}/{MaximumTextureFileCacheBytes / (1024.0 * 1024.0):0}";
+        }
     }
 
     private static Stream OpenCachedReadStream(
@@ -194,11 +206,18 @@ internal sealed class RuntimeGpuTextureLoader
                             _textureFileCacheGeneration
                     };
 
+                _textureFileCacheHits++;
+
                 bytes =
                     cached.Bytes;
 
                 return true;
             }
+        }
+
+        lock (TextureFileCacheGate)
+        {
+            _textureFileCacheMisses++;
         }
 
         byte[] loaded;
@@ -263,6 +282,8 @@ internal sealed class RuntimeGpuTextureLoader
 
                 TextureFileCache.Remove(
                     oldest.Key);
+
+                _textureFileCacheEvictions++;
             }
 
             bytes =
