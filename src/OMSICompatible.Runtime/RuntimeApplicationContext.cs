@@ -432,6 +432,8 @@ internal sealed class RuntimeApplicationContext :
                     scriptRuntime,
                     _options.TargetFps,
                     _options.RuntimeVSync,
+                    showFps:
+                        _options.RuntimeShowFps,
                     vehiclePreviewMode:
                         false,
                     initialVehicleVariables:
