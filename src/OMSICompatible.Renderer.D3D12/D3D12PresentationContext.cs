@@ -20,6 +20,8 @@ public sealed class D3D12PresentationContext :
     private readonly IDXGISwapChain3 _swapChain;
     private readonly ID3D12DescriptorHeap _rtvHeap;
     private readonly uint _rtvDescriptorSize;
+    private readonly ID3D12DescriptorHeap _dsvHeap;
+    private readonly ID3D12Resource _depthStencil;
     private readonly ID3D12Resource[] _renderTargets =
         new ID3D12Resource[
             FrameCount];
@@ -47,6 +49,8 @@ public sealed class D3D12PresentationContext :
         IDXGISwapChain3 swapChain,
         ID3D12DescriptorHeap rtvHeap,
         uint rtvDescriptorSize,
+        ID3D12DescriptorHeap dsvHeap,
+        ID3D12Resource depthStencil,
         ID3D12GraphicsCommandList commandList,
         ID3D12RootSignature rootSignature,
         ID3D12PipelineState pipelineState,
@@ -66,6 +70,10 @@ public sealed class D3D12PresentationContext :
             rtvHeap;
         _rtvDescriptorSize =
             rtvDescriptorSize;
+        _dsvHeap =
+            dsvHeap;
+        _depthStencil =
+            depthStencil;
         _commandList =
             commandList;
         _rootSignature =
@@ -241,6 +249,45 @@ public sealed class D3D12PresentationContext :
                 device.GetDescriptorHandleIncrementSize(
                     DescriptorHeapType.RenderTargetView);
 
+            var depthDescription =
+                ResourceDescription.Texture2D(
+                    Format.D32_Float,
+                    (uint)Math.Max(
+                        width,
+                        1),
+                    (uint)Math.Max(
+                        height,
+                        1),
+                    flags:
+                        ResourceFlags.AllowDepthStencil);
+
+            var depthStencil =
+                device.CreateCommittedResource(
+                    HeapType.Default,
+                    depthDescription,
+                    ResourceStates.DepthWrite,
+                    new ClearValue(
+                        Format.D32_Float,
+                        1.0f,
+                        0));
+
+            var dsvHeap =
+                device.CreateDescriptorHeap(
+                    new DescriptorHeapDescription(
+                        DescriptorHeapType.DepthStencilView,
+                        1));
+
+            device.CreateDepthStencilView(
+                depthStencil,
+                new DepthStencilViewDescription
+                {
+                    Format =
+                        Format.D32_Float,
+                    ViewDimension =
+                        DepthStencilViewDimension.Texture2D
+                },
+                dsvHeap.GetCPUDescriptorHandleForHeapStart());
+
             var commandAllocators =
                 new ID3D12CommandAllocator[
                     FrameCount];
@@ -339,11 +386,13 @@ public sealed class D3D12PresentationContext :
                     BlendState =
                         BlendDescription.Opaque,
                     DepthStencilState =
-                        DepthStencilDescription.None,
+                        DepthStencilDescription.Default,
                     RenderTargetFormats =
                         [
                             Format.R8G8B8A8_UNorm
                         ],
+                    DepthStencilFormat =
+                        Format.D32_Float,
                     SampleDescription =
                         SampleDescription.Default
                 };
@@ -374,6 +423,8 @@ public sealed class D3D12PresentationContext :
                     swapChain,
                     rtvHeap,
                     rtvDescriptorSize,
+                    dsvHeap,
+                    depthStencil,
                     commandList,
                     rootSignature,
                     pipelineState,
@@ -463,8 +514,12 @@ public sealed class D3D12PresentationContext :
                 (int)_backBufferIndex,
                 _rtvDescriptorSize);
 
+        var dsv =
+            _dsvHeap.GetCPUDescriptorHandleForHeapStart();
+
         _commandList.OMSetRenderTargets(
-            rtv);
+            rtv,
+            dsv);
 
         _commandList.ClearRenderTargetView(
             rtv,
@@ -473,6 +528,12 @@ public sealed class D3D12PresentationContext :
                 green,
                 blue,
                 1.0f));
+
+        _commandList.ClearDepthStencilView(
+            dsv,
+            ClearFlags.Depth,
+            1.0f,
+            0);
 
         _commandList.RSSetViewport(
             new Viewport(
@@ -573,6 +634,8 @@ public sealed class D3D12PresentationContext :
         _commandList.Dispose();
         _pipelineState.Dispose();
         _rootSignature.Dispose();
+        _depthStencil.Dispose();
+        _dsvHeap.Dispose();
         _rtvHeap.Dispose();
         _swapChain.Dispose();
         _fence.Dispose();
