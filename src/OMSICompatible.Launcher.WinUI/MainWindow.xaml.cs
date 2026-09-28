@@ -2492,6 +2492,10 @@ public sealed partial class MainWindow :
         SettingsHardwareGpuCheck.IsChecked =
             _runtimeOptions.RuntimePreferHardwareGpu;
 
+        SettingsMsaaSamplesBox.Text =
+            _runtimeOptions.RuntimeMsaaSamples.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+
         SettingsShowFpsCheck.IsChecked =
             _runtimeOptions.RuntimeShowFps;
 
@@ -2730,6 +2734,23 @@ public sealed partial class MainWindow :
         _runtimeOptions.RuntimePreferHardwareGpu =
             SettingsHardwareGpuCheck.IsChecked ==
             true;
+
+        var requestedMsaa =
+            ToInt(
+                ParseNumber(
+                    SettingsMsaaSamplesBox.Text),
+                0,
+                4,
+                _runtimeOptions.RuntimeMsaaSamples);
+
+        _runtimeOptions.RuntimeMsaaSamples =
+            requestedMsaa >=
+                    4
+                ? 4
+                : requestedMsaa >=
+                    2
+                    ? 2
+                    : 0;
 
         _runtimeOptions.RuntimeShowFps =
             SettingsShowFpsCheck.IsChecked ==
