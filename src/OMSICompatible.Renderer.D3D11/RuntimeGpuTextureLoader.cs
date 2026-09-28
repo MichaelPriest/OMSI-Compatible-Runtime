@@ -12,10 +12,15 @@ internal sealed class RuntimeGpuTexture :
 {
     public RuntimeGpuTexture(
         ID3D11Texture2D texture,
-        ID3D11ShaderResourceView view)
+        ID3D11ShaderResourceView view,
+        long approximateBytes = 0)
     {
         Texture = texture;
         View = view;
+        ApproximateBytes =
+            Math.Max(
+                0,
+                approximateBytes);
     }
 
     public ID3D11Texture2D Texture
@@ -24,6 +29,11 @@ internal sealed class RuntimeGpuTexture :
     }
 
     public ID3D11ShaderResourceView View
+    {
+        get;
+    }
+
+    public long ApproximateBytes
     {
         get;
     }
@@ -965,7 +975,8 @@ internal sealed class RuntimeGpuTextureLoader
 
             return new RuntimeGpuTexture(
                 texture,
-                view);
+                view,
+                compressed.LongLength);
         }
         catch (Exception exception)
             when (
@@ -2083,7 +2094,11 @@ internal sealed class RuntimeGpuTextureLoader
 
         return new RuntimeGpuTexture(
             texture,
-            view);
+            view,
+            checked(
+                (long)width *
+                height *
+                4L));
     }
 
 
