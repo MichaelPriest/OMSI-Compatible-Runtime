@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Numerics;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Plugins;
@@ -458,6 +459,9 @@ internal sealed class RuntimeApplicationContext :
             Console.WriteLine(
                 $"[startup-perf] runtimeInfoMs={Stopwatch.GetElapsedTime(runtimeInfoStarted).TotalMilliseconds:0.0}");
 
+            await ValidateD3D12TerrainAsync(
+                runtimeInfo);
+
             OmsiScriptRuntime? scriptRuntime =
                 null;
 
@@ -677,6 +681,148 @@ internal sealed class RuntimeApplicationContext :
                 _loading.ShowFailure(
                     ex.Message);
             }
+        }
+    }
+
+    private async Task ValidateD3D12TerrainAsync(
+        RuntimeWindowInfo runtimeInfo)
+    {
+        if (!string.Equals(
+                _options.RuntimeGraphicsBackend,
+                "D3D12",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var support =
+            D3D12BackendProbe.Probe(
+                _options.RuntimePreferHardwareGpu);
+
+        if (!support.Available)
+        {
+            Console.WriteLine(
+                $"[d3d12-terrain] skipped; no compatible adapter. error={support.Error ?? "<none>"}");
+            return;
+        }
+
+        try
+        {
+            var buildStarted =
+                Stopwatch.GetTimestamp();
+
+            var geometry =
+                await Task.Run(
+                    () =>
+                        RuntimeTerrainGeometryBuilder.Build(
+                            runtimeInfo.Tiles,
+                            runtimeInfo.GroundTextures,
+                            runtimeInfo.Splines));
+
+            var buildElapsed =
+                Stopwatch.GetElapsedTime(
+                    buildStarted);
+
+            if (geometry.Vertices.Length ==
+                0)
+            {
+                Console.WriteLine(
+                    $"[d3d12-terrain] skipped; no terrain vertices; buildMs={buildElapsed.TotalMilliseconds:0.0}");
+                return;
+            }
+
+            using var form =
+                new Form
+                {
+                    Text =
+                        "OMSI Compatible Runtime - D3D12 Terrain Validation",
+                    ClientSize =
+                        new Size(
+                            640,
+                            360),
+                    StartPosition =
+                        FormStartPosition.Manual,
+                    Location =
+                        new Point(
+                            -32000,
+                            -32000),
+                    ShowInTaskbar =
+                        false,
+                    FormBorderStyle =
+                        FormBorderStyle.FixedToolWindow
+                };
+
+            form.CreateControl();
+
+            using var graphics =
+                D3D12PresentationContext.Create(
+                    form.Handle,
+                    form.ClientSize.Width,
+                    form.ClientSize.Height,
+                    _options.RuntimePreferHardwareGpu);
+
+            using var terrain =
+                graphics.CreateTerrainResources(
+                    geometry);
+
+            var span =
+                MathF.Max(
+                    geometry.HorizontalSpan,
+                    300.0f);
+
+            var center =
+                geometry.Center;
+
+            var eye =
+                center +
+                new Vector3(
+                    0.0f,
+                    MathF.Max(
+                        span *
+                            0.45f,
+                        100.0f),
+                    -MathF.Max(
+                        span *
+                            0.65f,
+                        150.0f));
+
+            var view =
+                Matrix4x4.CreateLookAt(
+                    eye,
+                    center,
+                    Vector3.UnitY);
+
+            var projection =
+                Matrix4x4.CreatePerspectiveFieldOfView(
+                    MathF.PI /
+                        3.0f,
+                    form.ClientSize.Width /
+                        (float)form.ClientSize.Height,
+                    1.0f,
+                    MathF.Max(
+                        span *
+                            8.0f,
+                        5000.0f));
+
+            graphics.SetViewProjection(
+                view *
+                projection);
+
+            graphics.DrawAndPresent(
+                terrain,
+                0.04f,
+                0.06f,
+                0.09f,
+                vsync:
+                    false);
+
+            Console.WriteLine(
+                $"[d3d12-terrain] success; vertices={geometry.Vertices.Length:N0}; batches={geometry.Batches.Count:N0}; buildMs={buildElapsed.TotalMilliseconds:0.0}; span={geometry.HorizontalSpan:0.0}m");
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[d3d12-terrain] validation failed; continuing with D3D11 fallback: {exception.Message}");
         }
     }
 
