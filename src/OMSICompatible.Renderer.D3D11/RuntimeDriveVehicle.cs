@@ -119,13 +119,16 @@ internal sealed class RuntimeDriveVehicle :
         IReadOnlyList<RuntimeTileInfo> tiles,
         RuntimeVehiclePhysicsInfo? physics,
         IReadOnlyList<RuntimeVehicleSectionInfo>? sections = null,
-        bool terrainCollisionsEnabled = true)
+        bool terrainCollisionsEnabled = true,
+        IReadOnlyList<RuntimeSplineInfo>? splines = null)
     {
         _terrainCollisionsEnabled =
             terrainCollisionsEnabled;
 
         _terrain =
-            new RuntimeTerrainSampler(tiles);
+            new RuntimeTerrainSampler(
+                tiles,
+                splines);
 
         _sections =
             sections?
@@ -581,11 +584,13 @@ internal sealed class RuntimeDriveVehicle :
     }
 
     public void ReplaceTerrainTiles(
-        IReadOnlyList<RuntimeTileInfo> tiles)
+        IReadOnlyList<RuntimeTileInfo> tiles,
+        IReadOnlyList<RuntimeSplineInfo>? splines = null)
     {
         _terrain =
             new RuntimeTerrainSampler(
-                tiles);
+                tiles,
+                splines);
 
         SnapRuntimePositionToDrivingSurface();
         SynchronizeOdeBodyFromRuntime();
