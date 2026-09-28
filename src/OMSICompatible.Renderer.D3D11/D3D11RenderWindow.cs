@@ -833,6 +833,9 @@ public sealed class D3D11RenderWindow : Form
         RuntimeGpuTextureLoader.WarmFileCache(
             paths);
 
+    public static string GetTextureFileCacheDiagnostics() =>
+        RuntimeGpuTextureLoader.GetFileCacheDiagnostics();
+
     public RuntimeTrafficObstacleInfo?
         PlayerTrafficObstacle
     {
