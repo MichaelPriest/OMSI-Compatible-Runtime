@@ -907,6 +907,15 @@ public static class WorldLoader
                                         jump.JumpIfNoApproach,
                                         jump.TargetTimeSeconds))
                             .ToArray(),
+                        (definition.TrafficLightStops ??
+                         Array.Empty<OmsiSceneryTrafficLightStop>())
+                            .Select(
+                                static stop =>
+                                    new WorldTrafficLightStop(
+                                        stop.CheckTrafficLightIndex,
+                                        stop.TriggerTimeSeconds,
+                                        stop.StopIfNoApproach))
+                            .ToArray(),
                         definition.ScriptManifest,
                         definition.NoCollision,
                         definition.Fixed,
