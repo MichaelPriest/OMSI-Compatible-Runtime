@@ -357,8 +357,19 @@ public sealed class D3D11RenderWindow : Form
             new(
                 StringComparer.OrdinalIgnoreCase);
     private long _streamingTextureGeneration;
+    private readonly Queue<(string Path, bool AlphaMask)>
+        _pendingStreamingTextureLoads =
+            new();
+    private readonly HashSet<string>
+        _pendingStreamingTexturePaths =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private const int MaximumInactiveStreamingTextureCacheEntries =
         512;
+    private const int MaximumStreamingTextureUploadsPerFrame =
+        4;
+    private const double StreamingTextureUploadBudgetMilliseconds =
+        2.0;
     private RuntimeObjectGeometry _objectGeometry =
         RuntimeObjectGeometry.Empty;
     private uint _objectVertexCount;
@@ -1192,69 +1203,123 @@ public sealed class D3D11RenderWindow : Form
         _failedObjectTexturePaths.IntersectWith(
             requiredPaths);
 
+        _pendingStreamingTextureLoads.Clear();
+        _pendingStreamingTexturePaths.Clear();
+
         foreach (var texturePath in
-            regularPaths)
+                 regularPaths)
         {
             if (_objectTextureCache.ContainsKey(
+                    texturePath) ||
+                !_pendingStreamingTexturePaths.Add(
                     texturePath))
             {
                 continue;
             }
 
-            var texture =
-                _objectTextureLoader.TryLoad(
-                    texturePath);
-
-            if (texture is not null)
-            {
-                _objectTextureCache[
-                    texturePath] =
-                    texture;
-
-                _objectTextureLastUsedGeneration[
-                    texturePath] =
-                    _streamingTextureGeneration;
-
-                _failedObjectTexturePaths.Remove(
-                    texturePath);
-            }
-            else
-            {
-                _failedObjectTexturePaths.Add(
-                    texturePath);
-            }
+            _pendingStreamingTextureLoads.Enqueue(
+                (
+                    texturePath,
+                    AlphaMask:
+                        false));
         }
 
         foreach (var maskPath in
-            maskPaths)
+                 maskPaths)
         {
             if (_objectTextureCache.ContainsKey(
+                    maskPath) ||
+                !_pendingStreamingTexturePaths.Add(
                     maskPath))
             {
                 continue;
             }
 
-            var mask =
-                _objectTextureLoader.TryLoadAlphaMask(
-                    maskPath);
+            _pendingStreamingTextureLoads.Enqueue(
+                (
+                    maskPath,
+                    AlphaMask:
+                        true));
+        }
 
-            if (mask is not null)
+        if (_pendingStreamingTextureLoads.Count >
+            0)
+        {
+            Console.WriteLine(
+                $"[streaming-textures] queued {_pendingStreamingTextureLoads.Count:N0} GPU uploads.");
+        }
+    }
+
+    private void ProcessStreamingTextureLoadQueue()
+    {
+        if (_device is null ||
+            _objectTextureLoader is null ||
+            _pendingStreamingTextureLoads.Count ==
+                0)
+        {
+            return;
+        }
+
+        var startMilliseconds =
+            _frameClock.Elapsed.TotalMilliseconds;
+
+        var processed =
+            0;
+
+        while (_pendingStreamingTextureLoads.Count >
+                   0 &&
+               processed <
+                   MaximumStreamingTextureUploadsPerFrame)
+        {
+            var pending =
+                _pendingStreamingTextureLoads.Dequeue();
+
+            _pendingStreamingTexturePaths.Remove(
+                pending.Path);
+
+            if (_objectTextureCache.ContainsKey(
+                    pending.Path))
+            {
+                continue;
+            }
+
+            var texture =
+                pending.AlphaMask
+                    ? _objectTextureLoader
+                        .TryLoadAlphaMask(
+                            pending.Path)
+                    : _objectTextureLoader
+                        .TryLoad(
+                            pending.Path);
+
+            if (texture is not null)
             {
                 _objectTextureCache[
-                    maskPath] =
-                    mask;
+                    pending.Path] =
+                    texture;
 
                 _objectTextureLastUsedGeneration[
-                    maskPath] =
+                    pending.Path] =
                     _streamingTextureGeneration;
 
                 _failedObjectTexturePaths.Remove(
-                    maskPath);
+                    pending.Path);
             }
             else
             {
                 _failedObjectTexturePaths.Add(
-                    maskPath);
+                    pending.Path);
+            }
+
+            processed++;
+
+            if (processed >
+                    0 &&
+                _frameClock.Elapsed.TotalMilliseconds -
+                    startMilliseconds >=
+                StreamingTextureUploadBudgetMilliseconds)
+            {
+                break;
             }
         }
     }
@@ -3747,6 +3812,7 @@ public sealed class D3D11RenderWindow : Form
             CheckStreamingCenter();
         }
 
+        ProcessStreamingTextureLoadQueue();
         RenderFrame();
         UpdateFpsOverlay();
 
@@ -17671,6 +17737,8 @@ public sealed class D3D11RenderWindow : Form
             _objectTextureCache.Clear();
             _objectTextureLastUsedGeneration.Clear();
             _failedObjectTexturePaths.Clear();
+            _pendingStreamingTextureLoads.Clear();
+            _pendingStreamingTexturePaths.Clear();
 
             _vehicleTextTextureRenderer?.Dispose();
             _vehicleTextTextureRenderer = null;
