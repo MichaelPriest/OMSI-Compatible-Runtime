@@ -329,10 +329,17 @@ public sealed class D3D11RenderWindow : Form
         _objectTextureCache =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long>
+        _objectTextureLastUsedGeneration =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string>
         _failedObjectTexturePaths =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private long _streamingTextureGeneration;
+    private const int MaximumInactiveStreamingTextureCacheEntries =
+        512;
     private RuntimeObjectGeometry _objectGeometry =
         RuntimeObjectGeometry.Empty;
     private uint _objectVertexCount;
@@ -1035,19 +1042,58 @@ public sealed class D3D11RenderWindow : Form
         requiredPaths.UnionWith(
             maskPaths);
 
-        foreach (var cachedPath in
+        _streamingTextureGeneration++;
+
+        foreach (var requiredPath in
+                 requiredPaths)
+        {
+            if (_objectTextureCache.ContainsKey(
+                    requiredPath))
+            {
+                _objectTextureLastUsedGeneration[
+                    requiredPath] =
+                    _streamingTextureGeneration;
+            }
+        }
+
+        var inactiveTexturePaths =
             _objectTextureCache.Keys
                 .Where(
                     path =>
                         !requiredPaths.Contains(
                             path))
-                .ToArray())
+                .OrderBy(
+                    path =>
+                        _objectTextureLastUsedGeneration
+                            .TryGetValue(
+                                path,
+                                out var generation)
+                            ? generation
+                            : long.MinValue)
+                .ToArray();
+
+        var evictionCount =
+            Math.Max(
+                inactiveTexturePaths.Length -
+                    MaximumInactiveStreamingTextureCacheEntries,
+                0);
+
+        for (var index = 0;
+             index < evictionCount;
+             index++)
         {
+            var cachedPath =
+                inactiveTexturePaths[
+                    index];
+
             _objectTextureCache[
                 cachedPath]
                 .Dispose();
 
             _objectTextureCache.Remove(
+                cachedPath);
+
+            _objectTextureLastUsedGeneration.Remove(
                 cachedPath);
         }
 
@@ -1072,6 +1118,10 @@ public sealed class D3D11RenderWindow : Form
                 _objectTextureCache[
                     texturePath] =
                     texture;
+
+                _objectTextureLastUsedGeneration[
+                    texturePath] =
+                    _streamingTextureGeneration;
 
                 _failedObjectTexturePaths.Remove(
                     texturePath);
@@ -1101,6 +1151,10 @@ public sealed class D3D11RenderWindow : Form
                 _objectTextureCache[
                     maskPath] =
                     mask;
+
+                _objectTextureLastUsedGeneration[
+                    maskPath] =
+                    _streamingTextureGeneration;
 
                 _failedObjectTexturePaths.Remove(
                     maskPath);
@@ -17072,6 +17126,7 @@ public sealed class D3D11RenderWindow : Form
             }
 
             _objectTextureCache.Clear();
+            _objectTextureLastUsedGeneration.Clear();
             _failedObjectTexturePaths.Clear();
 
             _vehicleTextTextureRenderer?.Dispose();
