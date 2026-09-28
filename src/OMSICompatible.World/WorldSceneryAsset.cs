@@ -90,6 +90,11 @@ public sealed record WorldTrafficLightJump(
     bool JumpIfNoApproach,
     double TargetTimeSeconds);
 
+public sealed record WorldTrafficLightStop(
+    int CheckTrafficLightIndex,
+    double TriggerTimeSeconds,
+    bool StopIfNoApproach);
+
 public sealed record WorldSceneryPath(
     double X,
     double Y,
@@ -118,6 +123,7 @@ public sealed record WorldSceneryAsset(
     double? TrafficLightCycleSeconds = null,
     IReadOnlyList<WorldTrafficLightProgram>? TrafficLights = null,
     IReadOnlyList<WorldTrafficLightJump>? TrafficLightJumps = null,
+    IReadOnlyList<WorldTrafficLightStop>? TrafficLightStops = null,
     OmsiSceneryScriptManifest? ScriptManifest = null,
     bool NoCollision = false,
     bool Fixed = false,
