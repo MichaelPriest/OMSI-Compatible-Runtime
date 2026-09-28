@@ -609,20 +609,76 @@ public static class WorldTrafficPathNetworkBuilder
             -Math.Sin(
                 heading);
 
+        var forwardX =
+            Math.Sin(
+                heading);
+
+        var forwardZ =
+            Math.Cos(
+                heading);
+
+        var sourceX =
+            path.X;
+
+        var lateralOffset =
+            spline.Mirror
+                ? -sourceX
+                : sourceX;
+
+        var normalized =
+            spline.LengthMeters <=
+                    0.0
+                ? 0.0
+                : Math.Clamp(
+                    clamped /
+                    spline.LengthMeters,
+                    0.0,
+                    1.0);
+
+        var skew =
+            spline.SkewStart +
+            (spline.SkewEnd -
+             spline.SkewStart) *
+            normalized;
+
+        if (spline.Mirror)
+        {
+            skew =
+                -skew;
+        }
+
+        var cantPercent =
+            spline.CantStartPercent +
+            (spline.CantEndPercent -
+             spline.CantStartPercent) *
+            normalized;
+
+        var forwardOffset =
+            skew *
+            sourceX;
+
+        var cantHeightOffset =
+            -sourceX *
+            cantPercent /
+            100.0;
+
         return new WorldVector3(
             centerX +
                 lateralX *
-                path.X,
+                lateralOffset +
+                forwardX *
+                forwardOffset,
             spline.Position.Y +
-                GradientRise(
-                    spline.GradientStartPercent,
-                    spline.GradientEndPercent,
-                    spline.LengthMeters,
+                SplineGradientRise(
+                    spline,
                     clamped) +
-                path.Z,
+                path.Z +
+                cantHeightOffset,
             centerZ +
                 lateralZ *
-                path.X);
+                lateralOffset +
+                forwardZ *
+                forwardOffset);
     }
 
     private static WorldVector3 TransformSceneryPathPoint(
@@ -693,6 +749,84 @@ public static class WorldTrafficPathNetworkBuilder
                     sinYaw +
                 curveY *
                     cosYaw);
+    }
+
+    private static double SplineGradientRise(
+        WorldSplinePlacement spline,
+        double distanceMeters)
+    {
+        var length =
+            spline.LengthMeters;
+
+        if (length <=
+            0.0)
+        {
+            return 0.0;
+        }
+
+        var clamped =
+            Math.Clamp(
+                distanceMeters,
+                0.0,
+                length);
+
+        var startSlope =
+            spline.GradientStartPercent /
+            100.0;
+
+        if (spline.UsesHeightProfile)
+        {
+            var endSlope =
+                spline.GradientEndPercent /
+                100.0;
+
+            var heightResidual =
+                spline.DeltaHeightMeters -
+                startSlope *
+                length;
+
+            var c =
+                ((endSlope -
+                  startSlope) *
+                     length -
+                 2.0 *
+                     heightResidual) /
+                (length *
+                 length *
+                 length);
+
+            var a =
+                (-(endSlope -
+                   startSlope) *
+                     length +
+                 3.0 *
+                     heightResidual) /
+                (length *
+                 length);
+
+            return c *
+                       clamped *
+                       clamped *
+                       clamped +
+                   a *
+                       clamped *
+                       clamped +
+                   startSlope *
+                       clamped;
+        }
+
+        var slopeDelta =
+            (spline.GradientEndPercent -
+             spline.GradientStartPercent) /
+            100.0;
+
+        return startSlope *
+                   clamped +
+               0.5 *
+                   slopeDelta *
+                   clamped *
+                   clamped /
+                   length;
     }
 
     private static double GradientRise(
