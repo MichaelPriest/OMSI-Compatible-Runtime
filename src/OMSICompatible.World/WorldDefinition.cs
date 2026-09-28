@@ -60,7 +60,8 @@ public sealed record WorldSplinePlacement(
     double SkewEnd = 0.0,
     bool Mirror = false,
     int SourceLineNumber = 0,
-    IReadOnlyList<WorldTrafficRule>? TrafficRules = null);
+    IReadOnlyList<WorldTrafficRule>? TrafficRules = null,
+    int? TerrainAlignMode = null);
 
 public sealed record WorldTerrainMask(
     int LayerIndex,
