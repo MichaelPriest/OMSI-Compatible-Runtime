@@ -1196,28 +1196,60 @@ internal sealed class RuntimeApplicationContext :
 
                 try
                 {
-                    var texturePaths =
+                    var prefetchResult =
                         await Task.Run(
                             () =>
-                                WorldLoader.WarmCache(
-                                    _contentRoot,
-                                    _map,
-                                    new WorldLoadOptions(
-                                        requested.X,
-                                        requested.Y,
-                                        ActiveTileRadius:
-                                            Math.Clamp(
-                                                _options.RuntimeStreamingRadius,
-                                                0,
-                                                4),
-                                        LoadEntireMap:
-                                            false)));
+                            {
+                                var thread =
+                                    Thread.CurrentThread;
+
+                                var previousPriority =
+                                    thread.Priority;
+
+                                try
+                                {
+                                    thread.Priority =
+                                        System.Threading.ThreadPriority
+                                            .BelowNormal;
+
+                                    var texturePaths =
+                                        WorldLoader.WarmCache(
+                                            _contentRoot,
+                                            _map,
+                                            new WorldLoadOptions(
+                                                requested.X,
+                                                requested.Y,
+                                                ActiveTileRadius:
+                                                    Math.Clamp(
+                                                        _options.RuntimeStreamingRadius,
+                                                        0,
+                                                        4),
+                                                LoadEntireMap:
+                                                    false));
+
+                                    var warmedTextureFiles =
+                                        D3D11RenderWindow
+                                            .WarmTextureFileCache(
+                                                texturePaths);
+
+                                    return (
+                                        TexturePaths:
+                                            texturePaths,
+                                        WarmedTextureFiles:
+                                            warmedTextureFiles);
+                                }
+                                finally
+                                {
+                                    thread.Priority =
+                                        previousPriority;
+                                }
+                            });
+
+                    var texturePaths =
+                        prefetchResult.TexturePaths;
 
                     var warmedTextureFiles =
-                        await Task.Run(
-                            () =>
-                                D3D11RenderWindow.WarmTextureFileCache(
-                                    texturePaths));
+                        prefetchResult.WarmedTextureFiles;
 
                     _lastPrefetchedCenter =
                         requested;
