@@ -341,6 +341,7 @@ public sealed class D3D11RenderWindow : Form
             [];
 
     private double _lastFrameTimeSeconds;
+    private double _trafficStepAccumulatedSeconds;
     private double _odometerMeters;
     private double _lastVehiclePhysicsDiagnosticsSeconds =
         double.NegativeInfinity;
@@ -8910,6 +8911,53 @@ public sealed class D3D11RenderWindow : Form
             _exteriorCameraDistanceScale);
     }
 
+    private double ResolveTrafficStepIntervalSeconds()
+    {
+        // Borrow the performance-guard strategy already proven in NavBR:
+        // expensive AI work does not need to run at the render cadence.
+        // Keep light traffic near 60 Hz, medium traffic near 30 Hz and
+        // heavy traffic near 20 Hz. Under frame pressure, never increase
+        // AI cadence until rendering has recovered.
+        var intervalSeconds =
+            _trafficAgents.Count switch
+            {
+                >= 80 =>
+                    0.050,
+                >= 40 =>
+                    0.033,
+                _ =>
+                    0.016
+            };
+
+        var framePressure =
+            _lastObservedFrameMilliseconds >
+                    0.0
+                ? _lastObservedFrameMilliseconds /
+                    Math.Max(
+                        _targetFrameMilliseconds,
+                        1.0)
+                : 1.0;
+
+        if (framePressure >=
+            1.5)
+        {
+            intervalSeconds =
+                Math.Max(
+                    intervalSeconds,
+                    0.050);
+        }
+        else if (framePressure >=
+                 1.15)
+        {
+            intervalSeconds =
+                Math.Max(
+                    intervalSeconds,
+                    0.033);
+        }
+
+        return intervalSeconds;
+    }
+
     private void UpdateSimulation()
     {
         if (_vehiclePreviewMode)
@@ -8941,10 +8989,29 @@ public sealed class D3D11RenderWindow : Form
 
         if (_trafficStep is not null)
         {
-            _trafficAgents =
-                _trafficStep(
-                    deltaSeconds) ??
-                Array.Empty<RuntimeTrafficAgentInfo>();
+            _trafficStepAccumulatedSeconds +=
+                deltaSeconds;
+
+            var trafficStepIntervalSeconds =
+                ResolveTrafficStepIntervalSeconds();
+
+            if (_trafficStepAccumulatedSeconds >=
+                trafficStepIntervalSeconds)
+            {
+                var trafficDeltaSeconds =
+                    Math.Clamp(
+                        _trafficStepAccumulatedSeconds,
+                        0.0,
+                        0.1);
+
+                _trafficStepAccumulatedSeconds =
+                    0.0;
+
+                _trafficAgents =
+                    _trafficStep(
+                        trafficDeltaSeconds) ??
+                    Array.Empty<RuntimeTrafficAgentInfo>();
+            }
         }
 
         if (_trafficSignalStateProvider is not null)
