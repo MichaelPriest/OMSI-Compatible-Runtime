@@ -2433,6 +2433,13 @@ public sealed partial class MainWindow :
             _runtimeOptions.AnisotropicFiltering.ToString(
                 System.Globalization.CultureInfo.InvariantCulture);
 
+        SettingsReflectionModeBox.Text =
+            _runtimeOptions.RealTimeReflections;
+
+        SettingsReflectionSizeBox.Text =
+            _runtimeOptions.RealTimeReflectionTextureSize.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+
         SettingsShadowsCheck.IsChecked =
             _runtimeOptions.Shadows;
 
@@ -2621,6 +2628,28 @@ public sealed partial class MainWindow :
                 1,
                 16,
                 _runtimeOptions.AnisotropicFiltering);
+
+        var reflectionMode =
+            SettingsReflectionModeBox.Text
+                ?.Trim()
+                .ToLowerInvariant();
+
+        if (reflectionMode is
+            "economy" or
+            "full" or
+            "off")
+        {
+            _runtimeOptions.RealTimeReflections =
+                reflectionMode;
+        }
+
+        _runtimeOptions.RealTimeReflectionTextureSize =
+            ToInt(
+                ParseNumber(
+                    SettingsReflectionSizeBox.Text),
+                64,
+                4096,
+                _runtimeOptions.RealTimeReflectionTextureSize);
 
         _runtimeOptions.Shadows =
             SettingsShadowsCheck.IsChecked ==
