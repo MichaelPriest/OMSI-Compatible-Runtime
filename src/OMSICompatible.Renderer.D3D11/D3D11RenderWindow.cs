@@ -8414,29 +8414,40 @@ public sealed class D3D11RenderWindow : Form
                      triangleIndex +=
                          3)
                 {
-                    var i0 =
-                        checked(
-                            (int)collisionGeometry.Indices[
-                                triangleIndex]);
-                    var i1 =
-                        checked(
-                            (int)collisionGeometry.Indices[
-                                triangleIndex +
-                                1]);
-                    var i2 =
-                        checked(
-                            (int)collisionGeometry.Indices[
-                                triangleIndex +
-                                2]);
+                    var rawI0 =
+                        collisionGeometry.Indices[
+                            triangleIndex];
+                    var rawI1 =
+                        collisionGeometry.Indices[
+                            triangleIndex +
+                            1];
+                    var rawI2 =
+                        collisionGeometry.Indices[
+                            triangleIndex +
+                            2];
 
                     var vertexCount =
                         collisionGeometry.Positions.Length /
                         3;
 
-                    if (i0 < 0 ||
-                        i1 < 0 ||
-                        i2 < 0 ||
-                        i0 >= vertexCount ||
+                    if (rawI0 >
+                            int.MaxValue ||
+                        rawI1 >
+                            int.MaxValue ||
+                        rawI2 >
+                            int.MaxValue)
+                    {
+                        continue;
+                    }
+
+                    var i0 =
+                        (int)rawI0;
+                    var i1 =
+                        (int)rawI1;
+                    var i2 =
+                        (int)rawI2;
+
+                    if (i0 >= vertexCount ||
                         i1 >= vertexCount ||
                         i2 >= vertexCount)
                     {
@@ -8450,16 +8461,36 @@ public sealed class D3D11RenderWindow : Form
                             vertexIndex *
                             3;
 
+                        var sourceX =
+                            collisionGeometry.Positions[
+                                offset];
+                        var sourceY =
+                            collisionGeometry.Positions[
+                                offset +
+                                1];
+                        var sourceZ =
+                            collisionGeometry.Positions[
+                                offset +
+                                2];
+
+                        if (!float.IsFinite(
+                                sourceX) ||
+                            !float.IsFinite(
+                                sourceY) ||
+                            !float.IsFinite(
+                                sourceZ))
+                        {
+                            return new Vector3(
+                                float.NaN,
+                                float.NaN,
+                                float.NaN);
+                        }
+
                         var local =
                             new Vector3(
-                                -collisionGeometry.Positions[
-                                    offset],
-                                collisionGeometry.Positions[
-                                    offset +
-                                    1],
-                                collisionGeometry.Positions[
-                                    offset +
-                                    2]);
+                                -sourceX,
+                                sourceY,
+                                sourceZ);
 
                         var rotated =
                             Vector3.TransformNormal(
@@ -8484,6 +8515,28 @@ public sealed class D3D11RenderWindow : Form
                     var p2 =
                         ResolveCollisionVertex(
                             i2);
+
+                    if (!float.IsFinite(
+                            p0.X) ||
+                        !float.IsFinite(
+                            p0.Y) ||
+                        !float.IsFinite(
+                            p0.Z) ||
+                        !float.IsFinite(
+                            p1.X) ||
+                        !float.IsFinite(
+                            p1.Y) ||
+                        !float.IsFinite(
+                            p1.Z) ||
+                        !float.IsFinite(
+                            p2.X) ||
+                        !float.IsFinite(
+                            p2.Y) ||
+                        !float.IsFinite(
+                            p2.Z))
+                    {
+                        continue;
+                    }
 
                     triangles.Add(
                         new RuntimeSceneryCollisionTriangle(
