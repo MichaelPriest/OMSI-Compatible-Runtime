@@ -4,7 +4,7 @@ using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
-internal static class RuntimeTerrainGeometryBuilder
+public static class RuntimeTerrainGeometryBuilder
 {
     private const double TileSizeMeters = 300.0;
     private const int VertexBudget = 1_200_000;
