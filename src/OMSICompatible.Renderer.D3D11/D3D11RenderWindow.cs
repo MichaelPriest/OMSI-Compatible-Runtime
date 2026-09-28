@@ -387,6 +387,12 @@ public sealed class D3D11RenderWindow : Form
     private int? _streamingTileX;
     private int? _streamingTileY;
     private int _streamedWorldPreparationGeneration;
+    private long _renderFrameSequence;
+    private readonly Queue<(ID3D11Buffer Buffer, long ReleaseAfterFrame)>
+        _retiredStreamingVertexBuffers =
+            new();
+    private const int StreamingBufferRetirementFrames =
+        3;
     private System.Drawing.Point _lastMousePosition;
 
     public event Action<int, int>?
@@ -1558,11 +1564,42 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private void RetireStreamingVertexBuffer(
+        ID3D11Buffer? buffer)
+    {
+        if (buffer is null)
+        {
+            return;
+        }
+
+        _retiredStreamingVertexBuffers.Enqueue(
+            (
+                buffer,
+                _renderFrameSequence +
+                    StreamingBufferRetirementFrames));
+    }
+
+    private void ReleaseRetiredStreamingVertexBuffers()
+    {
+        while (_retiredStreamingVertexBuffers.Count >
+                   0 &&
+               _retiredStreamingVertexBuffers.Peek()
+                   .ReleaseAfterFrame <=
+               _renderFrameSequence)
+        {
+            var retired =
+                _retiredStreamingVertexBuffers.Dequeue();
+
+            retired.Buffer.Dispose();
+        }
+    }
+
     private void ApplyPreparedStreamedGeometry(
         PreparedStreamedGeometry prepared,
         PreparedStreamedGpuResources preparedGpu)
     {
-        _tileVertexBuffer?.Dispose();
+        RetireStreamingVertexBuffer(
+            _tileVertexBuffer);
         _tileVertexBuffer =
             preparedGpu.TileVertexBuffer;
         preparedGpu.TileVertexBuffer =
@@ -1571,7 +1608,8 @@ public sealed class D3D11RenderWindow : Form
         _tileVertexCount =
             (uint)prepared.TileVertices.Length;
 
-        _terrainVertexBuffer?.Dispose();
+        RetireStreamingVertexBuffer(
+            _terrainVertexBuffer);
         _terrainVertexBuffer =
             preparedGpu.TerrainVertexBuffer;
         preparedGpu.TerrainVertexBuffer =
@@ -1585,7 +1623,8 @@ public sealed class D3D11RenderWindow : Form
 
         AppendTerrainAlignmentDiagnostics();
 
-        _splineVertexBuffer?.Dispose();
+        RetireStreamingVertexBuffer(
+            _splineVertexBuffer);
         _splineVertexBuffer =
             preparedGpu.SplineVertexBuffer;
         preparedGpu.SplineVertexBuffer =
@@ -1597,7 +1636,8 @@ public sealed class D3D11RenderWindow : Form
         _splineVertexCount =
             (uint)_splineGeometry.Vertices.Length;
 
-        _objectVertexBuffer?.Dispose();
+        RetireStreamingVertexBuffer(
+            _objectVertexBuffer);
         _objectVertexBuffer =
             preparedGpu.ObjectVertexBuffer;
         preparedGpu.ObjectVertexBuffer =
@@ -4601,6 +4641,9 @@ public sealed class D3D11RenderWindow : Form
 
     private void RenderFrame()
     {
+        _renderFrameSequence++;
+        ReleaseRetiredStreamingVertexBuffers();
+
         if (_deviceContext is null ||
             _renderTargetView is null ||
             _swapChain is null)
@@ -18341,6 +18384,15 @@ public sealed class D3D11RenderWindow : Form
             _terrainPixelShader?.Dispose();
             _terrainVertexShader?.Dispose();
             _terrainCameraBuffer?.Dispose();
+            while (_retiredStreamingVertexBuffers.Count >
+                   0)
+            {
+                _retiredStreamingVertexBuffers
+                    .Dequeue()
+                    .Buffer
+                    .Dispose();
+            }
+
             _terrainVertexBuffer?.Dispose();
             _splineVertexBuffer?.Dispose();
 
