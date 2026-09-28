@@ -374,7 +374,7 @@ public sealed class OmsiPluginRemoteClient :
         """ +
         value.Replace(
             """,
-            "\"",
+            "\\"",
             StringComparison.Ordinal) +
         """;
 }
