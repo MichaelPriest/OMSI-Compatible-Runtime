@@ -2496,6 +2496,11 @@ public sealed partial class MainWindow :
             _runtimeOptions.RuntimeMsaaSamples.ToString(
                 System.Globalization.CultureInfo.InvariantCulture);
 
+        SettingsSharpenStrengthBox.Text =
+            _runtimeOptions.RuntimeSharpenStrength.ToString(
+                "0.00",
+                System.Globalization.CultureInfo.InvariantCulture);
+
         SettingsShowFpsCheck.IsChecked =
             _runtimeOptions.RuntimeShowFps;
 
@@ -2751,6 +2756,14 @@ public sealed partial class MainWindow :
                     2
                     ? 2
                     : 0;
+
+        _runtimeOptions.RuntimeSharpenStrength =
+            ToDouble(
+                ParseNumber(
+                    SettingsSharpenStrengthBox.Text),
+                0.0,
+                1.0,
+                _runtimeOptions.RuntimeSharpenStrength);
 
         _runtimeOptions.RuntimeShowFps =
             SettingsShowFpsCheck.IsChecked ==
