@@ -4,7 +4,7 @@ using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
-internal sealed record RuntimeSplineGeometry(
+public sealed record RuntimeSplineGeometry(
     RuntimeObjectVertex[] Vertices,
     IReadOnlyList<RuntimeObjectBatch> Batches,
     int RenderedSplineCount,
@@ -18,7 +18,7 @@ internal sealed record RuntimeSplineGeometry(
             0);
 }
 
-internal static class RuntimeSplineGeometryBuilder
+public static class RuntimeSplineGeometryBuilder
 {
     private readonly record struct BatchKey(
         string? TexturePath,
