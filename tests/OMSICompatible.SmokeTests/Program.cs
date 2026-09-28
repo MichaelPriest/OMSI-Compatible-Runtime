@@ -3623,8 +3623,10 @@ try
                 MaximumY: 4.0,
                 MinimumZ: -1.25,
                 MaximumZ: 0.75
-            },
-        "WorldLoader did not resolve OMSI [collision_mesh] into runtime collision bounds.");
+            } &&
+        collisionAsset.CollisionGeometry is
+            { Positions.Length: >= 9, Indices.Length: >= 3 },
+        "WorldLoader did not preserve OMSI [collision_mesh] bounds and triangle geometry.");
 
     var worldObject = world.Objects[0];
     Require(worldObject.Id == 1001, "Object ID was not preserved.");
