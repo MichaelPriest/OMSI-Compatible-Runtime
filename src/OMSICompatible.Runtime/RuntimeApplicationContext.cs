@@ -1056,7 +1056,7 @@ internal sealed class RuntimeApplicationContext :
                         _contentRoot.RootPath,
                         _trafficVehicleAssets);
 
-                _runtimeWindow.ApplyStreamedWorld(
+                await _runtimeWindow.ApplyStreamedWorldAsync(
                     runtimeInfo);
 
                 _loadedCenterX =
