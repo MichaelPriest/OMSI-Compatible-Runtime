@@ -3714,6 +3714,40 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
+        if (target.Camera.MaximumViewerDistanceMeters is
+                double maximumViewerDistanceMeters &&
+            double.IsFinite(
+                maximumViewerDistanceMeters) &&
+            maximumViewerDistanceMeters >
+                0.0)
+        {
+            var viewerPosition =
+                ResolveActiveCameraPosition();
+
+            var mirrorCameraPosition =
+                _vehicle.GetDriverCameraPosition(
+                    new RuntimeDriverCameraInfo(
+                        target.Camera.X,
+                        target.Camera.Y,
+                        target.Camera.Z,
+                        target.Camera.EyeDistance,
+                        target.Camera.FieldOfViewDegrees,
+                        target.Camera.HeadingDegrees,
+                        target.Camera.PitchDegrees));
+
+            var maximumViewerDistanceSquared =
+                maximumViewerDistanceMeters *
+                maximumViewerDistanceMeters;
+
+            if (Vector3.DistanceSquared(
+                    viewerPosition,
+                    mirrorCameraPosition) >
+                maximumViewerDistanceSquared)
+            {
+                return false;
+            }
+        }
+
         if (!target.HasRendered ||
             target.Camera.ContinuousRendering ||
             _reflectionMode is
