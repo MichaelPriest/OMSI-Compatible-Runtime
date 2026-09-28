@@ -1652,6 +1652,14 @@ try
             "0",
             "1.5",
             "2.5",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "",
+            "[spline_terrain_align_2]",
+            "4",
             "[rule]",
             "0",
             "priority",
@@ -3649,6 +3657,11 @@ try
     Require(
         worldSpline.GradientStartPercent == 1.5,
         "Spline start gradient was not preserved.");
+
+    Require(
+        worldSpline.TerrainAlignMode ==
+            4,
+        "Spline [spline_terrain_align_2] mode was not preserved.");
 
     Require(
         worldSpline.NextId == 2002,
