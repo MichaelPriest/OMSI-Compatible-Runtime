@@ -632,7 +632,7 @@ public sealed class D3D11RenderWindow : Form
                      reflectionVehicle.ReflectionCameras)
             {
                 Console.WriteLine(
-                    $"[mirror] index={camera.Index}; texture={camera.RuntimeTextureName}; key={camera.RuntimeTextureKey}; continuous={camera.ContinuousRendering}; viewerDistance={(camera.MaximumViewerDistanceMeters?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "<none>")}; fov={camera.FieldOfViewDegrees:0.###}; heading={camera.HeadingDegrees:0.###}; pitch={camera.PitchDegrees:0.###}; mode={_reflectionMode}; size={_reflectionTextureSize}");
+                    $"[mirror] index={camera.Index}; texture={camera.RuntimeTextureName}; key={camera.RuntimeTextureKey}; continuous={camera.ContinuousRendering}; visibilityThreshold={(camera.VisibilityThreshold?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "<none>")}; fov={camera.FieldOfViewDegrees:0.###}; heading={camera.HeadingDegrees:0.###}; pitch={camera.PitchDegrees:0.###}; mode={_reflectionMode}; size={_reflectionTextureSize}");
             }
         }
 
@@ -3714,39 +3714,9 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
-        if (target.Camera.MaximumViewerDistanceMeters is
-                double maximumViewerDistanceMeters &&
-            double.IsFinite(
-                maximumViewerDistanceMeters) &&
-            maximumViewerDistanceMeters >
-                0.0)
-        {
-            var viewerPosition =
-                ResolveActiveCameraPosition();
-
-            var mirrorCameraPosition =
-                _vehicle.GetDriverCameraPosition(
-                    new RuntimeDriverCameraInfo(
-                        target.Camera.X,
-                        target.Camera.Y,
-                        target.Camera.Z,
-                        target.Camera.EyeDistance,
-                        target.Camera.FieldOfViewDegrees,
-                        target.Camera.HeadingDegrees,
-                        target.Camera.PitchDegrees));
-
-            var maximumViewerDistanceSquared =
-                maximumViewerDistanceMeters *
-                maximumViewerDistanceMeters;
-
-            if (Vector3.DistanceSquared(
-                    viewerPosition,
-                    mirrorCameraPosition) >
-                maximumViewerDistanceSquared)
-            {
-                return false;
-            }
-        }
+        // OMSI's optional reflection-camera value is preserved as a neutral
+        // visibility threshold. Its distance semantics are not established,
+        // so do not invent distance-based mirror culling here.
 
         if (!target.HasRendered ||
             target.Camera.ContinuousRendering ||
