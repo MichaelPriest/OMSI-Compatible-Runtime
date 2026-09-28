@@ -400,19 +400,20 @@ public static class OmsiBusReader
                 continue;
             }
 
-            double? maximumRenderDistance = null;
+            double? visibilityThreshold = null;
 
-            if (section.Name.Equals(
-                    "add_camera_reflexion_2",
-                    StringComparison.OrdinalIgnoreCase) &&
-                values.Length >= 8 &&
+            if (values.Length >=
+                    8 &&
                 TryDouble(
                     values[7],
-                    out var parsedMaximumDistance) &&
-                parsedMaximumDistance >= 0.0)
+                    out var parsedVisibilityThreshold) &&
+                double.IsFinite(
+                    parsedVisibilityThreshold) &&
+                parsedVisibilityThreshold >=
+                    0.0)
             {
-                maximumRenderDistance =
-                    parsedMaximumDistance;
+                visibilityThreshold =
+                    parsedVisibilityThreshold;
             }
 
             result.Add(
@@ -425,7 +426,7 @@ public static class OmsiBusReader
                     fieldOfView,
                     heading,
                     pitch,
-                    maximumRenderDistance,
+                    visibilityThreshold,
                     section.Name.Equals(
                         "add_camera_reflexion_2",
                         StringComparison.OrdinalIgnoreCase)));
