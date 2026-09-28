@@ -54,7 +54,9 @@ public sealed class D3D11RenderWindow : Form
         int Y,
         RuntimeTileInfo Tile,
         RuntimeSplineInfo[] Splines,
-        RuntimeObjectInfo[] Objects);
+        RuntimeObjectInfo[] Objects,
+        string[] RegularTexturePaths,
+        string[] MaskTexturePaths);
 
     private sealed record PreparedStreamedGeometry(
         RuntimeVertex[] TileVertices,
@@ -1514,16 +1516,150 @@ public sealed class D3D11RenderWindow : Form
                         (tile.X, tile.Y),
                         out var tileObjects);
 
+                    var resolvedSplines =
+                        tileSplines ??
+                        Array.Empty<RuntimeSplineInfo>();
+
+                    var resolvedObjects =
+                        tileObjects ??
+                        Array.Empty<RuntimeObjectInfo>();
+
+                    var regularTexturePaths =
+                        CollectTileRegularTexturePaths(
+                            tile,
+                            resolvedSplines,
+                            resolvedObjects,
+                            windowInfo);
+
+                    var maskTexturePaths =
+                        tile.TerrainMasks
+                            .Select(
+                                static mask =>
+                                    mask.Path)
+                            .Where(
+                                static texturePath =>
+                                    !string.IsNullOrWhiteSpace(
+                                        texturePath))
+                            .Distinct(
+                                StringComparer.OrdinalIgnoreCase)
+                            .ToArray();
+
                     return new PreparedStreamedTileWork(
                         tile.X,
                         tile.Y,
                         tile,
-                        tileSplines ??
-                            Array.Empty<RuntimeSplineInfo>(),
-                        tileObjects ??
-                            Array.Empty<RuntimeObjectInfo>());
+                        resolvedSplines,
+                        resolvedObjects,
+                        regularTexturePaths,
+                        maskTexturePaths);
                 })
             .ToArray();
+    }
+
+    private static string[] CollectTileRegularTexturePaths(
+        RuntimeTileInfo tile,
+        IReadOnlyList<RuntimeSplineInfo> splines,
+        IReadOnlyList<RuntimeObjectInfo> objects,
+        RuntimeWindowInfo windowInfo)
+    {
+        var paths =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        static void Add(
+            ISet<string> destination,
+            string? path)
+        {
+            if (!string.IsNullOrWhiteSpace(
+                    path))
+            {
+                destination.Add(
+                    path);
+            }
+        }
+
+        foreach (var ground in
+                 windowInfo.GroundTextures)
+        {
+            if (ground.LayerIndex ==
+                    0 ||
+                tile.TerrainMasks.Any(
+                    mask =>
+                        mask.LayerIndex ==
+                        ground.LayerIndex))
+            {
+                Add(
+                    paths,
+                    ground.MainTexturePath);
+
+                Add(
+                    paths,
+                    ground.DetailTexturePath);
+            }
+        }
+
+        Add(
+            paths,
+            tile.LightmapPath);
+
+        foreach (var spline in
+                 splines)
+        {
+            foreach (var surface in
+                     spline.Surfaces)
+            {
+                Add(
+                    paths,
+                    surface.TexturePath);
+            }
+        }
+
+        foreach (var item in
+                 objects)
+        {
+            if (!windowInfo.SceneryAssets.TryGetValue(
+                    item.AssetPath,
+                    out var asset))
+            {
+                continue;
+            }
+
+            Add(
+                paths,
+                asset.Tree?.TexturePath);
+
+            foreach (var mesh in
+                     asset.Meshes)
+            {
+                foreach (var material in
+                         mesh.Materials)
+                {
+                    Add(
+                        paths,
+                        material.TexturePath);
+                    Add(
+                        paths,
+                        material.TransMapTexturePath);
+                    Add(
+                        paths,
+                        material.LightMapTexturePath);
+                    Add(
+                        paths,
+                        material.MaterialChangeTexturePath);
+                    Add(
+                        paths,
+                        material.EnvMapTexturePath);
+                    Add(
+                        paths,
+                        material.EnvMapMaskTexturePath);
+                    Add(
+                        paths,
+                        material.BumpMapTexturePath);
+                }
+            }
+        }
+
+        return paths.ToArray();
     }
 
     private static (
@@ -2042,40 +2178,102 @@ public sealed class D3D11RenderWindow : Form
         _pendingStreamingTextureLoads.Clear();
         _pendingStreamingTexturePaths.Clear();
 
-        foreach (var texturePath in
-                 regularPaths)
+        void QueueTexture(
+            string texturePath,
+            bool alphaMask)
         {
             if (_objectTextureCache.ContainsKey(
                     texturePath) ||
                 !_pendingStreamingTexturePaths.Add(
                     texturePath))
             {
-                continue;
+                return;
             }
 
             _pendingStreamingTextureLoads.Enqueue(
                 (
                     texturePath,
                     AlphaMask:
-                        false));
+                        alphaMask));
+        }
+
+        foreach (var pinnedPath in
+                 _pinnedVehicleTexturePaths)
+        {
+            if (regularPaths.Contains(
+                    pinnedPath))
+            {
+                QueueTexture(
+                    pinnedPath,
+                    alphaMask:
+                        false);
+            }
+        }
+
+        var focusX =
+            _streamingTileX ??
+            prepared.TileWork.FirstOrDefault()?.X ??
+            0;
+
+        var focusY =
+            _streamingTileY ??
+            prepared.TileWork.FirstOrDefault()?.Y ??
+            0;
+
+        foreach (var tile in
+                 prepared.TileWork
+                     .OrderBy(
+                         tile =>
+                             Math.Abs(
+                                 tile.X -
+                                 focusX) +
+                             Math.Abs(
+                                 tile.Y -
+                                 focusY)))
+        {
+            foreach (var texturePath in
+                     tile.RegularTexturePaths)
+            {
+                if (regularPaths.Contains(
+                        texturePath))
+                {
+                    QueueTexture(
+                        texturePath,
+                        alphaMask:
+                            false);
+                }
+            }
+
+            foreach (var maskPath in
+                     tile.MaskTexturePaths)
+            {
+                if (maskPaths.Contains(
+                        maskPath))
+                {
+                    QueueTexture(
+                        maskPath,
+                        alphaMask:
+                            true);
+                }
+            }
+        }
+
+        foreach (var texturePath in
+                 regularPaths)
+        {
+            QueueTexture(
+                texturePath,
+                alphaMask:
+                    false);
         }
 
         foreach (var maskPath in
                  maskPaths)
         {
-            if (_objectTextureCache.ContainsKey(
-                    maskPath) ||
-                !_pendingStreamingTexturePaths.Add(
-                    maskPath))
-            {
-                continue;
-            }
-
-            _pendingStreamingTextureLoads.Enqueue(
-                (
-                    maskPath,
-                    AlphaMask:
-                        true));
+            QueueTexture(
+                maskPath,
+                alphaMask:
+                    true);
         }
 
         if (_pendingStreamingTextureLoads.Count >
