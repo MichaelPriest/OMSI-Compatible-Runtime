@@ -67,6 +67,77 @@ public static class WorldLoader
         long LastUsedGeneration,
         WorldSceneryAsset Asset);
 
+    public static void WarmCache(
+        OmsiContentRoot contentRoot,
+        OmsiMapInfo map,
+        WorldLoadOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(
+            contentRoot);
+        ArgumentNullException.ThrowIfNull(
+            map);
+        ArgumentNullException.ThrowIfNull(
+            options);
+
+        var allSourceTiles =
+            MapTileDiscovery.Discover(
+                map);
+
+        var sourceTiles =
+            SelectSourceTiles(
+                allSourceTiles,
+                options);
+
+        var tiles =
+            new List<WorldTile>(
+                sourceTiles.Count);
+
+        foreach (var sourceTile in
+                 sourceTiles)
+        {
+            tiles.Add(
+                LoadWorldTileCached(
+                    sourceTile,
+                    out _));
+        }
+
+        var allObjects =
+            tiles
+                .SelectMany(
+                    static tile =>
+                        tile.Objects)
+                .ToArray();
+
+        var allSplines =
+            tiles
+                .SelectMany(
+                    static tile =>
+                        tile.Splines)
+                .ToArray();
+
+        var dependencies =
+            WorldAssetResolver
+                .ResolvePrimaryDependencies(
+                    contentRoot,
+                    allObjects,
+                    allSplines);
+
+        _ =
+            LoadSplineAssets(
+                contentRoot,
+                allSplines,
+                dependencies);
+
+        _ =
+            LoadSceneryAssets(
+                contentRoot,
+                allObjects,
+                dependencies);
+
+        Console.WriteLine(
+            $"[world-cache] warm center={options.CenterTileX},{options.CenterTileY}; tiles={tiles.Count}; objects={allObjects.Length}; splines={allSplines.Length}");
+    }
+
     public static WorldDefinition Load(
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
