@@ -93,6 +93,7 @@ public sealed class OmsiRuntimeOptions
     public int RuntimeStreamingRadius { get; set; } = 2;
     public bool RuntimePreferHardwareGpu { get; set; } = true;
     public bool RuntimeShowFps { get; set; } = true;
+    public int RuntimeMsaaSamples { get; set; } = 4;
     public bool RuntimeDiagnostics { get; set; } = true;
 
     public static string SettingsDirectory =>
