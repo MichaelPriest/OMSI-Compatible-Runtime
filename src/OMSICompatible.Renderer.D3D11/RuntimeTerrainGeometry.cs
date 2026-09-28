@@ -1,4 +1,5 @@
 using System.Numerics;
+using OMSICompatible.Renderer.Common;
 using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
@@ -754,29 +755,4 @@ internal static class RuntimeTerrainGeometryBuilder
                 maskUvC,
                 detailUvC));
     }
-}
-
-internal readonly struct RuntimeTerrainVertex
-{
-    public const uint SizeInBytes = 52;
-
-    public RuntimeTerrainVertex(
-        Vector3 position,
-        Color4 color,
-        Vector2 uv,
-        Vector2 maskUv,
-        Vector2 detailUv)
-    {
-        Position = position;
-        Color = color;
-        Uv = uv;
-        MaskUv = maskUv;
-        DetailUv = detailUv;
-    }
-
-    public readonly Vector3 Position;
-    public readonly Color4 Color;
-    public readonly Vector2 Uv;
-    public readonly Vector2 MaskUv;
-    public readonly Vector2 DetailUv;
 }
