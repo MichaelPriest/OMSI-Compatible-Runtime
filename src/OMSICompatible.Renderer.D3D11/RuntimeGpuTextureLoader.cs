@@ -74,6 +74,8 @@ internal sealed class RuntimeGpuTextureLoader
     private static long _decodedTextureCacheHits;
     private static long _decodedTextureCacheMisses;
     private static long _decodedTextureCacheEvictions;
+    private static long _directBcTextureUploads;
+    private static long _directBcTextureUploadBytes;
 
     private const long MaximumDecodedTextureCacheBytes =
         256L * 1024L * 1024L;
@@ -223,7 +225,7 @@ internal sealed class RuntimeGpuTextureLoader
             }
 
             return
-                $"fileHits={_textureFileCacheHits}; fileMisses={_textureFileCacheMisses}; fileEvictions={_textureFileCacheEvictions}; fileEntries={TextureFileCache.Count}; fileMB={_textureFileCacheBytes / (1024.0 * 1024.0):0.0}/{MaximumTextureFileCacheBytes / (1024.0 * 1024.0):0}; rgbaHits={decodedHits}; rgbaMisses={decodedMisses}; rgbaEvictions={decodedEvictions}; rgbaEntries={decodedEntries}; rgbaMB={decodedBytes / (1024.0 * 1024.0):0.0}/{MaximumDecodedTextureCacheBytes / (1024.0 * 1024.0):0}";
+                $"fileHits={_textureFileCacheHits}; fileMisses={_textureFileCacheMisses}; fileEvictions={_textureFileCacheEvictions}; fileEntries={TextureFileCache.Count}; fileMB={_textureFileCacheBytes / (1024.0 * 1024.0):0.0}/{MaximumTextureFileCacheBytes / (1024.0 * 1024.0):0}; rgbaHits={decodedHits}; rgbaMisses={decodedMisses}; rgbaEvictions={decodedEvictions}; rgbaEntries={decodedEntries}; rgbaMB={decodedBytes / (1024.0 * 1024.0):0.0}/{MaximumDecodedTextureCacheBytes / (1024.0 * 1024.0):0}; bcUploads={Interlocked.Read(ref _directBcTextureUploads)}; bcMB={Interlocked.Read(ref _directBcTextureUploadBytes) / (1024.0 * 1024.0):0.0}";
         }
     }
 
@@ -744,30 +746,47 @@ internal sealed class RuntimeGpuTextureLoader
             stream.Position =
                 dataOffset;
 
-            byte[]? rgba =
+            var bcFormat =
                 fourCc switch
                 {
                     dxt1 =>
-                        DecodeBcTexture(
-                            stream,
-                            width,
-                            height,
-                            BcFormat.Bc1),
+                        BcFormat.Bc1,
                     dxt2 or dxt3 =>
-                        DecodeBcTexture(
-                            stream,
-                            width,
-                            height,
-                            BcFormat.Bc2),
+                        BcFormat.Bc2,
                     dxt4 or dxt5 =>
-                        DecodeBcTexture(
-                            stream,
-                            width,
-                            height,
-                            BcFormat.Bc3),
+                        BcFormat.Bc3,
                     _ =>
-                        null
+                        (BcFormat?)null
                 };
+
+            if (bcFormat.HasValue)
+            {
+                var compressed =
+                    TryCreateBcTexture(
+                        stream,
+                        width,
+                        height,
+                        bcFormat.Value);
+
+                if (compressed is not null)
+                {
+                    return compressed;
+                }
+
+                // Preserve the established RGBA decoder as a compatibility
+                // fallback for drivers/content that reject a compressed upload.
+                stream.Position =
+                    dataOffset;
+            }
+
+            byte[]? rgba =
+                bcFormat.HasValue
+                    ? DecodeBcTexture(
+                        stream,
+                        width,
+                        height,
+                        bcFormat.Value)
+                    : null;
 
             if (rgba is null)
             {
@@ -857,6 +876,112 @@ internal sealed class RuntimeGpuTextureLoader
         Bc1,
         Bc2,
         Bc3
+    }
+
+    private RuntimeGpuTexture? TryCreateBcTexture(
+        Stream stream,
+        int width,
+        int height,
+        BcFormat format)
+    {
+        var blockBytes =
+            format ==
+                BcFormat.Bc1
+                ? 8
+                : 16;
+
+        var blocksX =
+            (width +
+             3) /
+            4;
+        var blocksY =
+            (height +
+             3) /
+            4;
+
+        var requiredBytes =
+            checked(
+                blocksX *
+                blocksY *
+                blockBytes);
+
+        if (stream.Length -
+                stream.Position <
+            requiredBytes)
+        {
+            return null;
+        }
+
+        var compressed =
+            new byte[
+                requiredBytes];
+
+        stream.ReadExactly(
+            compressed);
+
+        var gpuFormat =
+            format switch
+            {
+                BcFormat.Bc1 =>
+                    Format.BC1_UNorm,
+                BcFormat.Bc2 =>
+                    Format.BC2_UNorm,
+                BcFormat.Bc3 =>
+                    Format.BC3_UNorm,
+                _ =>
+                    Format.Unknown
+            };
+
+        if (gpuFormat ==
+            Format.Unknown)
+        {
+            return null;
+        }
+
+        try
+        {
+            var texture =
+                _device.CreateTexture2D(
+                    compressed.AsSpan(),
+                    gpuFormat,
+                    (uint)width,
+                    (uint)height,
+                    mipLevels:
+                        1,
+                    bindFlags:
+                        BindFlags
+                            .ShaderResource);
+
+            var view =
+                _device.CreateShaderResourceView(
+                    texture);
+
+            Interlocked.Increment(
+                ref _directBcTextureUploads);
+
+            Interlocked.Add(
+                ref _directBcTextureUploadBytes,
+                compressed.LongLength);
+
+            return new RuntimeGpuTexture(
+                texture,
+                view);
+        }
+        catch (Exception exception)
+            when (
+                exception is
+                    ArgumentException or
+                    NotSupportedException or
+                    OverflowException ||
+                exception.GetType()
+                    .Namespace?
+                    .StartsWith(
+                        "SharpGen",
+                        StringComparison.Ordinal) ==
+                    true)
+        {
+            return null;
+        }
     }
 
     private static byte[]? DecodeBcTexture(
