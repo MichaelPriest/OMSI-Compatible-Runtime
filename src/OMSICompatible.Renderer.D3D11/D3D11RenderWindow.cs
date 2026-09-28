@@ -1239,10 +1239,9 @@ public sealed class D3D11RenderWindow : Form
         try
         {
             preparedGpu =
-                await Task.Run(
-                    () =>
-                        PrepareStreamedGpuResources(
-                            prepared));
+                await PrepareStreamedGpuResourcesAsync(
+                        prepared)
+                    .ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -1459,7 +1458,7 @@ public sealed class D3D11RenderWindow : Form
             maskTexturePaths);
     }
 
-    private PreparedStreamedGpuResources PrepareStreamedGpuResources(
+    private async Task<PreparedStreamedGpuResources> PrepareStreamedGpuResourcesAsync(
         PreparedStreamedGeometry prepared)
     {
         if (_device is null)
@@ -1473,55 +1472,132 @@ public sealed class D3D11RenderWindow : Form
 
         try
         {
+            async Task PaceNextUploadAsync(
+                long frameBeforeUpload)
+            {
+                // D3D11 resource creation is legal off the UI thread, but a burst
+                // of large CreateBuffer calls can still serialize in the driver
+                // against rendering. Give the render loop a chance to present a
+                // frame between logical streamed-world uploads. If rendering is
+                // temporarily paused/minimized, cap the wait so streaming cannot
+                // deadlock behind the presentation cadence.
+                for (var wait = 0;
+                     wait < 8 &&
+                     !IsDisposed &&
+                     Volatile.Read(
+                         ref _renderFrameSequence) <=
+                         frameBeforeUpload;
+                     wait++)
+                {
+                    await Task.Delay(1)
+                        .ConfigureAwait(false);
+                }
+            }
+
             if (prepared.TileVertices.Length >
                 0)
             {
+                var frameBeforeUpload =
+                    Volatile.Read(
+                        ref _renderFrameSequence);
+
                 resources.TileVertexBuffer =
-                    _device.CreateBuffer(
-                        prepared.TileVertices.AsSpan(),
-                        BindFlags.VertexBuffer);
+                    await Task.Run(
+                            () =>
+                                _device.CreateBuffer(
+                                    prepared.TileVertices.AsSpan(),
+                                    BindFlags.VertexBuffer))
+                        .ConfigureAwait(false);
+
+                await PaceNextUploadAsync(
+                        frameBeforeUpload)
+                    .ConfigureAwait(false);
             }
 
             if (prepared.Terrain.Vertices.Length >
                 0)
             {
+                var frameBeforeUpload =
+                    Volatile.Read(
+                        ref _renderFrameSequence);
+
                 resources.TerrainVertexBuffer =
-                    _device.CreateBuffer(
-                        prepared.Terrain.Vertices.AsSpan(),
-                        BindFlags.VertexBuffer);
+                    await Task.Run(
+                            () =>
+                                _device.CreateBuffer(
+                                    prepared.Terrain.Vertices.AsSpan(),
+                                    BindFlags.VertexBuffer))
+                        .ConfigureAwait(false);
+
+                await PaceNextUploadAsync(
+                        frameBeforeUpload)
+                    .ConfigureAwait(false);
             }
 
             if (prepared.Splines.Vertices.Length >
                 0)
             {
+                var frameBeforeUpload =
+                    Volatile.Read(
+                        ref _renderFrameSequence);
+
                 resources.SplineVertexBuffer =
-                    _device.CreateBuffer(
-                        prepared.Splines.Vertices.AsSpan(),
-                        BindFlags.VertexBuffer);
+                    await Task.Run(
+                            () =>
+                                _device.CreateBuffer(
+                                    prepared.Splines.Vertices.AsSpan(),
+                                    BindFlags.VertexBuffer))
+                        .ConfigureAwait(false);
+
+                await PaceNextUploadAsync(
+                        frameBeforeUpload)
+                    .ConfigureAwait(false);
             }
 
             if (prepared.Objects.Vertices.Length >
                 0)
             {
+                var frameBeforeUpload =
+                    Volatile.Read(
+                        ref _renderFrameSequence);
+
                 resources.ObjectVertexBuffer =
-                    _device.CreateBuffer(
-                        prepared.Objects.Vertices.AsSpan(),
-                        BindFlags.VertexBuffer);
+                    await Task.Run(
+                            () =>
+                                _device.CreateBuffer(
+                                    prepared.Objects.Vertices.AsSpan(),
+                                    BindFlags.VertexBuffer))
+                        .ConfigureAwait(false);
+
+                await PaceNextUploadAsync(
+                        frameBeforeUpload)
+                    .ConfigureAwait(false);
             }
 
             foreach (var trafficVehicle in
                      prepared.TrafficVehicleGeometries)
             {
+                var frameBeforeUpload =
+                    Volatile.Read(
+                        ref _renderFrameSequence);
+
                 var buffer =
-                    _device.CreateBuffer(
-                        trafficVehicle.Geometry.Vertices.AsSpan(),
-                        BindFlags.VertexBuffer);
+                    await Task.Run(
+                            () =>
+                                _device.CreateBuffer(
+                                    trafficVehicle.Geometry.Vertices.AsSpan(),
+                                    BindFlags.VertexBuffer))
+                        .ConfigureAwait(false);
 
                 resources.TrafficVehicles.Add(
                     new PreparedTrafficVehicleGpuResource(
                         trafficVehicle.Path,
                         trafficVehicle.Geometry,
                         buffer));
+
+                await PaceNextUploadAsync(
+                        frameBeforeUpload)
+                    .ConfigureAwait(false);
             }
 
             return resources;
