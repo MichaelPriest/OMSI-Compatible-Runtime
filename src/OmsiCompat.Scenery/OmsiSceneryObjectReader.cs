@@ -239,6 +239,10 @@ public static class OmsiSceneryObjectReader
             ReadTrafficLights(
                 document);
 
+        var trafficLightJumps =
+            ReadTrafficLightJumps(
+                document);
+
         var scriptManifest =
             ReadScriptManifest(
                 document,
@@ -269,6 +273,7 @@ public static class OmsiSceneryObjectReader
             ReadPaths(document),
             trafficLightCycleSeconds,
             trafficLights,
+            trafficLightJumps,
             scriptManifest,
             NoCollision:
                 document.Sections.Any(
@@ -854,6 +859,88 @@ public static class OmsiSceneryObjectReader
                 builder.Name,
                 builder.Phases.ToArray(),
                 builder.ApproachDistanceMeters));
+    }
+
+    private static IReadOnlyList<OmsiSceneryTrafficLightJump>
+        ReadTrafficLightJumps(
+            OmsiSectionDocument document)
+    {
+        var result =
+            new List<OmsiSceneryTrafficLightJump>();
+
+        var inGroup =
+            false;
+
+        foreach (var section in
+                 document.Sections)
+        {
+            if (section.Name.Equals(
+                    "traffic_lights_group",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (inGroup)
+                {
+                    break;
+                }
+
+                inGroup =
+                    true;
+                continue;
+            }
+
+            if (!inGroup ||
+                !section.Name.Equals(
+                    "traffic_light_jump",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                Data(section)
+                    .Select(
+                        static line =>
+                            line.Value)
+                    .ToArray();
+
+            if (values.Length <
+                    4 ||
+                !int.TryParse(
+                    values[0],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var checkTrafficLightIndex) ||
+                checkTrafficLightIndex <
+                    0 ||
+                !TryDouble(
+                    values[1],
+                    out var triggerTimeSeconds) ||
+                triggerTimeSeconds <
+                    0.0 ||
+                !int.TryParse(
+                    values[2],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var jumpIfNoApproach) ||
+                !TryDouble(
+                    values[3],
+                    out var targetTimeSeconds) ||
+                targetTimeSeconds <
+                    0.0)
+            {
+                continue;
+            }
+
+            result.Add(
+                new OmsiSceneryTrafficLightJump(
+                    checkTrafficLightIndex,
+                    triggerTimeSeconds,
+                    jumpIfNoApproach !=
+                        0,
+                    targetTimeSeconds));
+        }
+
+        return result;
     }
 
     private static OmsiSceneryTreeDefinition? ReadTree(
