@@ -897,6 +897,16 @@ public static class WorldLoader
                                             .ToArray(),
                                         trafficLight.ApproachDistanceMeters))
                             .ToArray(),
+                        (definition.TrafficLightJumps ??
+                         Array.Empty<OmsiSceneryTrafficLightJump>())
+                            .Select(
+                                static jump =>
+                                    new WorldTrafficLightJump(
+                                        jump.CheckTrafficLightIndex,
+                                        jump.TriggerTimeSeconds,
+                                        jump.JumpIfNoApproach,
+                                        jump.TargetTimeSeconds))
+                            .ToArray(),
                         definition.ScriptManifest,
                         definition.NoCollision,
                         definition.Fixed,
