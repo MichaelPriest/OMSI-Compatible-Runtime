@@ -578,7 +578,8 @@ public sealed class D3D11RenderWindow : Form
 
         _terrainSurfaceSampler =
             new RuntimeTerrainSampler(
-                windowInfo.Tiles);
+                windowInfo.Tiles,
+                windowInfo.Splines);
 
         _sceneryCollisionVolumes =
             BuildSceneryCollisionVolumes(
@@ -588,7 +589,8 @@ public sealed class D3D11RenderWindow : Form
             windowInfo.Tiles,
             windowInfo.Vehicle?.Physics,
             windowInfo.Vehicle?.Sections,
-            terrainCollisionsEnabled);
+            terrainCollisionsEnabled,
+            windowInfo.Splines);
         _driveMode =
             windowInfo.Vehicle is not null &&
             !_vehiclePreviewMode;
@@ -777,7 +779,8 @@ public sealed class D3D11RenderWindow : Form
 
         _terrainSurfaceSampler =
             new RuntimeTerrainSampler(
-                windowInfo.Tiles);
+                windowInfo.Tiles,
+                windowInfo.Splines);
 
         _sceneryCollisionVolumes =
             BuildSceneryCollisionVolumes(
@@ -786,7 +789,8 @@ public sealed class D3D11RenderWindow : Form
         _activeSceneryCollisionVolumes.Clear();
 
         _vehicle.ReplaceTerrainTiles(
-            windowInfo.Tiles);
+            windowInfo.Tiles,
+            windowInfo.Splines);
 
         if (_device is null)
         {
