@@ -66,9 +66,6 @@ public sealed class OmsiPluginRemoteClient :
             {
                 FileName =
                     hostPath,
-                Arguments =
-                    QuoteArgument(
-                        pluginDllPath),
                 WorkingDirectory =
                     Path.GetDirectoryName(
                         pluginDllPath) ??
@@ -84,6 +81,9 @@ public sealed class OmsiPluginRemoteClient :
                 CreateNoWindow =
                     true
             };
+
+        startInfo.ArgumentList.Add(
+            pluginDllPath);
 
         var process =
             Process.Start(
@@ -369,12 +369,5 @@ public sealed class OmsiPluginRemoteClient :
             chars);
     }
 
-    private static string QuoteArgument(
-        string value) =>
-        """ +
-        value.Replace(
-            """,
-            "\\"",
-            StringComparison.Ordinal) +
-        """;
+
 }
