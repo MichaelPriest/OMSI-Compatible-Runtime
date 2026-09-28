@@ -927,7 +927,7 @@ public static class WorldLoader
             }
 
             var resolvedPath =
-                resolvedPath;
+                dependency.ResolvedPath;
 
             var (sourceBytes, sourceLastWriteUtc) =
                 GetFileStamp(
