@@ -92,7 +92,7 @@ public sealed class OmsiRuntimeOptions
     public bool RuntimeBorderlessFullscreen { get; set; }
     public int RuntimeStreamingRadius { get; set; } = 2;
     public bool RuntimePreferHardwareGpu { get; set; } = true;
-    public bool RuntimeShowFps { get; set; }
+    public bool RuntimeShowFps { get; set; } = true;
     public bool RuntimeDiagnostics { get; set; } = true;
 
     public static string SettingsDirectory =>
