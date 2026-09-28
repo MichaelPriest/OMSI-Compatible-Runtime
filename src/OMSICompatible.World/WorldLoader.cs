@@ -67,7 +67,7 @@ public static class WorldLoader
         long LastUsedGeneration,
         WorldSceneryAsset Asset);
 
-    public static void WarmCache(
+    public static IReadOnlyList<string> WarmCache(
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
         WorldLoadOptions options)
@@ -122,20 +122,101 @@ public static class WorldLoader
                     allObjects,
                     allSplines);
 
-        _ =
+        var splineAssets =
             LoadSplineAssets(
                 contentRoot,
                 allSplines,
                 dependencies);
 
-        _ =
+        var sceneryAssets =
             LoadSceneryAssets(
                 contentRoot,
                 allObjects,
                 dependencies);
 
+        var texturePaths =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        static void AddTexturePath(
+            HashSet<string> target,
+            string? path)
+        {
+            if (!string.IsNullOrWhiteSpace(
+                    path) &&
+                File.Exists(
+                    path))
+            {
+                target.Add(
+                    path);
+            }
+        }
+
+        foreach (var tile in
+                 tiles)
+        {
+            AddTexturePath(
+                texturePaths,
+                tile.Resources.LightmapPath);
+
+            foreach (var texturePath in
+                     tile.Resources.TerrainTexturePaths)
+            {
+                AddTexturePath(
+                    texturePaths,
+                    texturePath);
+            }
+
+            foreach (var mask in
+                     tile.Resources.TerrainMasks)
+            {
+                AddTexturePath(
+                    texturePaths,
+                    mask.Path);
+            }
+        }
+
+        foreach (var asset in
+                 splineAssets.Values)
+        {
+            foreach (var surface in
+                     asset.Surfaces)
+            {
+                AddTexturePath(
+                    texturePaths,
+                    surface.TexturePath);
+            }
+        }
+
+        foreach (var asset in
+                 sceneryAssets.Values)
+        {
+            AddTexturePath(
+                texturePaths,
+                asset.Tree?.TexturePath);
+
+            foreach (var mesh in
+                     asset.Meshes)
+            {
+                foreach (var material in
+                         mesh.Materials)
+                {
+                    AddTexturePath(
+                        texturePaths,
+                        material.TexturePath);
+
+                    AddTexturePath(
+                        texturePaths,
+                        material.TransMapTexturePath);
+                }
+            }
+        }
+
         Console.WriteLine(
-            $"[world-cache] warm center={options.CenterTileX},{options.CenterTileY}; tiles={tiles.Count}; objects={allObjects.Length}; splines={allSplines.Length}");
+            $"[world-cache] warm center={options.CenterTileX},{options.CenterTileY}; tiles={tiles.Count}; objects={allObjects.Length}; splines={allSplines.Length}; textures={texturePaths.Count}");
+
+        return texturePaths
+            .ToArray();
     }
 
     public static WorldDefinition Load(
