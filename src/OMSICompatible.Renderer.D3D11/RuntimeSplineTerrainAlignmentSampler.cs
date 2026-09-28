@@ -71,7 +71,7 @@ internal sealed class RuntimeSplineTerrainAlignmentSampler
                     256);
 
             var previous =
-                SampleCenter(
+                SampleAlignmentCenter(
                     spline,
                     0.0);
 
@@ -86,7 +86,7 @@ internal sealed class RuntimeSplineTerrainAlignmentSampler
                     sampleCount;
 
                 var current =
-                    SampleCenter(
+                    SampleAlignmentCenter(
                         spline,
                         distance);
 
@@ -272,7 +272,7 @@ internal sealed class RuntimeSplineTerrainAlignmentSampler
             40.0f);
     }
 
-    private static Vector3 SampleCenter(
+    private static Vector3 SampleAlignmentCenter(
         RuntimeSplineInfo spline,
         double distance)
     {
@@ -349,13 +349,72 @@ internal sealed class RuntimeSplineTerrainAlignmentSampler
             spline.Y +
             GradientRise(
                 spline,
-                clamped);
+                clamped) +
+            ResolveMinimumSurfaceVerticalOffset(
+                spline,
+                clamped) +
+            0.025;
 
         return new Vector3(
             (float)worldX,
             (float)worldY,
             (float)worldZ);
     }
+
+    private static double ResolveMinimumSurfaceVerticalOffset(
+        RuntimeSplineInfo spline,
+        double distance)
+    {
+        var normalized =
+            spline.LengthMeters <=
+                    0.0
+                ? 0.0
+                : Math.Clamp(
+                    distance /
+                    spline.LengthMeters,
+                    0.0,
+                    1.0);
+
+        var cantPercent =
+            spline.CantStartPercent +
+            (spline.CantEndPercent -
+             spline.CantStartPercent) *
+            normalized;
+
+        var minimum =
+            double.PositiveInfinity;
+
+        foreach (var surface in
+                 spline.Surfaces)
+        {
+            minimum =
+                Math.Min(
+                    minimum,
+                    ResolveProfilePointVerticalOffset(
+                        surface.From,
+                        cantPercent));
+
+            minimum =
+                Math.Min(
+                    minimum,
+                    ResolveProfilePointVerticalOffset(
+                        surface.To,
+                        cantPercent));
+        }
+
+        return double.IsFinite(
+                   minimum)
+            ? minimum
+            : 0.0;
+    }
+
+    private static double ResolveProfilePointVerticalOffset(
+        RuntimeSplineProfilePointInfo point,
+        double cantPercent) =>
+        point.Z -
+        point.X *
+        cantPercent /
+        100.0;
 
     private static double GradientRise(
         RuntimeSplineInfo spline,
