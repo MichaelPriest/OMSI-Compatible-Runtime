@@ -55,6 +55,12 @@ internal sealed class RuntimeReflectionTarget :
         get;
     }
 
+    public bool HasRendered
+    {
+        get;
+        set;
+    }
+
     public void Dispose()
     {
         ShaderResourceView.Dispose();
