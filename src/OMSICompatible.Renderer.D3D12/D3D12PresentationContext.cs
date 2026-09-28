@@ -584,6 +584,18 @@ public sealed class D3D12PresentationContext :
             geometry);
     }
 
+    public D3D12RuntimeObjectResources CreateObjectResources(
+        ReadOnlySpan<RuntimeObjectVertex> vertices)
+    {
+        ObjectDisposedException.ThrowIf(
+            _disposed,
+            this);
+
+        return D3D12RuntimeObjectResources.Create(
+            _device,
+            vertices);
+    }
+
     public void SetViewProjection(
         Matrix4x4 viewProjection)
     {
@@ -637,6 +649,26 @@ public sealed class D3D12PresentationContext :
         DrawAndPresent(
             terrain.Buffer,
             terrain.Batches,
+            red,
+            green,
+            blue,
+            vsync);
+    }
+
+    public void DrawAndPresent(
+        D3D12RuntimeObjectResources objects,
+        float red,
+        float green,
+        float blue,
+        bool vsync)
+    {
+        ArgumentNullException.ThrowIfNull(
+            objects);
+
+        DrawAndPresent(
+            objects.Buffer,
+            batches:
+                null,
             red,
             green,
             blue,
