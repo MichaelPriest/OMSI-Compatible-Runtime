@@ -439,6 +439,8 @@ internal sealed class RuntimeApplicationContext :
                         _options.RuntimeShowFps,
                     msaaSamples:
                         _options.RuntimeMsaaSamples,
+                    sharpenStrength:
+                        _options.RuntimeSharpenStrength,
                     vehiclePreviewMode:
                         false,
                     initialVehicleVariables:
