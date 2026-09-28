@@ -62,6 +62,12 @@ public sealed record OmsiSceneryTrafficLightProgram(
     IReadOnlyList<OmsiSceneryTrafficLightPhase> Phases,
     double ApproachDistanceMeters);
 
+public sealed record OmsiSceneryTrafficLightJump(
+    int CheckTrafficLightIndex,
+    double TriggerTimeSeconds,
+    bool JumpIfNoApproach,
+    double TargetTimeSeconds);
+
 public sealed record OmsiSceneryFileReference(
     string DeclaredPath,
     string? ResolvedPath)
@@ -115,6 +121,7 @@ public sealed record OmsiSceneryDefinition(
     IReadOnlyList<OmsiSceneryPathDefinition> Paths,
     double? TrafficLightCycleSeconds = null,
     IReadOnlyList<OmsiSceneryTrafficLightProgram>? TrafficLights = null,
+    IReadOnlyList<OmsiSceneryTrafficLightJump>? TrafficLightJumps = null,
     OmsiSceneryScriptManifest? ScriptManifest = null,
     bool NoCollision = false,
     bool Fixed = false,
