@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
+using OmsiCompat.Plugins;
 using OmsiCompat.Scripting;
 using OmsiCompat.Vehicles;
 using OMSICompatible.Renderer.D3D11;
@@ -122,6 +123,13 @@ internal sealed class RuntimeApplicationContext :
                     ? "[graphics] D3D12 device is available; renderer port is staged but D3D11 remains active until the D3D12 draw/resource path reaches feature parity."
                     : "[graphics] D3D12 was requested but is unavailable; using D3D11 fallback.");
         }
+
+        var discoveredPlugins =
+            OmsiPluginDiscovery.Discover(
+                _contentRoot.RootPath);
+
+        Console.WriteLine(
+            $"[plugins] discovered={discoveredPlugins.Count:N0}; dllResolved={discoveredPlugins.Count(static plugin => File.Exists(plugin.DllPath)):N0}; vars={discoveredPlugins.Sum(static plugin => plugin.Variables.Count):N0}; strings={discoveredPlugins.Sum(static plugin => plugin.StringVariables.Count):N0}; systemVars={discoveredPlugins.Sum(static plugin => plugin.SystemVariables.Count):N0}; triggers={discoveredPlugins.Sum(static plugin => plugin.Triggers.Count):N0}");
 
         _loadedCenterX =
             entryPoint.Tile.X;
