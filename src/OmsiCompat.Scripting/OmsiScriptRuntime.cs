@@ -316,6 +316,11 @@ public sealed class OmsiScriptRuntime
                 ? value
                 : string.Empty;
 
+    public bool HasStringLocalVariable(
+        string name) =>
+        _catalog.StringVariables.Contains(
+            name);
+
     public void SetStringLocal(
         string name,
         string value)
