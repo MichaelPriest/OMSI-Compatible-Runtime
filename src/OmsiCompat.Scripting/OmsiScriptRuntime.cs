@@ -301,6 +301,13 @@ public sealed class OmsiScriptRuntime
                 _systemVariables,
                 name);
 
+    public bool HasSystemVariable(
+        string name) =>
+        !string.IsNullOrWhiteSpace(
+            name) &&
+        _systemVariables.ContainsKey(
+            name);
+
     public void SetSystem(
         string name,
         double value) =>
