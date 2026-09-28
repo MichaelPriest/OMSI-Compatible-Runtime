@@ -163,6 +163,24 @@ jobs:
           -p:DebugSymbols=false
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime
 
+      - name: Publish OMSI plugin host x86
+        run: >
+          dotnet publish src/OMSICompatible.PluginHost.x86/OMSICompatible.PluginHost.x86.csproj
+          -c Release
+          -r win-x86
+          --self-contained true
+          -p:PublishSingleFile=false
+          -p:UseAppHost=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime/PluginHost-x86
+
+      - name: Verify OMSI plugin host x86 package
+        shell: pwsh
+        run: |
+          $host = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime/PluginHost-x86/OMSICompatible.PluginHost.x86.exe"
+          if (-not (Test-Path $host)) { throw "OMSI x86 plugin host was not published." }
+
       - name: Package ODE x64
         shell: pwsh
         run: |
