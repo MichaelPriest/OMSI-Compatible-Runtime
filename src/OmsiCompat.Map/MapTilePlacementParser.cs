@@ -42,7 +42,8 @@ public sealed record OmsiSplinePlacement(
     double SkewEnd,
     bool Mirror,
     int SourceLineNumber,
-    IReadOnlyList<OmsiTrafficRule>? TrafficRules = null);
+    IReadOnlyList<OmsiTrafficRule>? TrafficRules = null,
+    int? TerrainAlignMode = null);
 
 public sealed record OmsiPlacementParseIssue(
     string SectionName,
@@ -118,6 +119,51 @@ public static class MapTilePlacementParser
                     activeTarget =
                         null;
                 }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "spline_terrain_align_2",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (activeTarget is null ||
+                    !activeTarget.Value.IsSpline)
+                {
+                    issues.Add(
+                        Issue(
+                            section,
+                            "Spline terrain alignment has no preceding spline placement."));
+                    continue;
+                }
+
+                var values =
+                    GetValues(
+                        section);
+
+                if (values.Count == 0 ||
+                    !int.TryParse(
+                        values[0].Value.Trim(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var terrainAlignMode))
+                {
+                    issues.Add(
+                        Issue(
+                            section,
+                            "Spline terrain alignment contains an invalid mode."));
+                    continue;
+                }
+
+                var index =
+                    activeTarget.Value.Index;
+
+                splines[index] =
+                    splines[index] with
+                    {
+                        TerrainAlignMode =
+                            terrainAlignMode
+                    };
 
                 continue;
             }
