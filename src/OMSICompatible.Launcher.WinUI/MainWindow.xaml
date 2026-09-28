@@ -617,7 +617,13 @@
                         <CheckBox x:Name="SettingsGameControllerCheck" Content="Game Controller"/>
                         <CheckBox x:Name="SettingsLandscapeCollisionsCheck"
                                   Content="Colisões com cenário / objetos"
-                                  ToolTipService.ToolTip="Desative para ignorar colisões do veículo com objetos e cenário, equivalente à opção de colisão desativada do OMSI."/>
+                                  ToolTipService.ToolTip="Equivale ao no_collision do OMSI: desative para ignorar colisões laterais com objetos e cenário."/>
+                        <CheckBox x:Name="SettingsTerrainCollisionsCheck"
+                                  Content="Colisões com terreno"
+                                  ToolTipService.ToolTip="Equivale ao no_collision_terrain do OMSI. Desative somente se quiser ignorar o terreno físico."/>
+                        <CheckBox x:Name="SettingsVehicleCollisionsCheck"
+                                  Content="Colisões entre veículos"
+                                  ToolTipService.ToolTip="Equivale ao no_collision_vehToVeh do OMSI."/>
                         <TextBox x:Name="SettingsStreamingRadiusBox" Header="Raio de streaming"/>
                         <CheckBox x:Name="SettingsVsyncCheck" Content="VSync"/>
                         <CheckBox x:Name="SettingsBorderlessCheck" Content="Fullscreen borderless"/>
