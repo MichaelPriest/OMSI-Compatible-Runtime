@@ -15623,7 +15623,7 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (_scriptRuntime.HasLocalVariable(
+        if (_scriptRuntime.WritesLocalVariable(
                 "elec_busbar_main"))
         {
             _vehicle.SetElectricalSystemEnabled(
@@ -15631,7 +15631,7 @@ public sealed class D3D11RenderWindow : Form
                     "elec_busbar_main") >
                 0.01);
         }
-        else if (_scriptRuntime.HasLocalVariable(
+        else if (_scriptRuntime.WritesLocalVariable(
                      "elec_busbar_main_sw"))
         {
             _vehicle.SetElectricalSystemEnabled(
@@ -15640,7 +15640,7 @@ public sealed class D3D11RenderWindow : Form
                 0.5);
         }
 
-        if (_scriptRuntime.HasLocalVariable(
+        if (_scriptRuntime.WritesLocalVariable(
                 "engine_on"))
         {
             _vehicle.SetEngineRunning(
@@ -15649,7 +15649,7 @@ public sealed class D3D11RenderWindow : Form
                 0.5);
         }
 
-        if (_scriptRuntime.HasLocalVariable(
+        if (_scriptRuntime.WritesLocalVariable(
                 "bremse_feststell"))
         {
             _vehicle.SetParkingBrake(
@@ -15658,7 +15658,7 @@ public sealed class D3D11RenderWindow : Form
                 0.5);
         }
 
-        if (_scriptRuntime.HasLocalVariable(
+        if (_scriptRuntime.WritesLocalVariable(
                 "antrieb_getr_gangwahl"))
         {
             var selector =
