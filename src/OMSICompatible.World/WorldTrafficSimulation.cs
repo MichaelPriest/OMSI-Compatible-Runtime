@@ -2976,16 +2976,6 @@ public sealed class WorldTrafficSimulation
             : wrapped;
     }
 
-    private static double Distance(
-        WorldVector3 first,
-        WorldVector3 second)
-    {
-        return Math.Sqrt(
-            DistanceSquared(
-                first,
-                second));
-    }
-
     private static double DistanceSquared(
         WorldVector3 first,
         WorldVector3 second)
