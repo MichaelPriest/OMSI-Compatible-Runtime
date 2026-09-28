@@ -9,6 +9,7 @@
   <Project Path="src/OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
   <Project Path="src/OmsiCompat.Scripting/OmsiCompat.Scripting.csproj" />
   <Project Path="src/OMSICompatible.World/OMSICompatible.World.csproj" />
+  <Project Path="src/OMSICompatible.Renderer.Common/OMSICompatible.Renderer.Common.csproj" />
   <Project Path="src/OMSICompatible.Renderer.D3D11/OMSICompatible.Renderer.D3D11.csproj" />
   <Project Path="src/OMSICompatible.Renderer.D3D12/OMSICompatible.Renderer.D3D12.csproj" />
   <Project Path="src/OMSICompatible.PluginHost.x86/OMSICompatible.PluginHost.x86.csproj" />
