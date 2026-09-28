@@ -455,6 +455,7 @@ public sealed record RuntimeReflectionCameraInfo(
     double HeadingDegrees,
     double PitchDegrees,
     double? MaximumViewerDistanceMeters,
+    bool ContinuousRendering,
     string RuntimeTextureName,
     string RuntimeTextureKey);
 
