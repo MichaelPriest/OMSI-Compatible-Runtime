@@ -844,7 +844,8 @@ public sealed class D3D11RenderWindow : Form
         _terrainGeometry =
             RuntimeTerrainGeometryBuilder.Build(
                 _windowInfo.Tiles,
-                _windowInfo.GroundTextures);
+                _windowInfo.GroundTextures,
+                _windowInfo.Splines);
 
         if (_terrainGeometry.Vertices.Length > 0)
         {
@@ -1675,7 +1676,8 @@ public sealed class D3D11RenderWindow : Form
         _terrainGeometry =
             RuntimeTerrainGeometryBuilder.Build(
                 _windowInfo.Tiles,
-                _windowInfo.GroundTextures);
+                _windowInfo.GroundTextures,
+                _windowInfo.Splines);
 
         if (_terrainGeometry.Vertices.Length == 0)
         {
