@@ -268,9 +268,12 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11DeviceContext? _deviceContext;
     private IDXGISwapChain1? _swapChain;
     private ID3D11Texture2D? _backBuffer;
+    private ID3D11Texture2D? _multisampleColorTexture;
     private ID3D11RenderTargetView? _renderTargetView;
     private ID3D11Texture2D? _depthTexture;
     private ID3D11DepthStencilView? _depthStencilView;
+    private readonly int _requestedMsaaSamples;
+    private int _activeMsaaSamples;
 
     private ID3D11VertexShader? _skyVertexShader;
     private ID3D11PixelShader? _skyPixelShader;
@@ -447,6 +450,7 @@ public sealed class D3D11RenderWindow : Form
         int targetFps = 60,
         bool vsync = true,
         bool showFps = false,
+        int msaaSamples = 0,
         bool vehiclePreviewMode = false,
         IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
         string? inputLanguage = null,
@@ -515,6 +519,14 @@ public sealed class D3D11RenderWindow : Form
                 _initialVehicleVariables);
 
         _vsync = vsync;
+        _requestedMsaaSamples =
+            msaaSamples >=
+                    4
+                ? 4
+                : msaaSamples >=
+                    2
+                    ? 2
+                    : 0;
         _showFps =
             showFps &&
             !vehiclePreviewMode;
@@ -1493,21 +1505,130 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        var width = (uint)Math.Max(ClientSize.Width, 1);
-        var height = (uint)Math.Max(ClientSize.Height, 1);
+        var width =
+            (uint)Math.Max(
+                ClientSize.Width,
+                1);
 
-        _backBuffer = _swapChain.GetBuffer<ID3D11Texture2D>(0);
-        _renderTargetView = _device.CreateRenderTargetView(_backBuffer);
+        var height =
+            (uint)Math.Max(
+                ClientSize.Height,
+                1);
 
-        _depthTexture = _device.CreateTexture2D(
-            Format.D32_Float,
-            width,
-            height,
-            mipLevels: 1,
-            bindFlags: BindFlags.DepthStencil);
+        _backBuffer =
+            _swapChain.GetBuffer<
+                ID3D11Texture2D>(
+                    0);
 
-        _depthStencilView = _device.CreateDepthStencilView(
-            _depthTexture);
+        _activeMsaaSamples =
+            0;
+
+        if (_requestedMsaaSamples >=
+            2)
+        {
+            foreach (var sampleCount in
+                     _requestedMsaaSamples >=
+                             4
+                         ? new[]
+                           {
+                               4,
+                               2
+                           }
+                         : new[]
+                           {
+                               2
+                           })
+            {
+                try
+                {
+                    _multisampleColorTexture =
+                        _device
+                            .CreateTexture2DMultisample(
+                                Format.R8G8B8A8_UNorm,
+                                width,
+                                height,
+                                (uint)sampleCount,
+                                bindFlags:
+                                    BindFlags.RenderTarget);
+
+                    _depthTexture =
+                        _device
+                            .CreateTexture2DMultisample(
+                                Format.D32_Float,
+                                width,
+                                height,
+                                (uint)sampleCount,
+                                bindFlags:
+                                    BindFlags.DepthStencil);
+
+                    _renderTargetView =
+                        _device.CreateRenderTargetView(
+                            _multisampleColorTexture);
+
+                    _depthStencilView =
+                        _device.CreateDepthStencilView(
+                            _depthTexture);
+
+                    _activeMsaaSamples =
+                        sampleCount;
+
+                    Console.WriteLine(
+                        $"[graphics] MSAA {sampleCount}x enabled.");
+
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    _renderTargetView?.Dispose();
+                    _renderTargetView =
+                        null;
+
+                    _depthStencilView?.Dispose();
+                    _depthStencilView =
+                        null;
+
+                    _depthTexture?.Dispose();
+                    _depthTexture =
+                        null;
+
+                    _multisampleColorTexture?.Dispose();
+                    _multisampleColorTexture =
+                        null;
+
+                    Console.WriteLine(
+                        $"[graphics] MSAA {sampleCount}x unavailable: {exception.Message}");
+                }
+            }
+        }
+
+        if (_activeMsaaSamples ==
+            0)
+        {
+            _renderTargetView =
+                _device.CreateRenderTargetView(
+                    _backBuffer);
+
+            _depthTexture =
+                _device.CreateTexture2D(
+                    Format.D32_Float,
+                    width,
+                    height,
+                    mipLevels:
+                        1,
+                    bindFlags:
+                        BindFlags.DepthStencil);
+
+            _depthStencilView =
+                _device.CreateDepthStencilView(
+                    _depthTexture);
+
+            if (_requestedMsaaSamples >
+                0)
+            {
+                Console.WriteLine(
+                    "[graphics] MSAA unavailable; using single-sample rendering.");
+            }
+        }
     }
 
     private void CreateSkyResources()
@@ -3486,8 +3607,14 @@ public sealed class D3D11RenderWindow : Form
         _renderTargetView?.Dispose();
         _renderTargetView = null;
 
+        _multisampleColorTexture?.Dispose();
+        _multisampleColorTexture = null;
+
         _backBuffer?.Dispose();
         _backBuffer = null;
+
+        _activeMsaaSamples =
+            0;
     }
 
     private void RenderTimerOnTick(
@@ -3565,6 +3692,27 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private void ResolveMultisampleBackBuffer()
+    {
+        if (_activeMsaaSamples <
+                2 ||
+            _deviceContext is null ||
+            _backBuffer is null ||
+            _multisampleColorTexture is null)
+        {
+            return;
+        }
+
+        _deviceContext.UnsetRenderTargets();
+
+        _deviceContext.ResolveSubresource(
+            _backBuffer,
+            0,
+            _multisampleColorTexture,
+            0,
+            Format.R8G8B8A8_UNorm);
+    }
+
     private void RenderFrame()
     {
         if (_deviceContext is null ||
@@ -3606,6 +3754,8 @@ public sealed class D3D11RenderWindow : Form
         {
             UpdateVehiclePreviewCameraConstants();
             DrawVehicle();
+
+            ResolveMultisampleBackBuffer();
 
             _swapChain.Present(
                 _vsync
@@ -3665,6 +3815,8 @@ public sealed class D3D11RenderWindow : Form
         {
             DrawTileOverview();
         }
+
+        ResolveMultisampleBackBuffer();
 
         _swapChain.Present(
             _vsync
@@ -17025,8 +17177,14 @@ public sealed class D3D11RenderWindow : Form
                 ? $"mirrors ON {_reflectionTargets.Count:N0}"
                 : $"mirrors OFF {_reflectionTargets.Count:N0}";
 
+        var antiAliasingMode =
+            _activeMsaaSamples >=
+                    2
+                ? $"MSAA {_activeMsaaSamples}x"
+                : "MSAA off";
+
         var mode = _terrainVertexCount > 0
-            ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · runtime objects {_objectGeometry.RenderedObjectCount:N0}/{runtimeObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0} loaded · texture failures {_failedObjectTexturePaths.Count:N0} · encrypted {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
+            ? $"terrain {_terrainVertexCount / 3:N0} triangles · {mirrorMode} · {antiAliasingMode} · ground textures {_terrainGeometry.TexturedBatchCount:N0} · masks {_terrainGeometry.MaskedLayerCount:N0} · roads {_splineGeometry.RenderedSplineCount:N0} · road textures {_splineGeometry.TexturedBatchCount:N0} · runtime objects {_objectGeometry.RenderedObjectCount:N0}/{runtimeObjectCount:N0} · meshes {_objectGeometry.RenderedMeshCount:N0} · trees {_objectGeometry.RenderedTreeCount:N0} · textures {_objectTextureCache.Count:N0} loaded · texture failures {_failedObjectTexturePaths.Count:N0} · encrypted {_objectGeometry.ProtectedMeshCount:N0}{sceneryBudget}"
             : "tile overview";
 
         var gear = _vehicleRemoved
