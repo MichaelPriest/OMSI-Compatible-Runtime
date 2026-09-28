@@ -192,7 +192,8 @@ internal sealed class RuntimeSplineSurfaceSampler
 
         var terrain =
             new RuntimeTerrainSampler(
-                windowInfo.Tiles);
+                windowInfo.Tiles,
+                windowInfo.Splines);
 
         var cells =
             new Dictionary<
