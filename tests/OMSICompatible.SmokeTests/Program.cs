@@ -3469,14 +3469,14 @@ try
     Require(
         bus.ReflectionCameras[0].RuntimeTextureName ==
             "reflexion0.bmp" &&
-        bus.ReflectionCameras[0].MaximumViewerDistanceMeters is null &&
+        bus.ReflectionCameras[0].VisibilityThreshold is null &&
         !bus.ReflectionCameras[0].ContinuousRendering,
         "Conditional OMSI reflection camera metadata is incorrect.");
     Require(
         bus.ReflectionCameras[1].RuntimeTextureName ==
             "reflexion1.bmp" &&
         Math.Abs(
-            (bus.ReflectionCameras[1].MaximumViewerDistanceMeters ?? 0.0) -
+            (bus.ReflectionCameras[1].VisibilityThreshold ?? 0.0) -
             0.15) < 0.0001 &&
         bus.ReflectionCameras[1].ContinuousRendering,
         "Continuous OMSI reflection camera metadata is incorrect.");
