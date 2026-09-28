@@ -55,6 +55,7 @@ public sealed class WorldTrafficSimulation
 
     private readonly WorldTrafficPathNetwork _network;
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
+    private readonly Dictionary<int, double> _segmentLengthsByIndex;
     private readonly HashSet<long> _crossingSceneryObjectIds;
     private readonly Dictionary<long, TrafficSignalGroupState> _trafficSignalGroups;
     private readonly List<Agent> _agents;
@@ -85,6 +86,12 @@ public sealed class WorldTrafficSimulation
             network.Segments.ToDictionary(
                 static segment =>
                     segment.Index);
+
+        _segmentLengthsByIndex =
+            network.Segments.ToDictionary(
+                static segment =>
+                    segment.Index,
+                CalculateSegmentLength);
 
         _crossingSceneryObjectIds =
             network.Segments
@@ -4230,7 +4237,21 @@ public sealed class WorldTrafficSimulation
                3.6;
     }
 
-    private static double SegmentLength(
+    private double SegmentLength(
+        WorldTrafficPathSegment segment)
+    {
+        if (_segmentLengthsByIndex.TryGetValue(
+                segment.Index,
+                out var length))
+        {
+            return length;
+        }
+
+        return CalculateSegmentLength(
+            segment);
+    }
+
+    private static double CalculateSegmentLength(
         WorldTrafficPathSegment segment)
     {
         var total =
