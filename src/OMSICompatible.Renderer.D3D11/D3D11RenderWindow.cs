@@ -45,6 +45,12 @@ public sealed class D3D11RenderWindow : Form
         public Matrix4x4 World;
     }
 
+    private sealed record PreparedStreamedGeometry(
+        RuntimeVertex[] TileVertices,
+        RuntimeTerrainGeometry Terrain,
+        RuntimeSplineGeometry Splines,
+        RuntimeObjectGeometry Objects);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct RuntimeVehicleSkinConstants
     {
@@ -266,6 +272,7 @@ public sealed class D3D11RenderWindow : Form
     private int _captionFrame;
     private int? _streamingTileX;
     private int? _streamingTileY;
+    private int _streamedWorldPreparationGeneration;
     private System.Drawing.Point _lastMousePosition;
 
     public event Action<int, int>?
@@ -925,12 +932,122 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (InvokeRequired)
+        var generation =
+            Interlocked.Increment(
+                ref _streamedWorldPreparationGeneration);
+
+        _ =
+            PrepareAndApplyStreamedWorldAsync(
+                windowInfo,
+                generation);
+    }
+
+    private async Task PrepareAndApplyStreamedWorldAsync(
+        RuntimeWindowInfo windowInfo,
+        int generation)
+    {
+        PreparedStreamedGeometry prepared;
+
+        var started =
+            Stopwatch.GetTimestamp();
+
+        try
         {
-            BeginInvoke(
-                () =>
-                    ApplyStreamedWorld(
-                        windowInfo));
+            prepared =
+                await Task.Run(
+                    () =>
+                    {
+                        var tileVertices =
+                            BuildTileVertices(
+                                windowInfo.Tiles);
+
+                        var terrain =
+                            RuntimeTerrainGeometryBuilder.Build(
+                                windowInfo.Tiles,
+                                windowInfo.GroundTextures,
+                                windowInfo.Splines);
+
+                        var splines =
+                            RuntimeSplineGeometryBuilder.Build(
+                                windowInfo.Splines);
+
+                        var objects =
+                            RuntimeObjectGeometryBuilder.Build(
+                                windowInfo.Tiles,
+                                windowInfo.Objects,
+                                windowInfo.SceneryAssets,
+                                useNativeOmsiModelSpace:
+                                    true,
+                                isolatedObjectIds:
+                                    windowInfo.DynamicSceneryObjectIds);
+
+                        return new PreparedStreamedGeometry(
+                            tileVertices,
+                            terrain,
+                            splines,
+                            objects);
+                    });
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"[streaming-geometry] prepare failed: {exception.Message}");
+            return;
+        }
+
+        if (generation !=
+                Volatile.Read(
+                    ref _streamedWorldPreparationGeneration) ||
+            IsDisposed)
+        {
+            return;
+        }
+
+        var elapsed =
+            Stopwatch.GetElapsedTime(
+                started);
+
+        Console.WriteLine(
+            $"[streaming-geometry] prepared generation={generation}; tiles={windowInfo.Tiles.Count}; terrainVertices={prepared.Terrain.Vertices.Length:N0}; splineVertices={prepared.Splines.Vertices.Length:N0}; objectVertices={prepared.Objects.Vertices.Length:N0}; cpuMs={elapsed.TotalMilliseconds:0.0}");
+
+        try
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(
+                    () =>
+                        ApplyPreparedStreamedWorld(
+                            windowInfo,
+                            prepared,
+                            generation));
+            }
+            else
+            {
+                ApplyPreparedStreamedWorld(
+                    windowInfo,
+                    prepared,
+                    generation);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Window can close while a background geometry build is finishing.
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void ApplyPreparedStreamedWorld(
+        RuntimeWindowInfo windowInfo,
+        PreparedStreamedGeometry prepared,
+        int generation)
+    {
+        if (IsDisposed ||
+            generation !=
+                Volatile.Read(
+                    ref _streamedWorldPreparationGeneration))
+        {
             return;
         }
 
@@ -964,9 +1081,14 @@ public sealed class D3D11RenderWindow : Form
 
         _renderTimer.Stop();
 
+        var uploadStarted =
+            Stopwatch.GetTimestamp();
+
         try
         {
-            RebuildStreamedGeometry();
+            UploadPreparedStreamedGeometry(
+                prepared);
+
             RefreshStreamingTextureCache();
             UpdateCaption();
         }
@@ -977,9 +1099,17 @@ public sealed class D3D11RenderWindow : Form
                 _renderTimer.Start();
             }
         }
+
+        var uploadElapsed =
+            Stopwatch.GetElapsedTime(
+                uploadStarted);
+
+        Console.WriteLine(
+            $"[streaming-geometry] applied generation={generation}; gpuMs={uploadElapsed.TotalMilliseconds:0.0}");
     }
 
-    private void RebuildStreamedGeometry()
+    private void UploadPreparedStreamedGeometry(
+        PreparedStreamedGeometry prepared)
     {
         if (_device is null)
         {
@@ -987,33 +1117,30 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _tileVertexBuffer?.Dispose();
-        _tileVertexBuffer = null;
+        _tileVertexBuffer =
+            null;
 
-        var tileVertices =
-            BuildTileVertices(
-                _windowInfo.Tiles);
-
-        if (tileVertices.Length > 0)
+        if (prepared.TileVertices.Length >
+            0)
         {
             _tileVertexBuffer =
                 _device.CreateBuffer(
-                    tileVertices.AsSpan(),
+                    prepared.TileVertices.AsSpan(),
                     BindFlags.VertexBuffer);
         }
 
         _tileVertexCount =
-            (uint)tileVertices.Length;
+            (uint)prepared.TileVertices.Length;
 
         _terrainVertexBuffer?.Dispose();
-        _terrainVertexBuffer = null;
+        _terrainVertexBuffer =
+            null;
 
         _terrainGeometry =
-            RuntimeTerrainGeometryBuilder.Build(
-                _windowInfo.Tiles,
-                _windowInfo.GroundTextures,
-                _windowInfo.Splines);
+            prepared.Terrain;
 
-        if (_terrainGeometry.Vertices.Length > 0)
+        if (_terrainGeometry.Vertices.Length >
+            0)
         {
             _terrainVertexBuffer =
                 _device.CreateBuffer(
@@ -1027,16 +1154,17 @@ public sealed class D3D11RenderWindow : Form
         AppendTerrainAlignmentDiagnostics();
 
         _splineVertexBuffer?.Dispose();
-        _splineVertexBuffer = null;
+        _splineVertexBuffer =
+            null;
 
         _splineGeometry =
-            RuntimeSplineGeometryBuilder.Build(
-                _windowInfo.Splines);
+            prepared.Splines;
 
         _vehicle.ReplaceSplineSurfaceGeometry(
             _splineGeometry);
 
-        if (_splineGeometry.Vertices.Length > 0)
+        if (_splineGeometry.Vertices.Length >
+            0)
         {
             _splineVertexBuffer =
                 _device.CreateBuffer(
@@ -1048,22 +1176,18 @@ public sealed class D3D11RenderWindow : Form
             (uint)_splineGeometry.Vertices.Length;
 
         _objectVertexBuffer?.Dispose();
-        _objectVertexBuffer = null;
+        _objectVertexBuffer =
+            null;
 
         _objectGeometry =
-            RuntimeObjectGeometryBuilder.Build(
-                _windowInfo.Tiles,
-                _windowInfo.Objects,
-                _windowInfo.SceneryAssets,
-                useNativeOmsiModelSpace: true,
-                isolatedObjectIds:
-                    _windowInfo.DynamicSceneryObjectIds);
+            prepared.Objects;
 
         _vehicle.ReplaceScenerySurfaceGeometry(
             _objectGeometry,
             _windowInfo);
 
-        if (_objectGeometry.Vertices.Length > 0)
+        if (_objectGeometry.Vertices.Length >
+            0)
         {
             _objectVertexBuffer =
                 _device.CreateBuffer(
