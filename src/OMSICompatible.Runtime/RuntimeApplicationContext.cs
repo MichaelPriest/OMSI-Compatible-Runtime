@@ -761,9 +761,16 @@ internal sealed class RuntimeApplicationContext :
                     form.ClientSize.Height,
                     _options.RuntimePreferHardwareGpu);
 
+            var uploadStarted =
+                Stopwatch.GetTimestamp();
+
             using var terrain =
                 graphics.CreateTerrainResources(
                     geometry);
+
+            var uploadElapsed =
+                Stopwatch.GetElapsedTime(
+                    uploadStarted);
 
             var span =
                 MathF.Max(
@@ -810,6 +817,9 @@ internal sealed class RuntimeApplicationContext :
                 view *
                 projection);
 
+            var drawStarted =
+                Stopwatch.GetTimestamp();
+
             graphics.DrawAndPresent(
                 terrain,
                 0.04f,
@@ -818,8 +828,12 @@ internal sealed class RuntimeApplicationContext :
                 vsync:
                     false);
 
+            var drawElapsed =
+                Stopwatch.GetElapsedTime(
+                    drawStarted);
+
             Console.WriteLine(
-                $"[d3d12-terrain] success; vertices={geometry.Vertices.Length:N0}; batches={geometry.Batches.Count:N0}; buildMs={buildElapsed.TotalMilliseconds:0.0}; span={geometry.HorizontalSpan:0.0}m");
+                $"[d3d12-terrain] success; vertices={geometry.Vertices.Length:N0}; batches={geometry.Batches.Count:N0}; buildMs={buildElapsed.TotalMilliseconds:0.0}; uploadMs={uploadElapsed.TotalMilliseconds:0.0}; drawMs={drawElapsed.TotalMilliseconds:0.0}; span={geometry.HorizontalSpan:0.0}m");
         }
         catch (Exception exception)
         {
