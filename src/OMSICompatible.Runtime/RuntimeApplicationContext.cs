@@ -773,8 +773,10 @@ internal sealed class RuntimeApplicationContext :
             var center =
                 geometry.Center;
 
-            var eye =
-                center +
+            graphics.SetRenderOrigin(
+                center);
+
+            var relativeEye =
                 new Vector3(
                     0.0f,
                     MathF.Max(
@@ -788,8 +790,8 @@ internal sealed class RuntimeApplicationContext :
 
             var view =
                 Matrix4x4.CreateLookAt(
-                    eye,
-                    center,
+                    relativeEye,
+                    Vector3.Zero,
                     Vector3.UnitY);
 
             var projection =
