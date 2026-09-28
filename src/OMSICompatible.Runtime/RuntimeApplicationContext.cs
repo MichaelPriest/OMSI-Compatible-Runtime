@@ -471,7 +471,9 @@ internal sealed class RuntimeApplicationContext :
                     terrainCollisionsEnabled:
                         _options.TerrainCollisions,
                     reflectionTextureSize:
-                        _options.RealTimeReflectionTextureSize);
+                        _options.RealTimeReflectionTextureSize,
+                    reflectionMode:
+                        _options.RealTimeReflections);
 
             if (_options.RuntimeBorderlessFullscreen)
             {
