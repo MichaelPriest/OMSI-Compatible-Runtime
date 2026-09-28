@@ -1697,7 +1697,7 @@ internal sealed class RuntimeGpuTextureLoader
         return true;
     }
 
-    private static bool TryReadRgba(
+    public static bool TryReadRgba(
         string path,
         out byte[] pixels,
         out int width,
