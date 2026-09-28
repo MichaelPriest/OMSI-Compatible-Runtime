@@ -8466,13 +8466,27 @@ public sealed class D3D11RenderWindow : Form
         foreach (var volume in
                  _sceneryCollisionVolumes)
         {
-            if (volume.Surface &&
-                _vehicle.IsSupportedByScenerySurface(
-                    player.X,
-                    player.Z,
-                    (float)player.Y))
+            if (volume.Surface)
             {
-                continue;
+                var playerGroundY =
+                    (float)player.Y;
+
+                var nearSurfaceTop =
+                    playerGroundY >=
+                        volume.MaximumY -
+                            0.55f &&
+                    playerGroundY <=
+                        volume.MaximumY +
+                            1.00f;
+
+                if (nearSurfaceTop ||
+                    _vehicle.IsSupportedByScenerySurface(
+                        player.X,
+                        player.Z,
+                        playerGroundY))
+                {
+                    continue;
+                }
             }
 
             if (playerMaximumY <
