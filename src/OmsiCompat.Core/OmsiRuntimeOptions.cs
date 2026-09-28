@@ -88,6 +88,7 @@ public sealed class OmsiRuntimeOptions
     public int ScheduledTrafficPriority { get; set; } = 2;
     public bool UseReducedAiList { get; set; }
 
+    public string RuntimeGraphicsBackend { get; set; } = "Auto";
     public bool RuntimeVSync { get; set; } = true;
     public bool RuntimeBorderlessFullscreen { get; set; }
     public int RuntimeStreamingRadius { get; set; } = 2;
