@@ -364,6 +364,8 @@ public sealed class D3D11RenderWindow : Form
                 StringComparer.OrdinalIgnoreCase);
 
     private readonly uint _reflectionTextureSize;
+    private readonly string _reflectionMode;
+    private long _reflectionFrameIndex;
     private readonly Dictionary<string, RuntimeReflectionTarget>
         _reflectionTargets =
             new(
@@ -452,7 +454,8 @@ public sealed class D3D11RenderWindow : Form
         Action<int, float>?
             trafficCollisionResponse = null,
         bool terrainCollisionsEnabled = true,
-        int reflectionTextureSize = 512)
+        int reflectionTextureSize = 512,
+        string? reflectionMode = "economy")
     {
         _windowInfo = windowInfo;
         _trafficStep =
@@ -508,6 +511,13 @@ public sealed class D3D11RenderWindow : Form
                 reflectionTextureSize,
                 64,
                 4096);
+        _reflectionMode =
+            string.IsNullOrWhiteSpace(
+                reflectionMode)
+                ? "economy"
+                : reflectionMode
+                    .Trim()
+                    .ToLowerInvariant();
         _materialLightMapEnabled =
             materialLightMapEnabled;
         _materialReflectionMapEnabled =
@@ -3547,11 +3557,19 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        _reflectionFrameIndex++;
+
         try
         {
             foreach (var target in
                      _reflectionTargets.Values)
             {
+                if (!ShouldRenderReflectionTarget(
+                        target))
+                {
+                    continue;
+                }
+
                 _deviceContext.PSUnsetShaderResource(0);
                 _deviceContext.PSUnsetShaderResource(1);
                 _deviceContext.PSUnsetShaderResource(2);
@@ -3652,6 +3670,9 @@ public sealed class D3D11RenderWindow : Form
                     _renderingReflectionPass =
                         false;
                 }
+
+                target.HasRendered =
+                    true;
             }
         }
         finally
@@ -3667,6 +3688,46 @@ public sealed class D3D11RenderWindow : Form
             _cameraPositionOverride = null;
             _skyViewParametersOverride = null;
         }
+    }
+
+    private bool ShouldRenderReflectionTarget(
+        RuntimeReflectionTarget target)
+    {
+        if (_reflectionMode is
+            "off" or
+            "none" or
+            "disabled")
+        {
+            return false;
+        }
+
+        if (!target.HasRendered ||
+            target.Camera.ContinuousRendering ||
+            _reflectionMode is
+                "full" or
+                "complete")
+        {
+            return true;
+        }
+
+        if (_reflectionMode !=
+            "economy")
+        {
+            return true;
+        }
+
+        var interval =
+            Math.Clamp(
+                (target.Camera.Index +
+                 1) *
+                    2,
+                2,
+                12);
+
+        return (_reflectionFrameIndex +
+                target.Camera.Index) %
+               interval ==
+               0;
     }
 
     private ID3D11RenderTargetView?
