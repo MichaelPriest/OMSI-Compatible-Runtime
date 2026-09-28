@@ -12454,11 +12454,19 @@ public sealed class D3D11RenderWindow : Form
                 lines.Add(
                     $"gearSelector={ScriptValue(_scriptRuntime, "antrieb_getr_gangwahl")}");
                 lines.Add(
+                    $"gearSelectorWriter={_scriptRuntime.WritesLocalVariable("antrieb_getr_gangwahl")}");
+                lines.Add(
                     $"gearPreselect={ScriptValue(_scriptRuntime, "antrieb_getr_gangvorwahl")}");
                 lines.Add(
                     $"gearActual={ScriptValue(_scriptRuntime, "antrieb_getr_gang")}");
                 lines.Add(
                     $"gearRatio={ScriptValue(_scriptRuntime, "antrieb_getr_ratio_act")}");
+                lines.Add(
+                    $"parkingBrake={ScriptValue(_scriptRuntime, "bremse_feststell")}");
+                lines.Add(
+                    $"parkingBrakeWriter={_scriptRuntime.WritesLocalVariable("bremse_feststell")}");
+                lines.Add(
+                    $"engineOnWriter={_scriptRuntime.WritesLocalVariable("engine_on")}");
                 lines.Add(
                     $"cardanRpm={ScriptValue(_scriptRuntime, "antrieb_n_kardanwelle")}");
             }
