@@ -6341,6 +6341,262 @@ try
         !greenSignalAgent.AiBrakeLight,
         "Traffic agent did not enter the OMSI traffic-light path during the green phase.");
 
+    var requestJump =
+        new WorldTrafficLightJump(
+            1,
+            2.0,
+            JumpIfNoApproach:
+                true,
+            TargetTimeSeconds:
+                0.0);
+
+    var requestMainSignal =
+        new WorldTrafficSignalProgram(
+            "Main",
+            8.0,
+            [
+                new WorldTrafficSignalPhase(
+                    0,
+                    2.0),
+                new WorldTrafficSignalPhase(
+                    6,
+                    6.0)
+            ],
+            12.0,
+            SignalIndex:
+                0,
+            Jumps:
+                [
+                    requestJump
+                ]);
+
+    var requestProbeSignal =
+        new WorldTrafficSignalProgram(
+            "BusLoop",
+            8.0,
+            [
+                new WorldTrafficSignalPhase(
+                    0,
+                    8.0)
+            ],
+            12.0,
+            SignalIndex:
+                1,
+            Jumps:
+                [
+                    requestJump
+                ]);
+
+    var requestJumpNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8400,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        1
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            15.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        8401,
+                    TrafficSignal:
+                        requestMainSignal),
+                new WorldTrafficPathSegment(
+                    2,
+                    -1,
+                    1,
+                    1,
+                    0,
+                    2.0,
+                    [
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            5.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        8401,
+                    TrafficSignal:
+                        requestProbeSignal)
+            ],
+            3,
+            1,
+            0,
+            0,
+            1,
+            0,
+            1,
+            0);
+
+    var requestJumpSimulation =
+        new WorldTrafficSimulation(
+            requestJumpNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    requestJumpSimulation.Step(
+        3.0);
+
+    var requestJumpAgent =
+        requestJumpSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        requestJumpAgent.SegmentIndex ==
+            0 &&
+        requestJumpAgent.Position.Z <
+            5.0 &&
+        requestJumpAgent.AiBrakeLight,
+        "OMSI traffic_light_jump did not keep the group before green when the monitored signal had no approach.");
+
+    var requestStop =
+        new WorldTrafficLightStop(
+            0,
+            1.0,
+            StopIfNoApproach:
+                false);
+
+    var requestStopSignal =
+        new WorldTrafficSignalProgram(
+            "Main",
+            8.0,
+            [
+                new WorldTrafficSignalPhase(
+                    0,
+                    2.0),
+                new WorldTrafficSignalPhase(
+                    6,
+                    6.0)
+            ],
+            12.0,
+            SignalIndex:
+                0,
+            Stops:
+                [
+                    requestStop
+                ]);
+
+    var requestStopNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8500,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        1
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            15.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    SceneryObjectId:
+                        8501,
+                    TrafficSignal:
+                        requestStopSignal)
+            ],
+            2,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            0);
+
+    var requestStopSimulation =
+        new WorldTrafficSimulation(
+            requestStopNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                1);
+
+    requestStopSimulation.Step(
+        3.0);
+
+    var requestStopAgent =
+        requestStopSimulation
+            .Snapshot()
+            .Single();
+
+    Require(
+        requestStopAgent.SegmentIndex ==
+            0 &&
+        requestStopAgent.Position.Z <
+            5.0 &&
+        requestStopAgent.AiBrakeLight,
+        "OMSI traffic_light_stop did not hold the group while the monitored signal had an active approach.");
+
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
             [
