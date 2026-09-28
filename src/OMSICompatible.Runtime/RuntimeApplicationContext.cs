@@ -2465,7 +2465,8 @@ internal sealed class RuntimeApplicationContext :
                             spline.SkewEnd,
                             spline.Mirror,
                             surfaces,
-                            paths);
+                            paths,
+                            spline.TerrainAlignMode);
                     })
                 .ToArray();
 
