@@ -51,8 +51,14 @@ internal static class RuntimeTerrainGeometryBuilder
 
     public static RuntimeTerrainGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
-        IReadOnlyList<RuntimeGroundTextureInfo> groundTextures)
+        IReadOnlyList<RuntimeGroundTextureInfo> groundTextures,
+        IReadOnlyList<RuntimeSplineInfo>? splines = null)
     {
+        var terrainAlignment =
+            RuntimeSplineTerrainAlignmentSampler.Create(
+                splines ??
+                Array.Empty<RuntimeSplineInfo>());
+
         var terrainTiles =
             tiles
                 .Where(
@@ -163,7 +169,8 @@ internal static class RuntimeTerrainGeometryBuilder
                 terrainLayerIndex: 0,
                 cellsPerAxisBudget,
                 minimumHeight,
-                maximumHeight);
+                maximumHeight,
+                terrainAlignment);
 
             var overlayOrdinal = 0;
 
@@ -215,7 +222,8 @@ internal static class RuntimeTerrainGeometryBuilder
                         mask.LayerIndex,
                     cellsPerAxisBudget,
                     minimumHeight,
-                    maximumHeight);
+                    maximumHeight,
+                    terrainAlignment);
             }
 
             if (!string.IsNullOrWhiteSpace(
@@ -241,7 +249,8 @@ internal static class RuntimeTerrainGeometryBuilder
                     terrainLayerIndex: null,
                     cellsPerAxisBudget,
                     minimumHeight,
-                    maximumHeight);
+                    maximumHeight,
+                    terrainAlignment);
             }
         }
 
@@ -306,7 +315,8 @@ internal static class RuntimeTerrainGeometryBuilder
         int? terrainLayerIndex,
         int cellsPerAxisBudget,
         float globalMinimumHeight,
-        float globalMaximumHeight)
+        float globalMaximumHeight,
+        RuntimeSplineTerrainAlignmentSampler terrainAlignment)
     {
         var sampleCount =
             terrain.CellCount +
@@ -426,6 +436,30 @@ internal static class RuntimeTerrainGeometryBuilder
                 var z1 =
                     originZ +
                     localZ1;
+
+                h00 =
+                    terrainAlignment.AlignHeight(
+                        (float)x0,
+                        (float)z0,
+                        h00);
+
+                h10 =
+                    terrainAlignment.AlignHeight(
+                        (float)x1,
+                        (float)z0,
+                        h10);
+
+                h01 =
+                    terrainAlignment.AlignHeight(
+                        (float)x0,
+                        (float)z1,
+                        h01);
+
+                h11 =
+                    terrainAlignment.AlignHeight(
+                        (float)x1,
+                        (float)z1,
+                        h11);
 
                 var uv00 =
                     CreateUv(
