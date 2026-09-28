@@ -3667,6 +3667,106 @@ try
         worldSpline.NextId == 2002,
         "Spline next-link ID was not preserved.");
 
+    var mirroredBankedSpline =
+        new WorldSplinePlacement(
+            new WorldTileCoordinate(
+                0,
+                0),
+            9400,
+            -1,
+            -1,
+            @"Splines\Synthetic\mirrored.sli",
+            new WorldVector3(
+                0.0,
+                10.0,
+                0.0),
+            0.0,
+            10.0,
+            0.0,
+            0.0,
+            0.0,
+            true,
+            DeltaHeightMeters:
+                2.0,
+            CantStartPercent:
+                10.0,
+            CantEndPercent:
+                10.0,
+            SkewStart:
+                0.5,
+            SkewEnd:
+                0.5,
+            Mirror:
+                true);
+
+    var mirroredBankedAsset =
+        new WorldSplineAsset(
+            @"Splines\Synthetic\mirrored.sli",
+            null,
+            true,
+            Array.Empty<WorldSplineSurface>(),
+            [
+                new WorldSplinePath(
+                    0,
+                    2.0,
+                    0.25,
+                    2.5,
+                    0)
+            ]);
+
+    var mirroredBankedNetwork =
+        WorldTrafficPathNetworkBuilder.Build(
+            [mirroredBankedSpline],
+            new Dictionary<string, WorldSplineAsset>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [
+                    @"Splines\Synthetic\mirrored.sli"
+                ] =
+                    mirroredBankedAsset
+            });
+
+    var mirroredBankedPath =
+        mirroredBankedNetwork
+            .Segments
+            .Single();
+
+    var mirroredBankedStart =
+        mirroredBankedPath.Points[0];
+
+    var mirroredBankedEnd =
+        mirroredBankedPath.Points[^1];
+
+    Require(
+        Math.Abs(
+            mirroredBankedStart.X +
+            2.0) <
+            0.001 &&
+        Math.Abs(
+            mirroredBankedStart.Z +
+            1.0) <
+            0.001 &&
+        Math.Abs(
+            mirroredBankedStart.Y -
+            10.05) <
+            0.001,
+        "Mirrored/skewed/canted spline traffic path start did not match the visual spline transform.");
+
+    Require(
+        Math.Abs(
+            mirroredBankedEnd.X +
+            2.0) <
+            0.001 &&
+        Math.Abs(
+            mirroredBankedEnd.Z -
+            9.0) <
+            0.001 &&
+        Math.Abs(
+            mirroredBankedEnd.Y -
+            12.05) <
+            0.001,
+        "spline_h traffic path did not preserve mirrored offset, cant and delta height.");
+
     var trafficPaths =
         world.TrafficPaths;
 
