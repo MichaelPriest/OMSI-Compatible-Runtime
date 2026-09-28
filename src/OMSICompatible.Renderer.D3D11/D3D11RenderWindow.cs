@@ -53,6 +53,53 @@ public sealed class D3D11RenderWindow : Form
         RuntimeTerrainSampler TerrainSampler,
         IReadOnlyList<RuntimeSceneryCollisionVolume> CollisionVolumes);
 
+    private sealed class PreparedStreamedGpuResources :
+        IDisposable
+    {
+        public ID3D11Buffer? TileVertexBuffer
+        {
+            get;
+            set;
+        }
+
+        public ID3D11Buffer? TerrainVertexBuffer
+        {
+            get;
+            set;
+        }
+
+        public ID3D11Buffer? SplineVertexBuffer
+        {
+            get;
+            set;
+        }
+
+        public ID3D11Buffer? ObjectVertexBuffer
+        {
+            get;
+            set;
+        }
+
+        public void Dispose()
+        {
+            TileVertexBuffer?.Dispose();
+            TileVertexBuffer =
+                null;
+
+            TerrainVertexBuffer?.Dispose();
+            TerrainVertexBuffer =
+                null;
+
+            SplineVertexBuffer?.Dispose();
+            SplineVertexBuffer =
+                null;
+
+            ObjectVertexBuffer?.Dispose();
+            ObjectVertexBuffer =
+                null;
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct RuntimeVehicleSkinConstants
     {
@@ -957,6 +1004,8 @@ public sealed class D3D11RenderWindow : Form
         int generation)
     {
         PreparedStreamedGeometry prepared;
+        PreparedStreamedGpuResources? preparedGpu =
+            null;
 
         var started =
             Stopwatch.GetTimestamp();
@@ -1029,14 +1078,49 @@ public sealed class D3D11RenderWindow : Form
             Stopwatch.GetElapsedTime(
                 started);
 
+        var gpuPrepareStarted =
+            Stopwatch.GetTimestamp();
+
+        try
+        {
+            preparedGpu =
+                await Task.Run(
+                    () =>
+                        PrepareStreamedGpuResources(
+                            prepared));
+        }
+        catch (Exception exception)
+        {
+            preparedGpu?.Dispose();
+
+            Console.Error.WriteLine(
+                $"[streaming-geometry] GPU prepare failed: {exception.Message}");
+
+            return;
+        }
+
+        if (generation !=
+                Volatile.Read(
+                    ref _streamedWorldPreparationGeneration) ||
+            IsDisposed)
+        {
+            preparedGpu.Dispose();
+            return;
+        }
+
+        var gpuPrepareElapsed =
+            Stopwatch.GetElapsedTime(
+                gpuPrepareStarted);
+
         Console.WriteLine(
-            $"[streaming-geometry] prepared generation={generation}; tiles={windowInfo.Tiles.Count}; terrainVertices={prepared.Terrain.Vertices.Length:N0}; splineVertices={prepared.Splines.Vertices.Length:N0}; objectVertices={prepared.Objects.Vertices.Length:N0}; cpuMs={elapsed.TotalMilliseconds:0.0}");
+            $"[streaming-geometry] prepared generation={generation}; tiles={windowInfo.Tiles.Count}; terrainVertices={prepared.Terrain.Vertices.Length:N0}; splineVertices={prepared.Splines.Vertices.Length:N0}; objectVertices={prepared.Objects.Vertices.Length:N0}; cpuMs={elapsed.TotalMilliseconds:0.0}; gpuPrepareMs={gpuPrepareElapsed.TotalMilliseconds:0.0}");
 
         if (!InvokeRequired)
         {
             ApplyPreparedStreamedWorld(
                 windowInfo,
                 prepared,
+                preparedGpu,
                 generation);
 
             return;
@@ -1057,6 +1141,7 @@ public sealed class D3D11RenderWindow : Form
                         ApplyPreparedStreamedWorld(
                             windowInfo,
                             prepared,
+                            preparedGpu,
                             generation);
 
                         completion.TrySetResult(
@@ -1071,10 +1156,13 @@ public sealed class D3D11RenderWindow : Form
         }
         catch (ObjectDisposedException)
         {
+            preparedGpu.Dispose();
             return;
         }
         catch (InvalidOperationException)
         {
+            preparedGpu.Dispose();
+
             // Window can close while a background geometry build is finishing.
             return;
         }
@@ -1094,6 +1182,7 @@ public sealed class D3D11RenderWindow : Form
     private void ApplyPreparedStreamedWorld(
         RuntimeWindowInfo windowInfo,
         PreparedStreamedGeometry prepared,
+        PreparedStreamedGpuResources preparedGpu,
         int generation)
     {
         if (IsDisposed ||
@@ -1101,6 +1190,7 @@ public sealed class D3D11RenderWindow : Form
                 Volatile.Read(
                     ref _streamedWorldPreparationGeneration))
         {
+            preparedGpu.Dispose();
             return;
         }
 
@@ -1136,8 +1226,9 @@ public sealed class D3D11RenderWindow : Form
 
         try
         {
-            UploadPreparedStreamedGeometry(
-                prepared);
+            ApplyPreparedStreamedGeometry(
+                prepared,
+                preparedGpu);
 
             RefreshStreamingTextureCache();
             UpdateCaption();
@@ -1158,45 +1249,86 @@ public sealed class D3D11RenderWindow : Form
             $"[streaming-geometry] applied generation={generation}; gpuMs={uploadElapsed.TotalMilliseconds:0.0}");
     }
 
-    private void UploadPreparedStreamedGeometry(
+    private PreparedStreamedGpuResources PrepareStreamedGpuResources(
         PreparedStreamedGeometry prepared)
     {
         if (_device is null)
         {
-            return;
+            throw new InvalidOperationException(
+                "D3D11 device is unavailable.");
         }
 
+        var resources =
+            new PreparedStreamedGpuResources();
+
+        try
+        {
+            if (prepared.TileVertices.Length >
+                0)
+            {
+                resources.TileVertexBuffer =
+                    _device.CreateBuffer(
+                        prepared.TileVertices.AsSpan(),
+                        BindFlags.VertexBuffer);
+            }
+
+            if (prepared.Terrain.Vertices.Length >
+                0)
+            {
+                resources.TerrainVertexBuffer =
+                    _device.CreateBuffer(
+                        prepared.Terrain.Vertices.AsSpan(),
+                        BindFlags.VertexBuffer);
+            }
+
+            if (prepared.Splines.Vertices.Length >
+                0)
+            {
+                resources.SplineVertexBuffer =
+                    _device.CreateBuffer(
+                        prepared.Splines.Vertices.AsSpan(),
+                        BindFlags.VertexBuffer);
+            }
+
+            if (prepared.Objects.Vertices.Length >
+                0)
+            {
+                resources.ObjectVertexBuffer =
+                    _device.CreateBuffer(
+                        prepared.Objects.Vertices.AsSpan(),
+                        BindFlags.VertexBuffer);
+            }
+
+            return resources;
+        }
+        catch
+        {
+            resources.Dispose();
+            throw;
+        }
+    }
+
+    private void ApplyPreparedStreamedGeometry(
+        PreparedStreamedGeometry prepared,
+        PreparedStreamedGpuResources preparedGpu)
+    {
         _tileVertexBuffer?.Dispose();
         _tileVertexBuffer =
+            preparedGpu.TileVertexBuffer;
+        preparedGpu.TileVertexBuffer =
             null;
-
-        if (prepared.TileVertices.Length >
-            0)
-        {
-            _tileVertexBuffer =
-                _device.CreateBuffer(
-                    prepared.TileVertices.AsSpan(),
-                    BindFlags.VertexBuffer);
-        }
 
         _tileVertexCount =
             (uint)prepared.TileVertices.Length;
 
         _terrainVertexBuffer?.Dispose();
         _terrainVertexBuffer =
+            preparedGpu.TerrainVertexBuffer;
+        preparedGpu.TerrainVertexBuffer =
             null;
 
         _terrainGeometry =
             prepared.Terrain;
-
-        if (_terrainGeometry.Vertices.Length >
-            0)
-        {
-            _terrainVertexBuffer =
-                _device.CreateBuffer(
-                    _terrainGeometry.Vertices.AsSpan(),
-                    BindFlags.VertexBuffer);
-        }
 
         _terrainVertexCount =
             (uint)_terrainGeometry.Vertices.Length;
@@ -1205,6 +1337,8 @@ public sealed class D3D11RenderWindow : Form
 
         _splineVertexBuffer?.Dispose();
         _splineVertexBuffer =
+            preparedGpu.SplineVertexBuffer;
+        preparedGpu.SplineVertexBuffer =
             null;
 
         _splineGeometry =
@@ -1213,20 +1347,13 @@ public sealed class D3D11RenderWindow : Form
         _vehicle.ReplaceSplineSurfaceGeometry(
             _splineGeometry);
 
-        if (_splineGeometry.Vertices.Length >
-            0)
-        {
-            _splineVertexBuffer =
-                _device.CreateBuffer(
-                    _splineGeometry.Vertices.AsSpan(),
-                    BindFlags.VertexBuffer);
-        }
-
         _splineVertexCount =
             (uint)_splineGeometry.Vertices.Length;
 
         _objectVertexBuffer?.Dispose();
         _objectVertexBuffer =
+            preparedGpu.ObjectVertexBuffer;
+        preparedGpu.ObjectVertexBuffer =
             null;
 
         _objectGeometry =
@@ -1236,17 +1363,10 @@ public sealed class D3D11RenderWindow : Form
             _objectGeometry,
             _windowInfo);
 
-        if (_objectGeometry.Vertices.Length >
-            0)
-        {
-            _objectVertexBuffer =
-                _device.CreateBuffer(
-                    _objectGeometry.Vertices.AsSpan(),
-                    BindFlags.VertexBuffer);
-        }
-
         _objectVertexCount =
             (uint)_objectGeometry.Vertices.Length;
+
+        preparedGpu.Dispose();
     }
 
     private void RefreshStreamingTextureCache()
