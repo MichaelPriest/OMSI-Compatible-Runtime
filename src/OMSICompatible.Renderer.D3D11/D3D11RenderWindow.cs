@@ -15469,20 +15469,12 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
-        // Compatibility fallback for older/add-on scripts where the write
-        // cannot be statically identified (for example generated VM state).
-        if (_scriptRuntime?.HasLocalVariable(
-                "M_Wheel") ==
-            true)
-        {
-            return _scriptRuntime;
-        }
-
-        return _sectionScriptRuntimes.Values
-            .FirstOrDefault(
-                static runtime =>
-                    runtime.HasLocalVariable(
-                        "M_Wheel"));
+        // A declared M_Wheel without a real script writer is not enough
+        // to enable OMSI script dynamics. Treating a stale/default zero as
+        // authoritative disables the host compatibility propulsion entirely
+        // and leaves the bus unable to move. Fall back to host drivetrain
+        // physics until a VM actually writes M_Wheel.
+        return null;
     }
 
     private double ReadOmsiAxleOutput(
