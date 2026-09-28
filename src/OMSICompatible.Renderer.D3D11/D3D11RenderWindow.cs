@@ -51,7 +51,9 @@ public sealed class D3D11RenderWindow : Form
         RuntimeSplineGeometry Splines,
         RuntimeObjectGeometry Objects,
         RuntimeTerrainSampler TerrainSampler,
-        IReadOnlyList<RuntimeSceneryCollisionVolume> CollisionVolumes);
+        IReadOnlyList<RuntimeSceneryCollisionVolume> CollisionVolumes,
+        string[] RegularTexturePaths,
+        string[] MaskTexturePaths);
 
     private sealed class PreparedStreamedGpuResources :
         IDisposable
@@ -457,6 +459,8 @@ public sealed class D3D11RenderWindow : Form
         RuntimeObjectGeometry.Empty;
     private RuntimeObjectGeometry _vehicleInteriorGeometry =
         RuntimeObjectGeometry.Empty;
+    private string[] _pinnedVehicleTexturePaths =
+        Array.Empty<string>();
     private readonly Dictionary<string, RuntimeObjectGeometry>
         _trafficVehicleGeometries =
             new(
@@ -1071,13 +1075,23 @@ public sealed class D3D11RenderWindow : Form
                                 windowInfo,
                                 terrainSampler);
 
+                        var (
+                            regularTexturePaths,
+                            maskTexturePaths) =
+                            CollectStreamingTexturePaths(
+                                terrain,
+                                splines,
+                                objects);
+
                         return new PreparedStreamedGeometry(
                             tileVertices,
                             terrain,
                             splines,
                             objects,
                             terrainSampler,
-                            collisionVolumes);
+                            collisionVolumes,
+                            regularTexturePaths,
+                            maskTexturePaths);
                     });
         }
         catch (Exception exception)
@@ -1251,7 +1265,8 @@ public sealed class D3D11RenderWindow : Form
                 prepared,
                 preparedGpu);
 
-            RefreshStreamingTextureCache();
+            RefreshStreamingTextureCache(
+                prepared);
             UpdateCaption();
         }
         finally
@@ -1271,6 +1286,68 @@ public sealed class D3D11RenderWindow : Form
 
         Console.WriteLine(
             $"[streaming-geometry] applied generation={generation}; swapMs={_lastStreamingSwapMilliseconds:0.0}");
+    }
+
+    private static (
+        string[] RegularTexturePaths,
+        string[] MaskTexturePaths)
+        CollectStreamingTexturePaths(
+            RuntimeTerrainGeometry terrain,
+            RuntimeSplineGeometry splines,
+            RuntimeObjectGeometry objects)
+    {
+        var regularTexturePaths =
+            objects.Batches
+                .Concat(
+                    splines.Batches)
+                .SelectMany(
+                    static batch =>
+                        new[]
+                        {
+                            batch.TexturePath,
+                            batch.TransMapTexturePath,
+                            batch.LightMapTexturePath,
+                            batch.MaterialChangeTexturePath
+                        })
+                .Concat(
+                    terrain.Batches
+                        .SelectMany(
+                            static batch =>
+                                new[]
+                                {
+                                    batch.TexturePath,
+                                    batch.DetailTexturePath
+                                }))
+                .Where(
+                    static texturePath =>
+                        !string.IsNullOrWhiteSpace(
+                            texturePath))
+                .Select(
+                    static texturePath =>
+                        texturePath!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        var maskTexturePaths =
+            terrain.Batches
+                .Select(
+                    static batch =>
+                        batch.MaskTexturePath)
+                .Where(
+                    static texturePath =>
+                        !string.IsNullOrWhiteSpace(
+                            texturePath))
+                .Select(
+                    static texturePath =>
+                        texturePath!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        return (
+            regularTexturePaths,
+            maskTexturePaths);
     }
 
     private PreparedStreamedGpuResources PrepareStreamedGpuResources(
@@ -1393,7 +1470,8 @@ public sealed class D3D11RenderWindow : Form
         preparedGpu.Dispose();
     }
 
-    private void RefreshStreamingTextureCache()
+    private void RefreshStreamingTextureCache(
+        PreparedStreamedGeometry prepared)
     {
         if (_device is null)
         {
@@ -1405,55 +1483,17 @@ public sealed class D3D11RenderWindow : Form
                 _device);
 
         var regularPaths =
-            _objectGeometry.Batches
-                .Concat(
-                    _splineGeometry.Batches)
-                .Concat(
-                    _vehicleExteriorGeometry.Batches)
-                .Concat(
-                    _vehicleInteriorGeometry.Batches)
-                .SelectMany(
-                    static batch =>
-                        new[]
-                        {
-                            batch.TexturePath,
-                            batch.TransMapTexturePath,
-                            batch.LightMapTexturePath,
-                            batch.MaterialChangeTexturePath
-                        })
-                .Concat(
-                    _terrainGeometry.Batches
-                        .SelectMany(
-                            static batch =>
-                                new[]
-                                {
-                                    batch.TexturePath,
-                                    batch.DetailTexturePath
-                                }))
-                .Where(
-                    static path =>
-                        !string.IsNullOrWhiteSpace(
-                            path))
-                .Select(
-                    static path =>
-                        path!)
-                .ToHashSet(
-                    StringComparer.OrdinalIgnoreCase);
+            new HashSet<string>(
+                prepared.RegularTexturePaths,
+                StringComparer.OrdinalIgnoreCase);
+
+        regularPaths.UnionWith(
+            _pinnedVehicleTexturePaths);
 
         var maskPaths =
-            _terrainGeometry.Batches
-                .Select(
-                    static batch =>
-                        batch.MaskTexturePath)
-                .Where(
-                    static path =>
-                        !string.IsNullOrWhiteSpace(
-                            path))
-                .Select(
-                    static path =>
-                        path!)
-                .ToHashSet(
-                    StringComparer.OrdinalIgnoreCase);
+            new HashSet<string>(
+                prepared.MaskTexturePaths,
+                StringComparer.OrdinalIgnoreCase);
 
         var requiredPaths =
             new HashSet<string>(
@@ -3038,6 +3078,30 @@ public sealed class D3D11RenderWindow : Form
             RuntimeVehicleGeometry.Build(
                 _windowInfo.Vehicle,
                 viewpointBit: 2);
+
+        _pinnedVehicleTexturePaths =
+            _vehicleExteriorGeometry.Batches
+                .Concat(
+                    _vehicleInteriorGeometry.Batches)
+                .SelectMany(
+                    static batch =>
+                        new[]
+                        {
+                            batch.TexturePath,
+                            batch.TransMapTexturePath,
+                            batch.LightMapTexturePath,
+                            batch.MaterialChangeTexturePath
+                        })
+                .Where(
+                    static texturePath =>
+                        !string.IsNullOrWhiteSpace(
+                            texturePath))
+                .Select(
+                    static texturePath =>
+                        texturePath!)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
         _vehicleAnimationParentBatches.Clear();
         _vehicleMeshOrdinalBatches.Clear();
