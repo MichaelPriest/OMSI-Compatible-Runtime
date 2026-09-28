@@ -428,6 +428,11 @@ public sealed class D3D11RenderWindow : Form
     private readonly Label? _fpsLabel;
     private long _fpsFrameCount;
     private double _fpsSampleStartSeconds;
+    private double _fpsPreviousFrameSeconds;
+    private readonly Queue<double> _frameTimeSamplesMilliseconds =
+        new();
+    private const int MaximumFrameTimeSamples =
+        240;
     private readonly float _masterVolume;
     private readonly int _maximumSoundCount;
     private readonly bool _aiVehicleSoundsEnabled;
@@ -554,6 +559,8 @@ public sealed class D3D11RenderWindow : Form
             !vehiclePreviewMode;
         _fpsSampleStartSeconds =
             _frameClock.Elapsed.TotalSeconds;
+        _fpsPreviousFrameSeconds =
+            _fpsSampleStartSeconds;
         _masterVolume =
             Math.Clamp(
                 masterVolumePercent,
@@ -765,7 +772,7 @@ public sealed class D3D11RenderWindow : Form
                             12,
                             12),
                     Text =
-                        "FPS --  |  --.- ms\nMSAA -- · Sharp --"
+                        "FPS --  |  --.- ms\n1% -- FPS · max --.- ms\nMSAA -- · Sharp --"
                 };
 
             Controls.Add(
@@ -17331,6 +17338,29 @@ public sealed class D3D11RenderWindow : Form
         var nowSeconds =
             _frameClock.Elapsed.TotalSeconds;
 
+        var frameSeconds =
+            nowSeconds -
+            _fpsPreviousFrameSeconds;
+
+        _fpsPreviousFrameSeconds =
+            nowSeconds;
+
+        if (frameSeconds >
+                0.0 &&
+            frameSeconds <
+                1.0)
+        {
+            _frameTimeSamplesMilliseconds.Enqueue(
+                frameSeconds *
+                1000.0);
+
+            while (_frameTimeSamplesMilliseconds.Count >
+                   MaximumFrameTimeSamples)
+            {
+                _frameTimeSamplesMilliseconds.Dequeue();
+            }
+        }
+
         var elapsedSeconds =
             nowSeconds -
             _fpsSampleStartSeconds;
@@ -17367,8 +17397,42 @@ public sealed class D3D11RenderWindow : Form
                 ? $"Sharp {_sharpenStrength:0.00}"
                 : "Sharp off";
 
+        var samples =
+            _frameTimeSamplesMilliseconds
+                .OrderBy(
+                    static value =>
+                        value)
+                .ToArray();
+
+        var percentile99Milliseconds =
+            samples.Length >
+                    0
+                ? samples[
+                    Math.Clamp(
+                        (int)Math.Ceiling(
+                            samples.Length *
+                            0.99) -
+                        1,
+                        0,
+                        samples.Length -
+                        1)]
+                : frameMilliseconds;
+
+        var onePercentLowFps =
+            percentile99Milliseconds >
+                    0.0
+                ? 1000.0 /
+                  percentile99Milliseconds
+                : fps;
+
+        var worstFrameMilliseconds =
+            samples.Length >
+                    0
+                ? samples[^1]
+                : frameMilliseconds;
+
         _fpsLabel.Text =
-            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}";
+            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n1% {onePercentLowFps:0.0} FPS · max {worstFrameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}";
 
         _fpsFrameCount =
             0;
