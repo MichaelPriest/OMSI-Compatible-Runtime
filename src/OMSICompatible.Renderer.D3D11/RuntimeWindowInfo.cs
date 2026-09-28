@@ -82,6 +82,11 @@ public sealed record RuntimeTrafficSignalPhaseInfo(
     int Phase,
     double DurationSeconds);
 
+public sealed record RuntimeTrafficSignalStateInfo(
+    int SegmentIndex,
+    int? Phase,
+    double PositionSeconds);
+
 public sealed record RuntimeTrafficSignalProgramInfo(
     double CycleSeconds,
     double ApproachDistanceMeters,
