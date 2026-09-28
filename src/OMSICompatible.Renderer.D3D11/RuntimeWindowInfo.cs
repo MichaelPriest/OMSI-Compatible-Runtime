@@ -70,7 +70,8 @@ public sealed record RuntimeSplineInfo(
     double SkewEnd,
     bool Mirror,
     IReadOnlyList<RuntimeSplineSurfaceInfo> Surfaces,
-    IReadOnlyList<RuntimeSplinePathInfo> Paths);
+    IReadOnlyList<RuntimeSplinePathInfo> Paths,
+    int? TerrainAlignMode = null);
 
 public sealed record RuntimeTrafficPathPointInfo(
     double X,
