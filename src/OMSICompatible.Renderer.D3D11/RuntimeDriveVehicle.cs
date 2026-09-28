@@ -632,6 +632,34 @@ internal sealed class RuntimeDriveVehicle :
         SynchronizeOdeBodyFromRuntime();
     }
 
+    public void ReplacePreparedDrivingSurfaces(
+        RuntimeTerrainSampler terrain,
+        RuntimeSplineSurfaceSampler splineSurfaces,
+        RuntimeSplineSurfaceSampler scenerySurfaces,
+        RuntimeSplineSurfaceSampler collisionScenerySurfaces)
+    {
+        ArgumentNullException.ThrowIfNull(
+            terrain);
+        ArgumentNullException.ThrowIfNull(
+            splineSurfaces);
+        ArgumentNullException.ThrowIfNull(
+            scenerySurfaces);
+        ArgumentNullException.ThrowIfNull(
+            collisionScenerySurfaces);
+
+        _terrain =
+            terrain;
+        _splineSurfaces =
+            splineSurfaces;
+        _scenerySurfaces =
+            scenerySurfaces;
+        _collisionScenerySurfaces =
+            collisionScenerySurfaces;
+
+        SnapRuntimePositionToDrivingSurface();
+        SynchronizeOdeBodyFromRuntime();
+    }
+
     private void SnapRuntimePositionToDrivingSurface()
     {
         if (!TryResolveSpawnSurfaceHeight(
