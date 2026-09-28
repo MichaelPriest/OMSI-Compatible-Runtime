@@ -121,6 +121,12 @@ public sealed class D3D11RenderWindow : Form
         _trafficAgents =
             Array.Empty<RuntimeTrafficAgentInfo>();
     private readonly Func<
+        IReadOnlyList<RuntimeTrafficSignalStateInfo>>?
+        _trafficSignalStateProvider;
+    private IReadOnlyList<RuntimeTrafficSignalStateInfo>
+        _trafficSignalStates =
+            Array.Empty<RuntimeTrafficSignalStateInfo>();
+    private readonly Func<
         IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
         _railSignalStateProvider;
     private IReadOnlyList<RuntimeRailSignalRouteStateInfo>
@@ -449,6 +455,9 @@ public sealed class D3D11RenderWindow : Form
             IReadOnlyList<RuntimeTrafficAgentInfo>>?
             trafficStep = null,
         Func<
+            IReadOnlyList<RuntimeTrafficSignalStateInfo>>?
+            trafficSignalStateProvider = null,
+        Func<
             IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
             railSignalStateProvider = null,
         Action<int, float>?
@@ -466,6 +475,11 @@ public sealed class D3D11RenderWindow : Form
             _trafficStep?.Invoke(
                 0.0) ??
             Array.Empty<RuntimeTrafficAgentInfo>();
+        _trafficSignalStateProvider =
+            trafficSignalStateProvider;
+        _trafficSignalStates =
+            _trafficSignalStateProvider?.Invoke() ??
+            Array.Empty<RuntimeTrafficSignalStateInfo>();
         _railSignalStateProvider =
             railSignalStateProvider;
         _railSignalRouteStates =
@@ -7549,6 +7563,13 @@ public sealed class D3D11RenderWindow : Form
                 Array.Empty<RuntimeTrafficAgentInfo>();
         }
 
+        if (_trafficSignalStateProvider is not null)
+        {
+            _trafficSignalStates =
+                _trafficSignalStateProvider() ??
+                Array.Empty<RuntimeTrafficSignalStateInfo>();
+        }
+
         if (_railSignalStateProvider is not null)
         {
             _railSignalRouteStates =
@@ -9722,10 +9743,18 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        var dynamicSignalState =
+            _trafficSignalStates.FirstOrDefault(
+                state =>
+                    state.SegmentIndex ==
+                    signalSegment.Index);
+
         var currentSignalPhase =
-            ResolveRuntimeTrafficSignalPhase(
-                signal,
-                nowSeconds);
+            dynamicSignalState is not null
+                ? dynamicSignalState.Phase
+                : ResolveRuntimeTrafficSignalPhase(
+                    signal,
+                    nowSeconds);
 
         // OMSI TrafficLightPhase semantics:
         // 0..2 = red, 3..5 = red-yellow, 6..8 = green,
