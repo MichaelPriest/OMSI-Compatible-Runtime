@@ -1232,11 +1232,18 @@ internal sealed class RuntimeApplicationContext :
                                             .WarmTextureFileCache(
                                                 texturePaths);
 
+                                    var warmedDecodedTextures =
+                                        D3D11RenderWindow
+                                            .WarmDecodedTextureCache(
+                                                texturePaths);
+
                                     return (
                                         TexturePaths:
                                             texturePaths,
                                         WarmedTextureFiles:
-                                            warmedTextureFiles);
+                                            warmedTextureFiles,
+                                        WarmedDecodedTextures:
+                                            warmedDecodedTextures);
                                 }
                                 finally
                                 {
@@ -1251,6 +1258,9 @@ internal sealed class RuntimeApplicationContext :
                     var warmedTextureFiles =
                         prefetchResult.WarmedTextureFiles;
 
+                    var warmedDecodedTextures =
+                        prefetchResult.WarmedDecodedTextures;
+
                     _lastPrefetchedCenter =
                         requested;
 
@@ -1259,7 +1269,7 @@ internal sealed class RuntimeApplicationContext :
                             .GetTextureFileCacheDiagnostics();
 
                     Console.WriteLine(
-                        $"[streaming-prefetch] ready {requested.X},{requested.Y}; textures={texturePaths.Count}; cachedFiles={warmedTextureFiles}; {textureCacheDiagnostics}.");
+                        $"[streaming-prefetch] ready {requested.X},{requested.Y}; textures={texturePaths.Count}; cachedFiles={warmedTextureFiles}; decoded={warmedDecodedTextures}; {textureCacheDiagnostics}.");
                 }
                 catch (Exception exception)
                 {
