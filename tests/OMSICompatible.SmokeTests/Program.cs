@@ -6665,6 +6665,124 @@ try
             0.001,
         "Player-only OMSI signal approach did not hold traffic_light_stop with AI traffic disabled.");
 
+    var ambiguousPlayerRequestNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8600,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0)
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            15.0)
+                    ],
+                    Array.Empty<int>(),
+                    [
+                        0
+                    ],
+                    SceneryObjectId:
+                        8601,
+                    TrafficSignal:
+                        requestStopSignal),
+                new WorldTrafficPathSegment(
+                    2,
+                    8602,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            5.0),
+                        new WorldVector3(
+                            8.0,
+                            0.0,
+                            12.0)
+                    ],
+                    Array.Empty<int>(),
+                    [
+                        0
+                    ])
+            ],
+            3,
+            0,
+            0,
+            0,
+            1,
+            0,
+            2,
+            0);
+
+    var ambiguousPlayerRequestSimulation =
+        new WorldTrafficSimulation(
+            ambiguousPlayerRequestNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                0);
+
+    ambiguousPlayerRequestSimulation.SetExternalObstacle(
+        new WorldTrafficObstacleState(
+            new WorldVector3(
+                0.0,
+                0.0,
+                1.0),
+            HeadingRadians:
+                0.0,
+            SpeedMetersPerSecond:
+                5.0,
+            HalfLengthMeters:
+                6.0,
+            HalfWidthMeters:
+                1.3));
+
+    ambiguousPlayerRequestSimulation.Step(
+        3.0);
+
+    var ambiguousPlayerSignalState =
+        ambiguousPlayerRequestSimulation
+            .SnapshotTrafficSignals()
+            .Single();
+
+    Require(
+        ambiguousPlayerSignalState.Phase ==
+            6 &&
+        ambiguousPlayerSignalState.PositionSeconds >
+            2.5,
+        "Player signal approach incorrectly guessed a route across an ambiguous branch.");
+
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
             [
