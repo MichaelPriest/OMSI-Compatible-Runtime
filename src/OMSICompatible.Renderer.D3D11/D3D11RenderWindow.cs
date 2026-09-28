@@ -1380,16 +1380,49 @@ public sealed class D3D11RenderWindow : Form
         var uploadStarted =
             Stopwatch.GetTimestamp();
 
+        var trafficStarted =
+            Stopwatch.GetTimestamp();
+
         ApplyPreparedTrafficVehicleResources(
             preparedGpu);
+
+        var trafficMilliseconds =
+            Stopwatch.GetElapsedTime(
+                trafficStarted)
+                .TotalMilliseconds;
+
+        var geometryStarted =
+            Stopwatch.GetTimestamp();
 
         ApplyPreparedStreamedGeometry(
             prepared,
             preparedGpu);
 
+        var geometryMilliseconds =
+            Stopwatch.GetElapsedTime(
+                geometryStarted)
+                .TotalMilliseconds;
+
+        var textureCacheStarted =
+            Stopwatch.GetTimestamp();
+
         RefreshStreamingTextureCache(
             prepared);
+
+        var textureCacheMilliseconds =
+            Stopwatch.GetElapsedTime(
+                textureCacheStarted)
+                .TotalMilliseconds;
+
+        var captionStarted =
+            Stopwatch.GetTimestamp();
+
         UpdateCaption();
+
+        var captionMilliseconds =
+            Stopwatch.GetElapsedTime(
+                captionStarted)
+                .TotalMilliseconds;
 
         var uploadElapsed =
             Stopwatch.GetElapsedTime(
@@ -1399,7 +1432,7 @@ public sealed class D3D11RenderWindow : Form
             uploadElapsed.TotalMilliseconds;
 
         Console.WriteLine(
-            $"[streaming-geometry] applied generation={generation}; swapMs={_lastStreamingSwapMilliseconds:0.0}");
+            $"[streaming-geometry] applied generation={generation}; swapMs={_lastStreamingSwapMilliseconds:0.0}; trafficMs={trafficMilliseconds:0.0}; geometryMs={geometryMilliseconds:0.0}; textureCacheMs={textureCacheMilliseconds:0.0}; captionMs={captionMilliseconds:0.0}");
     }
 
     private static (
