@@ -43,6 +43,14 @@ internal sealed class RuntimeGpuTextureLoader
         DateTime LastWriteUtc,
         long LastUsedGeneration);
 
+    private sealed record CachedDecodedTexture(
+        byte[] Pixels,
+        int Width,
+        int Height,
+        long SourceLength,
+        DateTime SourceLastWriteUtc,
+        long LastUsedGeneration);
+
     private static readonly object TextureFileCacheGate =
         new();
     private static readonly Dictionary<string, CachedTextureFile>
@@ -54,6 +62,23 @@ internal sealed class RuntimeGpuTextureLoader
     private static long _textureFileCacheHits;
     private static long _textureFileCacheMisses;
     private static long _textureFileCacheEvictions;
+
+    private static readonly object DecodedTextureCacheGate =
+        new();
+    private static readonly Dictionary<string, CachedDecodedTexture>
+        DecodedTextureCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private static long _decodedTextureCacheGeneration;
+    private static long _decodedTextureCacheBytes;
+    private static long _decodedTextureCacheHits;
+    private static long _decodedTextureCacheMisses;
+    private static long _decodedTextureCacheEvictions;
+
+    private const long MaximumDecodedTextureCacheBytes =
+        256L * 1024L * 1024L;
+    private const long MaximumSingleDecodedTextureCacheBytes =
+        64L * 1024L * 1024L;
 
     private const long MaximumTextureFileCacheBytes =
         512L * 1024L * 1024L;
@@ -120,8 +145,28 @@ internal sealed class RuntimeGpuTextureLoader
     {
         lock (TextureFileCacheGate)
         {
+            long decodedHits;
+            long decodedMisses;
+            long decodedEvictions;
+            int decodedEntries;
+            long decodedBytes;
+
+            lock (DecodedTextureCacheGate)
+            {
+                decodedHits =
+                    _decodedTextureCacheHits;
+                decodedMisses =
+                    _decodedTextureCacheMisses;
+                decodedEvictions =
+                    _decodedTextureCacheEvictions;
+                decodedEntries =
+                    DecodedTextureCache.Count;
+                decodedBytes =
+                    _decodedTextureCacheBytes;
+            }
+
             return
-                $"hits={_textureFileCacheHits}; misses={_textureFileCacheMisses}; evictions={_textureFileCacheEvictions}; entries={TextureFileCache.Count}; retainedMB={_textureFileCacheBytes / (1024.0 * 1024.0):0.0}/{MaximumTextureFileCacheBytes / (1024.0 * 1024.0):0}";
+                $"fileHits={_textureFileCacheHits}; fileMisses={_textureFileCacheMisses}; fileEvictions={_textureFileCacheEvictions}; fileEntries={TextureFileCache.Count}; fileMB={_textureFileCacheBytes / (1024.0 * 1024.0):0.0}/{MaximumTextureFileCacheBytes / (1024.0 * 1024.0):0}; rgbaHits={decodedHits}; rgbaMisses={decodedMisses}; rgbaEvictions={decodedEvictions}; rgbaEntries={decodedEntries}; rgbaMB={decodedBytes / (1024.0 * 1024.0):0.0}/{MaximumDecodedTextureCacheBytes / (1024.0 * 1024.0):0}";
         }
     }
 
@@ -505,80 +550,23 @@ internal sealed class RuntimeGpuTextureLoader
             }
         }
 
-        try
+        if (TryReadRgba(
+                path,
+                out var pixels,
+                out var width,
+                out var height))
         {
-            using var factory =
-                new IWICImagingFactory2();
-
-            using var decoder =
-                factory
-                    .CreateDecoderFromFileName(
-                        path);
-
-            using var frame =
-                decoder.GetFrame(0);
-
-            using var converter =
-                factory.CreateFormatConverter();
-
-            converter
-                .Initialize(
-                    frame,
-                    WICPixelFormat
-                        .Format32bppRGBA);
-
-            var size =
-                converter.Size;
-
-            if (
-                size.Width <= 0 ||
-                size.Height <= 0 ||
-                size.Width > 16_384 ||
-                size.Height > 16_384)
-            {
-                return null;
-            }
-
-            var stride =
-                checked(
-                    (uint)size.Width *
-                    4u);
-
-            var pixels =
-                new byte[
-                    checked(
-                        size.Width *
-                        size.Height *
-                        4)];
-
-            converter.CopyPixels(
-                stride,
-                pixels);
-
             return CreateRgbaTexture(
                 pixels,
-                size.Width,
-                size.Height);
+                width,
+                height);
         }
-        catch (
-            Exception exception)
-            when (
-                exception is
-                    IOException or
-                    UnauthorizedAccessException or
-                    ArgumentException or
-                    NotSupportedException or
-                    OverflowException ||
-                exception.GetType()
-                    .Namespace?
-                    .StartsWith(
-                        "SharpGen",
-                        StringComparison.Ordinal) ==
-                    true)
-        {
-            return null;
-        }
-    }    private RuntimeGpuTexture? TryLoadDds(
+
+        return null;
+    }
+
+    private RuntimeGpuTexture? TryLoadDds(
+
         string path)
     {
         try
@@ -1673,6 +1661,63 @@ internal sealed class RuntimeGpuTextureLoader
             return false;
         }
 
+        FileInfo info;
+
+        try
+        {
+            info =
+                new FileInfo(
+                    path);
+        }
+        catch (Exception exception)
+            when (exception is
+                IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                NotSupportedException)
+        {
+            return false;
+        }
+
+        lock (DecodedTextureCacheGate)
+        {
+            _decodedTextureCacheGeneration++;
+
+            if (DecodedTextureCache.TryGetValue(
+                    path,
+                    out var cached) &&
+                cached.SourceLength ==
+                    info.Length &&
+                cached.SourceLastWriteUtc ==
+                    info.LastWriteTimeUtc)
+            {
+                DecodedTextureCache[
+                    path] =
+                    cached with
+                    {
+                        LastUsedGeneration =
+                            _decodedTextureCacheGeneration
+                    };
+
+                _decodedTextureCacheHits++;
+
+                pixels =
+                    cached.Pixels;
+                width =
+                    cached.Width;
+                height =
+                    cached.Height;
+
+                return true;
+            }
+
+            _decodedTextureCacheMisses++;
+        }
+
+        byte[] decodedPixels;
+        int decodedWidth;
+        int decodedHeight;
+
         try
         {
             using var factory =
@@ -1704,31 +1749,37 @@ internal sealed class RuntimeGpuTextureLoader
                 return false;
             }
 
+            var decodedByteCount =
+                checked(
+                    (long)size.Width *
+                    size.Height *
+                    4L);
+
+            if (decodedByteCount >
+                int.MaxValue)
+            {
+                return false;
+            }
+
             var stride =
                 checked(
                     (uint)size.Width *
                     4u);
 
-            pixels =
+            decodedPixels =
                 new byte[
-                    checked(
-                        size.Width *
-                        size.Height *
-                        4)];
+                    (int)decodedByteCount];
 
             converter.CopyPixels(
                 stride,
-                pixels);
+                decodedPixels);
 
-            width =
+            decodedWidth =
                 size.Width;
-            height =
+            decodedHeight =
                 size.Height;
-
-            return true;
         }
-        catch (
-            Exception exception)
+        catch (Exception exception)
             when (
                 exception is
                     IOException or
@@ -1743,14 +1794,72 @@ internal sealed class RuntimeGpuTextureLoader
                         StringComparison.Ordinal) ==
                     true)
         {
-            pixels =
-                Array.Empty<byte>();
-            width =
-                0;
-            height =
-                0;
             return false;
         }
+
+        if (decodedPixels.LongLength <=
+            MaximumSingleDecodedTextureCacheBytes)
+        {
+            lock (DecodedTextureCacheGate)
+            {
+                _decodedTextureCacheGeneration++;
+
+                if (DecodedTextureCache.TryGetValue(
+                        path,
+                        out var previous))
+                {
+                    _decodedTextureCacheBytes -=
+                        previous.Pixels.LongLength;
+                }
+
+                var entry =
+                    new CachedDecodedTexture(
+                        decodedPixels,
+                        decodedWidth,
+                        decodedHeight,
+                        info.Length,
+                        info.LastWriteTimeUtc,
+                        _decodedTextureCacheGeneration);
+
+                DecodedTextureCache[
+                    path] =
+                    entry;
+
+                _decodedTextureCacheBytes +=
+                    decodedPixels.LongLength;
+
+                while (_decodedTextureCacheBytes >
+                           MaximumDecodedTextureCacheBytes &&
+                       DecodedTextureCache.Count >
+                           1)
+                {
+                    var oldest =
+                        DecodedTextureCache
+                            .OrderBy(
+                                static pair =>
+                                    pair.Value
+                                        .LastUsedGeneration)
+                            .First();
+
+                    _decodedTextureCacheBytes -=
+                        oldest.Value.Pixels.LongLength;
+
+                    DecodedTextureCache.Remove(
+                        oldest.Key);
+
+                    _decodedTextureCacheEvictions++;
+                }
+            }
+        }
+
+        pixels =
+            decodedPixels;
+        width =
+            decodedWidth;
+        height =
+            decodedHeight;
+
+        return true;
     }
 
     public RuntimeGpuTexture CreateFromRgba(
