@@ -32,7 +32,7 @@ public sealed record OmsiReflectionCamera(
     double FieldOfViewDegrees,
     double HeadingDegrees,
     double PitchDegrees,
-    double? MaximumRenderDistanceMeters)
+    double? MaximumViewerDistanceMeters)
 {
     public string RuntimeTextureName =>
         $"reflexion{Index}.bmp";
