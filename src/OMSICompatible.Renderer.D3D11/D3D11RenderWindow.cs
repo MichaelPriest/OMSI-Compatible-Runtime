@@ -479,6 +479,9 @@ public sealed class D3D11RenderWindow : Form
         _objectTextureLastUsedGeneration =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<(RuntimeGpuTexture Texture, long ReleaseAfterFrame)>
+        _retiredStreamingTextures =
+            new();
     private readonly HashSet<string>
         _failedObjectTexturePaths =
             new(
@@ -1592,6 +1595,33 @@ public sealed class D3D11RenderWindow : Form
 
             retired.Buffer.Dispose();
         }
+
+        while (_retiredStreamingTextures.Count >
+                   0 &&
+               _retiredStreamingTextures.Peek()
+                   .ReleaseAfterFrame <=
+               _renderFrameSequence)
+        {
+            var retired =
+                _retiredStreamingTextures.Dequeue();
+
+            retired.Texture.Dispose();
+        }
+    }
+
+    private void RetireStreamingTexture(
+        RuntimeGpuTexture? texture)
+    {
+        if (texture is null)
+        {
+            return;
+        }
+
+        _retiredStreamingTextures.Enqueue(
+            (
+                texture,
+                _renderFrameSequence +
+                    StreamingBufferRetirementFrames));
     }
 
     private void ApplyPreparedStreamedGeometry(
@@ -1735,9 +1765,9 @@ public sealed class D3D11RenderWindow : Form
                 inactiveTexturePaths[
                     index];
 
-            _objectTextureCache[
-                cachedPath]
-                .Dispose();
+            RetireStreamingTexture(
+                _objectTextureCache[
+                    cachedPath]);
 
             _objectTextureCache.Remove(
                 cachedPath);
@@ -18395,6 +18425,15 @@ public sealed class D3D11RenderWindow : Form
 
             _terrainVertexBuffer?.Dispose();
             _splineVertexBuffer?.Dispose();
+
+            while (_retiredStreamingTextures.Count >
+                   0)
+            {
+                _retiredStreamingTextures
+                    .Dequeue()
+                    .Texture
+                    .Dispose();
+            }
 
             foreach (var texture in
                 _objectTextureCache.Values)
