@@ -37,6 +37,26 @@ internal sealed class RuntimeGpuTexture :
 
 internal sealed class RuntimeGpuTextureLoader
 {
+    private sealed record CachedTextureFile(
+        byte[] Bytes,
+        long Length,
+        DateTime LastWriteUtc,
+        long LastUsedGeneration);
+
+    private static readonly object TextureFileCacheGate =
+        new();
+    private static readonly Dictionary<string, CachedTextureFile>
+        TextureFileCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private static long _textureFileCacheGeneration;
+    private static long _textureFileCacheBytes;
+
+    private const long MaximumTextureFileCacheBytes =
+        512L * 1024L * 1024L;
+    private const long MaximumSingleTextureFileCacheBytes =
+        64L * 1024L * 1024L;
+
     private readonly ID3D11Device _device;
 
     public RuntimeGpuTextureLoader(
@@ -46,6 +66,210 @@ internal sealed class RuntimeGpuTextureLoader
             device ??
             throw new ArgumentNullException(
                 nameof(device));
+    }
+
+    public static int WarmFileCache(
+        IEnumerable<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(
+            paths);
+
+        var warmed =
+            0;
+
+        foreach (var path in
+                 paths
+                     .Where(
+                         static value =>
+                             !string.IsNullOrWhiteSpace(
+                                 value))
+                     .Distinct(
+                         StringComparer.OrdinalIgnoreCase))
+        {
+            var extension =
+                Path.GetExtension(
+                    path);
+
+            if (!string.Equals(
+                    extension,
+                    ".dds",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(
+                    extension,
+                    ".tga",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (TryGetCachedFileBytes(
+                    path,
+                    out _))
+            {
+                warmed++;
+            }
+        }
+
+        return warmed;
+    }
+
+    private static Stream OpenCachedReadStream(
+        string path)
+    {
+        if (TryGetCachedFileBytes(
+                path,
+                out var bytes))
+        {
+            return new MemoryStream(
+                bytes,
+                writable:
+                    false);
+        }
+
+        return new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read);
+    }
+
+    private static bool TryGetCachedFileBytes(
+        string path,
+        out byte[] bytes)
+    {
+        bytes =
+            Array.Empty<byte>();
+
+        if (string.IsNullOrWhiteSpace(
+                path) ||
+            !File.Exists(
+                path))
+        {
+            return false;
+        }
+
+        FileInfo info;
+
+        try
+        {
+            info =
+                new FileInfo(
+                    path);
+
+            if (info.Length <=
+                    0 ||
+                info.Length >
+                    MaximumSingleTextureFileCacheBytes)
+            {
+                return false;
+            }
+        }
+        catch (Exception exception)
+            when (exception is
+                IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                NotSupportedException)
+        {
+            return false;
+        }
+
+        lock (TextureFileCacheGate)
+        {
+            _textureFileCacheGeneration++;
+
+            if (TextureFileCache.TryGetValue(
+                    path,
+                    out var cached) &&
+                cached.Length ==
+                    info.Length &&
+                cached.LastWriteUtc ==
+                    info.LastWriteTimeUtc)
+            {
+                TextureFileCache[
+                    path] =
+                    cached with
+                    {
+                        LastUsedGeneration =
+                            _textureFileCacheGeneration
+                    };
+
+                bytes =
+                    cached.Bytes;
+
+                return true;
+            }
+        }
+
+        byte[] loaded;
+
+        try
+        {
+            loaded =
+                File.ReadAllBytes(
+                    path);
+        }
+        catch (Exception exception)
+            when (exception is
+                IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                NotSupportedException)
+        {
+            return false;
+        }
+
+        lock (TextureFileCacheGate)
+        {
+            _textureFileCacheGeneration++;
+
+            if (TextureFileCache.TryGetValue(
+                    path,
+                    out var previous))
+            {
+                _textureFileCacheBytes -=
+                    previous.Bytes.LongLength;
+            }
+
+            var entry =
+                new CachedTextureFile(
+                    loaded,
+                    info.Length,
+                    info.LastWriteTimeUtc,
+                    _textureFileCacheGeneration);
+
+            TextureFileCache[
+                path] =
+                entry;
+
+            _textureFileCacheBytes +=
+                loaded.LongLength;
+
+            while (_textureFileCacheBytes >
+                       MaximumTextureFileCacheBytes &&
+                   TextureFileCache.Count >
+                       1)
+            {
+                var oldest =
+                    TextureFileCache
+                        .OrderBy(
+                            static pair =>
+                                pair.Value
+                                    .LastUsedGeneration)
+                        .First();
+
+                _textureFileCacheBytes -=
+                    oldest.Value.Bytes.LongLength;
+
+                TextureFileCache.Remove(
+                    oldest.Key);
+            }
+
+            bytes =
+                entry.Bytes;
+
+            return true;
+        }
     }
 
     public RuntimeGpuTexture? TryLoadAlphaMask(
@@ -62,11 +286,8 @@ internal sealed class RuntimeGpuTextureLoader
         try
         {
             using var stream =
-                new FileStream(
-                    path,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read);
+                OpenCachedReadStream(
+                    path);
 
             if (stream.Length < 128)
             {
@@ -342,11 +563,8 @@ internal sealed class RuntimeGpuTextureLoader
         try
         {
             using var stream =
-                new FileStream(
-                    path,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read);
+                OpenCachedReadStream(
+                    path);
 
             if (stream.Length <
                 128)
@@ -1138,11 +1356,8 @@ internal sealed class RuntimeGpuTextureLoader
         try
         {
             using var stream =
-                new FileStream(
-                    path,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read);
+                OpenCachedReadStream(
+                    path);
 
             Span<byte> header =
                 stackalloc byte[18];
