@@ -230,7 +230,7 @@ public static class RuntimeVehicleInfoFactory
                             camera.FieldOfViewDegrees,
                             -camera.HeadingDegrees,
                             camera.PitchDegrees,
-                            camera.MaximumViewerDistanceMeters,
+                            camera.VisibilityThreshold,
                             camera.ContinuousRendering,
                             camera.RuntimeTextureName,
                             camera.RuntimeTextureKey))
