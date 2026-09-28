@@ -3,6 +3,47 @@ using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.Common;
 
+
+public sealed record RuntimeTerrainBatch(
+    uint StartVertex,
+    uint VertexCount,
+    string? TexturePath,
+    string? MaskTexturePath,
+    string? DetailTexturePath,
+    bool AdditiveLightmap,
+    int? TerrainLayerIndex);
+
+public sealed record RuntimeTerrainGeometry(
+    RuntimeTerrainVertex[] Vertices,
+    IReadOnlyList<RuntimeTerrainBatch> Batches,
+    Vector3 Center,
+    float HorizontalSpan,
+    float MinimumHeight,
+    float MaximumHeight,
+    int AlignedSplineSegmentCount = 0)
+{
+    public int TexturedBatchCount =>
+        Batches.Count(
+            static batch =>
+                !string.IsNullOrWhiteSpace(
+                    batch.TexturePath));
+
+    public int MaskedLayerCount =>
+        Batches.Count(
+            static batch =>
+                !string.IsNullOrWhiteSpace(
+                    batch.MaskTexturePath));
+
+    public static RuntimeTerrainGeometry Empty { get; } =
+        new(
+            [],
+            Array.Empty<RuntimeTerrainBatch>(),
+            Vector3.Zero,
+            300.0f,
+            0.0f,
+            0.0f);
+}
+
 public readonly struct RuntimeTerrainVertex
 {
     public const uint SizeInBytes = 52;
