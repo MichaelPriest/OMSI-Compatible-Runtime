@@ -828,6 +828,11 @@ public sealed class D3D11RenderWindow : Form
         ClientSizeChanged += OnClientSizeChanged;
     }
 
+    public static int WarmTextureFileCache(
+        IEnumerable<string> paths) =>
+        RuntimeGpuTextureLoader.WarmFileCache(
+            paths);
+
     public RuntimeTrafficObstacleInfo?
         PlayerTrafficObstacle
     {
