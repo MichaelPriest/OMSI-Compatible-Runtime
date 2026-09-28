@@ -287,6 +287,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11RasterizerState? _terrainRasterizerState;
     private RuntimeTerrainGeometry _terrainGeometry =
         RuntimeTerrainGeometry.Empty;
+    private string? _lastTerrainAlignmentDiagnosticSignature;
     private RuntimeTerrainSampler _terrainSurfaceSampler;
     private uint _terrainVertexCount;
 
@@ -861,6 +862,8 @@ public sealed class D3D11RenderWindow : Form
 
         _terrainVertexCount =
             (uint)_terrainGeometry.Vertices.Length;
+
+        AppendTerrainAlignmentDiagnostics();
 
         _splineVertexBuffer?.Dispose();
         _splineVertexBuffer = null;
@@ -1799,8 +1802,65 @@ public sealed class D3D11RenderWindow : Form
         _terrainVertexCount =
             (uint)_terrainGeometry.Vertices.Length;
 
+        AppendTerrainAlignmentDiagnostics();
+
         _camera.Reset(
             _terrainGeometry);
+    }
+
+    private void AppendTerrainAlignmentDiagnostics()
+    {
+        var alignedSplines =
+            _windowInfo.Splines
+                .Where(
+                    static spline =>
+                        spline.TerrainAlignMode is
+                        > 0)
+                .ToArray();
+
+        var modeSummary =
+            alignedSplines
+                .GroupBy(
+                    static spline =>
+                        spline.TerrainAlignMode!.Value)
+                .OrderBy(
+                    static group =>
+                        group.Key)
+                .Select(
+                    static group =>
+                        $"{group.Key}:{group.Count()}")
+                .ToArray();
+
+        var signature =
+            $"splines={alignedSplines.Length};segments={_terrainGeometry.AlignedSplineSegmentCount};vertices={_terrainGeometry.Vertices.Length};height={_terrainGeometry.MinimumHeight:0.###}..{_terrainGeometry.MaximumHeight:0.###};modes={(modeSummary.Length == 0 ? "<none>" : string.Join(",", modeSummary))}";
+
+        if (string.Equals(
+                _lastTerrainAlignmentDiagnosticSignature,
+                signature,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastTerrainAlignmentDiagnosticSignature =
+            signature;
+
+        Console.WriteLine(
+            $"[terrain-align] {signature}");
+
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "terrain-alignment.log"),
+                $"{DateTimeOffset.Now:O}|{signature}{Environment.NewLine}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[terrain-align] unable to append diagnostics: {ex.Message}");
+        }
     }
 
     private void CreateSplineResources()
