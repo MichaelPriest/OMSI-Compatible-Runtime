@@ -68,6 +68,11 @@ public sealed record OmsiSceneryTrafficLightJump(
     bool JumpIfNoApproach,
     double TargetTimeSeconds);
 
+public sealed record OmsiSceneryTrafficLightStop(
+    int CheckTrafficLightIndex,
+    double TriggerTimeSeconds,
+    bool StopIfNoApproach);
+
 public sealed record OmsiSceneryFileReference(
     string DeclaredPath,
     string? ResolvedPath)
@@ -122,6 +127,7 @@ public sealed record OmsiSceneryDefinition(
     double? TrafficLightCycleSeconds = null,
     IReadOnlyList<OmsiSceneryTrafficLightProgram>? TrafficLights = null,
     IReadOnlyList<OmsiSceneryTrafficLightJump>? TrafficLightJumps = null,
+    IReadOnlyList<OmsiSceneryTrafficLightStop>? TrafficLightStops = null,
     OmsiSceneryScriptManifest? ScriptManifest = null,
     bool NoCollision = false,
     bool Fixed = false,
