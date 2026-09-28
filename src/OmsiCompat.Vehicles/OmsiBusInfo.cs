@@ -32,7 +32,7 @@ public sealed record OmsiReflectionCamera(
     double FieldOfViewDegrees,
     double HeadingDegrees,
     double PitchDegrees,
-    double? MaximumViewerDistanceMeters,
+    double? VisibilityThreshold,
     bool ContinuousRendering)
 {
     public string RuntimeTextureName =>
