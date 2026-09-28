@@ -176,14 +176,6 @@ public sealed class WorldTrafficSimulation
                     StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-        if (vehicles.Length == 0 ||
-            maximumAgents <= 0)
-        {
-            _agents =
-                [];
-            return;
-        }
-
         var roadSegments =
             network.Segments
                 .Where(
@@ -200,7 +192,12 @@ public sealed class WorldTrafficSimulation
                         segment.Index)
                 .ToArray();
 
-        if (roadSegments.Length == 0)
+        _roadSegments =
+            roadSegments;
+
+        if (vehicles.Length == 0 ||
+            maximumAgents <= 0 ||
+            roadSegments.Length == 0)
         {
             _agents =
                 [];
@@ -256,9 +253,6 @@ public sealed class WorldTrafficSimulation
             Math.Max(
                 spawnExclusionRadiusMeters,
                 0.0);
-        _roadSegments =
-            roadSegments;
-
         _agents =
             new List<Agent>(
                 count);
