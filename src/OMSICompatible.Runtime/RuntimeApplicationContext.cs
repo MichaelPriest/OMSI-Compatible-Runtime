@@ -437,6 +437,8 @@ internal sealed class RuntimeApplicationContext :
                     _options.RuntimeVSync,
                     showFps:
                         _options.RuntimeShowFps,
+                    msaaSamples:
+                        _options.RuntimeMsaaSamples,
                     vehiclePreviewMode:
                         false,
                     initialVehicleVariables:
