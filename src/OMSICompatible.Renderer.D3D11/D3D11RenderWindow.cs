@@ -570,6 +570,8 @@ public sealed class D3D11RenderWindow : Form
     private double _previousRenderTickSeconds;
     private double _lastObservedFrameMilliseconds;
     private readonly double _targetFrameMilliseconds;
+    private double _lastStreamingPrepareMilliseconds;
+    private double _lastStreamingGpuPrepareMilliseconds;
     private double _lastStreamingSwapMilliseconds;
     private readonly Queue<double> _frameTimeSamplesMilliseconds =
         new();
@@ -1256,8 +1258,14 @@ public sealed class D3D11RenderWindow : Form
             Stopwatch.GetElapsedTime(
                 gpuPrepareStarted);
 
+        _lastStreamingPrepareMilliseconds =
+            elapsed.TotalMilliseconds;
+
+        _lastStreamingGpuPrepareMilliseconds =
+            gpuPrepareElapsed.TotalMilliseconds;
+
         Console.WriteLine(
-            $"[streaming-geometry] prepared generation={generation}; tiles={windowInfo.Tiles.Count}; terrainVertices={prepared.Terrain.Vertices.Length:N0}; splineVertices={prepared.Splines.Vertices.Length:N0}; objectVertices={prepared.Objects.Vertices.Length:N0}; cpuMs={elapsed.TotalMilliseconds:0.0}; gpuPrepareMs={gpuPrepareElapsed.TotalMilliseconds:0.0}");
+            $"[streaming-geometry] prepared generation={generation}; tiles={windowInfo.Tiles.Count}; terrainVertices={prepared.Terrain.Vertices.Length:N0}; splineVertices={prepared.Splines.Vertices.Length:N0}; objectVertices={prepared.Objects.Vertices.Length:N0}; cpuMs={_lastStreamingPrepareMilliseconds:0.0}; gpuPrepareMs={_lastStreamingGpuPrepareMilliseconds:0.0}");
 
         if (!InvokeRequired)
         {
@@ -18092,14 +18100,21 @@ public sealed class D3D11RenderWindow : Form
         var streamingMode =
             _pendingStreamingTextureLoads.Count >
                     0
-                ? $"\nStream {_pendingStreamingTextureLoads.Count:N0} tex · {_currentStreamingTextureUploadLimit}/f · {_currentStreamingTextureUploadBudgetMilliseconds:0.0} ms · swap {_lastStreamingSwapMilliseconds:0.0} ms"
-                : _lastStreamingSwapMilliseconds >
-                        0.0
-                    ? $"\nSwap {_lastStreamingSwapMilliseconds:0.0} ms"
-                    : string.Empty;
+                ? $"\nStream {_pendingStreamingTextureLoads.Count:N0} tex · {_currentStreamingTextureUploadLimit}/f · {_currentStreamingTextureUploadBudgetMilliseconds:0.0} ms"
+                : string.Empty;
+
+        var streamingTiming =
+            _lastStreamingPrepareMilliseconds >
+                    0.0 ||
+                _lastStreamingGpuPrepareMilliseconds >
+                    0.0 ||
+                _lastStreamingSwapMilliseconds >
+                    0.0
+                ? $"\nCPU {_lastStreamingPrepareMilliseconds:0.0} · GPU {_lastStreamingGpuPrepareMilliseconds:0.0} · Swap {_lastStreamingSwapMilliseconds:0.0} ms"
+                : string.Empty;
 
         _fpsLabel.Text =
-            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n1% {onePercentLowFps:0.0} FPS · max {worstFrameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}{streamingMode}";
+            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n1% {onePercentLowFps:0.0} FPS · max {worstFrameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}{streamingMode}{streamingTiming}";
 
         _fpsFrameCount =
             0;
