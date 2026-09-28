@@ -699,9 +699,7 @@ public sealed class WorldTrafficSimulation
                             segment.SceneryObjectId.Value,
                             out var group)
                             ? group.PositionSeconds
-                            : WrapCyclePosition(
-                                _simulationElapsedSeconds,
-                                segment.TrafficSignal!.CycleSeconds);
+                            : _simulationElapsedSeconds;
 
                     return new WorldTrafficSignalState(
                         segment.Index,
