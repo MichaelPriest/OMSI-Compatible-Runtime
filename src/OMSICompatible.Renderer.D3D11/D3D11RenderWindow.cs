@@ -363,7 +363,7 @@ public sealed class D3D11RenderWindow : Form
             new(
                 StringComparer.OrdinalIgnoreCase);
 
-    private const uint ReflectionTextureSize = 512;
+    private readonly uint _reflectionTextureSize;
     private readonly Dictionary<string, RuntimeReflectionTarget>
         _reflectionTargets =
             new(
@@ -451,7 +451,8 @@ public sealed class D3D11RenderWindow : Form
             railSignalStateProvider = null,
         Action<int, float>?
             trafficCollisionResponse = null,
-        bool terrainCollisionsEnabled = true)
+        bool terrainCollisionsEnabled = true,
+        int reflectionTextureSize = 512)
     {
         _windowInfo = windowInfo;
         _trafficStep =
@@ -502,6 +503,11 @@ public sealed class D3D11RenderWindow : Form
             vehicleToVehicleCollisionsEnabled;
         _vehicleLandscapeCollisionsEnabled =
             vehicleLandscapeCollisionsEnabled;
+        _reflectionTextureSize =
+            (uint)Math.Clamp(
+                reflectionTextureSize,
+                64,
+                4096);
         _materialLightMapEnabled =
             materialLightMapEnabled;
         _materialReflectionMapEnabled =
@@ -2750,7 +2756,7 @@ public sealed class D3D11RenderWindow : Form
                 new RuntimeReflectionTarget(
                     _device,
                     camera,
-                    ReflectionTextureSize);
+                    _reflectionTextureSize);
         }
 
         if (_reflectionDepthTexture is null)
@@ -2758,8 +2764,8 @@ public sealed class D3D11RenderWindow : Form
             _reflectionDepthTexture =
                 _device.CreateTexture2D(
                     Format.D32_Float,
-                    ReflectionTextureSize,
-                    ReflectionTextureSize,
+                    _reflectionTextureSize,
+                    _reflectionTextureSize,
                     mipLevels: 1,
                     bindFlags:
                         BindFlags.DepthStencil);
@@ -3611,8 +3617,8 @@ public sealed class D3D11RenderWindow : Form
                 _deviceContext.RSSetViewport(
                     0,
                     0,
-                    ReflectionTextureSize,
-                    ReflectionTextureSize);
+                    _reflectionTextureSize,
+                    _reflectionTextureSize);
 
                 DrawSky();
                 DrawObjects(
