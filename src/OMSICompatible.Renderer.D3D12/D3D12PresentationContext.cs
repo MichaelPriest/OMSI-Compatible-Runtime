@@ -37,6 +37,8 @@ public sealed class D3D12PresentationContext :
     private readonly ID3D12Fence _fence;
     private readonly int _width;
     private readonly int _height;
+    private Matrix4x4 _viewProjection =
+        Matrix4x4.Identity;
     private readonly AutoResetEvent _fenceEvent =
         new(
             false);
@@ -312,10 +314,23 @@ public sealed class D3D12PresentationContext :
             var rootSignature =
                 device.CreateRootSignature(
                     new RootSignatureDescription1(
-                        RootSignatureFlags.AllowInputAssemblerInputLayout));
+                        RootSignatureFlags.AllowInputAssemblerInputLayout,
+                        [
+                            new RootParameter1(
+                                new RootConstants(
+                                    0,
+                                    0,
+                                    16),
+                                ShaderVisibility.Vertex)
+                        ]));
 
             const string shaderSource =
                 """
+                cbuffer FrameConstants : register(b0)
+                {
+                    row_major float4x4 ViewProjection;
+                };
+
                 struct VsInput
                 {
                     float3 position : POSITION;
@@ -331,7 +346,12 @@ public sealed class D3D12PresentationContext :
                 VsOutput VSMain(VsInput input)
                 {
                     VsOutput output;
-                    output.position = float4(input.position, 1.0);
+                    output.position =
+                        mul(
+                            float4(
+                                input.position,
+                                1.0),
+                            ViewProjection);
                     output.color = input.color;
                     return output;
                 }
@@ -539,6 +559,17 @@ public sealed class D3D12PresentationContext :
         }
     }
 
+    public void SetViewProjection(
+        Matrix4x4 viewProjection)
+    {
+        ObjectDisposedException.ThrowIf(
+            _disposed,
+            this);
+
+        _viewProjection =
+            viewProjection;
+    }
+
     public void ClearAndPresent(
         float red,
         float green,
@@ -561,6 +592,10 @@ public sealed class D3D12PresentationContext :
 
         _commandList.SetGraphicsRootSignature(
             _rootSignature);
+
+        _commandList.SetGraphicsRoot32BitConstants(
+            0,
+            ref _viewProjection);
 
         var renderTarget =
             _renderTargets[
