@@ -45,6 +45,10 @@ public sealed class D3D11RenderWindow : Form
         public Matrix4x4 World;
     }
 
+    private sealed record PreparedTrafficVehicleGeometry(
+        string Path,
+        RuntimeObjectGeometry Geometry);
+
     private sealed record PreparedStreamedGeometry(
         RuntimeVertex[] TileVertices,
         RuntimeTerrainGeometry Terrain,
@@ -53,7 +57,48 @@ public sealed class D3D11RenderWindow : Form
         RuntimeTerrainSampler TerrainSampler,
         IReadOnlyList<RuntimeSceneryCollisionVolume> CollisionVolumes,
         string[] RegularTexturePaths,
-        string[] MaskTexturePaths);
+        string[] MaskTexturePaths,
+        PreparedTrafficVehicleGeometry[] TrafficVehicleGeometries);
+
+    private sealed class PreparedTrafficVehicleGpuResource :
+        IDisposable
+    {
+        public PreparedTrafficVehicleGpuResource(
+            string path,
+            RuntimeObjectGeometry geometry,
+            ID3D11Buffer buffer)
+        {
+            Path =
+                path;
+            Geometry =
+                geometry;
+            Buffer =
+                buffer;
+        }
+
+        public string Path
+        {
+            get;
+        }
+
+        public RuntimeObjectGeometry Geometry
+        {
+            get;
+        }
+
+        public ID3D11Buffer? Buffer
+        {
+            get;
+            set;
+        }
+
+        public void Dispose()
+        {
+            Buffer?.Dispose();
+            Buffer =
+                null;
+        }
+    }
 
     private sealed class PreparedStreamedGpuResources :
         IDisposable
@@ -82,6 +127,13 @@ public sealed class D3D11RenderWindow : Form
             set;
         }
 
+        public List<PreparedTrafficVehicleGpuResource>
+            TrafficVehicles
+        {
+            get;
+        } =
+            [];
+
         public void Dispose()
         {
             TileVertexBuffer?.Dispose();
@@ -99,6 +151,14 @@ public sealed class D3D11RenderWindow : Form
             ObjectVertexBuffer?.Dispose();
             ObjectVertexBuffer =
                 null;
+
+            foreach (var resource in
+                     TrafficVehicles)
+            {
+                resource.Dispose();
+            }
+
+            TrafficVehicles.Clear();
         }
     }
 
@@ -1032,6 +1092,18 @@ public sealed class D3D11RenderWindow : Form
         PreparedStreamedGpuResources? preparedGpu =
             null;
 
+        var missingTrafficVehicleAssets =
+            windowInfo.TrafficVehicleAssets?
+                .Where(
+                    pair =>
+                        !_trafficVehicleVertexBuffers.ContainsKey(
+                            pair.Key))
+                .ToArray()
+            ?? Array.Empty<
+                KeyValuePair<
+                    string,
+                    OmsiVehicleAsset>>();
+
         var started =
             Stopwatch.GetTimestamp();
 
@@ -1083,6 +1155,24 @@ public sealed class D3D11RenderWindow : Form
                                 splines,
                                 objects);
 
+                        var trafficVehicleGeometries =
+                            missingTrafficVehicleAssets
+                                .Select(
+                                    pair =>
+                                        new PreparedTrafficVehicleGeometry(
+                                            pair.Key,
+                                            RuntimeVehicleGeometry.Build(
+                                                pair.Value,
+                                                viewpointBit:
+                                                    4,
+                                                forceMaterialAlphaOpaque:
+                                                    true)))
+                                .Where(
+                                    static item =>
+                                        item.Geometry.Vertices.Length >
+                                            0)
+                                .ToArray();
+
                         return new PreparedStreamedGeometry(
                             tileVertices,
                             terrain,
@@ -1091,7 +1181,8 @@ public sealed class D3D11RenderWindow : Form
                             terrainSampler,
                             collisionVolumes,
                             regularTexturePaths,
-                            maskTexturePaths);
+                            maskTexturePaths,
+                            trafficVehicleGeometries);
                     });
         }
         catch (Exception exception)
@@ -1232,8 +1323,6 @@ public sealed class D3D11RenderWindow : Form
         _windowInfo =
             windowInfo;
 
-        EnsureTrafficVehicleResources();
-
         _terrainSurfaceSampler =
             prepared.TerrainSampler;
 
@@ -1248,6 +1337,7 @@ public sealed class D3D11RenderWindow : Form
 
         if (_device is null)
         {
+            preparedGpu.Dispose();
             return;
         }
 
@@ -1261,6 +1351,9 @@ public sealed class D3D11RenderWindow : Form
 
         try
         {
+            ApplyPreparedTrafficVehicleResources(
+                preparedGpu);
+
             ApplyPreparedStreamedGeometry(
                 prepared,
                 preparedGpu);
@@ -1400,12 +1493,61 @@ public sealed class D3D11RenderWindow : Form
                         BindFlags.VertexBuffer);
             }
 
+            foreach (var trafficVehicle in
+                     prepared.TrafficVehicleGeometries)
+            {
+                var buffer =
+                    _device.CreateBuffer(
+                        trafficVehicle.Geometry.Vertices.AsSpan(),
+                        BindFlags.VertexBuffer);
+
+                resources.TrafficVehicles.Add(
+                    new PreparedTrafficVehicleGpuResource(
+                        trafficVehicle.Path,
+                        trafficVehicle.Geometry,
+                        buffer));
+            }
+
             return resources;
         }
         catch
         {
             resources.Dispose();
             throw;
+        }
+    }
+
+    private void ApplyPreparedTrafficVehicleResources(
+        PreparedStreamedGpuResources preparedGpu)
+    {
+        foreach (var resource in
+                 preparedGpu.TrafficVehicles)
+        {
+            if (_trafficVehicleVertexBuffers.ContainsKey(
+                    resource.Path))
+            {
+                resource.Dispose();
+                continue;
+            }
+
+            if (resource.Buffer is null)
+            {
+                continue;
+            }
+
+            _trafficVehicleGeometries[
+                resource.Path] =
+                resource.Geometry;
+
+            _trafficVehicleVertexBuffers[
+                resource.Path] =
+                resource.Buffer;
+
+            resource.Buffer =
+                null;
+
+            Console.WriteLine(
+                $"[traffic-ai] staged GPU vehicle={Path.GetFileName(resource.Path)}; vertices={resource.Geometry.Vertices.Length}; meshes={resource.Geometry.RenderedMeshCount}");
         }
     }
 
