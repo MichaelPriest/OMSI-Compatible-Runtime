@@ -382,15 +382,15 @@ public sealed class D3D12PresentationContext :
                     pixelResult.GetErrors());
             }
 
-            var pipelineStateStream =
-                new PipelineStateStream
+            var pipelineStateDescription =
+                new GraphicsPipelineStateDescription
                 {
                     RootSignature =
                         rootSignature,
                     VertexShader =
-                        vertexResult.GetObjectBytecodeMemory().Span,
+                        vertexResult.GetObjectBytecodeMemory(),
                     PixelShader =
-                        pixelResult.GetObjectBytecodeMemory().Span,
+                        pixelResult.GetObjectBytecodeMemory(),
                     InputLayout =
                         new InputLayoutDescription(
                             [
@@ -409,7 +409,7 @@ public sealed class D3D12PresentationContext :
                             ]),
                     SampleMask =
                         uint.MaxValue,
-                    PrimitiveTopology =
+                    PrimitiveTopologyType =
                         PrimitiveTopologyType.Triangle,
                     RasterizerState =
                         RasterizerDescription.CullNone,
@@ -428,8 +428,8 @@ public sealed class D3D12PresentationContext :
                 };
 
             var pipelineState =
-                device.CreatePipelineState(
-                    pipelineStateStream);
+                device.CreateGraphicsPipelineState(
+                    pipelineStateDescription);
 
             ReadOnlySpan<SmokeVertex> vertices =
             [
