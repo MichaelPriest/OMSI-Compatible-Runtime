@@ -924,6 +924,14 @@ public sealed class D3D11RenderWindow : Form
     public void ApplyStreamedWorld(
         RuntimeWindowInfo windowInfo)
     {
+        _ =
+            ApplyStreamedWorldAsync(
+                windowInfo);
+    }
+
+    public async Task ApplyStreamedWorldAsync(
+        RuntimeWindowInfo windowInfo)
+    {
         ArgumentNullException.ThrowIfNull(
             windowInfo);
 
@@ -936,10 +944,9 @@ public sealed class D3D11RenderWindow : Form
             Interlocked.Increment(
                 ref _streamedWorldPreparationGeneration);
 
-        _ =
-            PrepareAndApplyStreamedWorldAsync(
-                windowInfo,
-                generation);
+        await PrepareAndApplyStreamedWorldAsync(
+            windowInfo,
+            generation);
     }
 
     private async Task PrepareAndApplyStreamedWorldAsync(
@@ -1010,31 +1017,62 @@ public sealed class D3D11RenderWindow : Form
         Console.WriteLine(
             $"[streaming-geometry] prepared generation={generation}; tiles={windowInfo.Tiles.Count}; terrainVertices={prepared.Terrain.Vertices.Length:N0}; splineVertices={prepared.Splines.Vertices.Length:N0}; objectVertices={prepared.Objects.Vertices.Length:N0}; cpuMs={elapsed.TotalMilliseconds:0.0}");
 
+        if (!InvokeRequired)
+        {
+            ApplyPreparedStreamedWorld(
+                windowInfo,
+                prepared,
+                generation);
+
+            return;
+        }
+
+        var completion =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions
+                    .RunContinuationsAsynchronously);
+
         try
         {
-            if (InvokeRequired)
-            {
-                BeginInvoke(
-                    () =>
+            BeginInvoke(
+                () =>
+                {
+                    try
+                    {
                         ApplyPreparedStreamedWorld(
                             windowInfo,
                             prepared,
-                            generation));
-            }
-            else
-            {
-                ApplyPreparedStreamedWorld(
-                    windowInfo,
-                    prepared,
-                    generation);
-            }
+                            generation);
+
+                        completion.TrySetResult(
+                            true);
+                    }
+                    catch (Exception exception)
+                    {
+                        completion.TrySetException(
+                            exception);
+                    }
+                });
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+        catch (InvalidOperationException)
+        {
+            // Window can close while a background geometry build is finishing.
+            return;
+        }
+
+        try
+        {
+            await completion.Task;
         }
         catch (ObjectDisposedException)
         {
         }
         catch (InvalidOperationException)
         {
-            // Window can close while a background geometry build is finishing.
         }
     }
 
