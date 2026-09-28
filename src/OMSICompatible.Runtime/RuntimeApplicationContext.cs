@@ -599,6 +599,8 @@ internal sealed class RuntimeApplicationContext :
                     _runtimeWindow.Dispose();
                     _runtimeWindow = null;
 
+                    DisposePluginClients();
+
                     if (!_loading.IsDisposed)
                     {
                         _loading.Close();
@@ -626,6 +628,8 @@ internal sealed class RuntimeApplicationContext :
         }
         catch (Exception ex)
         {
+            DisposePluginClients();
+
             Console.Error.WriteLine(ex);
 
             ReportProgress(
@@ -3346,6 +3350,23 @@ internal sealed class RuntimeApplicationContext :
         return values.Length == 0
             ? null
             : values.Average();
+    }
+
+    private void DisposePluginClients()
+    {
+        foreach (var client in
+                 _pluginClients)
+        {
+            try
+            {
+                client.Dispose();
+            }
+            catch
+            {
+            }
+        }
+
+        _pluginClients.Clear();
     }
 
     private void PrepareCompatiblePluginSessions(
