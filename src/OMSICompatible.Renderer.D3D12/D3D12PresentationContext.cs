@@ -1,4 +1,5 @@
 using System.Numerics;
+using OMSICompatible.Renderer.Common;
 using Vortice.Direct3D;
 using Vortice.Direct3D12;
 using Vortice.DXGI;
@@ -12,19 +13,6 @@ namespace OMSICompatible.Renderer.D3D12;
 public sealed class D3D12PresentationContext :
     IDisposable
 {
-    private readonly struct SmokeVertex(
-        Vector3 position,
-        Color4 color)
-    {
-        public const uint SizeInBytes =
-            28;
-
-        public readonly Vector3 Position =
-            position;
-
-        public readonly Color4 Color =
-            color;
-    }
     private const int FrameCount =
         2;
 
@@ -431,9 +419,9 @@ public sealed class D3D12PresentationContext :
                 device.CreateGraphicsPipelineState(
                     pipelineStateDescription);
 
-            ReadOnlySpan<SmokeVertex> vertices =
+            ReadOnlySpan<RuntimeObjectVertex> vertices =
             [
-                new SmokeVertex(
+                new RuntimeObjectVertex(
                     new Vector3(
                         0.0f,
                         0.65f,
@@ -442,8 +430,9 @@ public sealed class D3D12PresentationContext :
                         0.95f,
                         0.30f,
                         0.20f,
-                        1.0f)),
-                new SmokeVertex(
+                        1.0f),
+                    Vector2.Zero),
+                new RuntimeObjectVertex(
                     new Vector3(
                         0.65f,
                         -0.55f,
@@ -452,8 +441,9 @@ public sealed class D3D12PresentationContext :
                         0.20f,
                         0.80f,
                         0.35f,
-                        1.0f)),
-                new SmokeVertex(
+                        1.0f),
+                    Vector2.Zero),
+                new RuntimeObjectVertex(
                     new Vector3(
                         -0.65f,
                         -0.55f,
@@ -462,14 +452,15 @@ public sealed class D3D12PresentationContext :
                         0.20f,
                         0.45f,
                         0.95f,
-                        1.0f))
+                        1.0f),
+                    Vector2.Zero)
             ];
 
             var vertexBufferSize =
                 checked(
                     (ulong)(
                         vertices.Length *
-                        SmokeVertex.SizeInBytes));
+                        RuntimeObjectVertex.SizeInBytes));
 
             var vertexBuffer =
                 device.CreateCommittedResource(
@@ -486,7 +477,7 @@ public sealed class D3D12PresentationContext :
                     vertexBuffer.GPUVirtualAddress,
                     checked(
                         (uint)vertexBufferSize),
-                    SmokeVertex.SizeInBytes);
+                    RuntimeObjectVertex.SizeInBytes);
 
             var commandList =
                 device.CreateCommandList<
