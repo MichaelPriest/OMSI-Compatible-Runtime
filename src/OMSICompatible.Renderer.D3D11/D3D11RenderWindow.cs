@@ -82,6 +82,13 @@ public sealed class D3D11RenderWindow : Form
         Four
     }
 
+    private readonly record struct RuntimeSceneryCollisionTriangle(
+        Vector2 A,
+        Vector2 B,
+        Vector2 C,
+        float MinimumY,
+        float MaximumY);
+
     private readonly record struct RuntimeSceneryCollisionVolume(
         int Key,
         long ObjectId,
@@ -94,7 +101,8 @@ public sealed class D3D11RenderWindow : Form
         float MinimumY,
         float MaximumY,
         bool Surface,
-        bool UsesCollisionMesh);
+        bool UsesCollisionMesh,
+        IReadOnlyList<RuntimeSceneryCollisionTriangle>? Triangles);
 
     private static readonly FeatureLevel[] RequestedFeatureLevels =
     [
@@ -8389,6 +8397,125 @@ public sealed class D3D11RenderWindow : Form
                 (float)instance.Y +
                 terrainOffset;
 
+            IReadOnlyList<RuntimeSceneryCollisionTriangle>? collisionTriangles =
+                null;
+
+            if (asset.CollisionGeometry is
+                    { Positions.Length: >= 9, Indices.Length: >= 3 } collisionGeometry)
+            {
+                var triangles =
+                    new List<RuntimeSceneryCollisionTriangle>(
+                        collisionGeometry.Indices.Length /
+                        3);
+
+                for (var triangleIndex = 0;
+                     triangleIndex + 2 <
+                         collisionGeometry.Indices.Length;
+                     triangleIndex +=
+                         3)
+                {
+                    var i0 =
+                        checked(
+                            (int)collisionGeometry.Indices[
+                                triangleIndex]);
+                    var i1 =
+                        checked(
+                            (int)collisionGeometry.Indices[
+                                triangleIndex +
+                                1]);
+                    var i2 =
+                        checked(
+                            (int)collisionGeometry.Indices[
+                                triangleIndex +
+                                2]);
+
+                    var vertexCount =
+                        collisionGeometry.Positions.Length /
+                        3;
+
+                    if (i0 < 0 ||
+                        i1 < 0 ||
+                        i2 < 0 ||
+                        i0 >= vertexCount ||
+                        i1 >= vertexCount ||
+                        i2 >= vertexCount)
+                    {
+                        continue;
+                    }
+
+                    Vector3 ResolveCollisionVertex(
+                        int vertexIndex)
+                    {
+                        var offset =
+                            vertexIndex *
+                            3;
+
+                        var local =
+                            new Vector3(
+                                -collisionGeometry.Positions[
+                                    offset],
+                                collisionGeometry.Positions[
+                                    offset +
+                                    1],
+                                collisionGeometry.Positions[
+                                    offset +
+                                    2]);
+
+                        var rotated =
+                            Vector3.TransformNormal(
+                                local,
+                                rotation);
+
+                        return new Vector3(
+                            (float)worldX +
+                                rotated.X,
+                            baseY +
+                                rotated.Y,
+                            (float)worldZ +
+                                rotated.Z);
+                    }
+
+                    var p0 =
+                        ResolveCollisionVertex(
+                            i0);
+                    var p1 =
+                        ResolveCollisionVertex(
+                            i1);
+                    var p2 =
+                        ResolveCollisionVertex(
+                            i2);
+
+                    triangles.Add(
+                        new RuntimeSceneryCollisionTriangle(
+                            new Vector2(
+                                p0.X,
+                                p0.Z),
+                            new Vector2(
+                                p1.X,
+                                p1.Z),
+                            new Vector2(
+                                p2.X,
+                                p2.Z),
+                            Math.Min(
+                                p0.Y,
+                                Math.Min(
+                                    p1.Y,
+                                    p2.Y)),
+                            Math.Max(
+                                p0.Y,
+                                Math.Max(
+                                    p1.Y,
+                                    p2.Y))));
+                }
+
+                if (triangles.Count >
+                    0)
+                {
+                    collisionTriangles =
+                        triangles;
+                }
+            }
+
             volumes.Add(
                 new RuntimeSceneryCollisionVolume(
                     key++,
@@ -8404,7 +8531,8 @@ public sealed class D3D11RenderWindow : Form
                     baseY +
                         maximumVertical,
                     asset.Surface,
-                    asset.CollisionBounds is not null));
+                    asset.CollisionBounds is not null,
+                    collisionTriangles));
         }
 
         return volumes;
@@ -8520,17 +8648,36 @@ public sealed class D3D11RenderWindow : Form
                 continue;
             }
 
-            if (!TryResolveOrientedRectangleCorrection(
-                    centerDelta,
-                    playerForward,
-                    playerRight,
-                    (float)player.HalfLengthMeters,
-                    (float)player.HalfWidthMeters,
-                    volume.Forward,
-                    volume.Right,
-                    volume.HalfLength,
-                    volume.HalfWidth,
-                    out var correction))
+            Vector2 correction;
+
+            if (volume.Triangles is
+                    { Count: > 0 } triangles)
+            {
+                if (!TryResolveTriangleMeshCorrection(
+                        playerCenter,
+                        playerForward,
+                        playerRight,
+                        (float)player.HalfLengthMeters,
+                        (float)player.HalfWidthMeters,
+                        playerMinimumY,
+                        playerMaximumY,
+                        triangles,
+                        out correction))
+                {
+                    continue;
+                }
+            }
+            else if (!TryResolveOrientedRectangleCorrection(
+                         centerDelta,
+                         playerForward,
+                         playerRight,
+                         (float)player.HalfLengthMeters,
+                         (float)player.HalfWidthMeters,
+                         volume.Forward,
+                         volume.Right,
+                         volume.HalfLength,
+                         volume.HalfWidth,
+                         out correction))
             {
                 continue;
             }
@@ -8583,6 +8730,238 @@ public sealed class D3D11RenderWindow : Form
             _activeSceneryCollisionVolumes.Add(
                 key);
         }
+    }
+
+    private static bool TryResolveTriangleMeshCorrection(
+        Vector2 rectangleCenter,
+        Vector2 rectangleForward,
+        Vector2 rectangleRight,
+        float rectangleHalfLength,
+        float rectangleHalfWidth,
+        float rectangleMinimumY,
+        float rectangleMaximumY,
+        IReadOnlyList<RuntimeSceneryCollisionTriangle> triangles,
+        out Vector2 correction)
+    {
+        correction =
+            Vector2.Zero;
+
+        var workingCenter =
+            rectangleCenter;
+
+        var collided =
+            false;
+
+        for (var pass = 0;
+             pass <
+                 4;
+             pass++)
+        {
+            var passCollision =
+                false;
+
+            foreach (var triangle in
+                     triangles)
+            {
+                if (rectangleMaximumY <
+                        triangle.MinimumY ||
+                    rectangleMinimumY >
+                        triangle.MaximumY)
+                {
+                    continue;
+                }
+
+                if (!TryResolveOrientedRectangleTriangleCorrection(
+                        workingCenter,
+                        rectangleForward,
+                        rectangleRight,
+                        rectangleHalfLength,
+                        rectangleHalfWidth,
+                        triangle,
+                        out var triangleCorrection))
+                {
+                    continue;
+                }
+
+                passCollision =
+                    true;
+                collided =
+                    true;
+
+                correction +=
+                    triangleCorrection;
+
+                workingCenter +=
+                    triangleCorrection;
+            }
+
+            if (!passCollision)
+            {
+                break;
+            }
+        }
+
+        return collided;
+    }
+
+    private static bool TryResolveOrientedRectangleTriangleCorrection(
+        Vector2 rectangleCenter,
+        Vector2 rectangleForward,
+        Vector2 rectangleRight,
+        float rectangleHalfLength,
+        float rectangleHalfWidth,
+        RuntimeSceneryCollisionTriangle triangle,
+        out Vector2 correction)
+    {
+        correction =
+            Vector2.Zero;
+
+        Span<Vector2> rawAxes =
+        [
+            rectangleForward,
+            rectangleRight,
+            new Vector2(
+                -(triangle.B -
+                  triangle.A).Y,
+                (triangle.B -
+                 triangle.A).X),
+            new Vector2(
+                -(triangle.C -
+                  triangle.B).Y,
+                (triangle.C -
+                 triangle.B).X),
+            new Vector2(
+                -(triangle.A -
+                  triangle.C).Y,
+                (triangle.A -
+                 triangle.C).X)
+        ];
+
+        var minimumOverlap =
+            float.PositiveInfinity;
+
+        var bestAxis =
+            Vector2.Zero;
+
+        foreach (var rawAxis in
+                 rawAxes)
+        {
+            if (rawAxis.LengthSquared() <
+                0.000001f)
+            {
+                continue;
+            }
+
+            var axis =
+                Vector2.Normalize(
+                    rawAxis);
+
+            var rectangleCenterProjection =
+                Vector2.Dot(
+                    rectangleCenter,
+                    axis);
+
+            var rectangleRadius =
+                Math.Abs(
+                    Vector2.Dot(
+                        rectangleForward,
+                        axis)) *
+                    rectangleHalfLength +
+                Math.Abs(
+                    Vector2.Dot(
+                        rectangleRight,
+                        axis)) *
+                    rectangleHalfWidth;
+
+            var rectangleMinimum =
+                rectangleCenterProjection -
+                rectangleRadius;
+
+            var rectangleMaximum =
+                rectangleCenterProjection +
+                rectangleRadius;
+
+            var a =
+                Vector2.Dot(
+                    triangle.A,
+                    axis);
+            var b =
+                Vector2.Dot(
+                    triangle.B,
+                    axis);
+            var c =
+                Vector2.Dot(
+                    triangle.C,
+                    axis);
+
+            var triangleMinimum =
+                Math.Min(
+                    a,
+                    Math.Min(
+                        b,
+                        c));
+
+            var triangleMaximum =
+                Math.Max(
+                    a,
+                    Math.Max(
+                        b,
+                        c));
+
+            var overlap =
+                Math.Min(
+                    rectangleMaximum,
+                    triangleMaximum) -
+                Math.Max(
+                    rectangleMinimum,
+                    triangleMinimum);
+
+            if (overlap <=
+                0.0f)
+            {
+                return false;
+            }
+
+            if (overlap <
+                minimumOverlap)
+            {
+                minimumOverlap =
+                    overlap;
+
+                var triangleCenter =
+                    (triangle.A +
+                     triangle.B +
+                     triangle.C) /
+                    3.0f;
+
+                var pushDirection =
+                    rectangleCenter -
+                    triangleCenter;
+
+                bestAxis =
+                    Vector2.Dot(
+                        pushDirection,
+                        axis) >=
+                    0.0f
+                        ? axis
+                        : -axis;
+            }
+        }
+
+        if (!float.IsFinite(
+                minimumOverlap) ||
+            bestAxis.LengthSquared() <
+                0.000001f)
+        {
+            return false;
+        }
+
+        correction =
+            bestAxis *
+            (minimumOverlap +
+             0.02f);
+
+        return true;
     }
 
     private static bool TryResolveOrientedRectangleCorrection(
