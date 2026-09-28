@@ -113,7 +113,8 @@ public static class WorldLoader
                     source.Mirror,
                     source.SourceLineNumber,
                     ConvertTrafficRules(
-                        source.TrafficRules)))
+                        source.TrafficRules),
+                    source.TerrainAlignMode))
                 .ToArray();
 
             var resources = new WorldTileResources(
