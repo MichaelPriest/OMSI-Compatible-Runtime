@@ -91,6 +91,7 @@ public sealed partial class MainWindow :
     private bool _contentDiscoveryRunning;
     private int _entryPointLoadVersion;
     private bool _refreshing;
+    private bool _restartRuntimeAfterInGameBusSelection;
 
     public MainWindow(
         bool xamlSmokeOnly = false)
@@ -1369,10 +1370,11 @@ public sealed partial class MainWindow :
 
                             SaveSettings();
 
-                            Activate();
+                            _restartRuntimeAfterInGameBusSelection =
+                                true;
 
                             SetStatus(
-                                $"Ônibus selecionado no jogo: {requestedBus.SelectionLabel}. Pressione JOGAR para continuar.");
+                                $"Ônibus selecionado no jogo: {requestedBus.SelectionLabel}. Aplicando seleção...");
                             return;
                         }
                     }
@@ -1426,15 +1428,35 @@ public sealed partial class MainWindow :
         DispatcherQueue.TryEnqueue(
             () =>
             {
+                var restartAfterBusSelection =
+                    _restartRuntimeAfterInGameBusSelection &&
+                    exitCode ==
+                        0;
+
+                _restartRuntimeAfterInGameBusSelection =
+                    false;
+
                 HideLoading();
+
+                UpdatePlayAvailability();
+                UpdateRuntimeStatusCards();
+
+                if (restartAfterBusSelection)
+                {
+                    SetStatus(
+                        "Aplicando ônibus e HOF selecionados no jogo...");
+
+                    PlayButton_Click(
+                        this,
+                        new RoutedEventArgs());
+
+                    return;
+                }
 
                 SetStatus(
                     exitCode == 0
                         ? "Runtime encerrado."
                         : $"Runtime encerrado com erro {exitCode}.");
-
-                UpdatePlayAvailability();
-                UpdateRuntimeStatusCards();
             });
     }
 
