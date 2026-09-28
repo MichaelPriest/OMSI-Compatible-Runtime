@@ -765,7 +765,7 @@ public sealed class D3D11RenderWindow : Form
                             12,
                             12),
                     Text =
-                        "FPS --  |  --.- ms"
+                        "FPS --  |  --.- ms\nMSAA -- · Sharp --"
                 };
 
             Controls.Add(
@@ -17347,8 +17347,20 @@ public sealed class D3D11RenderWindow : Form
             1000.0 /
             frames;
 
+        var graphicsMode =
+            _activeMsaaSamples >=
+                    2
+                ? $"MSAA {_activeMsaaSamples}x"
+                : "MSAA off";
+
+        var sharpenMode =
+            _sharpenStrength >
+                    0.0001f
+                ? $"Sharp {_sharpenStrength:0.00}"
+                : "Sharp off";
+
         _fpsLabel.Text =
-            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms";
+            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}";
 
         _fpsFrameCount =
             0;
