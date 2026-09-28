@@ -415,9 +415,9 @@ public sealed class D3D12PresentationContext :
                 device.CreateGraphicsPipelineState(
                     pipelineStateDescription);
 
-            ReadOnlySpan<RuntimeObjectVertex> vertices =
+            ReadOnlySpan<RuntimeTerrainVertex> vertices =
             [
-                new RuntimeObjectVertex(
+                new RuntimeTerrainVertex(
                     new Vector3(
                         0.0f,
                         0.65f,
@@ -427,8 +427,10 @@ public sealed class D3D12PresentationContext :
                         0.30f,
                         0.20f,
                         1.0f),
+                    Vector2.Zero,
+                    Vector2.Zero,
                     Vector2.Zero),
-                new RuntimeObjectVertex(
+                new RuntimeTerrainVertex(
                     new Vector3(
                         0.65f,
                         -0.55f,
@@ -438,8 +440,10 @@ public sealed class D3D12PresentationContext :
                         0.80f,
                         0.35f,
                         1.0f),
+                    Vector2.Zero,
+                    Vector2.Zero,
                     Vector2.Zero),
-                new RuntimeObjectVertex(
+                new RuntimeTerrainVertex(
                     new Vector3(
                         -0.65f,
                         -0.55f,
