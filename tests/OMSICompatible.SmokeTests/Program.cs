@@ -1742,6 +1742,11 @@ try
             "6",
             "[approachdist]",
             "12",
+            "[traffic_light_jump]",
+            "0",
+            "2",
+            "1",
+            "0",
             "[path]",
             "1.5",
             "0",
@@ -6646,8 +6651,20 @@ try
         Math.Abs(
             verifiedEditorOnlyAsset.TrafficLights[0].ApproachDistanceMeters -
             12.0) <
+            0.0001 &&
+        verifiedEditorOnlyAsset.TrafficLightJumps is
+            { Count: 1 } &&
+        verifiedEditorOnlyAsset.TrafficLightJumps[0].CheckTrafficLightIndex ==
+            0 &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.TrafficLightJumps[0].TriggerTimeSeconds -
+            2.0) <
+            0.0001 &&
+        verifiedEditorOnlyAsset.TrafficLightJumps[0].JumpIfNoApproach &&
+        Math.Abs(
+            verifiedEditorOnlyAsset.TrafficLightJumps[0].TargetTimeSeconds) <
             0.0001,
-        "Crossing traffic-light cycle/phases were not preserved.");
+        "Crossing traffic-light cycle/phases/jumps were not preserved.");
 
     Require(
         world.SceneryAssets.TryGetValue(
