@@ -255,6 +255,11 @@ public sealed class D3D11RenderWindow : Form
         _trafficStep;
     private readonly Action<int, float>?
         _trafficCollisionResponse;
+    private readonly Action<
+        double,
+        OmsiScriptRuntime,
+        Action<string>>?
+        _pluginStep;
     private IReadOnlyList<RuntimeTrafficAgentInfo>
         _trafficAgents =
             Array.Empty<RuntimeTrafficAgentInfo>();
@@ -666,6 +671,11 @@ public sealed class D3D11RenderWindow : Form
             railSignalStateProvider = null,
         Action<int, float>?
             trafficCollisionResponse = null,
+        Action<
+            double,
+            OmsiScriptRuntime,
+            Action<string>>?
+            pluginStep = null,
         bool terrainCollisionsEnabled = true,
         int reflectionTextureSize = 512,
         string? reflectionMode = "economy")
@@ -675,6 +685,8 @@ public sealed class D3D11RenderWindow : Form
             trafficStep;
         _trafficCollisionResponse =
             trafficCollisionResponse;
+        _pluginStep =
+            pluginStep;
         _trafficAgents =
             _trafficStep?.Invoke(
                 0.0) ??
@@ -14559,6 +14571,11 @@ public sealed class D3D11RenderWindow : Form
         UpdateScriptHostVariables(
             deltaSeconds,
             absoluteSeconds);
+
+        _pluginStep?.Invoke(
+            deltaSeconds,
+            _scriptRuntime,
+            DispatchOmsiScriptTrigger);
 
         // OMSI scripts own engine/electrical/gearbox state. The host feeds
         // predefined physical/input variables, then the vehicle scripts
