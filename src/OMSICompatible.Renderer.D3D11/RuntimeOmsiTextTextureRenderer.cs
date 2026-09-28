@@ -178,7 +178,7 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
                 fontName);
 
         if (definition is null ||
-            !_textureLoader.TryReadRgba(
+            !RuntimeGpuTextureLoader.TryReadRgba(
                 definition.AlphaBitmapPath,
                 out var alphaPixels,
                 out var alphaWidth,
@@ -204,7 +204,7 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
             File.Exists(
                 definition.ColorBitmapPath))
         {
-            _textureLoader.TryReadRgba(
+            RuntimeGpuTextureLoader.TryReadRgba(
                 definition.ColorBitmapPath,
                 out colorPixels,
                 out colorWidth,
