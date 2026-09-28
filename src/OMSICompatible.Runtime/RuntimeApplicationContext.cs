@@ -1222,8 +1222,12 @@ internal sealed class RuntimeApplicationContext :
                     _lastPrefetchedCenter =
                         requested;
 
+                    var textureCacheDiagnostics =
+                        D3D11RenderWindow
+                            .GetTextureFileCacheDiagnostics();
+
                     Console.WriteLine(
-                        $"[streaming-prefetch] ready {requested.X},{requested.Y}; textures={texturePaths.Count}; cachedFiles={warmedTextureFiles}.");
+                        $"[streaming-prefetch] ready {requested.X},{requested.Y}; textures={texturePaths.Count}; cachedFiles={warmedTextureFiles}; {textureCacheDiagnostics}.");
                 }
                 catch (Exception exception)
                 {
