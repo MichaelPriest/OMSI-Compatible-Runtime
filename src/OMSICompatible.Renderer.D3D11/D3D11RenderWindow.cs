@@ -2652,19 +2652,27 @@ public sealed class D3D11RenderWindow : Form
         Console.WriteLine(
             $"[terrain-align] {signature}");
 
-        try
-        {
-            File.AppendAllText(
-                Path.Combine(
-                    AppContext.BaseDirectory,
-                    "terrain-alignment.log"),
-                $"{DateTimeOffset.Now:O}|{signature}{Environment.NewLine}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(
-                $"[terrain-align] unable to append diagnostics: {ex.Message}");
-        }
+        var diagnosticLine =
+            $"{DateTimeOffset.Now:O}|{signature}{Environment.NewLine}";
+
+        _ =
+            Task.Run(
+                () =>
+                {
+                    try
+                    {
+                        File.AppendAllText(
+                            Path.Combine(
+                                AppContext.BaseDirectory,
+                                "terrain-alignment.log"),
+                            diagnosticLine);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(
+                            $"[terrain-align] unable to append diagnostics: {ex.Message}");
+                    }
+                });
     }
 
     private void CreateSplineResources()
