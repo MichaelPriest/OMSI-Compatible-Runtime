@@ -141,6 +141,63 @@ internal sealed class RuntimeGpuTextureLoader
         return warmed;
     }
 
+    public static int WarmDecodedCache(
+        IEnumerable<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(
+            paths);
+
+        var warmed =
+            0;
+
+        foreach (var path in
+                 paths
+                     .Where(
+                         static value =>
+                             !string.IsNullOrWhiteSpace(
+                                 value))
+                     .Distinct(
+                         StringComparer.OrdinalIgnoreCase))
+        {
+            var extension =
+                Path.GetExtension(
+                    path);
+
+            if (!string.Equals(
+                    extension,
+                    ".bmp",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(
+                    extension,
+                    ".png",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(
+                    extension,
+                    ".jpg",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(
+                    extension,
+                    ".jpeg",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (TryReadRgba(
+                    path,
+                    out _,
+                    out _,
+                    out _,
+                    requireCacheable:
+                        true))
+            {
+                warmed++;
+            }
+        }
+
+        return warmed;
+    }
+
     public static string GetFileCacheDiagnostics()
     {
         lock (TextureFileCacheGate)
@@ -1640,11 +1697,13 @@ internal sealed class RuntimeGpuTextureLoader
         return true;
     }
 
-    public bool TryReadRgba(
+    private static bool TryReadRgba(
         string path,
         out byte[] pixels,
         out int width,
-        out int height)
+        out int height,
+        bool requireCacheable =
+            false)
     {
         pixels =
             Array.Empty<byte>();
@@ -1756,7 +1815,10 @@ internal sealed class RuntimeGpuTextureLoader
                     4L);
 
             if (decodedByteCount >
-                int.MaxValue)
+                    int.MaxValue ||
+                requireCacheable &&
+                decodedByteCount >
+                    MaximumSingleDecodedTextureCacheBytes)
             {
                 return false;
             }
