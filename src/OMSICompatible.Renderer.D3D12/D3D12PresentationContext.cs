@@ -576,6 +576,43 @@ public sealed class D3D12PresentationContext :
         float blue,
         bool vsync)
     {
+        DrawAndPresent(
+            _geometryBuffer,
+            batches:
+                null,
+            red,
+            green,
+            blue,
+            vsync);
+    }
+
+    public void DrawAndPresent(
+        D3D12RuntimeTerrainResources terrain,
+        float red,
+        float green,
+        float blue,
+        bool vsync)
+    {
+        ArgumentNullException.ThrowIfNull(
+            terrain);
+
+        DrawAndPresent(
+            terrain.Buffer,
+            terrain.Batches,
+            red,
+            green,
+            blue,
+            vsync);
+    }
+
+    private void DrawAndPresent(
+        D3D12RuntimeGeometryBuffer geometryBuffer,
+        IReadOnlyList<RuntimeTerrainBatch>? batches,
+        float red,
+        float green,
+        float blue,
+        bool vsync)
+    {
         ObjectDisposedException.ThrowIf(
             _disposed,
             this);
@@ -651,14 +688,36 @@ public sealed class D3D12PresentationContext :
 
         _commandList.IASetVertexBuffers(
             0,
-            _geometryBuffer.View);
+            geometryBuffer.View);
 
-        _commandList.DrawInstanced(
-            checked(
-                (uint)_geometryBuffer.VertexCount),
-            1,
-            0,
-            0);
+        if (batches is
+            { Count: > 0 })
+        {
+            foreach (var batch in
+                     batches)
+            {
+                if (batch.VertexCount ==
+                    0)
+                {
+                    continue;
+                }
+
+                _commandList.DrawInstanced(
+                    batch.VertexCount,
+                    1,
+                    batch.StartVertex,
+                    0);
+            }
+        }
+        else
+        {
+            _commandList.DrawInstanced(
+                checked(
+                    (uint)geometryBuffer.VertexCount),
+                1,
+                0,
+                0);
+        }
 
         _commandList.ResourceBarrierTransition(
             renderTarget,
