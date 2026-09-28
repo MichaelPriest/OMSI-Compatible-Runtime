@@ -2466,6 +2466,12 @@ public sealed partial class MainWindow :
         SettingsLandscapeCollisionsCheck.IsChecked =
             _runtimeOptions.VehicleLandscapeCollisions;
 
+        SettingsTerrainCollisionsCheck.IsChecked =
+            _runtimeOptions.TerrainCollisions;
+
+        SettingsVehicleCollisionsCheck.IsChecked =
+            _runtimeOptions.VehicleToVehicleCollisions;
+
         SettingsStreamingRadiusBox.Text =
             _runtimeOptions.RuntimeStreamingRadius.ToString(
                 System.Globalization.CultureInfo.InvariantCulture);
@@ -2666,6 +2672,14 @@ public sealed partial class MainWindow :
 
         _runtimeOptions.VehicleLandscapeCollisions =
             SettingsLandscapeCollisionsCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.TerrainCollisions =
+            SettingsTerrainCollisionsCheck.IsChecked ==
+            true;
+
+        _runtimeOptions.VehicleToVehicleCollisions =
+            SettingsVehicleCollisionsCheck.IsChecked ==
             true;
 
         _runtimeOptions.RuntimeStreamingRadius =
