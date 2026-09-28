@@ -231,6 +231,7 @@ public static class RuntimeVehicleInfoFactory
                             -camera.HeadingDegrees,
                             camera.PitchDegrees,
                             camera.MaximumViewerDistanceMeters,
+                            camera.ContinuousRendering,
                             camera.RuntimeTextureName,
                             camera.RuntimeTextureKey))
                 .ToArray(),
