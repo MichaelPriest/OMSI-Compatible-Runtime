@@ -1196,27 +1196,34 @@ internal sealed class RuntimeApplicationContext :
 
                 try
                 {
-                    await Task.Run(
-                        () =>
-                            WorldLoader.WarmCache(
-                                _contentRoot,
-                                _map,
-                                new WorldLoadOptions(
-                                    requested.X,
-                                    requested.Y,
-                                    ActiveTileRadius:
-                                        Math.Clamp(
-                                            _options.RuntimeStreamingRadius,
-                                            0,
-                                            4),
-                                    LoadEntireMap:
-                                        false)));
+                    var texturePaths =
+                        await Task.Run(
+                            () =>
+                                WorldLoader.WarmCache(
+                                    _contentRoot,
+                                    _map,
+                                    new WorldLoadOptions(
+                                        requested.X,
+                                        requested.Y,
+                                        ActiveTileRadius:
+                                            Math.Clamp(
+                                                _options.RuntimeStreamingRadius,
+                                                0,
+                                                4),
+                                        LoadEntireMap:
+                                            false)));
+
+                    var warmedTextureFiles =
+                        await Task.Run(
+                            () =>
+                                D3D11RenderWindow.WarmTextureFileCache(
+                                    texturePaths));
 
                     _lastPrefetchedCenter =
                         requested;
 
                     Console.WriteLine(
-                        $"[streaming-prefetch] ready {requested.X},{requested.Y}.");
+                        $"[streaming-prefetch] ready {requested.X},{requested.Y}; textures={texturePaths.Count}; cachedFiles={warmedTextureFiles}.");
                 }
                 catch (Exception exception)
                 {
