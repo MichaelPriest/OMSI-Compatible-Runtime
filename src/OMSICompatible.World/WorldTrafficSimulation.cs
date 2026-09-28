@@ -744,9 +744,7 @@ public sealed class WorldTrafficSimulation
         if (!double.IsFinite(
                 deltaSeconds) ||
             deltaSeconds <=
-                0.0 ||
-            _agents.Count ==
-                0)
+                0.0)
         {
             return;
         }
@@ -2521,9 +2519,301 @@ public sealed class WorldTrafficSimulation
                     return true;
                 }
             }
+
+            if (ExternalObstacleApproachesSegment(
+                    target,
+                    approachDistance))
+            {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    private bool ExternalObstacleApproachesSegment(
+        WorldTrafficPathSegment target,
+        double maximumDistance)
+    {
+        if (_externalObstacle is not
+                { } obstacle ||
+            maximumDistance <
+                0.0 ||
+            !TryResolveExternalObstaclePath(
+                obstacle,
+                out var current,
+                out var travelForward,
+                out var distanceAlongCurrent))
+        {
+            return false;
+        }
+
+        if (current.Index ==
+            target.Index)
+        {
+            return true;
+        }
+
+        var currentLength =
+            SegmentLength(
+                current);
+
+        var distance =
+            travelForward
+                ? Math.Max(
+                    currentLength -
+                        distanceAlongCurrent,
+                    0.0)
+                : Math.Max(
+                    distanceAlongCurrent,
+                    0.0);
+
+        var guard =
+            0;
+
+        while (guard++ <
+               MaximumTrafficLookAheadSegments)
+        {
+            if (distance >
+                maximumDistance +
+                    0.0001)
+            {
+                return false;
+            }
+
+            var connections =
+                travelForward
+                    ? current.ForwardConnections
+                    : current.ReverseConnections;
+
+            if (connections.Count !=
+                1)
+            {
+                // The player path is not known beyond an ambiguous branch.
+                // Do not guess which signal request should be triggered.
+                return false;
+            }
+
+            if (!_segmentsByIndex.TryGetValue(
+                    connections[0],
+                    out var next))
+            {
+                return false;
+            }
+
+            if (next.Index ==
+                target.Index)
+            {
+                return true;
+            }
+
+            distance +=
+                SegmentLength(
+                    next);
+
+            current =
+                next;
+        }
+
+        return false;
+    }
+
+    private bool TryResolveExternalObstaclePath(
+        WorldTrafficObstacleState obstacle,
+        out WorldTrafficPathSegment segment,
+        out bool travelForward,
+        out double distanceAlongSegment)
+    {
+        segment =
+            default!;
+        travelForward =
+            true;
+        distanceAlongSegment =
+            0.0;
+
+        var bestDistanceSquared =
+            double.PositiveInfinity;
+
+        var obstacleForwardX =
+            Math.Sin(
+                obstacle.HeadingRadians);
+
+        var obstacleForwardZ =
+            Math.Cos(
+                obstacle.HeadingRadians);
+
+        foreach (var candidate in
+                 _roadSegments)
+        {
+            if (candidate.Points.Count <
+                2)
+            {
+                continue;
+            }
+
+            var accumulated =
+                0.0;
+
+            for (var index = 1;
+                 index <
+                     candidate.Points.Count;
+                 index++)
+            {
+                var a =
+                    candidate.Points[
+                        index - 1];
+
+                var b =
+                    candidate.Points[
+                        index];
+
+                if (Math.Abs(
+                        obstacle.Position.Y -
+                        (a.Y +
+                         b.Y) *
+                            0.5) >
+                    5.0)
+                {
+                    accumulated +=
+                        Distance(
+                            a,
+                            b);
+                    continue;
+                }
+
+                var dx =
+                    b.X -
+                    a.X;
+
+                var dz =
+                    b.Z -
+                    a.Z;
+
+                var lengthSquared =
+                    dx *
+                        dx +
+                    dz *
+                        dz;
+
+                if (lengthSquared <=
+                    0.000001)
+                {
+                    continue;
+                }
+
+                var length =
+                    Math.Sqrt(
+                        lengthSquared);
+
+                var normalizedX =
+                    dx /
+                    length;
+
+                var normalizedZ =
+                    dz /
+                    length;
+
+                var alignment =
+                    obstacleForwardX *
+                        normalizedX +
+                    obstacleForwardZ *
+                        normalizedZ;
+
+                var candidateTravelForward =
+                    alignment >=
+                    0.0;
+
+                var directionAllowed =
+                    candidate.Direction switch
+                    {
+                        0 =>
+                            candidateTravelForward,
+                        1 =>
+                            !candidateTravelForward,
+                        2 =>
+                            true,
+                        _ =>
+                            true
+                    };
+
+                if (!directionAllowed ||
+                    Math.Abs(
+                        alignment) <
+                    0.25)
+                {
+                    accumulated +=
+                        length;
+                    continue;
+                }
+
+                var t =
+                    Math.Clamp(
+                        ((obstacle.Position.X -
+                          a.X) *
+                             dx +
+                         (obstacle.Position.Z -
+                          a.Z) *
+                             dz) /
+                        lengthSquared,
+                        0.0,
+                        1.0);
+
+                var closestX =
+                    a.X +
+                    dx *
+                        t;
+
+                var closestZ =
+                    a.Z +
+                    dz *
+                        t;
+
+                var offsetX =
+                    obstacle.Position.X -
+                    closestX;
+
+                var offsetZ =
+                    obstacle.Position.Z -
+                    closestZ;
+
+                var distanceSquared =
+                    offsetX *
+                        offsetX +
+                    offsetZ *
+                        offsetZ;
+
+                if (distanceSquared >=
+                    bestDistanceSquared)
+                {
+                    accumulated +=
+                        length;
+                    continue;
+                }
+
+                bestDistanceSquared =
+                    distanceSquared;
+
+                segment =
+                    candidate;
+
+                travelForward =
+                    candidateTravelForward;
+
+                distanceAlongSegment =
+                    accumulated +
+                    length *
+                        t;
+
+                accumulated +=
+                    length;
+            }
+        }
+
+        // Match the renderer's existing 8 m path-proximity ceiling.
+        return !double.IsPositiveInfinity(
+                   bestDistanceSquared) &&
+               bestDistanceSquared <=
+                   64.0;
     }
 
     private double DistanceAheadToSegment(
@@ -2657,6 +2947,16 @@ public sealed class WorldTrafficSimulation
             ? wrapped +
                 cycleSeconds
             : wrapped;
+    }
+
+    private static double Distance(
+        WorldVector3 first,
+        WorldVector3 second)
+    {
+        return Math.Sqrt(
+            DistanceSquared(
+                first,
+                second));
     }
 
     private static double DistanceSquared(
