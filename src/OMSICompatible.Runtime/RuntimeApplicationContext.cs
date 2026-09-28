@@ -464,6 +464,8 @@ internal sealed class RuntimeApplicationContext :
                         _options.MaterialNightMap,
                     trafficStep:
                         StepTrafficSimulation,
+                    trafficSignalStateProvider:
+                        GetTrafficSignalStates,
                     trafficCollisionResponse:
                         ApplyTrafficCollisionResponse,
                     railSignalStateProvider:
@@ -1772,6 +1774,27 @@ internal sealed class RuntimeApplicationContext :
             .ApplyCollisionResponse(
                 agentIndex,
                 relativeImpactSpeedKph);
+    }
+
+    private IReadOnlyList<RuntimeTrafficSignalStateInfo>
+        GetTrafficSignalStates()
+    {
+        if (_trafficSimulation is not
+                { } roadSimulation)
+        {
+            return Array.Empty<
+                RuntimeTrafficSignalStateInfo>();
+        }
+
+        return roadSimulation
+            .SnapshotTrafficSignals()
+            .Select(
+                static state =>
+                    new RuntimeTrafficSignalStateInfo(
+                        state.SegmentIndex,
+                        state.Phase,
+                        state.PositionSeconds))
+            .ToArray();
     }
 
     private IReadOnlyList<RuntimeTrafficAgentInfo>
