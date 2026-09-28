@@ -634,6 +634,9 @@
                         <CheckBox x:Name="SettingsVsyncCheck" Content="VSync"/>
                         <CheckBox x:Name="SettingsBorderlessCheck" Content="Fullscreen borderless"/>
                         <CheckBox x:Name="SettingsHardwareGpuCheck" Content="Preferir GPU dedicada"/>
+                        <TextBox x:Name="SettingsMsaaSamplesBox"
+                                 Header="Anti-aliasing MSAA (0 / 2 / 4)"
+                                 ToolTipService.ToolTip="0 desativa; 2 ou 4 define o número de amostras. O runtime reduz automaticamente se a GPU não suportar o valor escolhido."/>
                         <CheckBox x:Name="SettingsShowFpsCheck" Content="Mostrar FPS"/>
                         <CheckBox x:Name="SettingsDiagnosticsCheck" Content="Diagnóstico do runtime"/>
                     </StackPanel>
