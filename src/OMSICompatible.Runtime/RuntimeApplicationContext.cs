@@ -22,6 +22,9 @@ internal sealed class RuntimeApplicationContext :
     private readonly LoadingForm _loading;
     private readonly SemaphoreSlim _streamingGate =
         new(1, 1);
+    private readonly SemaphoreSlim _prefetchGate =
+        new(1, 1);
+    private (int X, int Y)? _lastPrefetchedCenter;
 
     private D3D11RenderWindow? _runtimeWindow;
     private OmsiVehicleAsset? _vehicleAsset;
@@ -1059,6 +1062,8 @@ internal sealed class RuntimeApplicationContext :
 
                 Console.WriteLine(
                     $"[streaming] Active {streamedWorld.Tiles.Count:N0}/{streamedWorld.TotalTileCount:N0} tiles around {requested.X},{requested.Y}.");
+
+                ScheduleDirectionalPrefetch();
             }
         }
         catch (Exception ex)
@@ -1069,6 +1074,142 @@ internal sealed class RuntimeApplicationContext :
         finally
         {
             _streamingGate.Release();
+        }
+    }
+
+    private void ScheduleDirectionalPrefetch()
+    {
+        if (_closing ||
+            _loadEntireMap ||
+            _runtimeWindow is null ||
+            _runtimeWindow.IsDisposed ||
+            _runtimeWindow.PlayerTrafficObstacle is not
+                { } obstacle ||
+            Math.Abs(
+                obstacle.SpeedMetersPerSecond) <
+                2.0)
+        {
+            return;
+        }
+
+        var forwardRuntimeX =
+            Math.Sin(
+                obstacle.HeadingRadians);
+
+        var forwardRuntimeY =
+            Math.Cos(
+                obstacle.HeadingRadians);
+
+        if (obstacle.SpeedMetersPerSecond <
+            0.0)
+        {
+            forwardRuntimeX =
+                -forwardRuntimeX;
+
+            forwardRuntimeY =
+                -forwardRuntimeY;
+        }
+
+        var runtimeOffsetX =
+            Math.Abs(
+                forwardRuntimeX) >=
+                    0.35
+                ? Math.Sign(
+                    forwardRuntimeX)
+                : 0;
+
+        var sourceOffsetY =
+            Math.Abs(
+                forwardRuntimeY) >=
+                    0.35
+                ? Math.Sign(
+                    forwardRuntimeY)
+                : 0;
+
+        if (runtimeOffsetX ==
+                0 &&
+            sourceOffsetY ==
+                0)
+        {
+            return;
+        }
+
+        // Runtime X is mirrored relative to OMSI source tile X.
+        var target =
+            (
+                X:
+                    _loadedCenterX -
+                    runtimeOffsetX,
+                Y:
+                    _loadedCenterY +
+                    sourceOffsetY);
+
+        if (target.X ==
+                _loadedCenterX &&
+            target.Y ==
+                _loadedCenterY ||
+            _lastPrefetchedCenter ==
+                target)
+        {
+            return;
+        }
+
+        _lastPrefetchedCenter =
+            target;
+
+        _ =
+            PrefetchWorldCacheAsync(
+                target.X,
+                target.Y);
+    }
+
+    private async Task PrefetchWorldCacheAsync(
+        int centerX,
+        int centerY)
+    {
+        if (!await _prefetchGate.WaitAsync(
+                0))
+        {
+            return;
+        }
+
+        try
+        {
+            if (_closing)
+            {
+                return;
+            }
+
+            Console.WriteLine(
+                $"[streaming-prefetch] warming {centerX},{centerY}...");
+
+            await Task.Run(
+                () =>
+                    WorldLoader.WarmCache(
+                        _contentRoot,
+                        _map,
+                        new WorldLoadOptions(
+                            centerX,
+                            centerY,
+                            ActiveTileRadius:
+                                Math.Clamp(
+                                    _options.RuntimeStreamingRadius,
+                                    0,
+                                    4),
+                            LoadEntireMap:
+                                false)));
+
+            Console.WriteLine(
+                $"[streaming-prefetch] ready {centerX},{centerY}.");
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"[streaming-prefetch] {exception.Message}");
+        }
+        finally
+        {
+            _prefetchGate.Release();
         }
     }
 
