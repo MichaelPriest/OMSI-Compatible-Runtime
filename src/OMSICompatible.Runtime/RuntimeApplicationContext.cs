@@ -128,8 +128,20 @@ internal sealed class RuntimeApplicationContext :
             OmsiPluginDiscovery.Discover(
                 _contentRoot.RootPath);
 
+        var pluginArchitectures =
+            discoveredPlugins
+                .Where(
+                    static plugin =>
+                        File.Exists(
+                            plugin.DllPath))
+                .Select(
+                    static plugin =>
+                        OmsiPluginBinaryInspector.Inspect(
+                            plugin.DllPath))
+                .ToArray();
+
         Console.WriteLine(
-            $"[plugins] discovered={discoveredPlugins.Count:N0}; dllResolved={discoveredPlugins.Count(static plugin => File.Exists(plugin.DllPath)):N0}; vars={discoveredPlugins.Sum(static plugin => plugin.Variables.Count):N0}; strings={discoveredPlugins.Sum(static plugin => plugin.StringVariables.Count):N0}; systemVars={discoveredPlugins.Sum(static plugin => plugin.SystemVariables.Count):N0}; triggers={discoveredPlugins.Sum(static plugin => plugin.Triggers.Count):N0}");
+            $"[plugins] discovered={discoveredPlugins.Count:N0}; dllResolved={pluginArchitectures.Length:N0}; x86={pluginArchitectures.Count(static architecture => architecture == OmsiPluginBinaryArchitecture.X86):N0}; x64={pluginArchitectures.Count(static architecture => architecture == OmsiPluginBinaryArchitecture.X64):N0}; vars={discoveredPlugins.Sum(static plugin => plugin.Variables.Count):N0}; strings={discoveredPlugins.Sum(static plugin => plugin.StringVariables.Count):N0}; systemVars={discoveredPlugins.Sum(static plugin => plugin.SystemVariables.Count):N0}; triggers={discoveredPlugins.Sum(static plugin => plugin.Triggers.Count):N0}");
 
         _loadedCenterX =
             entryPoint.Tile.X;
