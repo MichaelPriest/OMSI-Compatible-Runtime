@@ -496,6 +496,8 @@ public sealed class D3D11RenderWindow : Form
                 StringComparer.OrdinalIgnoreCase);
     private const int MaximumInactiveStreamingTextureCacheEntries =
         512;
+    private const long MaximumInactiveStreamingTextureCacheBytes =
+        768L * 1024L * 1024L;
     private const int MaximumStreamingTextureUploadsPerFrame =
         4;
     private const double MaximumStreamingTextureUploadBudgetMilliseconds =
@@ -1891,30 +1893,59 @@ public sealed class D3D11RenderWindow : Form
                             : long.MinValue)
                 .ToArray();
 
+        var inactiveGpuBytes =
+            inactiveTexturePaths.Sum(
+                path =>
+                    _objectTextureCache[
+                        path]
+                        .ApproximateBytes);
+
         var evictionCount =
             Math.Max(
                 inactiveTexturePaths.Length -
                     MaximumInactiveStreamingTextureCacheEntries,
                 0);
 
-        for (var index = 0;
-             index < evictionCount;
-             index++)
+        var index =
+            0;
+
+        while (index <
+                   inactiveTexturePaths.Length &&
+               (index <
+                    evictionCount ||
+                inactiveGpuBytes >
+                    MaximumInactiveStreamingTextureCacheBytes))
         {
             var cachedPath =
                 inactiveTexturePaths[
                     index];
 
-            RetireStreamingTexture(
+            var cachedTexture =
                 _objectTextureCache[
-                    cachedPath]);
+                    cachedPath];
+
+            inactiveGpuBytes -=
+                cachedTexture.ApproximateBytes;
+
+            RetireStreamingTexture(
+                cachedTexture);
 
             _objectTextureCache.Remove(
                 cachedPath);
 
             _objectTextureLastUsedGeneration.Remove(
                 cachedPath);
+
+            index++;
         }
+
+        var cachedGpuBytes =
+            _objectTextureCache.Values.Sum(
+                static texture =>
+                    texture.ApproximateBytes);
+
+        Console.WriteLine(
+            $"[streaming-textures] cache entries={_objectTextureCache.Count:N0}; gpuMB={cachedGpuBytes / (1024.0 * 1024.0):0.0}; inactiveGpuMB={Math.Max(0L, inactiveGpuBytes) / (1024.0 * 1024.0):0.0}/{MaximumInactiveStreamingTextureCacheBytes / (1024.0 * 1024.0):0}");
 
         _failedObjectTexturePaths.IntersectWith(
             requiredPaths);
