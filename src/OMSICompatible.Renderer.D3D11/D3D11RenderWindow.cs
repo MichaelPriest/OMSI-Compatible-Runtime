@@ -1029,12 +1029,12 @@ public sealed class D3D11RenderWindow : Form
                     generation);
             }
         }
+        catch (ObjectDisposedException)
+        {
+        }
         catch (InvalidOperationException)
         {
             // Window can close while a background geometry build is finishing.
-        }
-        catch (ObjectDisposedException)
-        {
         }
     }
 
