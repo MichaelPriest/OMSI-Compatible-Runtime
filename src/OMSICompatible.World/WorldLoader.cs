@@ -29,6 +29,22 @@ public static class WorldLoader
         long LastUsedGeneration,
         WorldTile Tile);
 
+    private static readonly object SplineCacheGate =
+        new();
+    private static readonly Dictionary<string, CachedSplineAsset>
+        SplineCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private static long _splineCacheGeneration;
+    private const int MaximumSplineCacheEntries =
+        512;
+
+    private sealed record CachedSplineAsset(
+        long SourceBytes,
+        DateTime SourceLastWriteUtc,
+        long LastUsedGeneration,
+        WorldSplineAsset Asset);
+
     public static WorldDefinition Load(
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
@@ -630,6 +646,12 @@ public static class WorldLoader
         var result = new Dictionary<string, WorldSplineAsset>(
             StringComparer.OrdinalIgnoreCase);
 
+        var cacheHits =
+            0;
+
+        var cacheMisses =
+            0;
+
         var dependencyByPath = dependencies.Dependencies
             .Where(static dependency =>
                 dependency.Kind == WorldAssetKind.Spline)
@@ -658,10 +680,51 @@ public static class WorldLoader
                 continue;
             }
 
+            var resolvedPath =
+                dependency.ResolvedPath;
+
+            var (sourceBytes, sourceLastWriteUtc) =
+                GetFileStamp(
+                    resolvedPath);
+
+            lock (SplineCacheGate)
+            {
+                _splineCacheGeneration++;
+
+                if (SplineCache.TryGetValue(
+                        resolvedPath,
+                        out var cached) &&
+                    cached.SourceBytes ==
+                        sourceBytes &&
+                    cached.SourceLastWriteUtc ==
+                        sourceLastWriteUtc)
+                {
+                    SplineCache[
+                        resolvedPath] =
+                        cached with
+                        {
+                            LastUsedGeneration =
+                                _splineCacheGeneration
+                        };
+
+                    result[
+                        declaredPath] =
+                        cached.Asset with
+                        {
+                            DeclaredPath =
+                                declaredPath
+                        };
+
+                    cacheHits++;
+
+                    continue;
+                }
+            }
+
             try
             {
                 var definition = OmsiSplineDefinitionReader.ReadFile(
-                    dependency.ResolvedPath);
+                    resolvedPath);
 
                 var surfaces = definition.Surfaces
                     .Select(surface =>
@@ -710,12 +773,47 @@ public static class WorldLoader
                                     path.Direction))
                         .ToArray();
 
-                result[declaredPath] = new WorldSplineAsset(
-                    declaredPath,
-                    dependency.ResolvedPath,
-                    definition.Exists,
-                    surfaces,
-                    paths);
+                var asset =
+                    new WorldSplineAsset(
+                        declaredPath,
+                        resolvedPath,
+                        definition.Exists,
+                        surfaces,
+                        paths);
+
+                result[
+                    declaredPath] =
+                    asset;
+
+                cacheMisses++;
+
+                lock (SplineCacheGate)
+                {
+                    _splineCacheGeneration++;
+
+                    SplineCache[
+                        resolvedPath] =
+                        new CachedSplineAsset(
+                            sourceBytes,
+                            sourceLastWriteUtc,
+                            _splineCacheGeneration,
+                            asset);
+
+                    while (SplineCache.Count >
+                           MaximumSplineCacheEntries)
+                    {
+                        var oldest =
+                            SplineCache
+                                .OrderBy(
+                                    static pair =>
+                                        pair.Value
+                                            .LastUsedGeneration)
+                                .First();
+
+                        SplineCache.Remove(
+                            oldest.Key);
+                    }
+                }
             }
             catch (Exception ex) when (
                 ex is IOException or
@@ -725,14 +823,27 @@ public static class WorldLoader
             {
                 result[declaredPath] = new WorldSplineAsset(
                     declaredPath,
-                    dependency.ResolvedPath,
+                    resolvedPath,
                     false,
                     Array.Empty<WorldSplineSurface>(),
                     Array.Empty<WorldSplinePath>());
+
+                cacheMisses++;
             }
         }
 
+        Console.WriteLine(
+            $"[world-cache] spline hits={cacheHits}; misses={cacheMisses}; retained={GetSplineCacheCount()}");
+
         return result;
+    }
+
+    private static int GetSplineCacheCount()
+    {
+        lock (SplineCacheGate)
+        {
+            return SplineCache.Count;
+        }
     }
 
     private static IReadOnlyDictionary<string, WorldSceneryAsset>
