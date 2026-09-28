@@ -1445,28 +1445,64 @@ internal sealed class RuntimeApplicationContext :
                     StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-        foreach (var trainPath in
-                 trainPaths)
-        {
-            if (_railTrainConsists.ContainsKey(
-                    trainPath))
-            {
-                continue;
-            }
+        var missingTrainPaths =
+            trainPaths
+                .Where(
+                    path =>
+                        !_railTrainConsists.ContainsKey(
+                            path))
+                .ToArray();
 
-            try
+        if (missingTrainPaths.Length >
+            0)
+        {
+            var consistLoadStarted =
+                Stopwatch.GetTimestamp();
+
+            var loadedConsists =
+                await Task.Run(
+                    () =>
+                    {
+                        var result =
+                            new List<KeyValuePair<
+                                string,
+                                OmsiTrainConsist>>();
+
+                        foreach (var trainPath in
+                                 missingTrainPaths)
+                        {
+                            try
+                            {
+                                result.Add(
+                                    new KeyValuePair<
+                                        string,
+                                        OmsiTrainConsist>(
+                                        trainPath,
+                                        OmsiTrainConsistReader
+                                            .ReadFile(
+                                                _contentRoot.RootPath,
+                                                trainPath)));
+                            }
+                            catch (Exception exception)
+                            {
+                                Console.WriteLine(
+                                    $"[rail-ai] Failed to parse {trainPath}: {exception.Message}");
+                            }
+                        }
+
+                        return result;
+                    });
+
+            foreach (var pair in
+                     loadedConsists)
             {
                 _railTrainConsists[
-                    trainPath] =
-                    OmsiTrainConsistReader.ReadFile(
-                        _contentRoot.RootPath,
-                        trainPath);
+                    pair.Key] =
+                    pair.Value;
             }
-            catch (Exception exception)
-            {
-                Console.WriteLine(
-                    $"[rail-ai] Failed to parse {trainPath}: {exception.Message}");
-            }
+
+            Console.WriteLine(
+                $"[rail-ai] consistsMs={Stopwatch.GetElapsedTime(consistLoadStarted).TotalMilliseconds:0.0}; requested={missingTrainPaths.Length}; loaded={loadedConsists.Count}");
         }
 
         var requestedVehiclePaths =
