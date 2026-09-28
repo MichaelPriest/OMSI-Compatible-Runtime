@@ -2733,6 +2733,11 @@ internal sealed class RuntimeDriveVehicle :
         float aspect,
         RuntimeTerrainGeometry terrainGeometry)
     {
+        // OMSI [add_camera_reflexion_2]'s final value controls when
+        // the mirror feed is active relative to the user's view. It is not a
+        // world-space far clipping plane. Values such as 0.15 or 0.5 are
+        // common and using them as the projection far plane clips almost the
+        // entire reflected scene.
         return CreateDriverViewProjection(
             new RuntimeDriverCameraInfo(
                 camera.X,
@@ -2743,9 +2748,7 @@ internal sealed class RuntimeDriveVehicle :
                 camera.HeadingDegrees,
                 camera.PitchDegrees),
             aspect,
-            terrainGeometry,
-            maximumRenderDistanceMeters:
-                camera.MaximumRenderDistanceMeters);
+            terrainGeometry);
     }
 
     public Matrix4x4 CreatePassengerViewProjection(
