@@ -1,6 +1,7 @@
 using Vortice.Direct3D;
 using Vortice.Direct3D12;
 using Vortice.DXGI;
+using Vortice.Dxc;
 using Vortice.Mathematics;
 using static Vortice.Direct3D12.D3D12;
 using static Vortice.DXGI.DXGI;
@@ -26,6 +27,8 @@ public sealed class D3D12PresentationContext :
         new ID3D12CommandAllocator[
             FrameCount];
     private readonly ID3D12GraphicsCommandList _commandList;
+    private readonly ID3D12RootSignature _rootSignature;
+    private readonly ID3D12PipelineState _pipelineState;
     private readonly ID3D12Fence _fence;
     private readonly AutoResetEvent _fenceEvent =
         new(
@@ -43,6 +46,8 @@ public sealed class D3D12PresentationContext :
         ID3D12DescriptorHeap rtvHeap,
         uint rtvDescriptorSize,
         ID3D12GraphicsCommandList commandList,
+        ID3D12RootSignature rootSignature,
+        ID3D12PipelineState pipelineState,
         ID3D12Fence fence)
     {
         _factory =
@@ -59,6 +64,10 @@ public sealed class D3D12PresentationContext :
             rtvDescriptorSize;
         _commandList =
             commandList;
+        _rootSignature =
+            rootSignature;
+        _pipelineState =
+            pipelineState;
         _fence =
             fence;
     }
@@ -235,12 +244,109 @@ public sealed class D3D12PresentationContext :
                         CommandListType.Direct);
             }
 
+            var rootSignature =
+                device.CreateRootSignature(
+                    new RootSignatureDescription1(
+                        RootSignatureFlags.AllowInputAssemblerInputLayout));
+
+            const string shaderSource =
+                """
+                struct VsOutput
+                {
+                    float4 position : SV_Position;
+                    float3 color : COLOR0;
+                };
+
+                VsOutput VSMain(uint vertexId : SV_VertexID)
+                {
+                    float2 positions[3] =
+                    {
+                        float2( 0.0,  0.65),
+                        float2( 0.65, -0.55),
+                        float2(-0.65, -0.55)
+                    };
+
+                    float3 colors[3] =
+                    {
+                        float3(0.95, 0.30, 0.20),
+                        float3(0.20, 0.80, 0.35),
+                        float3(0.20, 0.45, 0.95)
+                    };
+
+                    VsOutput output;
+                    output.position = float4(positions[vertexId], 0.0, 1.0);
+                    output.color = colors[vertexId];
+                    return output;
+                }
+
+                float4 PSMain(VsOutput input) : SV_Target0
+                {
+                    return float4(input.color, 1.0);
+                }
+                """;
+
+            using var vertexResult =
+                DxcCompiler.Compile(
+                    DxcShaderStage.Vertex,
+                    shaderSource,
+                    "VSMain");
+
+            if (vertexResult.GetStatus().Failure)
+            {
+                throw new InvalidOperationException(
+                    vertexResult.GetErrors());
+            }
+
+            using var pixelResult =
+                DxcCompiler.Compile(
+                    DxcShaderStage.Pixel,
+                    shaderSource,
+                    "PSMain");
+
+            if (pixelResult.GetStatus().Failure)
+            {
+                throw new InvalidOperationException(
+                    pixelResult.GetErrors());
+            }
+
+            var pipelineStateStream =
+                new PipelineStateStream
+                {
+                    RootSignature =
+                        rootSignature,
+                    VertexShader =
+                        vertexResult.GetObjectBytecodeMemory().Span,
+                    PixelShader =
+                        pixelResult.GetObjectBytecodeMemory().Span,
+                    SampleMask =
+                        uint.MaxValue,
+                    PrimitiveTopology =
+                        PrimitiveTopologyType.Triangle,
+                    RasterizerState =
+                        RasterizerDescription.CullNone,
+                    BlendState =
+                        BlendDescription.Opaque,
+                    DepthStencilState =
+                        DepthStencilDescription.None,
+                    RenderTargetFormats =
+                        [
+                            Format.R8G8B8A8_UNorm
+                        ],
+                    SampleDescription =
+                        SampleDescription.Default
+                };
+
+            var pipelineState =
+                device.CreatePipelineState(
+                    pipelineStateStream);
+
             var commandList =
                 device.CreateCommandList<
                     ID3D12GraphicsCommandList>(
                     CommandListType.Direct,
                     commandAllocators[
-                        0]);
+                        0],
+                    pipelineState);
 
             commandList.Close();
 
@@ -257,6 +363,8 @@ public sealed class D3D12PresentationContext :
                     rtvHeap,
                     rtvDescriptorSize,
                     commandList,
+                    rootSignature,
+                    pipelineState,
                     fence);
 
             for (uint index = 0;
@@ -320,7 +428,11 @@ public sealed class D3D12PresentationContext :
         allocator.Reset();
 
         _commandList.Reset(
-            allocator);
+            allocator,
+            _pipelineState);
+
+        _commandList.SetGraphicsRootSignature(
+            _rootSignature);
 
         var renderTarget =
             _renderTargets[
@@ -347,6 +459,28 @@ public sealed class D3D12PresentationContext :
                 green,
                 blue,
                 1.0f));
+
+        _commandList.RSSetViewport(
+            new Viewport(
+                0.0f,
+                0.0f,
+                320.0f,
+                180.0f,
+                0.0f,
+                1.0f));
+
+        _commandList.RSSetScissorRect(
+            320,
+            180);
+
+        _commandList.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _commandList.DrawInstanced(
+            3,
+            1,
+            0,
+            0);
 
         _commandList.ResourceBarrierTransition(
             renderTarget,
@@ -423,6 +557,8 @@ public sealed class D3D12PresentationContext :
         }
 
         _commandList.Dispose();
+        _pipelineState.Dispose();
+        _rootSignature.Dispose();
         _rtvHeap.Dispose();
         _swapChain.Dispose();
         _fence.Dispose();
