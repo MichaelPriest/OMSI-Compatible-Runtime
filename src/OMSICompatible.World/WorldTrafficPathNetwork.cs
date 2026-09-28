@@ -10,7 +10,10 @@ public sealed record WorldTrafficSignalProgram(
     string Name,
     double CycleSeconds,
     IReadOnlyList<WorldTrafficSignalPhase> Phases,
-    double ApproachDistanceMeters);
+    double ApproachDistanceMeters,
+    int SignalIndex = -1,
+    IReadOnlyList<WorldTrafficLightJump>? Jumps = null,
+    IReadOnlyList<WorldTrafficLightStop>? Stops = null);
 
 public sealed record WorldTrafficPathSegment(
     int Index,
@@ -1321,7 +1324,12 @@ public static class WorldTrafficPathNetworkBuilder
             source.Name,
             cycleSeconds,
             phases,
-            source.ApproachDistanceMeters);
+            source.ApproachDistanceMeters,
+            trafficLightIndex.Value,
+            asset.TrafficLightJumps ??
+                Array.Empty<WorldTrafficLightJump>(),
+            asset.TrafficLightStops ??
+                Array.Empty<WorldTrafficLightStop>());
     }
 
     private static double ConnectionTolerance(
