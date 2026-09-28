@@ -623,6 +623,19 @@ public sealed class D3D11RenderWindow : Form
             !_vehiclePreviewMode &&
             windowInfo.Vehicle?.ReflectionCameras.Count is
                 > 0;
+
+        if (_reflectionRenderingEnabled &&
+            windowInfo.Vehicle is
+                { } reflectionVehicle)
+        {
+            foreach (var camera in
+                     reflectionVehicle.ReflectionCameras)
+            {
+                Console.WriteLine(
+                    $"[mirror] index={camera.Index}; texture={camera.RuntimeTextureName}; key={camera.RuntimeTextureKey}; continuous={camera.ContinuousRendering}; viewerDistance={(camera.MaximumViewerDistanceMeters?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "<none>")}; fov={camera.FieldOfViewDegrees:0.###}; heading={camera.HeadingDegrees:0.###}; pitch={camera.PitchDegrees:0.###}; mode={_reflectionMode}; size={_reflectionTextureSize}");
+            }
+        }
+
         _driverCameraIndex =
             Math.Max(
                 windowInfo.Vehicle?.StandardDriverCameraIndex ?? 0,
