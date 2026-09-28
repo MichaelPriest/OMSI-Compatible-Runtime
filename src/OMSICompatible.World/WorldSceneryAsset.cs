@@ -84,6 +84,12 @@ public sealed record WorldTrafficLightProgram(
     IReadOnlyList<WorldTrafficLightPhase> Phases,
     double ApproachDistanceMeters);
 
+public sealed record WorldTrafficLightJump(
+    int CheckTrafficLightIndex,
+    double TriggerTimeSeconds,
+    bool JumpIfNoApproach,
+    double TargetTimeSeconds);
+
 public sealed record WorldSceneryPath(
     double X,
     double Y,
@@ -111,6 +117,7 @@ public sealed record WorldSceneryAsset(
     IReadOnlyList<WorldSceneryPath> Paths,
     double? TrafficLightCycleSeconds = null,
     IReadOnlyList<WorldTrafficLightProgram>? TrafficLights = null,
+    IReadOnlyList<WorldTrafficLightJump>? TrafficLightJumps = null,
     OmsiSceneryScriptManifest? ScriptManifest = null,
     bool NoCollision = false,
     bool Fixed = false,
