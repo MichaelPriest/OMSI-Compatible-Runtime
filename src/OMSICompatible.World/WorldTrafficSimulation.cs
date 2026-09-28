@@ -1973,7 +1973,7 @@ public sealed class WorldTrafficSimulation
         WorldTrafficPathSegment segment)
     {
         var segmentLength =
-            SegmentLength(
+            CalculateSegmentLength(
                 segment);
 
         return agent.TravelForward
@@ -1991,7 +1991,7 @@ public sealed class WorldTrafficSimulation
         WorldTrafficPathSegment segment)
     {
         var segmentLength =
-            SegmentLength(
+            CalculateSegmentLength(
                 segment);
 
         var remainingDistance =
@@ -2051,7 +2051,7 @@ public sealed class WorldTrafficSimulation
         bool travelForward)
     {
         var length =
-            SegmentLength(
+            CalculateSegmentLength(
                 segment);
 
         SampleSegment(
