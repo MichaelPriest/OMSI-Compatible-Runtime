@@ -51,6 +51,7 @@ public sealed class WorldTrafficSimulation
     private readonly WorldTrafficPathNetwork _network;
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
     private readonly HashSet<long> _crossingSceneryObjectIds;
+    private readonly Dictionary<long, TrafficSignalGroupState> _trafficSignalGroups;
     private readonly List<Agent> _agents;
     private readonly WorldTrafficPathSegment[] _roadSegments = [];
     private readonly bool _runtimeRecyclingEnabled;
@@ -98,6 +99,49 @@ public sealed class WorldTrafficSimulation
                     static group =>
                         group.Key)
                 .ToHashSet();
+
+        _trafficSignalGroups =
+            network.Segments
+                .Where(
+                    static segment =>
+                        segment.SceneryObjectId.HasValue &&
+                        segment.TrafficSignal is
+                            { } signal &&
+                        ((signal.Jumps?.Count ??
+                          0) >
+                             0 ||
+                         (signal.Stops?.Count ??
+                          0) >
+                             0))
+                .GroupBy(
+                    static segment =>
+                        segment.SceneryObjectId!.Value)
+                .ToDictionary(
+                    static group =>
+                        group.Key,
+                    static group =>
+                    {
+                        var segments =
+                            group.ToArray();
+
+                        var signal =
+                            segments
+                                .Select(
+                                    static segment =>
+                                        segment.TrafficSignal)
+                                .First(
+                                    static candidate =>
+                                        candidate is not null)!;
+
+                        return new TrafficSignalGroupState(
+                            group.Key,
+                            signal.CycleSeconds,
+                            segments,
+                            signal.Jumps ??
+                                Array.Empty<WorldTrafficLightJump>(),
+                            signal.Stops ??
+                                Array.Empty<WorldTrafficLightStop>());
+                    });
 
         var groupDefinitions =
             (aiCatalog.UnscheduledVehicleGroups ??
@@ -717,6 +761,9 @@ public sealed class WorldTrafficSimulation
                 Math.Min(
                     simulationSeconds,
                     0.25);
+
+            UpdateTrafficSignalGroups(
+                step);
 
             foreach (var agent in
                      _agents)
@@ -1455,8 +1502,7 @@ public sealed class WorldTrafficSimulation
         WorldTrafficPathSegment nextSegment)
     {
         if (!IsTrafficSignalGreen(
-                nextSegment.TrafficSignal,
-                _simulationElapsedSeconds))
+                nextSegment))
         {
             return false;
         }
@@ -1542,8 +1588,7 @@ public sealed class WorldTrafficSimulation
             // A red approach cannot reserve a conflict against
             // another approach that is already allowed to enter.
             if (!IsTrafficSignalGreen(
-                    otherNextSegment.TrafficSignal,
-                    _simulationElapsedSeconds))
+                    otherNextSegment))
             {
                 continue;
             }
@@ -2234,6 +2279,386 @@ public sealed class WorldTrafficSimulation
             secondClosest);
     }
 
+    private void UpdateTrafficSignalGroups(
+        double deltaSeconds)
+    {
+        foreach (var group in
+                 _trafficSignalGroups.Values)
+        {
+            AdvanceTrafficSignalGroup(
+                group,
+                deltaSeconds);
+        }
+    }
+
+    private void AdvanceTrafficSignalGroup(
+        TrafficSignalGroupState group,
+        double deltaSeconds)
+    {
+        if (!double.IsFinite(
+                deltaSeconds) ||
+            deltaSeconds <=
+                0.0 ||
+            !double.IsFinite(
+                group.CycleSeconds) ||
+            group.CycleSeconds <=
+                0.0)
+        {
+            return;
+        }
+
+        var remaining =
+            deltaSeconds;
+
+        var guard =
+            0;
+
+        while (remaining >
+                   0.000001 &&
+               guard++ <
+                   32)
+        {
+            SignalControlEvent? nextEvent =
+                null;
+
+            foreach (var jump in
+                     group.Jumps)
+            {
+                var distance =
+                    ForwardCycleDistance(
+                        group.PositionSeconds,
+                        jump.TriggerTimeSeconds,
+                        group.CycleSeconds);
+
+                if (distance <=
+                        remaining +
+                            0.000001 &&
+                    (!nextEvent.HasValue ||
+                     distance <
+                         nextEvent.Value.DistanceSeconds))
+                {
+                    nextEvent =
+                        new SignalControlEvent(
+                            distance,
+                            jump.CheckTrafficLightIndex,
+                            jump.JumpIfNoApproach,
+                            jump.TargetTimeSeconds,
+                            IsStop:
+                                false);
+                }
+            }
+
+            foreach (var stop in
+                     group.Stops)
+            {
+                var distance =
+                    ForwardCycleDistance(
+                        group.PositionSeconds,
+                        stop.TriggerTimeSeconds,
+                        group.CycleSeconds);
+
+                if (distance <=
+                        remaining +
+                            0.000001 &&
+                    (!nextEvent.HasValue ||
+                     distance <
+                         nextEvent.Value.DistanceSeconds))
+                {
+                    nextEvent =
+                        new SignalControlEvent(
+                            distance,
+                            stop.CheckTrafficLightIndex,
+                            stop.StopIfNoApproach,
+                            TargetTimeSeconds:
+                                stop.TriggerTimeSeconds,
+                            IsStop:
+                                true);
+                }
+            }
+
+            if (!nextEvent.HasValue)
+            {
+                group.PositionSeconds =
+                    WrapCyclePosition(
+                        group.PositionSeconds +
+                            remaining,
+                        group.CycleSeconds);
+                break;
+            }
+
+            var control =
+                nextEvent.Value;
+
+            group.PositionSeconds =
+                WrapCyclePosition(
+                    group.PositionSeconds +
+                        control.DistanceSeconds,
+                    group.CycleSeconds);
+
+            remaining -=
+                control.DistanceSeconds;
+
+            var hasApproach =
+                HasTrafficSignalApproach(
+                    group,
+                    control.CheckTrafficLightIndex);
+
+            var shouldApply =
+                control.IfNoApproach
+                    ? !hasApproach
+                    : hasApproach;
+
+            if (!shouldApply)
+            {
+                var pass =
+                    Math.Min(
+                        remaining,
+                        0.000001);
+
+                if (pass <=
+                    0.0)
+                {
+                    break;
+                }
+
+                group.PositionSeconds =
+                    WrapCyclePosition(
+                        group.PositionSeconds +
+                            pass,
+                        group.CycleSeconds);
+
+                remaining -=
+                    pass;
+                continue;
+            }
+
+            if (control.IsStop)
+            {
+                break;
+            }
+
+            var target =
+                WrapCyclePosition(
+                    control.TargetTimeSeconds,
+                    group.CycleSeconds);
+
+            if (Math.Abs(
+                    target -
+                    group.PositionSeconds) <
+                0.000001)
+            {
+                var pass =
+                    Math.Min(
+                        remaining,
+                        0.000001);
+
+                if (pass <=
+                    0.0)
+                {
+                    break;
+                }
+
+                group.PositionSeconds =
+                    WrapCyclePosition(
+                        group.PositionSeconds +
+                            pass,
+                        group.CycleSeconds);
+
+                remaining -=
+                    pass;
+                continue;
+            }
+
+            group.PositionSeconds =
+                target;
+        }
+    }
+
+    private bool HasTrafficSignalApproach(
+        TrafficSignalGroupState group,
+        int signalIndex)
+    {
+        var targetSegments =
+            group.Segments
+                .Where(
+                    segment =>
+                        segment.TrafficSignal?.SignalIndex ==
+                            signalIndex)
+                .ToArray();
+
+        if (targetSegments.Length ==
+            0)
+        {
+            return false;
+        }
+
+        foreach (var target in
+                 targetSegments)
+        {
+            var approachDistance =
+                Math.Max(
+                    target.TrafficSignal?.ApproachDistanceMeters ??
+                        0.0,
+                    0.0);
+
+            foreach (var agent in
+                     _agents)
+            {
+                if (agent.PendingRespawn ||
+                    agent.ActivationTimeSeconds >
+                        _simulationElapsedSeconds)
+                {
+                    continue;
+                }
+
+                if (DistanceAheadToSegment(
+                        agent,
+                        target,
+                        approachDistance) <=
+                    approachDistance +
+                        0.0001)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private double DistanceAheadToSegment(
+        Agent agent,
+        WorldTrafficPathSegment target,
+        double maximumDistance)
+    {
+        if (!_segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var current))
+        {
+            return double.PositiveInfinity;
+        }
+
+        if (current.Index ==
+            target.Index)
+        {
+            return 0.0;
+        }
+
+        var currentLength =
+            SegmentLength(
+                current);
+
+        var distance =
+            agent.TravelForward
+                ? Math.Max(
+                    currentLength -
+                        agent.DistanceMeters,
+                    0.0)
+                : Math.Max(
+                    agent.DistanceMeters,
+                    0.0);
+
+        var guard =
+            0;
+
+        while (guard++ <
+               MaximumTrafficLookAheadSegments)
+        {
+            if (distance >
+                maximumDistance +
+                    0.0001)
+            {
+                return double.PositiveInfinity;
+            }
+
+            var nextIndex =
+                ResolveNextSegmentIndex(
+                    agent,
+                    current);
+
+            if (!nextIndex.HasValue ||
+                !_segmentsByIndex.TryGetValue(
+                    nextIndex.Value,
+                    out var next))
+            {
+                return double.PositiveInfinity;
+            }
+
+            if (next.Index ==
+                target.Index)
+            {
+                return distance;
+            }
+
+            distance +=
+                SegmentLength(
+                    next);
+
+            current =
+                next;
+        }
+
+        return double.PositiveInfinity;
+    }
+
+    private static double ForwardCycleDistance(
+        double position,
+        double trigger,
+        double cycleSeconds)
+    {
+        var normalizedPosition =
+            WrapCyclePosition(
+                position,
+                cycleSeconds);
+
+        var normalizedTrigger =
+            WrapCyclePosition(
+                trigger,
+                cycleSeconds);
+
+        var distance =
+            normalizedTrigger -
+            normalizedPosition;
+
+        if (distance <
+            -0.000001)
+        {
+            distance +=
+                cycleSeconds;
+        }
+
+        return Math.Abs(
+                   distance) <=
+               0.000001
+            ? 0.0
+            : distance;
+    }
+
+    private static double WrapCyclePosition(
+        double position,
+        double cycleSeconds)
+    {
+        if (!double.IsFinite(
+                position) ||
+            !double.IsFinite(
+                cycleSeconds) ||
+            cycleSeconds <=
+                0.0)
+        {
+            return 0.0;
+        }
+
+        var wrapped =
+            position %
+            cycleSeconds;
+
+        return wrapped <
+               0.0
+            ? wrapped +
+                cycleSeconds
+            : wrapped;
+    }
+
     private static double DistanceSquared(
         WorldVector3 first,
         WorldVector3 second)
@@ -2254,6 +2679,30 @@ public sealed class WorldTrafficSimulation
                    y +
                z *
                    z;
+    }
+
+    private bool IsTrafficSignalGreen(
+        WorldTrafficPathSegment segment)
+    {
+        var signal =
+            segment.TrafficSignal;
+
+        if (signal is null)
+        {
+            return true;
+        }
+
+        var elapsedSeconds =
+            segment.SceneryObjectId.HasValue &&
+            _trafficSignalGroups.TryGetValue(
+                segment.SceneryObjectId.Value,
+                out var group)
+                ? group.PositionSeconds
+                : _simulationElapsedSeconds;
+
+        return IsTrafficSignalGreen(
+            signal,
+            elapsedSeconds);
     }
 
     private static bool IsTrafficSignalGreen(
@@ -3818,6 +4267,42 @@ public sealed class WorldTrafficSimulation
                 y +
             z *
                 z);
+    }
+
+    private readonly record struct SignalControlEvent(
+        double DistanceSeconds,
+        int CheckTrafficLightIndex,
+        bool IfNoApproach,
+        double TargetTimeSeconds,
+        bool IsStop);
+
+    private sealed class TrafficSignalGroupState(
+        long sceneryObjectId,
+        double cycleSeconds,
+        IReadOnlyList<WorldTrafficPathSegment> segments,
+        IReadOnlyList<WorldTrafficLightJump> jumps,
+        IReadOnlyList<WorldTrafficLightStop> stops)
+    {
+        public long SceneryObjectId { get; } =
+            sceneryObjectId;
+
+        public double CycleSeconds { get; } =
+            cycleSeconds;
+
+        public IReadOnlyList<WorldTrafficPathSegment> Segments { get; } =
+            segments;
+
+        public IReadOnlyList<WorldTrafficLightJump> Jumps { get; } =
+            jumps;
+
+        public IReadOnlyList<WorldTrafficLightStop> Stops { get; } =
+            stops;
+
+        public double PositionSeconds
+        {
+            get;
+            set;
+        }
     }
 
     private sealed class Agent(
