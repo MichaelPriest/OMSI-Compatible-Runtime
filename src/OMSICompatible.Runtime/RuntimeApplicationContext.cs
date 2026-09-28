@@ -297,13 +297,28 @@ internal sealed class RuntimeApplicationContext :
             _vehicleAsset =
                 vehicle;
 
+            var simulationBuildStarted =
+                Stopwatch.GetTimestamp();
+
+            var initialSimulations =
+                await Task.Run(
+                    () =>
+                        (
+                            Traffic:
+                                CreateTrafficSimulation(
+                                    world),
+                            Rail:
+                                CreateRailTrafficSimulation(
+                                    world)));
+
             _trafficSimulation =
-                CreateTrafficSimulation(
-                    world);
+                initialSimulations.Traffic;
 
             _railTrafficSimulation =
-                CreateRailTrafficSimulation(
-                    world);
+                initialSimulations.Rail;
+
+            Console.WriteLine(
+                $"[startup-perf] simulationsMs={Stopwatch.GetElapsedTime(simulationBuildStarted).TotalMilliseconds:0.0}");
 
             _trafficScriptRuntimes.Clear();
 
@@ -348,13 +363,21 @@ internal sealed class RuntimeApplicationContext :
                     "Preparando renderização",
                     renderDetail));
 
+            var runtimeInfoStarted =
+                Stopwatch.GetTimestamp();
+
             var runtimeInfo =
-                BuildRuntimeInfo(
-                    world,
-                    vehicle,
-                    _entryPoint,
-                    _contentRoot.RootPath,
-                    _trafficVehicleAssets);
+                await Task.Run(
+                    () =>
+                        BuildRuntimeInfo(
+                            world,
+                            vehicle,
+                            _entryPoint,
+                            _contentRoot.RootPath,
+                            _trafficVehicleAssets));
+
+            Console.WriteLine(
+                $"[startup-perf] runtimeInfoMs={Stopwatch.GetElapsedTime(runtimeInfoStarted).TotalMilliseconds:0.0}");
 
             OmsiScriptRuntime? scriptRuntime =
                 null;
@@ -1021,13 +1044,28 @@ internal sealed class RuntimeApplicationContext :
                     return;
                 }
 
+                var simulationBuildStarted =
+                    Stopwatch.GetTimestamp();
+
+                var streamedSimulations =
+                    await Task.Run(
+                        () =>
+                            (
+                                Traffic:
+                                    CreateTrafficSimulation(
+                                        streamedWorld),
+                                Rail:
+                                    CreateRailTrafficSimulation(
+                                        streamedWorld)));
+
                 _trafficSimulation =
-                    CreateTrafficSimulation(
-                        streamedWorld);
+                    streamedSimulations.Traffic;
 
                 _railTrafficSimulation =
-                    CreateRailTrafficSimulation(
-                        streamedWorld);
+                    streamedSimulations.Rail;
+
+                Console.WriteLine(
+                    $"[streaming-perf] simulationsMs={Stopwatch.GetElapsedTime(simulationBuildStarted).TotalMilliseconds:0.0}");
 
                 _trafficScriptRuntimes.Clear();
 
@@ -1048,13 +1086,21 @@ internal sealed class RuntimeApplicationContext :
                     streamedWorld,
                     _railTrafficSimulation);
 
+                var runtimeInfoStarted =
+                    Stopwatch.GetTimestamp();
+
                 var runtimeInfo =
-                    BuildRuntimeInfo(
-                        streamedWorld,
-                        _vehicleAsset,
-                        _entryPoint,
-                        _contentRoot.RootPath,
-                        _trafficVehicleAssets);
+                    await Task.Run(
+                        () =>
+                            BuildRuntimeInfo(
+                                streamedWorld,
+                                _vehicleAsset,
+                                _entryPoint,
+                                _contentRoot.RootPath,
+                                _trafficVehicleAssets));
+
+                Console.WriteLine(
+                    $"[streaming-perf] runtimeInfoMs={Stopwatch.GetElapsedTime(runtimeInfoStarted).TotalMilliseconds:0.0}");
 
                 await _runtimeWindow.ApplyStreamedWorldAsync(
                     runtimeInfo);
