@@ -9414,19 +9414,9 @@ public sealed class D3D11RenderWindow : Form
         RuntimeTrafficAgentInfo agent,
         string diagnosticSignature)
     {
-        try
-        {
-            File.AppendAllText(
-                Path.Combine(
-                    AppContext.BaseDirectory,
-                    "traffic-audio.log"),
-                $"{DateTimeOffset.Now:O}|agent={agent.AgentIndex}|vehicle={agent.VehiclePath}|position={agent.X:0.00},{agent.Y:0.00},{agent.Z:0.00}|{diagnosticSignature}{Environment.NewLine}");
-        }
-        catch (Exception exception)
-        {
-            Console.WriteLine(
-                $"[traffic-ai] unable to append audio diagnostics: {exception.Message}");
-        }
+        RuntimeDiagnosticLogWriter.Enqueue(
+            "traffic-audio.log",
+            $"{DateTimeOffset.Now:O}|agent={agent.AgentIndex}|vehicle={agent.VehiclePath}|position={agent.X:0.00},{agent.Y:0.00},{agent.Z:0.00}|{diagnosticSignature}{Environment.NewLine}");
     }
 
     private static bool ResolveTrafficEngineRunning(
@@ -10696,19 +10686,9 @@ public sealed class D3D11RenderWindow : Form
         RuntimeSceneryCollisionVolume volume,
         RuntimeTrafficObstacleInfo player)
     {
-        try
-        {
-            File.AppendAllText(
-                Path.Combine(
-                    AppContext.BaseDirectory,
-                    "scenery-collision.log"),
-                $"{DateTimeOffset.Now:O}|objectId={volume.ObjectId}|asset={volume.AssetPath}|source={(volume.UsesCollisionMesh ? "collision_mesh" : "boundingbox")}|surface={volume.Surface}|halfLength={volume.HalfLength:0.00}|halfWidth={volume.HalfWidth:0.00}|y={volume.MinimumY:0.00}..{volume.MaximumY:0.00}|position={player.X:0.00},{player.Y:0.00},{player.Z:0.00}|speed={player.SpeedMetersPerSecond * 3.6:0.0} km/h{Environment.NewLine}");
-        }
-        catch (Exception exception)
-        {
-            Console.WriteLine(
-                $"[scenery-collision] unable to append diagnostics: {exception.Message}");
-        }
+        RuntimeDiagnosticLogWriter.Enqueue(
+            "scenery-collision.log",
+            $"{DateTimeOffset.Now:O}|objectId={volume.ObjectId}|asset={volume.AssetPath}|source={(volume.UsesCollisionMesh ? "collision_mesh" : "boundingbox")}|surface={volume.Surface}|halfLength={volume.HalfLength:0.00}|halfWidth={volume.HalfWidth:0.00}|y={volume.MinimumY:0.00}..{volume.MaximumY:0.00}|position={player.X:0.00},{player.Y:0.00},{player.Z:0.00}|speed={player.SpeedMetersPerSecond * 3.6:0.0} km/h{Environment.NewLine}");
     }
 
     private void UpdateTrafficCollisionState(
@@ -12063,20 +12043,10 @@ public sealed class D3D11RenderWindow : Form
         Console.WriteLine(
             $"[traffic-rule] {line}");
 
-        try
-        {
-            File.AppendAllText(
-                Path.Combine(
-                    AppContext.BaseDirectory,
-                    "traffic-violations.log"),
-                line +
-                Environment.NewLine);
-        }
-        catch (Exception exception)
-        {
-            Console.WriteLine(
-                $"[traffic-rule] unable to append violation log: {exception.Message}");
-        }
+        RuntimeDiagnosticLogWriter.Enqueue(
+            "traffic-violations.log",
+            line +
+            Environment.NewLine);
     }
 
     private RuntimeTrafficPathSegmentInfo?
