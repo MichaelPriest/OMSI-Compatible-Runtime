@@ -55,6 +55,9 @@ public sealed class D3D11RenderWindow : Form
         RuntimeSplineGeometry Splines,
         RuntimeObjectGeometry Objects,
         RuntimeTerrainSampler TerrainSampler,
+        RuntimeSplineSurfaceSampler SplineSurfaceSampler,
+        RuntimeSplineSurfaceSampler ScenerySurfaceSampler,
+        RuntimeSplineSurfaceSampler CollisionScenerySurfaceSampler,
         IReadOnlyList<RuntimeSceneryCollisionVolume> CollisionVolumes,
         string[] RegularTexturePaths,
         string[] MaskTexturePaths,
@@ -1142,6 +1145,18 @@ public sealed class D3D11RenderWindow : Form
                                 windowInfo.Tiles,
                                 windowInfo.Splines);
 
+                        var splineSurfaceSampler =
+                            RuntimeSplineSurfaceSampler.Create(
+                                splines);
+
+                        var scenerySurfaceSampler =
+                            RuntimeSplineSurfaceSampler.CreateSurfaceObjects(
+                                objects);
+
+                        var collisionScenerySurfaceSampler =
+                            RuntimeSplineSurfaceSampler.CreateCollisionSurfaceObjects(
+                                windowInfo);
+
                         var collisionVolumes =
                             BuildSceneryCollisionVolumes(
                                 windowInfo,
@@ -1179,6 +1194,9 @@ public sealed class D3D11RenderWindow : Form
                             splines,
                             objects,
                             terrainSampler,
+                            splineSurfaceSampler,
+                            scenerySurfaceSampler,
+                            collisionScenerySurfaceSampler,
                             collisionVolumes,
                             regularTexturePaths,
                             maskTexturePaths,
@@ -1330,10 +1348,6 @@ public sealed class D3D11RenderWindow : Form
             prepared.CollisionVolumes;
 
         _activeSceneryCollisionVolumes.Clear();
-
-        _vehicle.ReplaceTerrainTiles(
-            windowInfo.Tiles,
-            windowInfo.Splines);
 
         if (_device is null)
         {
@@ -1587,9 +1601,6 @@ public sealed class D3D11RenderWindow : Form
         _splineGeometry =
             prepared.Splines;
 
-        _vehicle.ReplaceSplineSurfaceGeometry(
-            _splineGeometry);
-
         _splineVertexCount =
             (uint)_splineGeometry.Vertices.Length;
 
@@ -1602,12 +1613,14 @@ public sealed class D3D11RenderWindow : Form
         _objectGeometry =
             prepared.Objects;
 
-        _vehicle.ReplaceScenerySurfaceGeometry(
-            _objectGeometry,
-            _windowInfo);
-
         _objectVertexCount =
             (uint)_objectGeometry.Vertices.Length;
+
+        _vehicle.ReplacePreparedDrivingSurfaces(
+            prepared.TerrainSampler,
+            prepared.SplineSurfaceSampler,
+            prepared.ScenerySurfaceSampler,
+            prepared.CollisionScenerySurfaceSampler);
 
         preparedGpu.Dispose();
     }
