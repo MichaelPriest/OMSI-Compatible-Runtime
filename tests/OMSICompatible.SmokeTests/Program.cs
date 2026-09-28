@@ -6626,6 +6626,45 @@ try
             0.001,
         "Dynamic signal snapshot did not expose the traffic_light_stop-held group clock.");
 
+    var playerRequestSimulation =
+        new WorldTrafficSimulation(
+            requestStopNetwork,
+            normalGroupCatalog,
+            maximumAgents:
+                0);
+
+    playerRequestSimulation.SetExternalObstacle(
+        new WorldTrafficObstacleState(
+            new WorldVector3(
+                0.0,
+                0.0,
+                1.0),
+            HeadingRadians:
+                0.0,
+            SpeedMetersPerSecond:
+                5.0,
+            HalfLengthMeters:
+                6.0,
+            HalfWidthMeters:
+                1.3));
+
+    playerRequestSimulation.Step(
+        3.0);
+
+    var playerRequestSignalState =
+        playerRequestSimulation
+            .SnapshotTrafficSignals()
+            .Single();
+
+    Require(
+        playerRequestSignalState.Phase ==
+            0 &&
+        Math.Abs(
+            playerRequestSignalState.PositionSeconds -
+            1.0) <
+            0.001,
+        "Player-only OMSI signal approach did not hold traffic_light_stop with AI traffic disabled.");
+
     var densityRoutingNetwork =
         new WorldTrafficPathNetwork(
             [
