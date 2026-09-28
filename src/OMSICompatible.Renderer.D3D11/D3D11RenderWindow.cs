@@ -1355,34 +1355,19 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        var wasRunning =
-            _renderTimer.Enabled;
-
-        _renderTimer.Stop();
-
         var uploadStarted =
             Stopwatch.GetTimestamp();
 
-        try
-        {
-            ApplyPreparedTrafficVehicleResources(
-                preparedGpu);
+        ApplyPreparedTrafficVehicleResources(
+            preparedGpu);
 
-            ApplyPreparedStreamedGeometry(
-                prepared,
-                preparedGpu);
+        ApplyPreparedStreamedGeometry(
+            prepared,
+            preparedGpu);
 
-            RefreshStreamingTextureCache(
-                prepared);
-            UpdateCaption();
-        }
-        finally
-        {
-            if (wasRunning)
-            {
-                _renderTimer.Start();
-            }
-        }
+        RefreshStreamingTextureCache(
+            prepared);
+        UpdateCaption();
 
         var uploadElapsed =
             Stopwatch.GetElapsedTime(
