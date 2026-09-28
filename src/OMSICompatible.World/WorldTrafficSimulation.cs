@@ -25,6 +25,11 @@ public sealed record WorldTrafficObstacleState(
     double HalfLengthMeters = 6.0,
     double HalfWidthMeters = 1.35);
 
+public sealed record WorldTrafficSignalState(
+    int SegmentIndex,
+    int? Phase,
+    double PositionSeconds);
+
 public sealed class WorldTrafficSimulation
 {
     private readonly record struct TrafficLead(
@@ -675,6 +680,36 @@ public sealed class WorldTrafficSimulation
                     _simulationElapsedSeconds)
             .Select(
                 CreateState)
+            .ToArray();
+
+    public IReadOnlyList<WorldTrafficSignalState> SnapshotTrafficSignals() =>
+        _segmentsByIndex.Values
+            .Where(
+                static segment =>
+                    segment.TrafficSignal is not null)
+            .OrderBy(
+                static segment =>
+                    segment.Index)
+            .Select(
+                segment =>
+                {
+                    var positionSeconds =
+                        segment.SceneryObjectId.HasValue &&
+                        _trafficSignalGroups.TryGetValue(
+                            segment.SceneryObjectId.Value,
+                            out var group)
+                            ? group.PositionSeconds
+                            : WrapCyclePosition(
+                                _simulationElapsedSeconds,
+                                segment.TrafficSignal!.CycleSeconds);
+
+                    return new WorldTrafficSignalState(
+                        segment.Index,
+                        ResolveTrafficSignalPhase(
+                            segment.TrafficSignal,
+                            positionSeconds),
+                        positionSeconds);
+                })
             .ToArray();
 
     public void SetExternalObstacle(
@@ -3001,6 +3036,14 @@ public sealed class WorldTrafficSimulation
 
     private static bool IsTrafficSignalGreen(
         WorldTrafficSignalProgram? signal,
+        double elapsedSeconds) =>
+        ResolveTrafficSignalPhase(
+            signal,
+            elapsedSeconds) is
+            >= 6 and <= 8;
+
+    private static int? ResolveTrafficSignalPhase(
+        WorldTrafficSignalProgram? signal,
         double elapsedSeconds)
     {
         if (signal is null ||
@@ -3009,7 +3052,7 @@ public sealed class WorldTrafficSimulation
             !double.IsFinite(
                 elapsedSeconds))
         {
-            return true;
+            return null;
         }
 
         var phaseDuration =
@@ -3041,7 +3084,7 @@ public sealed class WorldTrafficSimulation
             phaseDuration <=
                 0.0)
         {
-            return true;
+            return null;
         }
 
         var position =
@@ -3075,17 +3118,14 @@ public sealed class WorldTrafficSimulation
             if (position <
                 phase.DurationSeconds)
             {
-                return phase.Phase is
-                    >= 6 and <= 8;
+                return phase.Phase;
             }
 
             position -=
                 phase.DurationSeconds;
         }
 
-        return lastPhase is not null &&
-               lastPhase.Phase is
-                   >= 6 and <= 8;
+        return lastPhase?.Phase;
     }
 
     private int? ResolveNextSegmentIndex(
