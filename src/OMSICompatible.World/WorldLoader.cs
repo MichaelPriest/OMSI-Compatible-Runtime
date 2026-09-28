@@ -10,6 +10,25 @@ namespace OMSICompatible.World;
 
 public static class WorldLoader
 {
+    private static readonly object TileCacheGate =
+        new();
+    private static readonly Dictionary<string, CachedWorldTile>
+        TileCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private static long _tileCacheGeneration;
+    private const int MaximumTileCacheEntries =
+        256;
+
+    private sealed record CachedWorldTile(
+        long SourceBytes,
+        DateTime SourceLastWriteUtc,
+        string? TerrainPath,
+        long TerrainBytes,
+        DateTime TerrainLastWriteUtc,
+        long LastUsedGeneration,
+        WorldTile Tile);
+
     public static WorldDefinition Load(
         OmsiContentRoot contentRoot,
         OmsiMapInfo map,
@@ -41,6 +60,8 @@ public static class WorldLoader
 
         var tiles = new List<WorldTile>(sourceTiles.Count);
         var tileIndex = 0;
+        var tileCacheHits = 0;
+        var tileCacheMisses = 0;
 
         foreach (var sourceTile in sourceTiles)
         {
@@ -60,90 +81,26 @@ public static class WorldLoader
                     tilePercent,
                     "Carregando mundo",
                     $"Tile {tileIndex:N0}/{sourceTiles.Count:N0} · {sourceTile.Coordinate.X},{sourceTile.Coordinate.Y}"));
-            var coordinate = new WorldTileCoordinate(
-                sourceTile.Coordinate.X,
-                sourceTile.Coordinate.Y);
+            var tile =
+                LoadWorldTileCached(
+                    sourceTile,
+                    out var cacheHit);
 
-            var summary = MapTileProbe.ReadSummary(sourceTile);
-            var placements = MapTilePlacementParser.Parse(sourceTile);
-            var companions = MapTileCompanionDiscovery.Discover(sourceTile);
+            tiles.Add(
+                tile);
 
-            var assetReferences = AssetReferenceScanner.Scan(sourceTile)
-                .Select(static reference => new WorldAssetReference(
-                    Classify(reference.Extension),
-                    NormalizePath(reference.RawPath),
-                    reference.SectionName,
-                    reference.LineNumber))
-                .ToArray();
-
-            var tileObjects = placements.Objects
-                .Select(source => new WorldObjectPlacement(
-                    coordinate,
-                    source.Id,
-                    NormalizePath(source.AssetPath),
-                    ToWorldVector(source.Position),
-                    source.HeadingDegrees,
-                    source.PitchDegrees,
-                    source.BankDegrees,
-                    source.ExtraValues,
-                    source.SourceLineNumber,
-                    ConvertTrafficRules(
-                        source.TrafficRules)))
-                .ToArray();
-
-            var tileSplines = placements.Splines
-                .Select(source => new WorldSplinePlacement(
-                    coordinate,
-                    source.Id,
-                    source.PreviousId,
-                    source.NextId,
-                    NormalizePath(source.AssetPath),
-                    ToWorldVector(source.Position),
-                    source.HeadingDegrees,
-                    source.LengthMeters,
-                    source.RadiusMeters,
-                    source.GradientStartPercent,
-                    source.GradientEndPercent,
-                    source.UsesHeightProfile,
-                    source.DeltaHeightMeters,
-                    source.CantStartPercent,
-                    source.CantEndPercent,
-                    source.SkewStart,
-                    source.SkewEnd,
-                    source.Mirror,
-                    source.SourceLineNumber,
-                    ConvertTrafficRules(
-                        source.TrafficRules),
-                    source.TerrainAlignMode))
-                .ToArray();
-
-            var resources = new WorldTileResources(
-                companions.TerrainPath,
-                companions.LightmapPath,
-                companions.WaterPath,
-                companions.ReadyMeshPaths,
-                companions.TerrainTexturePaths,
-                BuildTerrainMasks(
-                    sourceTile.FilePath,
-                    companions.TerrainTexturePaths));
-
-            var (terrain, terrainErrorCode) =
-                LoadTerrain(resources.TerrainPath);
-
-            tiles.Add(new WorldTile(
-                coordinate,
-                sourceTile.FilePath,
-                sourceTile.Bytes,
-                summary.SectionCount,
-                summary.SectionCounts,
-                assetReferences,
-                tileObjects,
-                tileSplines,
-                resources,
-                terrain,
-                terrainErrorCode,
-                placements.Issues.Count));
+            if (cacheHit)
+            {
+                tileCacheHits++;
+            }
+            else
+            {
+                tileCacheMisses++;
+            }
         }
+
+        Console.WriteLine(
+            $"[world-cache] tile hits={tileCacheHits}; misses={tileCacheMisses}; active={tiles.Count}; retained={GetTileCacheCount()}");
 
         WorldBounds? bounds = null;
         if (tiles.Count > 0)
@@ -261,6 +218,264 @@ public static class WorldLoader
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
             bounds,
             signalRoutes);
+    }
+
+    private static WorldTile LoadWorldTileCached(
+        OmsiMapTileInfo sourceTile,
+        out bool cacheHit)
+    {
+        var sourceLastWriteUtc =
+            SafeLastWriteUtc(
+                sourceTile.FilePath);
+
+        lock (TileCacheGate)
+        {
+            _tileCacheGeneration++;
+
+            if (TileCache.TryGetValue(
+                    sourceTile.FilePath,
+                    out var cached) &&
+                cached.SourceBytes ==
+                    sourceTile.Bytes &&
+                cached.SourceLastWriteUtc ==
+                    sourceLastWriteUtc &&
+                FileStampMatches(
+                    cached.TerrainPath,
+                    cached.TerrainBytes,
+                    cached.TerrainLastWriteUtc))
+            {
+                TileCache[
+                    sourceTile.FilePath] =
+                    cached with
+                    {
+                        LastUsedGeneration =
+                            _tileCacheGeneration
+                    };
+
+                cacheHit =
+                    true;
+
+                return cached.Tile;
+            }
+        }
+
+        var coordinate =
+            new WorldTileCoordinate(
+                sourceTile.Coordinate.X,
+                sourceTile.Coordinate.Y);
+
+        var summary =
+            MapTileProbe.ReadSummary(
+                sourceTile);
+
+        var placements =
+            MapTilePlacementParser.Parse(
+                sourceTile);
+
+        var companions =
+            MapTileCompanionDiscovery.Discover(
+                sourceTile);
+
+        var assetReferences =
+            AssetReferenceScanner.Scan(
+                    sourceTile)
+                .Select(
+                    static reference =>
+                        new WorldAssetReference(
+                            Classify(
+                                reference.Extension),
+                            NormalizePath(
+                                reference.RawPath),
+                            reference.SectionName,
+                            reference.LineNumber))
+                .ToArray();
+
+        var tileObjects =
+            placements.Objects
+                .Select(
+                    source =>
+                        new WorldObjectPlacement(
+                            coordinate,
+                            source.Id,
+                            NormalizePath(
+                                source.AssetPath),
+                            ToWorldVector(
+                                source.Position),
+                            source.HeadingDegrees,
+                            source.PitchDegrees,
+                            source.BankDegrees,
+                            source.ExtraValues,
+                            source.SourceLineNumber,
+                            ConvertTrafficRules(
+                                source.TrafficRules)))
+                .ToArray();
+
+        var tileSplines =
+            placements.Splines
+                .Select(
+                    source =>
+                        new WorldSplinePlacement(
+                            coordinate,
+                            source.Id,
+                            source.PreviousId,
+                            source.NextId,
+                            NormalizePath(
+                                source.AssetPath),
+                            ToWorldVector(
+                                source.Position),
+                            source.HeadingDegrees,
+                            source.LengthMeters,
+                            source.RadiusMeters,
+                            source.GradientStartPercent,
+                            source.GradientEndPercent,
+                            source.UsesHeightProfile,
+                            source.DeltaHeightMeters,
+                            source.CantStartPercent,
+                            source.CantEndPercent,
+                            source.SkewStart,
+                            source.SkewEnd,
+                            source.Mirror,
+                            source.SourceLineNumber,
+                            ConvertTrafficRules(
+                                source.TrafficRules),
+                            source.TerrainAlignMode))
+                .ToArray();
+
+        var resources =
+            new WorldTileResources(
+                companions.TerrainPath,
+                companions.LightmapPath,
+                companions.WaterPath,
+                companions.ReadyMeshPaths,
+                companions.TerrainTexturePaths,
+                BuildTerrainMasks(
+                    sourceTile.FilePath,
+                    companions.TerrainTexturePaths));
+
+        var (terrain, terrainErrorCode) =
+            LoadTerrain(
+                resources.TerrainPath);
+
+        var tile =
+            new WorldTile(
+                coordinate,
+                sourceTile.FilePath,
+                sourceTile.Bytes,
+                summary.SectionCount,
+                summary.SectionCounts,
+                assetReferences,
+                tileObjects,
+                tileSplines,
+                resources,
+                terrain,
+                terrainErrorCode,
+                placements.Issues.Count);
+
+        var (terrainBytes, terrainLastWriteUtc) =
+            GetFileStamp(
+                resources.TerrainPath);
+
+        lock (TileCacheGate)
+        {
+            _tileCacheGeneration++;
+
+            TileCache[
+                sourceTile.FilePath] =
+                new CachedWorldTile(
+                    sourceTile.Bytes,
+                    sourceLastWriteUtc,
+                    resources.TerrainPath,
+                    terrainBytes,
+                    terrainLastWriteUtc,
+                    _tileCacheGeneration,
+                    tile);
+
+            while (TileCache.Count >
+                   MaximumTileCacheEntries)
+            {
+                var oldest =
+                    TileCache
+                        .OrderBy(
+                            static pair =>
+                                pair.Value
+                                    .LastUsedGeneration)
+                        .First();
+
+                TileCache.Remove(
+                    oldest.Key);
+            }
+        }
+
+        cacheHit =
+            false;
+
+        return tile;
+    }
+
+    private static bool FileStampMatches(
+        string? path,
+        long expectedBytes,
+        DateTime expectedLastWriteUtc)
+    {
+        var (bytes, lastWriteUtc) =
+            GetFileStamp(
+                path);
+
+        return bytes ==
+                   expectedBytes &&
+               lastWriteUtc ==
+                   expectedLastWriteUtc;
+    }
+
+    private static (long Bytes, DateTime LastWriteUtc)
+        GetFileStamp(
+            string? path)
+    {
+        if (string.IsNullOrWhiteSpace(
+                path) ||
+            !File.Exists(
+                path))
+        {
+            return (
+                0,
+                DateTime.MinValue);
+        }
+
+        try
+        {
+            var info =
+                new FileInfo(
+                    path);
+
+            return (
+                info.Length,
+                info.LastWriteTimeUtc);
+        }
+        catch (Exception exception)
+            when (exception is
+                IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                NotSupportedException)
+        {
+            return (
+                -1,
+                DateTime.MinValue);
+        }
+    }
+
+    private static DateTime SafeLastWriteUtc(
+        string path) =>
+        GetFileStamp(
+            path)
+            .LastWriteUtc;
+
+    private static int GetTileCacheCount()
+    {
+        lock (TileCacheGate)
+        {
+            return TileCache.Count;
+        }
     }
 
     private static IReadOnlyList<OmsiMapTileInfo>
