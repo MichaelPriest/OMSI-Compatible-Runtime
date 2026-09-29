@@ -361,6 +361,12 @@ public sealed class D3D11RenderWindow : Form
         ResolvedVehicleMaterialState Material)>
         _vehicleDrawItems =
             [];
+    private readonly List<RuntimeVehicleMeshInfo>
+        _vehicleLightMeshes =
+            [];
+    private readonly List<RuntimeVehicleMeshInfo>
+        _vehicleViewpointLightMeshes =
+            [];
     private readonly Dictionary<
         RuntimeObjectBatch,
         RuntimeVehicleMaterialChangeSetInfo[]>
@@ -8552,49 +8558,67 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        var allLightMeshes =
-            vehicle.Meshes
-                .Where(
-                    static mesh =>
-                        mesh.LightEffects is
-                            { Count: > 0 })
-                .ToArray();
-
-        if (allLightMeshes.Length == 0)
-        {
-            return;
-        }
+        _vehicleLightMeshes.Clear();
+        _vehicleViewpointLightMeshes.Clear();
 
         var viewpointBit =
             UseExteriorVehicleView()
                 ? 1
                 : 2;
 
-        var viewpointMeshes =
-            allLightMeshes
-                .Where(
-                    mesh =>
-                        IsVehicleMeshVisibleFromViewpoint(
-                            mesh.ViewpointFlag,
-                            viewpointBit))
-                .ToArray();
+        foreach (var mesh in
+                 vehicle.Meshes)
+        {
+            if (mesh.LightEffects is not
+                { Count: > 0 })
+            {
+                continue;
+            }
 
-        var selectionSource =
-            viewpointMeshes.Length > 0
-                ? viewpointMeshes
-                : allLightMeshes;
+            _vehicleLightMeshes.Add(
+                mesh);
+
+            if (IsVehicleMeshVisibleFromViewpoint(
+                    mesh.ViewpointFlag,
+                    viewpointBit))
+            {
+                _vehicleViewpointLightMeshes.Add(
+                    mesh);
+            }
+        }
+
+        if (_vehicleLightMeshes.Count ==
+            0)
+        {
+            return;
+        }
+
+        IReadOnlyList<RuntimeVehicleMeshInfo>
+            selectionSource =
+                _vehicleViewpointLightMeshes.Count >
+                        0
+                    ? _vehicleViewpointLightMeshes
+                    : _vehicleLightMeshes;
 
         var detailedLod =
-            selectionSource
-                .Where(
-                    static mesh =>
-                        mesh.LodThreshold.HasValue)
-                .Select(
-                    static mesh =>
-                        mesh.LodThreshold!.Value)
-                .DefaultIfEmpty(
-                    double.NaN)
-                .Max();
+            double.NaN;
+
+        foreach (var mesh in
+                 selectionSource)
+        {
+            if (!mesh.LodThreshold.HasValue)
+            {
+                continue;
+            }
+
+            detailedLod =
+                double.IsNaN(
+                    detailedLod)
+                    ? mesh.LodThreshold.Value
+                    : Math.Max(
+                        detailedLod,
+                        mesh.LodThreshold.Value);
+        }
 
         var cameraPosition =
             ResolveActiveCameraPosition();
@@ -20574,6 +20598,8 @@ public sealed class D3D11RenderWindow : Form
             _vehicleTextTextureRenderer = null;
             _vehicleAnimationParentBatches.Clear();
             _vehicleDrawItems.Clear();
+            _vehicleLightMeshes.Clear();
+            _vehicleViewpointLightMeshes.Clear();
             _vehicleOrderedMaterialChangeSets.Clear();
             _vehicleMaterialChangeItems.Clear();
 
