@@ -710,6 +710,8 @@ public sealed class D3D12PresentationContext :
         D3D12RuntimeTerrainResources? terrain,
         D3D12RuntimeObjectResources? splines,
         D3D12RuntimeObjectResources? objects,
+        D3D12RuntimeObjectResources? vehicle,
+        Matrix4x4 vehicleModel,
         float red,
         float green,
         float blue,
@@ -736,9 +738,12 @@ public sealed class D3D12PresentationContext :
             0,
             ref _frameConstants);
 
+        var staticModel =
+            Matrix4x4.Identity;
+
         _commandList.SetGraphicsRoot32BitConstants(
             1,
-            ref _modelMatrix);
+            ref staticModel);
 
         var renderTarget =
             _renderTargets[
@@ -820,6 +825,18 @@ public sealed class D3D12PresentationContext :
 
         DrawObjectBuffer(
             objects);
+
+        if (vehicle is not null &&
+            vehicle.Buffer.VertexCount >
+                0)
+        {
+            _commandList.SetGraphicsRoot32BitConstants(
+                1,
+                ref vehicleModel);
+
+            DrawObjectBuffer(
+                vehicle);
+        }
 
         _commandList.ResourceBarrierTransition(
             renderTarget,
