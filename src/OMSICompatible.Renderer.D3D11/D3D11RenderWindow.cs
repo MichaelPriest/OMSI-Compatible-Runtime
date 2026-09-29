@@ -70,6 +70,18 @@ public sealed class D3D11RenderWindow : Form
         public ID3D11ShaderResourceView? BumpMapView;
     }
 
+    private enum TrafficAnimationBindingKind
+    {
+        Unsupported,
+        Steering,
+        WheelRotation
+    }
+
+    private readonly record struct TrafficAnimationBinding(
+        TrafficAnimationBindingKind Kind,
+        int AxleIndex,
+        bool IsLeft);
+
     private sealed record PreparedTrafficVehicleGeometry(
         string Path,
         RuntimeObjectGeometry Geometry);
@@ -651,6 +663,12 @@ public sealed class D3D11RenderWindow : Form
         _trafficVehicleRenderBatchSummaries =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<
+        RuntimeVehicleAnimationInfo,
+        TrafficAnimationBinding>
+        _trafficAnimationBindings =
+            new(
+                ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, RuntimeObjectMeshInfo[]>
         _trafficVehicleLightMeshes =
             new(
@@ -9936,7 +9954,7 @@ public sealed class D3D11RenderWindow : Form
             batch.VisibilityConditions,
             batch.SectionIndex);
 
-    private static Matrix4x4 CreateTrafficVehicleAnimationMatrix(
+    private Matrix4x4 CreateTrafficVehicleAnimationMatrix(
         RuntimeObjectBatch batch,
         RuntimeTrafficAgentInfo agent,
         RuntimeVehicleInfo vehicleInfo)
@@ -9955,7 +9973,7 @@ public sealed class D3D11RenderWindow : Form
                  batch.Animations)
         {
             if (!TryResolveTrafficVehicleAnimationValue(
-                    animation.VariableName,
+                    animation,
                     agent,
                     vehicleInfo,
                     out var variableValue))
@@ -10032,50 +10050,82 @@ public sealed class D3D11RenderWindow : Form
         return result;
     }
 
-    private static bool TryResolveTrafficVehicleAnimationValue(
-        string variableName,
+    private bool TryResolveTrafficVehicleAnimationValue(
+        RuntimeVehicleAnimationInfo animation,
         RuntimeTrafficAgentInfo agent,
         RuntimeVehicleInfo vehicleInfo,
         out double value)
     {
-        if (TryResolveTrafficSteeringAnimationValue(
-                variableName,
-                agent,
-                vehicleInfo,
-                out value))
+        if (!_trafficAnimationBindings.TryGetValue(
+                animation,
+                out var binding))
         {
-            return true;
+            binding =
+                BuildTrafficAnimationBinding(
+                    animation.VariableName);
+
+            _trafficAnimationBindings[
+                animation] =
+                binding;
         }
 
-        return TryResolveTrafficWheelRotationAnimationValue(
-            variableName,
-            agent,
-            vehicleInfo,
-            out value);
+        return binding.Kind switch
+        {
+            TrafficAnimationBindingKind.Steering =>
+                TryResolveTrafficSteeringAnimationValue(
+                    binding,
+                    agent,
+                    vehicleInfo,
+                    out value),
+            TrafficAnimationBindingKind.WheelRotation =>
+                TryResolveTrafficWheelRotationAnimationValue(
+                    binding,
+                    agent,
+                    vehicleInfo,
+                    out value),
+            _ =>
+                FailTrafficAnimationValue(
+                    out value)
+        };
     }
 
-    private static bool TryResolveTrafficSteeringAnimationValue(
-        string variableName,
-        RuntimeTrafficAgentInfo agent,
-        RuntimeVehicleInfo vehicleInfo,
-        out double value)
+    private static TrafficAnimationBinding BuildTrafficAnimationBinding(
+        string variableName)
     {
-        value =
-            0.0;
-
-        const string prefix =
+        const string steeringPrefix =
             "Axle_Steering_";
+        const string wheelPrefix =
+            "Wheel_Rotation_";
 
-        if (!variableName.StartsWith(
-                prefix,
-                StringComparison.OrdinalIgnoreCase))
+        var kind =
+            variableName.StartsWith(
+                steeringPrefix,
+                StringComparison.OrdinalIgnoreCase)
+                ? TrafficAnimationBindingKind.Steering
+                : variableName.StartsWith(
+                    wheelPrefix,
+                    StringComparison.OrdinalIgnoreCase)
+                    ? TrafficAnimationBindingKind.WheelRotation
+                    : TrafficAnimationBindingKind.Unsupported;
+
+        if (kind ==
+            TrafficAnimationBindingKind.Unsupported)
         {
-            return false;
+            return new TrafficAnimationBinding(
+                kind,
+                -1,
+                false);
         }
+
+        var prefixLength =
+            kind ==
+                    TrafficAnimationBindingKind.Steering
+                ? steeringPrefix.Length
+                : wheelPrefix.Length;
 
         var suffix =
             variableName[
-                prefix.Length..];
+                prefixLength..];
 
         var separator =
             suffix.IndexOf(
@@ -10088,11 +10138,12 @@ public sealed class D3D11RenderWindow : Form
                     ..separator],
                 NumberStyles.Integer,
                 CultureInfo.InvariantCulture,
-                out var axleIndex) ||
-            axleIndex !=
-                0)
+                out var axleIndex))
         {
-            return false;
+            return new TrafficAnimationBinding(
+                TrafficAnimationBindingKind.Unsupported,
+                -1,
+                false);
         }
 
         var side =
@@ -10112,8 +10163,46 @@ public sealed class D3D11RenderWindow : Form
         if (!isLeft &&
             !isRight)
         {
-            return false;
+            return new TrafficAnimationBinding(
+                TrafficAnimationBindingKind.Unsupported,
+                -1,
+                false);
         }
+
+        if (kind ==
+                TrafficAnimationBindingKind.Steering &&
+            axleIndex !=
+                0)
+        {
+            return new TrafficAnimationBinding(
+                TrafficAnimationBindingKind.Unsupported,
+                axleIndex,
+                isLeft);
+        }
+
+        return new TrafficAnimationBinding(
+            kind,
+            axleIndex,
+            isLeft);
+    }
+
+    private static bool FailTrafficAnimationValue(
+        out double value)
+    {
+        value =
+            0.0;
+
+        return false;
+    }
+
+    private static bool TryResolveTrafficSteeringAnimationValue(
+        TrafficAnimationBinding binding,
+        RuntimeTrafficAgentInfo agent,
+        RuntimeVehicleInfo vehicleInfo,
+        out double value)
+    {
+        value =
+            0.0;
 
         var curvature =
             agent.PathCurvaturePerMeter;
@@ -10234,8 +10323,8 @@ public sealed class D3D11RenderWindow : Form
             var innerWheel =
                 direction >
                     0.0
-                    ? isRight
-                    : isLeft;
+                    ? !binding.IsLeft
+                    : binding.IsLeft;
 
             steering =
                 innerWheel
@@ -10275,7 +10364,7 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private static bool TryResolveTrafficWheelRotationAnimationValue(
-        string variableName,
+        TrafficAnimationBinding binding,
         RuntimeTrafficAgentInfo agent,
         RuntimeVehicleInfo vehicleInfo,
         out double value)
@@ -10283,65 +10372,21 @@ public sealed class D3D11RenderWindow : Form
         value =
             0.0;
 
-        const string prefix =
-            "Wheel_Rotation_";
-
-        if (!variableName.StartsWith(
-                prefix,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var suffix =
-            variableName[
-                prefix.Length..];
-
-        var separator =
-            suffix.IndexOf(
-                '_');
-
-        if (separator <=
-            0 ||
-            !int.TryParse(
-                suffix[
-                    ..separator],
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var axleIndex))
-        {
-            return false;
-        }
-
-        var side =
-            suffix[
-                (separator + 1)..];
-
-        if (!side.Equals(
-                "L",
-                StringComparison.OrdinalIgnoreCase) &&
-            !side.Equals(
-                "R",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
         double? diameter =
             null;
 
         if (vehicleInfo.Physics.Axles is
                 { Count: > 0 } &&
-            axleIndex >=
+            binding.AxleIndex >=
                 0 &&
-            axleIndex <
+            binding.AxleIndex <
                 vehicleInfo.Physics.Axles.Count)
         {
             diameter =
                 vehicleInfo
                     .Physics
                     .Axles[
-                        axleIndex]
+                        binding.AxleIndex]
                     .WheelDiameterMeters;
         }
 
@@ -21100,6 +21145,7 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleGeometries.Clear();
             _trafficVehicleRenderBatches.Clear();
             _trafficVehicleRenderBatchSummaries.Clear();
+            _trafficAnimationBindings.Clear();
             _trafficVehicleLightMeshes.Clear();
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
