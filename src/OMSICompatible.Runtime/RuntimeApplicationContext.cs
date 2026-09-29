@@ -5,6 +5,7 @@ using OmsiCompat.Map;
 using OmsiCompat.Plugins;
 using OmsiCompat.Scripting;
 using OmsiCompat.Vehicles;
+using OMSICompatible.Renderer.Common;
 using OMSICompatible.Renderer.D3D11;
 using OMSICompatible.Renderer.D3D12;
 using OMSICompatible.World;
@@ -811,21 +812,60 @@ internal sealed class RuntimeApplicationContext :
                 geometry.Splines.Vertices.Length >
                         0
                     ? graphics.CreateObjectResources(
-                        geometry.Splines.Vertices)
+                        geometry.Splines.Vertices,
+                        geometry.Splines.Batches
+                            .Select(
+                                static batch =>
+                                    new RuntimeObjectDrawBatch(
+                                        batch.StartVertex,
+                                        batch.VertexCount,
+                                        batch.TexturePath,
+                                        batch.AlphaCutout,
+                                        batch.AlphaBlend,
+                                        batch.TransMapTexturePath,
+                                        batch.NoZWrite,
+                                        batch.NoZCheck))
+                            .ToArray())
                     : null;
 
             using var objects =
                 geometry.Objects.Vertices.Length >
                         0
                     ? graphics.CreateObjectResources(
-                        geometry.Objects.Vertices)
+                        geometry.Objects.Vertices,
+                        geometry.Objects.Batches
+                            .Select(
+                                static batch =>
+                                    new RuntimeObjectDrawBatch(
+                                        batch.StartVertex,
+                                        batch.VertexCount,
+                                        batch.TexturePath,
+                                        batch.AlphaCutout,
+                                        batch.AlphaBlend,
+                                        batch.TransMapTexturePath,
+                                        batch.NoZWrite,
+                                        batch.NoZCheck))
+                            .ToArray())
                     : null;
 
             using var vehicle =
                 geometry.Vehicle.Vertices.Length >
                         0
                     ? graphics.CreateObjectResources(
-                        geometry.Vehicle.Vertices)
+                        geometry.Vehicle.Vertices,
+                        geometry.Vehicle.Batches
+                            .Select(
+                                static batch =>
+                                    new RuntimeObjectDrawBatch(
+                                        batch.StartVertex,
+                                        batch.VertexCount,
+                                        batch.TexturePath,
+                                        batch.AlphaCutout,
+                                        batch.AlphaBlend,
+                                        batch.TransMapTexturePath,
+                                        batch.NoZWrite,
+                                        batch.NoZCheck))
+                            .ToArray())
                     : null;
 
             var uploadElapsed =
