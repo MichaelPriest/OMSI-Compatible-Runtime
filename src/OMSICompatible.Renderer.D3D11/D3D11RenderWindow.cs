@@ -294,6 +294,12 @@ public sealed class D3D11RenderWindow : Form
     private IReadOnlyList<RuntimeTrafficSignalStateInfo>
         _trafficSignalStates =
             Array.Empty<RuntimeTrafficSignalStateInfo>();
+    private readonly Dictionary<int, RuntimeTrafficSignalStateInfo>
+        _trafficSignalStateBySegmentIndex =
+            [];
+    private readonly Dictionary<int, RuntimeTrafficPathSegmentInfo>
+        _runtimeTrafficSegmentByIndex =
+            [];
     private readonly Func<
         IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
         _railSignalStateProvider;
@@ -811,6 +817,9 @@ public sealed class D3D11RenderWindow : Form
         _trafficSignalStates =
             _trafficSignalStateProvider?.Invoke() ??
             Array.Empty<RuntimeTrafficSignalStateInfo>();
+        RebuildTrafficSignalStateLookup();
+        RebuildRuntimeTrafficSegmentLookup();
+
         _railSignalStateProvider =
             railSignalStateProvider;
         _railSignalRouteStates =
@@ -1580,6 +1589,8 @@ public sealed class D3D11RenderWindow : Form
 
         _windowInfo =
             windowInfo;
+
+        RebuildRuntimeTrafficSegmentLookup();
 
         _terrainSurfaceSampler =
             prepared.TerrainSampler;
@@ -6815,6 +6826,32 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(null);
     }
 
+    private void RebuildRuntimeTrafficSegmentLookup()
+    {
+        _runtimeTrafficSegmentByIndex.Clear();
+
+        foreach (var segment in
+                 _windowInfo.TrafficPaths.Segments)
+        {
+            _runtimeTrafficSegmentByIndex[
+                segment.Index] =
+                segment;
+        }
+    }
+
+    private void RebuildTrafficSignalStateLookup()
+    {
+        _trafficSignalStateBySegmentIndex.Clear();
+
+        foreach (var state in
+                 _trafficSignalStates)
+        {
+            _trafficSignalStateBySegmentIndex[
+                state.SegmentIndex] =
+                state;
+        }
+    }
+
     private void RebuildRailSignalRuntimeLookup()
     {
         _railSignalRuntimeByObjectId.Clear();
@@ -11238,6 +11275,8 @@ public sealed class D3D11RenderWindow : Form
             _trafficSignalStates =
                 _trafficSignalStateProvider() ??
                 Array.Empty<RuntimeTrafficSignalStateInfo>();
+
+            RebuildTrafficSignalStateLookup();
         }
 
         if (_railSignalStateProvider is not null)
@@ -13425,14 +13464,9 @@ public sealed class D3D11RenderWindow : Form
         foreach (var connectionIndex in
                  connectionIndices)
         {
-            var candidate =
-                _windowInfo
-                    .TrafficPaths
-                    .Segments
-                    .FirstOrDefault(
-                        item =>
-                            item.Index ==
-                            connectionIndex);
+            _runtimeTrafficSegmentByIndex.TryGetValue(
+                connectionIndex,
+                out var candidate);
 
             if (candidate?.TrafficSignal is
                 not null)
@@ -13490,11 +13524,9 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        var dynamicSignalState =
-            _trafficSignalStates.FirstOrDefault(
-                state =>
-                    state.SegmentIndex ==
-                    signalSegment.Index);
+        _trafficSignalStateBySegmentIndex.TryGetValue(
+            signalSegment.Index,
+            out var dynamicSignalState);
 
         var currentSignalPhase =
             dynamicSignalState is not null
@@ -13861,14 +13893,9 @@ public sealed class D3D11RenderWindow : Form
         secondsToEntry =
             double.PositiveInfinity;
 
-        var current =
-            _windowInfo
-                .TrafficPaths
-                .Segments
-                .FirstOrDefault(
-                    segment =>
-                        segment.Index ==
-                        agent.SegmentIndex);
+        _runtimeTrafficSegmentByIndex.TryGetValue(
+            agent.SegmentIndex,
+            out var current);
 
         if (current is null ||
             current.Points.Count <
@@ -13978,14 +14005,9 @@ public sealed class D3D11RenderWindow : Form
         foreach (var connectionIndex in
                  connectionIndices)
         {
-            var candidate =
-                _windowInfo
-                    .TrafficPaths
-                    .Segments
-                    .FirstOrDefault(
-                        segment =>
-                            segment.Index ==
-                            connectionIndex);
+            _runtimeTrafficSegmentByIndex.TryGetValue(
+                connectionIndex,
+                out var candidate);
 
             if (candidate?.SceneryObjectId !=
                     crossingObjectId ||
