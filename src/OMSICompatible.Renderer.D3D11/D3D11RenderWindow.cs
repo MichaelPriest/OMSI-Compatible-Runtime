@@ -82,6 +82,12 @@ public sealed class D3D11RenderWindow : Form
         int AxleIndex,
         bool IsLeft);
 
+    private readonly record struct CompiledTrafficAnimation(
+        RuntimeVehicleAnimationInfo Animation,
+        TrafficAnimationBinding Binding,
+        Vector3 Pivot,
+        Vector3 Axis);
+
     private sealed record PreparedTrafficVehicleGeometry(
         string Path,
         RuntimeObjectGeometry Geometry);
@@ -667,6 +673,12 @@ public sealed class D3D11RenderWindow : Form
         RuntimeVehicleAnimationInfo,
         TrafficAnimationBinding>
         _trafficAnimationBindings =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
+        CompiledTrafficAnimation[]>
+        _compiledTrafficAnimations =
             new(
                 ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, RuntimeObjectMeshInfo[]>
@@ -9966,20 +9978,94 @@ public sealed class D3D11RenderWindow : Form
             return Matrix4x4.Identity;
         }
 
+        if (!_compiledTrafficAnimations.TryGetValue(
+                batch,
+                out var compiledAnimations))
+        {
+            var compiled =
+                new List<CompiledTrafficAnimation>(
+                    batch.Animations.Count);
+
+            foreach (var animation in
+                     batch.Animations)
+            {
+                if (!_trafficAnimationBindings.TryGetValue(
+                        animation,
+                        out var binding))
+                {
+                    binding =
+                        BuildTrafficAnimationBinding(
+                            animation.VariableName);
+
+                    _trafficAnimationBindings[
+                        animation] =
+                        binding;
+                }
+
+                if (binding.Kind ==
+                    TrafficAnimationBindingKind.Unsupported)
+                {
+                    continue;
+                }
+
+                ResolveAnimationFrame(
+                    batch.SourceTransform,
+                    batch.StaticTransform,
+                    animation,
+                    out var pivot,
+                    out var orientation);
+
+                var axis =
+                    Vector3.TransformNormal(
+                        Vector3.UnitX,
+                        orientation);
+
+                axis =
+                    axis.LengthSquared() <
+                            0.000001f
+                        ? Vector3.UnitX
+                        : Vector3.Normalize(
+                            axis);
+
+                compiled.Add(
+                    new CompiledTrafficAnimation(
+                        animation,
+                        binding,
+                        pivot,
+                        axis));
+            }
+
+            compiledAnimations =
+                compiled.ToArray();
+
+            _compiledTrafficAnimations[
+                batch] =
+                compiledAnimations;
+        }
+
+        if (compiledAnimations.Length ==
+            0)
+        {
+            return Matrix4x4.Identity;
+        }
+
         var result =
             Matrix4x4.Identity;
 
-        foreach (var animation in
-                 batch.Animations)
+        foreach (var compiled in
+                 compiledAnimations)
         {
             if (!TryResolveTrafficVehicleAnimationValue(
-                    animation,
+                    compiled.Binding,
                     agent,
                     vehicleInfo,
                     out var variableValue))
             {
                 continue;
             }
+
+            var animation =
+                compiled.Animation;
 
             var amount =
                 variableValue *
@@ -9995,31 +10081,6 @@ public sealed class D3D11RenderWindow : Form
                 continue;
             }
 
-            ResolveAnimationFrame(
-                batch.SourceTransform,
-                batch.StaticTransform,
-                animation,
-                out var pivot,
-                out var orientation);
-
-            var axis =
-                Vector3.TransformNormal(
-                    Vector3.UnitX,
-                    orientation);
-
-            if (axis.LengthSquared() <
-                0.000001f)
-            {
-                axis =
-                    Vector3.UnitX;
-            }
-            else
-            {
-                axis =
-                    Vector3.Normalize(
-                        axis);
-            }
-
             Matrix4x4 animationTransform;
 
             if (animation.Kind ==
@@ -10027,20 +10088,20 @@ public sealed class D3D11RenderWindow : Form
             {
                 animationTransform =
                     Matrix4x4.CreateTranslation(
-                        axis *
+                        compiled.Axis *
                         (float)amount);
             }
             else
             {
                 animationTransform =
                     Matrix4x4.CreateTranslation(
-                        -pivot) *
+                        -compiled.Pivot) *
                     Matrix4x4.CreateFromAxisAngle(
-                        axis,
+                        compiled.Axis,
                         DegreesToRadians(
                             amount)) *
                     Matrix4x4.CreateTranslation(
-                        pivot);
+                        compiled.Pivot);
             }
 
             result *=
@@ -10050,25 +10111,12 @@ public sealed class D3D11RenderWindow : Form
         return result;
     }
 
-    private bool TryResolveTrafficVehicleAnimationValue(
-        RuntimeVehicleAnimationInfo animation,
+    private static bool TryResolveTrafficVehicleAnimationValue(
+        TrafficAnimationBinding binding,
         RuntimeTrafficAgentInfo agent,
         RuntimeVehicleInfo vehicleInfo,
         out double value)
     {
-        if (!_trafficAnimationBindings.TryGetValue(
-                animation,
-                out var binding))
-        {
-            binding =
-                BuildTrafficAnimationBinding(
-                    animation.VariableName);
-
-            _trafficAnimationBindings[
-                animation] =
-                binding;
-        }
-
         return binding.Kind switch
         {
             TrafficAnimationBindingKind.Steering =>
@@ -21146,6 +21194,7 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleRenderBatches.Clear();
             _trafficVehicleRenderBatchSummaries.Clear();
             _trafficAnimationBindings.Clear();
+            _compiledTrafficAnimations.Clear();
             _trafficVehicleLightMeshes.Clear();
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
