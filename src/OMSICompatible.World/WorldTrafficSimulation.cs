@@ -56,6 +56,9 @@ public sealed class WorldTrafficSimulation
     private readonly WorldTrafficPathNetwork _network;
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
     private readonly Dictionary<int, double> _segmentLengthsByIndex;
+    private readonly Dictionary<(int First, int Second), bool>
+        _trafficPathConflictCache =
+            [];
     private readonly HashSet<long> _crossingSceneryObjectIds;
     private readonly Dictionary<long, int[]>
         _crossingCandidateSegmentsBySceneryObjectId;
@@ -1653,7 +1656,7 @@ public sealed class WorldTrafficSimulation
             if (otherSegment.SceneryObjectId ==
                 crossingId)
             {
-                if (TrafficPathsConflict(
+                if (TrafficPathsConflictCached(
                         nextSegment,
                         otherSegment))
                 {
@@ -1681,7 +1684,7 @@ public sealed class WorldTrafficSimulation
                     out var otherNextSegment) ||
                 otherNextSegment.SceneryObjectId !=
                     crossingId ||
-                !TrafficPathsConflict(
+                !TrafficPathsConflictCached(
                     nextSegment,
                     otherNextSegment))
             {
@@ -2137,6 +2140,45 @@ public sealed class WorldTrafficSimulation
             ? heading
             : ReverseHeading(
                 heading);
+    }
+
+    private bool TrafficPathsConflictCached(
+        WorldTrafficPathSegment first,
+        WorldTrafficPathSegment second)
+    {
+        if (first.Index ==
+            second.Index)
+        {
+            return true;
+        }
+
+        var key =
+            first.Index <
+                second.Index
+                ? (
+                    first.Index,
+                    second.Index)
+                : (
+                    second.Index,
+                    first.Index);
+
+        if (_trafficPathConflictCache.TryGetValue(
+                key,
+                out var cached))
+        {
+            return cached;
+        }
+
+        var conflicts =
+            TrafficPathsConflict(
+                first,
+                second);
+
+        _trafficPathConflictCache[
+            key] =
+            conflicts;
+
+        return conflicts;
     }
 
     private static bool TrafficPathsConflict(
