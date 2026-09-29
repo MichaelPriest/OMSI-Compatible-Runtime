@@ -6611,11 +6611,9 @@ public sealed class D3D11RenderWindow : Form
                         1.0)
                 : 1.0;
 
-        if (framePressure >=
-                1.15 &&
-            distanceSquared >
-                120.0f *
-                120.0f &&
+        if (distanceSquared >
+                180.0f *
+                180.0f &&
             radius >
                 0.0f)
         {
@@ -6647,11 +6645,19 @@ public sealed class D3D11RenderWindow : Form
                 projectedRadiusNdc *
                 viewportPixels;
 
+            // openOMSI applies a minimum projected object size even before
+            // the frame is overloaded. Keep our baseline deliberately
+            // sub-pixel so distant poles/details disappear only after they
+            // are no longer resolvable, then become more aggressive under
+            // actual frame pressure.
             var minimumVisiblePixels =
                 framePressure >=
                         1.50
                     ? 2.5f
-                    : 1.5f;
+                    : framePressure >=
+                            1.15
+                        ? 1.5f
+                        : 0.65f;
 
             if (projectedDiameterPixels <
                 minimumVisiblePixels)
