@@ -7032,7 +7032,7 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawTrafficVehicles()
     {
-        if (_trafficVisibleDrawItems.Count ==
+        if (_trafficAgents.Count ==
                 0 ||
             _trafficVehicleGeometries.Count ==
                 0 ||
@@ -7744,7 +7744,7 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawTrafficVehicleLights()
     {
-        if (_trafficAgents.Count ==
+        if (_trafficVisibleDrawItems.Count ==
                 0 ||
             _windowInfo.TrafficVehicleAssets is null ||
             _vehicleLightVertexBuffer is null ||
