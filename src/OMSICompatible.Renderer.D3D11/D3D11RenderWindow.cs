@@ -451,6 +451,7 @@ public sealed class D3D11RenderWindow : Form
     private double _lastFrameTimeSeconds;
     private double _trafficStepAccumulatedSeconds;
     private double _trafficAudioStepAccumulatedSeconds;
+    private double _lastTrafficSimulationStepSeconds;
     private double _odometerMeters;
     private double _lastVehiclePhysicsDiagnosticsSeconds =
         double.NegativeInfinity;
@@ -7250,6 +7251,112 @@ public sealed class D3D11RenderWindow : Form
                    margin;
     }
 
+    private void ResolveTrafficRenderPose(
+        RuntimeTrafficAgentInfo agent,
+        out float x,
+        out float z,
+        out float heading)
+    {
+        x =
+            (float)agent.X;
+        z =
+            (float)agent.Z;
+        heading =
+            (float)agent.HeadingRadians;
+
+        if (agent.AgentIndex >=
+                2_000_000 ||
+            _lastTrafficSimulationStepSeconds <=
+                0.0 ||
+            !double.IsFinite(
+                agent.SpeedMetersPerSecond) ||
+            agent.SpeedMetersPerSecond <=
+                0.001)
+        {
+            return;
+        }
+
+        var elapsed =
+            _frameClock.Elapsed.TotalSeconds -
+            _lastTrafficSimulationStepSeconds;
+
+        if (!double.IsFinite(
+                elapsed) ||
+            elapsed <=
+                0.0)
+        {
+            return;
+        }
+
+        // Keep the authoritative AI state on its lower-rate simulation tick,
+        // but render a short prediction between ticks. This mirrors the
+        // openOMSI separation of simulation work from presentation: rules,
+        // collision and scripts still use the exact snapshot.
+        elapsed =
+            Math.Clamp(
+                elapsed,
+                0.0,
+                0.060);
+
+        var travel =
+            (float)(
+                agent.SpeedMetersPerSecond *
+                elapsed);
+
+        if (travel <=
+            0.0001f)
+        {
+            return;
+        }
+
+        var curvature =
+            double.IsFinite(
+                    agent.PathCurvaturePerMeter)
+                ? (float)agent.PathCurvaturePerMeter
+                : 0.0f;
+
+        if (MathF.Abs(
+                curvature) <
+            0.00001f)
+        {
+            x +=
+                MathF.Sin(
+                    heading) *
+                travel;
+            z +=
+                MathF.Cos(
+                    heading) *
+                travel;
+            return;
+        }
+
+        var nextHeading =
+            heading +
+            curvature *
+                travel;
+
+        x +=
+            (
+                MathF.Cos(
+                    heading) -
+                MathF.Cos(
+                    nextHeading)
+            ) /
+            curvature;
+
+        z +=
+            (
+                MathF.Sin(
+                    nextHeading) -
+                MathF.Sin(
+                    heading)
+            ) /
+            curvature;
+
+        heading =
+            nextHeading;
+    }
+
     private bool TryUploadTrafficInstances(
         IReadOnlyList<TrafficVehicleDrawItem> drawItems,
         RuntimeObjectBatch? animationBatch = null,
@@ -7423,16 +7530,22 @@ public sealed class D3D11RenderWindow : Form
                     vehicleInfo.Physics.AiDeltaHeightMeters ??
                     0.0);
 
+            ResolveTrafficRenderPose(
+                agent,
+                out var renderX,
+                out var renderZ,
+                out var renderHeading);
+
             var drawItem =
                 new TrafficVehicleDrawItem(
                     agent,
                     Matrix4x4.CreateRotationY(
-                        (float)agent.HeadingRadians) *
+                        renderHeading) *
                     Matrix4x4.CreateTranslation(
-                        (float)agent.X,
+                        renderX,
                         (float)agent.Y +
                             heightOffset,
-                        (float)agent.Z));
+                        renderZ));
 
             _trafficVisibleDrawItems.Add(
                 drawItem);
@@ -11640,6 +11753,9 @@ public sealed class D3D11RenderWindow : Form
                     _trafficStep(
                         trafficDeltaSeconds) ??
                     Array.Empty<RuntimeTrafficAgentInfo>();
+
+                _lastTrafficSimulationStepSeconds =
+                    now;
 
                 trafficStepped =
                     true;
