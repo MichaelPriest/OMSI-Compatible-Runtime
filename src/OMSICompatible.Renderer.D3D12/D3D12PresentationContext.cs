@@ -953,9 +953,7 @@ public sealed class D3D12PresentationContext :
 
                 _commandList.SetGraphicsRoot32BitConstant(
                     3,
-                    batch.AlphaCutout
-                        ? 0.5f
-                        : -1.0f,
+                    -1.0f,
                     0);
 
                 _commandList.DrawInstanced(
