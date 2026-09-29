@@ -48,6 +48,9 @@ public sealed class D3D12PresentationContext :
     private readonly Dictionary<string, D3D12RuntimeTexture> _textureCache =
         new(
             StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, D3D12RuntimeMaterialDescriptors> _materialDescriptorCache =
+        new(
+            StringComparer.OrdinalIgnoreCase);
     private readonly ID3D12Fence _fence;
     private readonly int _width;
     private readonly int _height;
@@ -372,14 +375,14 @@ public sealed class D3D12PresentationContext :
                                 new RootDescriptorTable1(
                                     new DescriptorRange1(
                                         DescriptorRangeType.ShaderResourceView,
-                                        1,
+                                        2,
                                         0)),
                                 ShaderVisibility.Pixel),
                             new RootParameter1(
                                 new RootConstants(
                                     2,
                                     0,
-                                    1),
+                                    4),
                                 ShaderVisibility.Pixel)
                         ],
                         [
@@ -403,11 +406,15 @@ public sealed class D3D12PresentationContext :
                 };
 
                 Texture2D DiffuseTexture : register(t0);
+                Texture2D TransMapTexture : register(t1);
                 SamplerState DiffuseSampler : register(s0);
 
                 cbuffer MaterialConstants : register(b2)
                 {
                     float AlphaCutoff;
+                    float TransMapMode;
+                    float MaterialPadding0;
+                    float MaterialPadding1;
                 };
 
                 struct VsInput
@@ -454,12 +461,59 @@ public sealed class D3D12PresentationContext :
                             DiffuseSampler,
                             input.uv);
 
+                    float effectiveAlpha =
+                        color.a;
+
+                    if (TransMapMode >
+                        0.5)
+                    {
+                        float4 trans =
+                            TransMapTexture.Sample(
+                                DiffuseSampler,
+                                input.uv);
+
+                        float transAlpha =
+                            trans.a;
+
+                        if (TransMapMode <
+                            1.5)
+                        {
+                            float luminance =
+                                dot(
+                                    trans.rgb,
+                                    float3(
+                                        0.333333f,
+                                        0.333333f,
+                                        0.333333f));
+
+                            transAlpha =
+                                min(
+                                    trans.a,
+                                    luminance);
+                        }
+
+                        effectiveAlpha =
+                            saturate(
+                                transAlpha *
+                                input.color.a);
+
+                        color.a =
+                            effectiveAlpha;
+                    }
+
                     if (AlphaCutoff >=
                         0.0)
                     {
                         clip(
-                            color.a -
+                            effectiveAlpha -
                             AlphaCutoff);
+
+                        if (TransMapMode >
+                            0.5)
+                        {
+                            color.a =
+                                1.0f;
+                        }
                     }
 
                     return color;
@@ -875,10 +929,18 @@ public sealed class D3D12PresentationContext :
             1,
             ref staticModel);
 
-        _commandList.SetGraphicsRoot32BitConstant(
+        Span<float> defaultMaterialConstants =
+            stackalloc float[4]
+            {
+                -1.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            };
+
+        _commandList.SetGraphicsRoot32BitConstants(
             3,
-            -1.0f,
-            0);
+            defaultMaterialConstants);
 
         var renderTarget =
             _renderTargets[
@@ -965,10 +1027,14 @@ public sealed class D3D12PresentationContext :
         }
 
         DrawObjectBuffer(
-            splines);
+            splines,
+            transMapMode:
+                1.0f);
 
         DrawObjectBuffer(
-            objects);
+            objects,
+            transMapMode:
+                1.0f);
 
         if (vehicle is not null &&
             vehicle.Buffer.VertexCount >
@@ -979,7 +1045,9 @@ public sealed class D3D12PresentationContext :
                 ref vehicleModel);
 
             DrawObjectBuffer(
-                vehicle);
+                vehicle,
+                transMapMode:
+                    2.0f);
         }
 
         _commandList.ResourceBarrierTransition(
@@ -1005,7 +1073,8 @@ public sealed class D3D12PresentationContext :
     }
 
     private void DrawObjectBuffer(
-        D3D12RuntimeObjectResources? resources)
+        D3D12RuntimeObjectResources? resources,
+        float transMapMode = 1.0f)
     {
         if (resources is null ||
             resources.Buffer.VertexCount <=
@@ -1034,16 +1103,27 @@ public sealed class D3D12PresentationContext :
                     ResolveObjectPipelineState(
                         batch));
 
-                BindTexture(
-                    ResolveTexture(
-                        batch.TexturePath));
+                BindMaterialTextures(
+                    batch.TexturePath,
+                    batch.TransMapTexturePath);
 
-                _commandList.SetGraphicsRoot32BitConstant(
+                Span<float> materialConstants =
+                    stackalloc float[4]
+                    {
+                        batch.AlphaCutout
+                            ? 0.35f
+                            : -1.0f,
+                        string.IsNullOrWhiteSpace(
+                            batch.TransMapTexturePath)
+                            ? 0.0f
+                            : transMapMode,
+                        0.0f,
+                        0.0f
+                    };
+
+                _commandList.SetGraphicsRoot32BitConstants(
                     3,
-                    batch.AlphaCutout
-                        ? 0.35f
-                        : -1.0f,
-                    0);
+                    materialConstants);
 
                 _commandList.DrawInstanced(
                     batch.VertexCount,
@@ -1055,10 +1135,18 @@ public sealed class D3D12PresentationContext :
             _commandList.SetPipelineState(
                 _pipelineState);
 
-            _commandList.SetGraphicsRoot32BitConstant(
+            Span<float> resetMaterialConstants =
+                stackalloc float[4]
+                {
+                    -1.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f
+                };
+
+            _commandList.SetGraphicsRoot32BitConstants(
                 3,
-                -1.0f,
-                0);
+                resetMaterialConstants);
 
             return;
         }
@@ -1124,6 +1212,47 @@ public sealed class D3D12PresentationContext :
             texture.GpuHandle);
     }
 
+    private void BindMaterialTextures(
+        string? diffusePath,
+        string? transMapPath)
+    {
+        var diffuse =
+            ResolveTexture(
+                diffusePath);
+
+        var transMap =
+            ResolveTexture(
+                transMapPath);
+
+        var key =
+            (diffusePath ??
+             "<fallback>") +
+            "\n" +
+            (transMapPath ??
+             "<fallback>");
+
+        if (!_materialDescriptorCache.TryGetValue(
+                key,
+                out var descriptors))
+        {
+            descriptors =
+                D3D12RuntimeMaterialDescriptors.Create(
+                    _device,
+                    diffuse,
+                    transMap);
+
+            _materialDescriptorCache[key] =
+                descriptors;
+        }
+
+        _commandList.SetDescriptorHeaps(
+            descriptors.Heap);
+
+        _commandList.SetGraphicsRootDescriptorTable(
+            2,
+            descriptors.GpuHandle);
+    }
+
     private ID3D12PipelineState ResolveObjectPipelineState(
         RuntimeObjectDrawBatch batch)
     {
@@ -1183,10 +1312,18 @@ public sealed class D3D12PresentationContext :
         BindTexture(
             _fallbackTexture);
 
-        _commandList.SetGraphicsRoot32BitConstant(
+        Span<float> defaultMaterialConstants =
+            stackalloc float[4]
+            {
+                -1.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            };
+
+        _commandList.SetGraphicsRoot32BitConstants(
             3,
-            -1.0f,
-            0);
+            defaultMaterialConstants);
 
         var renderTarget =
             _renderTargets[
@@ -1348,6 +1485,14 @@ public sealed class D3D12PresentationContext :
         }
 
         _commandList.Dispose();
+        foreach (var descriptors in
+                 _materialDescriptorCache.Values)
+        {
+            descriptors.Dispose();
+        }
+
+        _materialDescriptorCache.Clear();
+
         foreach (var texture in
                  _textureCache.Values)
         {
