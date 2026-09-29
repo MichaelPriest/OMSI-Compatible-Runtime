@@ -380,6 +380,7 @@ public sealed class D3D11RenderWindow : Form
 
     private double _lastFrameTimeSeconds;
     private double _trafficStepAccumulatedSeconds;
+    private double _trafficAudioStepAccumulatedSeconds;
     private double _odometerMeters;
     private double _lastVehiclePhysicsDiagnosticsSeconds =
         double.NegativeInfinity;
@@ -10875,8 +10876,27 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
-        UpdateTrafficOmsiAudio(
-            listenerPosition);
+        _trafficAudioStepAccumulatedSeconds +=
+            deltaSeconds;
+
+        var trafficAudioIntervalSeconds =
+            _trafficAgents.Count >=
+                    40 ||
+                _lastObservedFrameMilliseconds >
+                    _targetFrameMilliseconds *
+                    1.20
+                ? 0.050
+                : 0.033;
+
+        if (_trafficAudioStepAccumulatedSeconds >=
+            trafficAudioIntervalSeconds)
+        {
+            _trafficAudioStepAccumulatedSeconds =
+                0.0;
+
+            UpdateTrafficOmsiAudio(
+                listenerPosition);
+        }
 
         UpdateTrafficCollisionAndRules(
             now,
