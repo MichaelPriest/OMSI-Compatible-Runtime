@@ -55,6 +55,17 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<int, TrafficScriptRuntimeState>
         _trafficScriptRuntimes =
             [];
+    private readonly HashSet<int>
+        _activeTrafficScriptAgentIds =
+            [];
+    private readonly List<int>
+        _staleTrafficScriptAgentIds =
+            [];
+    private readonly List<(
+        WorldTrafficAgentState Agent,
+        TrafficScriptRuntimeState State)>
+        _trafficScriptWork =
+            [];
     private readonly Dictionary<long, OmsiScriptRuntime>
         _railSignalScriptRuntimes =
             [];
@@ -2707,21 +2718,30 @@ internal sealed class RuntimeApplicationContext :
         IReadOnlyList<WorldTrafficAgentState> agents,
         double deltaSeconds)
     {
-        var activeAgentIds =
-            agents
-                .Select(
-                    static agent =>
-                        agent.AgentIndex)
-                .ToHashSet();
+        _activeTrafficScriptAgentIds.Clear();
+
+        foreach (var agent in
+                 agents)
+        {
+            _activeTrafficScriptAgentIds.Add(
+                agent.AgentIndex);
+        }
+
+        _staleTrafficScriptAgentIds.Clear();
+
+        foreach (var agentId in
+                 _trafficScriptRuntimes.Keys)
+        {
+            if (!_activeTrafficScriptAgentIds.Contains(
+                    agentId))
+            {
+                _staleTrafficScriptAgentIds.Add(
+                    agentId);
+            }
+        }
 
         foreach (var staleAgentId in
-                 _trafficScriptRuntimes
-                     .Keys
-                     .Where(
-                         id =>
-                             !activeAgentIds.Contains(
-                                 id))
-                     .ToArray())
+                 _staleTrafficScriptAgentIds)
         {
             _trafficScriptRuntimes.Remove(
                 staleAgentId);
@@ -2735,11 +2755,14 @@ internal sealed class RuntimeApplicationContext :
                 ? deltaSeconds
                 : 0.0;
 
-        var work =
-            new List<(
-                WorldTrafficAgentState Agent,
-                TrafficScriptRuntimeState State)>(
-                agents.Count);
+        _trafficScriptWork.Clear();
+
+        if (_trafficScriptWork.Capacity <
+            agents.Count)
+        {
+            _trafficScriptWork.Capacity =
+                agents.Count;
+        }
 
         // Runtime creation, HOF assignment and dictionary mutation stay on
         // this thread. Once every agent owns its runtime, frame_ai execution
@@ -2804,25 +2827,25 @@ internal sealed class RuntimeApplicationContext :
                     state;
             }
 
-            work.Add(
+            _trafficScriptWork.Add(
                 (
                     agent,
                     state));
         }
 
-        if (work.Count ==
+        if (_trafficScriptWork.Count ==
             0)
         {
             return;
         }
 
-        if (work.Count <
+        if (_trafficScriptWork.Count <
                 4 ||
             validDeltaSeconds <=
                 0.0)
         {
             foreach (var item in
-                     work)
+                     _trafficScriptWork)
             {
                 SeedTrafficScriptHostVariables(
                     item.State.Runtime,
@@ -2841,7 +2864,7 @@ internal sealed class RuntimeApplicationContext :
         }
 
         Parallel.ForEach(
-            work,
+            _trafficScriptWork,
             item =>
             {
                 SeedTrafficScriptHostVariables(
