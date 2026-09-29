@@ -44,6 +44,10 @@ public sealed class D3D12PresentationContext :
     private readonly ID3D12PipelineState _depthDisabledPipelineState;
     private readonly ID3D12PipelineState _alphaBlendDepthDisabledPipelineState;
     private readonly D3D12RuntimeGeometryBuffer _geometryBuffer;
+    private readonly D3D12RuntimeTexture _fallbackTexture;
+    private readonly Dictionary<string, D3D12RuntimeTexture> _textureCache =
+        new(
+            StringComparer.OrdinalIgnoreCase);
     private readonly ID3D12Fence _fence;
     private readonly int _width;
     private readonly int _height;
@@ -83,6 +87,7 @@ public sealed class D3D12PresentationContext :
         ID3D12PipelineState depthDisabledPipelineState,
         ID3D12PipelineState alphaBlendDepthDisabledPipelineState,
         D3D12RuntimeGeometryBuffer geometryBuffer,
+        D3D12RuntimeTexture fallbackTexture,
         ID3D12Fence fence,
         int width,
         int height)
@@ -121,6 +126,8 @@ public sealed class D3D12PresentationContext :
             alphaBlendDepthDisabledPipelineState;
         _geometryBuffer =
             geometryBuffer;
+        _fallbackTexture =
+            fallbackTexture;
         _fence =
             fence;
         _width =
@@ -360,7 +367,20 @@ public sealed class D3D12PresentationContext :
                                     1,
                                     0,
                                     16),
-                                ShaderVisibility.Vertex)
+                                ShaderVisibility.Vertex),
+                            new RootParameter1(
+                                new RootDescriptorTable1(
+                                    new DescriptorRange1(
+                                        DescriptorRangeType.ShaderResourceView,
+                                        1,
+                                        0)),
+                                ShaderVisibility.Pixel)
+                        ],
+                        [
+                            new StaticSamplerDescription(
+                                0,
+                                shaderVisibility:
+                                    ShaderVisibility.Pixel)
                         ]));
 
             const string shaderSource =
@@ -376,16 +396,21 @@ public sealed class D3D12PresentationContext :
                     row_major float4x4 Model;
                 };
 
+                Texture2D DiffuseTexture : register(t0);
+                SamplerState DiffuseSampler : register(s0);
+
                 struct VsInput
                 {
                     float3 position : POSITION;
                     float4 color : COLOR0;
+                    float2 uv : TEXCOORD0;
                 };
 
                 struct VsOutput
                 {
                     float4 position : SV_Position;
                     float4 color : COLOR0;
+                    float2 uv : TEXCOORD0;
                 };
 
                 VsOutput VSMain(VsInput input)
@@ -406,12 +431,16 @@ public sealed class D3D12PresentationContext :
                                 1.0),
                             ViewProjection);
                     output.color = input.color;
+                    output.uv = input.uv;
                     return output;
                 }
 
                 float4 PSMain(VsOutput input) : SV_Target0
                 {
-                    return input.color;
+                    return input.color *
+                        DiffuseTexture.Sample(
+                            DiffuseSampler,
+                            input.uv);
                 }
                 """;
 
@@ -466,6 +495,12 @@ public sealed class D3D12PresentationContext :
                                         0,
                                         Format.R32G32B32A32_Float,
                                         12,
+                                        0),
+                                    new InputElementDescription(
+                                        "TEXCOORD",
+                                        0,
+                                        Format.R32G32_Float,
+                                        28,
                                         0)
                                 ]),
                         SampleMask =
@@ -567,6 +602,20 @@ public sealed class D3D12PresentationContext :
                     device,
                     vertices);
 
+            var fallbackTexture =
+                D3D12RuntimeTexture.Create(
+                    device,
+                    queue,
+                    new RuntimeDecodedTexture(
+                        [
+                            (byte)255,
+                            (byte)255,
+                            (byte)255,
+                            (byte)255
+                        ],
+                        1,
+                        1));
+
             var commandList =
                 device.CreateCommandList<
                     ID3D12GraphicsCommandList>(
@@ -600,6 +649,7 @@ public sealed class D3D12PresentationContext :
                     depthDisabledPipelineState,
                     alphaBlendDepthDisabledPipelineState,
                     geometryBuffer,
+                    fallbackTexture,
                     fence,
                     width,
                     height);
@@ -870,6 +920,10 @@ public sealed class D3D12PresentationContext :
                     continue;
                 }
 
+                BindTexture(
+                    ResolveTexture(
+                        batch.TexturePath));
+
                 _commandList.DrawInstanced(
                     batch.VertexCount,
                     1,
@@ -948,6 +1002,10 @@ public sealed class D3D12PresentationContext :
                     ResolveObjectPipelineState(
                         batch));
 
+                BindTexture(
+                    ResolveTexture(
+                        batch.TexturePath));
+
                 _commandList.DrawInstanced(
                     batch.VertexCount,
                     1,
@@ -970,6 +1028,59 @@ public sealed class D3D12PresentationContext :
             1,
             0,
             0);
+    }
+
+    private D3D12RuntimeTexture ResolveTexture(
+        string? path)
+    {
+        if (string.IsNullOrWhiteSpace(
+                path))
+        {
+            return _fallbackTexture;
+        }
+
+        if (_textureCache.TryGetValue(
+                path,
+                out var cached))
+        {
+            return cached;
+        }
+
+        if (!RuntimeRgbaTextureDecoder.TryRead(
+                path,
+                out var decoded))
+        {
+            return _fallbackTexture;
+        }
+
+        try
+        {
+            var created =
+                D3D12RuntimeTexture.Create(
+                    _device,
+                    _queue,
+                    decoded);
+
+            _textureCache[path] =
+                created;
+
+            return created;
+        }
+        catch
+        {
+            return _fallbackTexture;
+        }
+    }
+
+    private void BindTexture(
+        D3D12RuntimeTexture texture)
+    {
+        _commandList.SetDescriptorHeaps(
+            texture.DescriptorHeap);
+
+        _commandList.SetGraphicsRootDescriptorTable(
+            2,
+            texture.GpuHandle);
     }
 
     private ID3D12PipelineState ResolveObjectPipelineState(
@@ -1027,6 +1138,9 @@ public sealed class D3D12PresentationContext :
         _commandList.SetGraphicsRoot32BitConstants(
             1,
             ref _modelMatrix);
+
+        BindTexture(
+            _fallbackTexture);
 
         var renderTarget =
             _renderTargets[
@@ -1188,6 +1302,15 @@ public sealed class D3D12PresentationContext :
         }
 
         _commandList.Dispose();
+        foreach (var texture in
+                 _textureCache.Values)
+        {
+            texture.Dispose();
+        }
+
+        _textureCache.Clear();
+
+        _fallbackTexture.Dispose();
         _geometryBuffer.Dispose();
         _alphaBlendDepthDisabledPipelineState.Dispose();
         _depthDisabledPipelineState.Dispose();
