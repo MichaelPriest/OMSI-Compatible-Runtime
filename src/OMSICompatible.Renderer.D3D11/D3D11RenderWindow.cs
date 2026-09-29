@@ -969,7 +969,7 @@ public sealed class D3D11RenderWindow : Form
 
         _maximumInactiveStreamingTextureCacheBytes =
             Math.Min(
-                Default_maximumInactiveStreamingTextureCacheBytes,
+                DefaultMaximumInactiveStreamingTextureCacheBytes,
                 Math.Max(
                     256L * 1024L * 1024L,
                     _maximumStreamingTextureCacheBytes /
@@ -6470,7 +6470,7 @@ public sealed class D3D11RenderWindow : Form
         if (availableMemory <=
             0)
         {
-            return Default_maximumStreamingTextureCacheBytes;
+            return DefaultMaximumStreamingTextureCacheBytes;
         }
 
         // Mirror openOMSI's automatic policy: texture memory gets a
