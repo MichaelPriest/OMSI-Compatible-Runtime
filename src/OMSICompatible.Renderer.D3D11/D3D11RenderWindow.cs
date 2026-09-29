@@ -7032,7 +7032,7 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawTrafficVehicles()
     {
-        if (_trafficAgents.Count ==
+        if (_trafficVisibleDrawItems.Count ==
                 0 ||
             _trafficVehicleGeometries.Count ==
                 0 ||
@@ -7835,36 +7835,22 @@ public sealed class D3D11RenderWindow : Form
 
         var cameraPosition =
             CurrentSceneCameraPosition;
-        var viewProjection =
-            CurrentSceneViewProjection;
 
-        foreach (var agent in
-                 _trafficAgents)
+        foreach (var drawItem in
+                 _trafficVisibleDrawItems)
         {
-            if (!IsTrafficAgentVisible(
-                    agent,
-                    cameraPosition,
-                    viewProjection) ||
-                !_windowInfo.TrafficVehicleAssets.TryGetValue(
+            var agent =
+                drawItem.Agent;
+
+            if (!_windowInfo.TrafficVehicleAssets.TryGetValue(
                     agent.VehiclePath,
                     out var vehicleInfo))
             {
                 continue;
             }
 
-            var heightOffset =
-                (float)(
-                    vehicleInfo.Physics.AiDeltaHeightMeters ??
-                    0.0);
-
             var vehicleWorld =
-                Matrix4x4.CreateRotationY(
-                    (float)agent.HeadingRadians) *
-                Matrix4x4.CreateTranslation(
-                    (float)agent.X,
-                    (float)agent.Y +
-                        heightOffset,
-                    (float)agent.Z);
+                drawItem.VehicleWorld;
 
             var lightMeshes =
                 ResolveTrafficVehicleLightMeshes(
