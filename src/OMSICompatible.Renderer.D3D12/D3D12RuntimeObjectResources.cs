@@ -7,9 +7,11 @@ public sealed class D3D12RuntimeObjectResources :
     IDisposable
 {
     private D3D12RuntimeObjectResources(
-        D3D12RuntimeGeometryBuffer buffer)
+        D3D12RuntimeGeometryBuffer buffer,
+        IReadOnlyList<RuntimeObjectDrawBatch> batches)
     {
         Buffer = buffer;
+        Batches = batches;
     }
 
     public D3D12RuntimeGeometryBuffer Buffer
@@ -17,9 +19,15 @@ public sealed class D3D12RuntimeObjectResources :
         get;
     }
 
+    public IReadOnlyList<RuntimeObjectDrawBatch> Batches
+    {
+        get;
+    }
+
     public static D3D12RuntimeObjectResources Create(
         ID3D12Device device,
-        ReadOnlySpan<RuntimeObjectVertex> vertices)
+        ReadOnlySpan<RuntimeObjectVertex> vertices,
+        IReadOnlyList<RuntimeObjectDrawBatch>? batches = null)
     {
         ArgumentNullException.ThrowIfNull(
             device);
@@ -35,7 +43,9 @@ public sealed class D3D12RuntimeObjectResources :
         return new D3D12RuntimeObjectResources(
             D3D12RuntimeGeometryBuffer.Create(
                 device,
-                vertices));
+                vertices),
+            batches ??
+            Array.Empty<RuntimeObjectDrawBatch>());
     }
 
     public void Dispose()
