@@ -325,6 +325,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly Dictionary<int, RuntimeTrafficPathSegmentInfo>
         _runtimeTrafficSegmentByIndex =
             [];
+    private readonly Dictionary<(int First, int Second), bool>
+        _runtimeTrafficPathConflictCache =
+            [];
     private readonly Func<
         IReadOnlyList<RuntimeRailSignalRouteStateInfo>>?
         _railSignalStateProvider;
@@ -7019,6 +7022,7 @@ public sealed class D3D11RenderWindow : Form
     private void RebuildRuntimeTrafficSegmentLookup()
     {
         _runtimeTrafficSegmentByIndex.Clear();
+        _runtimeTrafficPathConflictCache.Clear();
 
         foreach (var segment in
                  _windowInfo.TrafficPaths.Segments)
@@ -14406,7 +14410,7 @@ public sealed class D3D11RenderWindow : Form
         if (current.SceneryObjectId ==
             crossingObjectId)
         {
-            if (!RuntimeTrafficPathsConflict(
+            if (!RuntimeTrafficPathsConflictCached(
                     playerCrossingSegment,
                     current))
             {
@@ -14510,7 +14514,7 @@ public sealed class D3D11RenderWindow : Form
 
             if (candidate?.SceneryObjectId !=
                     crossingObjectId ||
-                !RuntimeTrafficPathsConflict(
+                !RuntimeTrafficPathsConflictCached(
                     playerCrossingSegment,
                     candidate))
             {
@@ -14553,6 +14557,45 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return false;
+    }
+
+    private bool RuntimeTrafficPathsConflictCached(
+        RuntimeTrafficPathSegmentInfo first,
+        RuntimeTrafficPathSegmentInfo second)
+    {
+        if (first.Index ==
+            second.Index)
+        {
+            return true;
+        }
+
+        var key =
+            first.Index <
+                second.Index
+                ? (
+                    first.Index,
+                    second.Index)
+                : (
+                    second.Index,
+                    first.Index);
+
+        if (_runtimeTrafficPathConflictCache.TryGetValue(
+                key,
+                out var cached))
+        {
+            return cached;
+        }
+
+        var conflicts =
+            RuntimeTrafficPathsConflict(
+                first,
+                second);
+
+        _runtimeTrafficPathConflictCache[
+            key] =
+            conflicts;
+
+        return conflicts;
     }
 
     private static bool RuntimeTrafficPathsConflict(
