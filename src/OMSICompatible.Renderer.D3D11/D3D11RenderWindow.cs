@@ -608,10 +608,12 @@ public sealed class D3D11RenderWindow : Form
                 StringComparer.OrdinalIgnoreCase);
     private const int MaximumInactiveStreamingTextureCacheEntries =
         512;
-    private const long MaximumInactiveStreamingTextureCacheBytes =
+    private const long DefaultMaximumInactiveStreamingTextureCacheBytes =
         768L * 1024L * 1024L;
-    private const long MaximumStreamingTextureCacheBytes =
+    private const long DefaultMaximumStreamingTextureCacheBytes =
         1536L * 1024L * 1024L;
+    private readonly long _maximumStreamingTextureCacheBytes;
+    private readonly long _maximumInactiveStreamingTextureCacheBytes;
     private const int MaximumStreamingTextureUploadsPerFrame =
         4;
     private const double MaximumStreamingTextureUploadBudgetMilliseconds =
@@ -961,6 +963,18 @@ public sealed class D3D11RenderWindow : Form
                     0.0
                 ? maximumObjectVisibilityMeters
                 : 1000.0;
+
+        _maximumStreamingTextureCacheBytes =
+            ResolveStreamingTextureBudgetBytes();
+
+        _maximumInactiveStreamingTextureCacheBytes =
+            Math.Min(
+                Default_maximumInactiveStreamingTextureCacheBytes,
+                Math.Max(
+                    256L * 1024L * 1024L,
+                    _maximumStreamingTextureCacheBytes /
+                        2L));
+
         _vehiclePreviewMode =
             vehiclePreviewMode;
         _gameControllerEnabled =
@@ -2367,9 +2381,9 @@ public sealed class D3D11RenderWindow : Form
         while (inactiveTextureCount >
                    MaximumInactiveStreamingTextureCacheEntries ||
                inactiveGpuBytes >
-                   MaximumInactiveStreamingTextureCacheBytes ||
+                   _maximumInactiveStreamingTextureCacheBytes ||
                cachedGpuBytes >
-                   MaximumStreamingTextureCacheBytes)
+                   _maximumStreamingTextureCacheBytes)
         {
             string? oldestPath =
                 null;
@@ -2429,7 +2443,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         Console.WriteLine(
-            $"[streaming-textures] cache entries={_objectTextureCache.Count:N0}; gpuMB={Math.Max(0L, cachedGpuBytes) / (1024.0 * 1024.0):0.0}/{MaximumStreamingTextureCacheBytes / (1024.0 * 1024.0):0}; inactive={Math.Max(0, inactiveTextureCount):N0}/{MaximumInactiveStreamingTextureCacheEntries:N0}; inactiveGpuMB={Math.Max(0L, inactiveGpuBytes) / (1024.0 * 1024.0):0.0}/{MaximumInactiveStreamingTextureCacheBytes / (1024.0 * 1024.0):0}");
+            $"[streaming-textures] cache entries={_objectTextureCache.Count:N0}; gpuMB={Math.Max(0L, cachedGpuBytes) / (1024.0 * 1024.0):0.0}/{_maximumStreamingTextureCacheBytes / (1024.0 * 1024.0):0}; inactive={Math.Max(0, inactiveTextureCount):N0}/{MaximumInactiveStreamingTextureCacheEntries:N0}; inactiveGpuMB={Math.Max(0L, inactiveGpuBytes) / (1024.0 * 1024.0):0.0}/{_maximumInactiveStreamingTextureCacheBytes / (1024.0 * 1024.0):0}");
 
         _failedObjectTexturePaths.IntersectWith(
             requiredPaths);
@@ -6420,6 +6434,55 @@ public sealed class D3D11RenderWindow : Form
                                 renderPass))
                     .ToArray();
         }
+    }
+
+    private static long ResolveStreamingTextureBudgetBytes()
+    {
+        const long megabyte =
+            1024L *
+            1024L;
+
+        var environmentValue =
+            Environment.GetEnvironmentVariable(
+                "OMSI_TEXTURE_MEMORY");
+
+        if (long.TryParse(
+                environmentValue,
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var configuredMegabytes) &&
+            configuredMegabytes >
+                0)
+        {
+            return Math.Clamp(
+                configuredMegabytes *
+                    megabyte,
+                256L *
+                    megabyte,
+                16_384L *
+                    megabyte);
+        }
+
+        var availableMemory =
+            GC.GetGCMemoryInfo()
+                .TotalAvailableMemoryBytes;
+
+        if (availableMemory <=
+            0)
+        {
+            return Default_maximumStreamingTextureCacheBytes;
+        }
+
+        // Mirror openOMSI's automatic policy: texture memory gets a
+        // conservative fraction of system memory, with a sane cap when
+        // adapter-specific memory is unavailable.
+        return Math.Clamp(
+            availableMemory /
+                8L,
+            512L *
+                megabyte,
+            1600L *
+                megabyte);
     }
 
     private static bool MatchesSceneryRenderPass(
