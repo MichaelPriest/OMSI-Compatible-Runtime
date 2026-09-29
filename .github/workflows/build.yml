@@ -178,8 +178,8 @@ jobs:
       - name: Verify OMSI plugin host x86 package
         shell: pwsh
         run: |
-          $host = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime/PluginHost-x86/OMSICompatible.PluginHost.x86.exe"
-          if (-not (Test-Path $host)) { throw "OMSI x86 plugin host was not published." }
+          $pluginHost = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime/PluginHost-x86/OMSICompatible.PluginHost.x86.exe"
+          if (-not (Test-Path $pluginHost)) { throw "OMSI x86 plugin host was not published." }
 
       - name: Package ODE x64
         shell: pwsh
