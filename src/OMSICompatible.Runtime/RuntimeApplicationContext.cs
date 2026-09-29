@@ -579,6 +579,8 @@ internal sealed class RuntimeApplicationContext :
                         _options.MaterialBumpMap,
                     materialNightMapEnabled:
                         _options.MaterialNightMap,
+                    maximumObjectVisibilityMeters:
+                        _options.MaximumObjectVisibilityMeters,
                     trafficStep:
                         StepTrafficSimulation,
                     trafficSignalStateProvider:

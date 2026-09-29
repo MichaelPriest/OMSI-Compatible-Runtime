@@ -560,6 +560,14 @@ public sealed class D3D11RenderWindow : Form
         _trafficVehicleVertexBuffers =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, RuntimeObjectBatch[]>
+        _trafficVehicleRenderBatches =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, RuntimeObjectMeshInfo[]>
+        _trafficVehicleLightMeshes =
+            new(
+                StringComparer.OrdinalIgnoreCase);
 
     private readonly uint _reflectionTextureSize;
     private readonly string _reflectionMode;
@@ -636,6 +644,11 @@ public sealed class D3D11RenderWindow : Form
     private readonly bool _materialReflectionMapEnabled;
     private readonly bool _materialBumpMapEnabled;
     private readonly bool _materialNightMapEnabled;
+    private readonly double _maximumObjectVisibilityMeters;
+    private const float TrafficFrustumCullNearDistanceMeters =
+        35.0f;
+    private const float TrafficFrustumCullMargin =
+        1.20f;
 
     public D3D11RenderWindow(
         RuntimeWindowInfo windowInfo,
@@ -660,6 +673,7 @@ public sealed class D3D11RenderWindow : Form
         bool materialReflectionMapEnabled = true,
         bool materialBumpMapEnabled = true,
         bool materialNightMapEnabled = true,
+        double maximumObjectVisibilityMeters = 1000.0,
         Func<
             double,
             IReadOnlyList<RuntimeTrafficAgentInfo>>?
@@ -785,6 +799,13 @@ public sealed class D3D11RenderWindow : Form
             materialBumpMapEnabled;
         _materialNightMapEnabled =
             materialNightMapEnabled;
+        _maximumObjectVisibilityMeters =
+            double.IsFinite(
+                    maximumObjectVisibilityMeters) &&
+                maximumObjectVisibilityMeters >
+                    0.0
+                ? maximumObjectVisibilityMeters
+                : 1000.0;
         _vehiclePreviewMode =
             vehiclePreviewMode;
         _gameControllerEnabled =
@@ -1973,6 +1994,11 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleGeometries[
                 resource.Path] =
                 resource.Geometry;
+
+            _trafficVehicleRenderBatches[
+                resource.Path] =
+                BuildTrafficVehicleRenderBatches(
+                    resource.Geometry);
 
             _trafficVehicleVertexBuffers[
                 resource.Path] =
@@ -3771,6 +3797,11 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleGeometries[
                 pair.Key] =
                 geometry;
+
+            _trafficVehicleRenderBatches[
+                pair.Key] =
+                BuildTrafficVehicleRenderBatches(
+                    geometry);
 
             _trafficVehicleVertexBuffers[
                 pair.Key] =
@@ -5991,6 +6022,135 @@ public sealed class D3D11RenderWindow : Form
          _windowInfo.Vehicle?.DriverCameras.Count is
              not > 0);
 
+    private static RuntimeObjectBatch[]
+        BuildTrafficVehicleRenderBatches(
+            RuntimeObjectGeometry geometry) =>
+        geometry.Batches
+            .Where(
+                static batch =>
+                    batch.VertexCount >
+                        0)
+            .OrderBy(
+                static batch =>
+                    batch.AlphaBlend
+                        ? 1
+                        : 0)
+            .ToArray();
+
+    private RuntimeObjectMeshInfo[]
+        ResolveTrafficVehicleLightMeshes(
+            string vehiclePath,
+            RuntimeVehicleInfo vehicleInfo)
+    {
+        if (_trafficVehicleLightMeshes.TryGetValue(
+                vehiclePath,
+                out var cached))
+        {
+            return cached;
+        }
+
+        var allLightMeshes =
+            vehicleInfo.Meshes
+                .Where(
+                    static mesh =>
+                        mesh.LightEffects is
+                            { Count: > 0 })
+                .ToArray();
+
+        var viewpointMeshes =
+            allLightMeshes
+                .Where(
+                    static mesh =>
+                        IsVehicleMeshVisibleFromViewpoint(
+                            mesh.ViewpointFlag,
+                            4))
+                .ToArray();
+
+        var selected =
+            viewpointMeshes.Length >
+                0
+                ? viewpointMeshes
+                : allLightMeshes;
+
+        _trafficVehicleLightMeshes[
+            vehiclePath] =
+            selected;
+
+        return selected;
+    }
+
+    private bool IsTrafficAgentVisible(
+        RuntimeTrafficAgentInfo agent,
+        Vector3 cameraPosition,
+        Matrix4x4 viewProjection)
+    {
+        var dx =
+            agent.X -
+            cameraPosition.X;
+        var dy =
+            agent.Y -
+            cameraPosition.Y;
+        var dz =
+            agent.Z -
+            cameraPosition.Z;
+
+        var distanceSquared =
+            dx * dx +
+            dy * dy +
+            dz * dz;
+
+        var maximumDistanceSquared =
+            _maximumObjectVisibilityMeters *
+            _maximumObjectVisibilityMeters;
+
+        if (distanceSquared >
+            maximumDistanceSquared)
+        {
+            return false;
+        }
+
+        if (distanceSquared <=
+            TrafficFrustumCullNearDistanceMeters *
+            TrafficFrustumCullNearDistanceMeters)
+        {
+            return true;
+        }
+
+        var clip =
+            Vector4.Transform(
+                new Vector4(
+                    (float)agent.X,
+                    (float)agent.Y,
+                    (float)agent.Z,
+                    1.0f),
+                viewProjection);
+
+        if (!float.IsFinite(
+                clip.X) ||
+            !float.IsFinite(
+                clip.Y) ||
+            !float.IsFinite(
+                clip.W) ||
+            clip.W <=
+                0.001f)
+        {
+            return false;
+        }
+
+        var margin =
+            clip.W *
+            TrafficFrustumCullMargin;
+
+        return clip.X >=
+                   -margin &&
+               clip.X <=
+                   margin &&
+               clip.Y >=
+                   -margin &&
+               clip.Y <=
+                   margin;
+    }
+
     private void DrawTrafficVehicles()
     {
         if (_trafficAgents.Count ==
@@ -6076,9 +6236,22 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
+        var cameraPosition =
+            CurrentCameraPosition;
+        var viewProjection =
+            CreateViewProjection();
+
         foreach (var agent in
                  _trafficAgents)
         {
+            if (!IsTrafficAgentVisible(
+                    agent,
+                    cameraPosition,
+                    viewProjection))
+            {
+                continue;
+            }
+
             if (!_trafficVehicleGeometries.TryGetValue(
                     agent.VehiclePath,
                     out var geometry) ||
@@ -6090,6 +6263,18 @@ public sealed class D3D11RenderWindow : Form
                     out var vehicleInfo))
             {
                 continue;
+            }
+
+            if (!_trafficVehicleRenderBatches.TryGetValue(
+                    agent.VehiclePath,
+                    out var renderBatches))
+            {
+                renderBatches =
+                    BuildTrafficVehicleRenderBatches(
+                        geometry);
+                _trafficVehicleRenderBatches[
+                    agent.VehiclePath] =
+                    renderBatches;
             }
 
             _deviceContext.IASetVertexBuffer(
@@ -6112,16 +6297,7 @@ public sealed class D3D11RenderWindow : Form
                     (float)agent.Z);
 
             foreach (var batch in
-                     geometry.Batches
-                         .Where(
-                             static batch =>
-                                 batch.VertexCount >
-                                     0)
-                         .OrderBy(
-                             static batch =>
-                                 batch.AlphaBlend
-                                     ? 1
-                                     : 0))
+                     renderBatches)
             {
                 model[0] =
                     new RuntimeModelConstants
@@ -6412,11 +6588,17 @@ public sealed class D3D11RenderWindow : Form
 
         var cameraPosition =
             CurrentCameraPosition;
+        var viewProjection =
+            CreateViewProjection();
 
         foreach (var agent in
                  _trafficAgents)
         {
-            if (!_windowInfo.TrafficVehicleAssets.TryGetValue(
+            if (!IsTrafficAgentVisible(
+                    agent,
+                    cameraPosition,
+                    viewProjection) ||
+                !_windowInfo.TrafficVehicleAssets.TryGetValue(
                     agent.VehiclePath,
                     out var vehicleInfo))
             {
@@ -6437,28 +6619,10 @@ public sealed class D3D11RenderWindow : Form
                         heightOffset,
                     (float)agent.Z);
 
-            var allLightMeshes =
-                vehicleInfo.Meshes
-                    .Where(
-                        static mesh =>
-                            mesh.LightEffects is
-                                { Count: > 0 })
-                    .ToArray();
-
-            var viewpointMeshes =
-                allLightMeshes
-                    .Where(
-                        static mesh =>
-                            IsVehicleMeshVisibleFromViewpoint(
-                                mesh.ViewpointFlag,
-                                4))
-                    .ToArray();
-
             var lightMeshes =
-                viewpointMeshes.Length >
-                    0
-                    ? viewpointMeshes
-                    : allLightMeshes;
+                ResolveTrafficVehicleLightMeshes(
+                    agent.VehiclePath,
+                    vehicleInfo);
 
             foreach (var mesh in
                      lightMeshes)
@@ -19058,6 +19222,8 @@ public sealed class D3D11RenderWindow : Form
 
             _trafficVehicleVertexBuffers.Clear();
             _trafficVehicleGeometries.Clear();
+            _trafficVehicleRenderBatches.Clear();
+            _trafficVehicleLightMeshes.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
