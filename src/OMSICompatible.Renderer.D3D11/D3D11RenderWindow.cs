@@ -6166,6 +6166,29 @@ public sealed class D3D11RenderWindow : Form
                 ? CreateViewProjection()
                 : Matrix4x4.Identity;
 
+        // Every scenery pass starts from a known state, then only changes
+        // D3D11 bindings when the next batch actually needs a different
+        // state. Large OMSI maps commonly contain thousands of adjacent
+        // batches sharing the same depth/blend/shader setup, so avoiding
+        // redundant driver calls cuts CPU overhead without changing draw
+        // order or material semantics.
+        _deviceContext.OMSetBlendState(null);
+        _deviceContext.OMSetDepthStencilState(null);
+        _deviceContext.PSUnsetShaderResource(0);
+        _deviceContext.PSUnsetShaderResource(1);
+        _deviceContext.PSUnsetShaderResource(2);
+
+        ID3D11BlendState? activeBlendState =
+            null;
+        ID3D11DepthStencilState? activeDepthState =
+            null;
+        ID3D11PixelShader? activePixelShader =
+            null;
+        ID3D11ShaderResourceView? activeDiffuseView =
+            null;
+        ID3D11ShaderResourceView? activeTransMapView =
+            null;
+
         foreach (var batch in batches)
         {
             if (batch.VertexCount == 0 ||
@@ -6185,23 +6208,38 @@ public sealed class D3D11RenderWindow : Form
                 continue;
             }
 
-            _deviceContext.OMSetBlendState(
+            var desiredBlendState =
                 batch.AlphaBlend
                     ? _objectAlphaBlendState
-                    : null);
+                    : null;
 
-            _deviceContext.OMSetDepthStencilState(
+            if (!ReferenceEquals(
+                    activeBlendState,
+                    desiredBlendState))
+            {
+                _deviceContext.OMSetBlendState(
+                    desiredBlendState);
+                activeBlendState =
+                    desiredBlendState;
+            }
+
+            var desiredDepthState =
                 batch.NoZCheck
                     ? _objectDepthDisabledState
                     : batch.NoZWrite ||
                       batch.AlphaBlend
                         ? _objectDepthReadState
-                        : null);
+                        : null;
 
-            _deviceContext.PSUnsetShaderResource(
-                0);
-            _deviceContext.PSUnsetShaderResource(
-                1);
+            if (!ReferenceEquals(
+                    activeDepthState,
+                    desiredDepthState))
+            {
+                _deviceContext.OMSetDepthStencilState(
+                    desiredDepthState);
+                activeDepthState =
+                    desiredDepthState;
+            }
 
             if (!string.IsNullOrWhiteSpace(
                     batch.TexturePath) &&
@@ -6238,14 +6276,32 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
-                if (hasTransMap)
+                var desiredTransMapView =
+                    hasTransMap
+                        ? transMap!.View
+                        : null;
+
+                if (!ReferenceEquals(
+                        activeTransMapView,
+                        desiredTransMapView))
                 {
-                    _deviceContext.PSSetShaderResource(
-                        1,
-                        transMap!.View);
+                    if (desiredTransMapView is null)
+                    {
+                        _deviceContext.PSUnsetShaderResource(
+                            1);
+                    }
+                    else
+                    {
+                        _deviceContext.PSSetShaderResource(
+                            1,
+                            desiredTransMapView);
+                    }
+
+                    activeTransMapView =
+                        desiredTransMapView;
                 }
 
-                _deviceContext.PSSetShader(
+                var desiredPixelShader =
                     batch.AlphaCutout
                         ? hasTransMap
                             ? _objectAlphaCutoutTransMapPixelShader
@@ -6254,11 +6310,28 @@ public sealed class D3D11RenderWindow : Form
                             ? hasTransMap
                                 ? _objectAlphaBlendTransMapPixelShader
                                 : _objectAlphaBlendPixelShader
-                            : _objectTexturedPixelShader);
+                            : _objectTexturedPixelShader;
 
-                _deviceContext.PSSetShaderResource(
-                    0,
-                    texture.View);
+                if (!ReferenceEquals(
+                        activePixelShader,
+                        desiredPixelShader))
+                {
+                    _deviceContext.PSSetShader(
+                        desiredPixelShader);
+                    activePixelShader =
+                        desiredPixelShader;
+                }
+
+                if (!ReferenceEquals(
+                        activeDiffuseView,
+                        texture.View))
+                {
+                    _deviceContext.PSSetShaderResource(
+                        0,
+                        texture.View);
+                    activeDiffuseView =
+                        texture.View;
+                }
             }
             else if (!string.IsNullOrWhiteSpace(
                          batch.TexturePath))
@@ -6272,8 +6345,31 @@ public sealed class D3D11RenderWindow : Form
             }
             else
             {
-                _deviceContext.PSSetShader(
-                    _objectColorPixelShader);
+                if (activeDiffuseView is not null)
+                {
+                    _deviceContext.PSUnsetShaderResource(
+                        0);
+                    activeDiffuseView =
+                        null;
+                }
+
+                if (activeTransMapView is not null)
+                {
+                    _deviceContext.PSUnsetShaderResource(
+                        1);
+                    activeTransMapView =
+                        null;
+                }
+
+                if (!ReferenceEquals(
+                        activePixelShader,
+                        _objectColorPixelShader))
+                {
+                    _deviceContext.PSSetShader(
+                        _objectColorPixelShader);
+                    activePixelShader =
+                        _objectColorPixelShader;
+                }
             }
 
             _deviceContext.Draw(
@@ -6282,6 +6378,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         _deviceContext.OMSetBlendState(null);
+        _deviceContext.OMSetDepthStencilState(null);
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.PSUnsetShaderResource(2);
