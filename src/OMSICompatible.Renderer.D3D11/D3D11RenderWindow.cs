@@ -1149,101 +1149,140 @@ public sealed class D3D11RenderWindow : Form
 
         try
         {
-            prepared =
-                await Task.Run(
+            var tileWorkTask =
+                Task.Run(
                     () =>
-                    {
-                        var tileWork =
-                            BuildStreamedTileWork(
-                                windowInfo);
+                        BuildStreamedTileWork(
+                            windowInfo));
 
-                        var tileVertices =
-                            BuildTileVertices(
-                                windowInfo.Tiles);
+            var tileVerticesTask =
+                Task.Run(
+                    () =>
+                        BuildTileVertices(
+                            windowInfo.Tiles));
 
-                        var terrain =
-                            RuntimeTerrainGeometryBuilder.Build(
-                                windowInfo.Tiles,
-                                windowInfo.GroundTextures,
-                                windowInfo.Splines);
+            var terrainTask =
+                Task.Run(
+                    () =>
+                        RuntimeTerrainGeometryBuilder.Build(
+                            windowInfo.Tiles,
+                            windowInfo.GroundTextures,
+                            windowInfo.Splines));
 
-                        var splines =
-                            RuntimeSplineGeometryBuilder.Build(
-                                windowInfo.Splines);
+            var splinesTask =
+                Task.Run(
+                    () =>
+                        RuntimeSplineGeometryBuilder.Build(
+                            windowInfo.Splines));
 
-                        var objects =
-                            RuntimeObjectGeometryBuilder.Build(
-                                windowInfo.Tiles,
-                                windowInfo.Objects,
-                                windowInfo.SceneryAssets,
-                                useNativeOmsiModelSpace:
-                                    true,
-                                isolatedObjectIds:
-                                    windowInfo.DynamicSceneryObjectIds);
+            var objectsTask =
+                Task.Run(
+                    () =>
+                        RuntimeObjectGeometryBuilder.Build(
+                            windowInfo.Tiles,
+                            windowInfo.Objects,
+                            windowInfo.SceneryAssets,
+                            useNativeOmsiModelSpace:
+                                true,
+                            isolatedObjectIds:
+                                windowInfo.DynamicSceneryObjectIds));
 
-                        var terrainSampler =
-                            new RuntimeTerrainSampler(
-                                windowInfo.Tiles,
-                                windowInfo.Splines);
+            var terrainSamplerTask =
+                Task.Run(
+                    () =>
+                        new RuntimeTerrainSampler(
+                            windowInfo.Tiles,
+                            windowInfo.Splines));
 
-                        var splineSurfaceSampler =
-                            RuntimeSplineSurfaceSampler.Create(
-                                splines);
+            var collisionScenerySurfaceSamplerTask =
+                Task.Run(
+                    () =>
+                        RuntimeSplineSurfaceSampler.CreateCollisionSurfaceObjects(
+                            windowInfo));
 
-                        var scenerySurfaceSampler =
-                            RuntimeSplineSurfaceSampler.CreateSurfaceObjects(
-                                objects);
+            var trafficVehicleGeometriesTask =
+                Task.Run(
+                    () =>
+                        missingTrafficVehicleAssets
+                            .AsParallel()
+                            .Select(
+                                pair =>
+                                    new PreparedTrafficVehicleGeometry(
+                                        pair.Key,
+                                        RuntimeVehicleGeometry.Build(
+                                            pair.Value,
+                                            viewpointBit:
+                                                4,
+                                            forceMaterialAlphaOpaque:
+                                                true)))
+                            .Where(
+                                static item =>
+                                    item.Geometry.Vertices.Length >
+                                        0)
+                            .ToArray());
 
-                        var collisionScenerySurfaceSampler =
-                            RuntimeSplineSurfaceSampler.CreateCollisionSurfaceObjects(
-                                windowInfo);
+            await Task.WhenAll(
+                    tileWorkTask,
+                    tileVerticesTask,
+                    terrainTask,
+                    splinesTask,
+                    objectsTask,
+                    terrainSamplerTask,
+                    collisionScenerySurfaceSamplerTask,
+                    trafficVehicleGeometriesTask)
+                .ConfigureAwait(false);
 
-                        var collisionVolumes =
-                            BuildSceneryCollisionVolumes(
-                                windowInfo,
-                                terrainSampler);
+            var terrain =
+                await terrainTask.ConfigureAwait(false);
 
-                        var (
-                            regularTexturePaths,
-                            maskTexturePaths) =
-                            CollectStreamingTexturePaths(
-                                terrain,
-                                splines,
-                                objects);
+            var splines =
+                await splinesTask.ConfigureAwait(false);
 
-                        var trafficVehicleGeometries =
-                            missingTrafficVehicleAssets
-                                .Select(
-                                    pair =>
-                                        new PreparedTrafficVehicleGeometry(
-                                            pair.Key,
-                                            RuntimeVehicleGeometry.Build(
-                                                pair.Value,
-                                                viewpointBit:
-                                                    4,
-                                                forceMaterialAlphaOpaque:
-                                                    true)))
-                                .Where(
-                                    static item =>
-                                        item.Geometry.Vertices.Length >
-                                            0)
-                                .ToArray();
+            var objects =
+                await objectsTask.ConfigureAwait(false);
 
-                        return new PreparedStreamedGeometry(
-                            tileVertices,
-                            terrain,
-                            splines,
-                            objects,
-                            terrainSampler,
-                            splineSurfaceSampler,
-                            scenerySurfaceSampler,
-                            collisionScenerySurfaceSampler,
-                            collisionVolumes,
-                            regularTexturePaths,
-                            maskTexturePaths,
-                            trafficVehicleGeometries,
-                            tileWork);
-                    });
+            var terrainSampler =
+                await terrainSamplerTask.ConfigureAwait(false);
+
+            var dependentSamplersTask =
+                Task.Run(
+                    () =>
+                        (
+                            Spline:
+                                RuntimeSplineSurfaceSampler.Create(
+                                    splines),
+                            Scenery:
+                                RuntimeSplineSurfaceSampler.CreateSurfaceObjects(
+                                    objects),
+                            CollisionVolumes:
+                                BuildSceneryCollisionVolumes(
+                                    windowInfo,
+                                    terrainSampler),
+                            TexturePaths:
+                                CollectStreamingTexturePaths(
+                                    terrain,
+                                    splines,
+                                    objects)
+                        ));
+
+            var dependents =
+                await dependentSamplersTask.ConfigureAwait(false);
+
+            prepared =
+                new PreparedStreamedGeometry(
+                    await tileVerticesTask.ConfigureAwait(false),
+                    terrain,
+                    splines,
+                    objects,
+                    terrainSampler,
+                    dependents.Spline,
+                    dependents.Scenery,
+                    await collisionScenerySurfaceSamplerTask.ConfigureAwait(false),
+                    dependents.CollisionVolumes,
+                    dependents.TexturePaths.RegularTexturePaths,
+                    dependents.TexturePaths.MaskTexturePaths,
+                    await trafficVehicleGeometriesTask.ConfigureAwait(false),
+                    await tileWorkTask.ConfigureAwait(false));
         }
         catch (Exception exception)
         {
