@@ -11082,6 +11082,11 @@ public sealed class D3D11RenderWindow : Form
                     $"[traffic-ai] audio agent={agent.AgentIndex}; vehicle={Path.GetFileName(agent.VehiclePath)}; sounds={audio.ExistingFileCount}/{audio.SoundCount}");
             }
 
+            if (state is null)
+            {
+                continue;
+            }
+
             var engineRunning =
                 ResolveTrafficEngineRunning(
                     agent.ScriptRuntime);
