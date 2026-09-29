@@ -1,0 +1,300 @@
+name: Build openOMSI 0.1.14 pt-BR
+
+on:
+  push:
+    branches:
+      - build/openomsi-0.1.14-ptbr
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout build harness
+        uses: actions/checkout@v4
+
+      - name: Checkout openOMSI 0.1.14
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch v0.1.14 https://github.com/turbo-devv/openOMSI.git openomsi-src
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: openomsi-src
+          key: openomsi-v0.1.14-ptbr-x64
+
+      - name: Install translation helper
+        shell: pwsh
+        run: py -m pip install --disable-pip-version-check pyyaml deep-translator
+
+      - name: Add Brazilian Portuguese locale
+        shell: pwsh
+        working-directory: openomsi-src
+        run: |
+          @'
+          from pathlib import Path
+          import re, time, yaml
+          from deep_translator import GoogleTranslator
+
+          root = Path(".")
+          locale = root / "crates/omsi-app/locales/app.yml"
+          data = yaml.safe_load(locale.read_text(encoding="utf-8"))
+
+          # Human-reviewed terminology for the most visible/OMSI-specific UI.
+          fixed = {
+              "Bus": "Ônibus",
+              "Route": "Rota",
+              "Time & weather": "Horário e clima",
+              "Roadbook": "Quadro de horários",
+              "Map": "Mapa",
+              "Line": "Linha",
+              "Tour": "Escala",
+              "Time": "Horário",
+              "Date": "Data",
+              "Passengers": "Passageiros",
+              "Timetable buses": "Ônibus programados",
+              "Weather": "Clima",
+              "Free drive": "Direção livre",
+              "Duty": "Escala",
+              "Start": "Iniciar",
+              "Drive": "Dirigir",
+              "Profile": "Perfil",
+              "Settings": "Configurações",
+              "Controls": "Controles",
+              "Sessions": "Sessões",
+              "Mods": "Mods",
+              "Tutorials": "Tutoriais",
+              "Setup": "Configuração",
+              "Driver": "Motorista",
+              "Graphics": "Gráficos",
+              "Enhanced": "Aprimorado",
+              "Anti-aliasing": "Antisserrilhamento",
+              "Off": "Desativado",
+              "Render scale": "Escala de renderização",
+              "Auto": "Automático",
+              "Shadow map": "Mapa de sombras",
+              "Ambient occlusion": "Oclusão de ambiente",
+              "Sun shadows": "Sombras do sol",
+              "Clouds": "Nuvens",
+              "Fullscreen": "Tela cheia",
+              "World & memory": "Mundo e memória",
+              "View distance": "Distância de visão",
+              "Texture memory": "Memória de texturas",
+              "Simulation": "Simulação",
+              "Maintenance": "Manutenção",
+              "Navigator": "Navegador",
+              "Language": "Idioma",
+              "Performance": "Desempenho",
+              "Low": "Baixo",
+              "Medium": "Médio",
+              "High": "Alto",
+              "Custom": "Personalizado",
+              "Frame limit": "Limite de FPS",
+              "Mirrors": "Espelhos",
+              "Boarding": "Embarque",
+              "Passenger voices": "Vozes dos passageiros",
+              "Controls & sound": "Controles e som",
+              "Driving keys": "Teclas de direção",
+              "Volume": "Volume",
+              "Traffic": "Tráfego",
+              "Throttle": "Acelerador",
+              "Brake": "Freio",
+              "Clutch": "Embreagem",
+              "Parking brake": "Freio de estacionamento",
+              "Indicator left": "Seta esquerda",
+              "Indicator right": "Seta direita",
+              "Indicators off": "Desligar setas",
+              "Hazard lights": "Pisca-alerta",
+              "Horn": "Buzina",
+              "Headlights": "Faróis",
+              "High beam": "Farol alto",
+              "Starter": "Partida",
+              "Battery / ignition": "Bateria / ignição",
+              "Gear D": "Marcha D",
+              "Gear N": "Marcha N",
+              "Gear R": "Marcha R",
+              "Driver's view": "Visão do motorista",
+              "Passenger view": "Visão do passageiro",
+              "Outside view": "Visão externa",
+              "Quit": "Sair",
+              "Pause": "Pausar",
+              "Stop": "Parar",
+              "Copy code": "Copiar código",
+              "PLAYERS": "JOGADORES",
+              "ERROR": "ERRO",
+              "WARN": "AVISO",
+              "Install a mod": "Instalar um mod",
+              "Choose a folder": "Escolher uma pasta",
+              "Cancel": "Cancelar",
+              "Content folder": "Pasta de conteúdo",
+              "Folders": "Pastas",
+              "OMSI 2 folder": "Pasta do OMSI 2",
+              "Browse": "Procurar",
+              "Game binary": "Executável do jogo",
+              "Save": "Salvar",
+              "Vehicles": "Veículos",
+              "Situations": "Situações",
+              "Paused": "Pausado",
+              "Menu": "Menu",
+              "Passenger": "Passageiro",
+              "Quicksave": "Salvamento rápido",
+              "Screenshots": "Capturas de tela",
+              "Resume": "Continuar",
+              "Couple": "Engatar",
+              "Uncouple": "Desengatar",
+              "Screenshot": "Captura de tela",
+              "Timetable": "Tabela de horários",
+              "Information bar": "Barra de informações",
+              "Refuel": "Abastecer",
+              "Wash": "Lavar",
+              "Repair": "Reparar",
+              "Object editor": "Editor de objetos",
+              "End the session": "Encerrar a sessão",
+              "Get up": "Levantar",
+              "Sit down": "Sentar",
+              "Back": "Voltar",
+              "Real time": "Tempo real",
+              "Multiplayer": "Multijogador",
+              "Connect by Code": "Conectar por código",
+              "Servers": "Servidores",
+              "Host a game": "Hospedar um jogo",
+              "Session code": "Código da sessão",
+              "Copy the code": "Copiar o código",
+              "Add server": "Adicionar servidor",
+              "Name (optional)": "Nome (opcional)",
+              "Screen refresh rate": "Taxa de atualização da tela",
+              "Unlimited": "Ilimitado",
+              "Mo": "Seg", "Tu": "Ter", "We": "Qua", "Th": "Qui", "Fr": "Sex", "Sa": "Sáb", "Su": "Dom",
+              "Jan": "jan", "Feb": "fev", "Mar": "mar", "Apr": "abr", "May": "mai", "Jun": "jun",
+              "Jul": "jul", "Aug": "ago", "Sep": "set", "Oct": "out", "Nov": "nov", "Dec": "dez",
+              "January": "Janeiro", "February": "Fevereiro", "March": "Março", "April": "Abril",
+              "June": "Junho", "July": "Julho", "August": "Agosto", "September": "Setembro",
+              "October": "Outubro", "November": "Novembro", "December": "Dezembro"
+          }
+
+          translator = GoogleTranslator(source="en", target="pt")
+          keys = [k for k in data.keys() if k != "_version"]
+          missing = [k for k in keys if k not in fixed]
+
+          # Translate in small batches; fall back to the English key rather than failing the build.
+          translated = {}
+          for i in range(0, len(missing), 20):
+              batch = missing[i:i+20]
+              for attempt in range(3):
+                  try:
+                      vals = translator.translate_batch(batch)
+                      if len(vals) != len(batch):
+                          raise RuntimeError("translation batch size mismatch")
+                      translated.update(dict(zip(batch, vals)))
+                      break
+                  except Exception as e:
+                      if attempt == 2:
+                          print(f"WARNING: batch translation failed: {e}")
+                          for k in batch:
+                              try:
+                                  translated[k] = translator.translate(k)
+                              except Exception:
+                                  translated[k] = k
+                      else:
+                          time.sleep(2 + attempt * 2)
+
+          for key in keys:
+              node = data.get(key)
+              if not isinstance(node, dict):
+                  node = {}
+                  data[key] = node
+              node["pt-BR"] = fixed.get(key, translated.get(key, key))
+
+          locale.write_text(
+              yaml.safe_dump(data, allow_unicode=True, sort_keys=False, width=100000),
+              encoding="utf-8"
+          )
+
+          def patch(path, old, new):
+              p = root / path
+              s = p.read_text(encoding="utf-8")
+              if new in s:
+                  return
+              if old not in s:
+                  raise RuntimeError(f"Patch anchor not found in {path}: {old}")
+              p.write_text(s.replace(old, new), encoding="utf-8")
+
+          patch(
+              "crates/omsi-app/src/lib.rs",
+              '"FRA" => "fr",',
+              '"FRA" => "fr",\n        "PTB" => "pt-BR",'
+          )
+          patch(
+              "crates/omsi-app/src/describe.rs",
+              '"RUS" => "ENG".to_string(),',
+              '"RUS" | "PTB" => "ENG".to_string(),'
+          )
+          patch(
+              "crates/omsi-app/src/describe.rs",
+              '"ru" | "rus" | "russian" | "русский" => "RUS".into(),',
+              '"ru" | "rus" | "russian" | "русский" => "RUS".into(),\n        "pt" | "pt-br" | "pt_br" | "por" | "portuguese" | "português" | "portugues" | "br" | "brazilian portuguese" => "PTB".into(),'
+          )
+          patch(
+              "crates/omsi-app/src/launcher/pages.rs",
+              '&[("ENG", "English"), ("DEU", "Deutsch"), ("FRA", "Français"), ("RUS", "Русский")]',
+              '&[("ENG", "English"), ("DEU", "Deutsch"), ("FRA", "Français"), ("RUS", "Русский"), ("PTB", "Português (Brasil)")]'
+          )
+
+          # Make pt-BR the initial language for this dedicated build. The user can still change it.
+          settings = root / "crates/omsi-app/src/settings.rs"
+          s = settings.read_text(encoding="utf-8")
+          s = s.replace('language: "ENG".into()', 'language: "PTB".into()')
+          settings.write_text(s, encoding="utf-8")
+
+          print(f"pt-BR locale written: {len(keys)} interface strings")
+          '@ | Set-Content -Encoding UTF8 apply_ptbr.py
+          py apply_ptbr.py
+          Select-String -Path crates/omsi-app/src/launcher/pages.rs -Pattern 'Português'
+          Select-String -Path crates/omsi-app/src/lib.rs -Pattern 'PTB'
+
+      - name: Build Windows x64
+        shell: cmd
+        working-directory: openomsi-src
+        run: scripts\build-windows.cmd x86_64-pc-windows-msvc
+
+      - name: Add DirectX shader compiler
+        continue-on-error: true
+        shell: pwsh
+        working-directory: openomsi-src
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R microsoft/DirectXShaderCompiler --pattern "dxc_*.zip" -D dxc
+          $zip = Get-ChildItem dxc/*.zip | Where-Object { $_.Name -notmatch "linux|pdb" } | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath dxc/x
+          Copy-Item "dxc/x/bin/x64/dxcompiler.dll", "dxc/x/bin/x64/dxil.dll" dist/windows/
+
+      - name: Package pt-BR build
+        shell: pwsh
+        working-directory: openomsi-src
+        run: |
+          Copy-Item README.md, LICENSE dist/windows/
+          @"
+          openOMSI 0.1.14 - Português (Brasil)
+          Build não oficial de tradução.
+          Base: turbo-devv/openOMSI tag v0.1.14
+          Idioma inicial: Português (Brasil) / PTB
+          "@ | Set-Content -Encoding UTF8 dist/windows/LEIA-ME-PTBR.txt
+          New-Item -ItemType Directory -Force out | Out-Null
+          Compress-Archive -Path dist/windows/* -DestinationPath out/openOMSI-0.1.14-windows-x64-ptBR.zip
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: openOMSI-0.1.14-windows-x64-ptBR
+          path: openomsi-src/out/openOMSI-0.1.14-windows-x64-ptBR.zip
+          if-no-files-found: error
