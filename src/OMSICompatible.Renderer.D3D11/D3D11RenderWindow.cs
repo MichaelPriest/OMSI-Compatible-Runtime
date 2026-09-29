@@ -5677,6 +5677,34 @@ public sealed class D3D11RenderWindow : Form
                 2,
                 12);
 
+        var framePressure =
+            _lastObservedFrameMilliseconds >
+                    0.0
+                ? _lastObservedFrameMilliseconds /
+                    Math.Max(
+                        _targetFrameMilliseconds,
+                        1.0)
+                : 1.0;
+
+        if (framePressure >=
+            1.50)
+        {
+            interval =
+                Math.Min(
+                    interval *
+                        2,
+                    24);
+        }
+        else if (framePressure >=
+                 1.15)
+        {
+            interval =
+                Math.Min(
+                    interval +
+                        2,
+                    18);
+        }
+
         return (_reflectionFrameIndex +
                 target.Camera.Index) %
                interval ==
