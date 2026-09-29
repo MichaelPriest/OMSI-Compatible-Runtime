@@ -361,6 +361,12 @@ public sealed class D3D11RenderWindow : Form
         ResolvedVehicleMaterialState Material)>
         _vehicleDrawItems =
             [];
+    private readonly Dictionary<
+        RuntimeObjectBatch,
+        RuntimeVehicleMaterialChangeSetInfo[]>
+        _vehicleOrderedMaterialChangeSets =
+            new(
+                ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(int SectionIndex, int ModelOrdinal), RuntimeObjectBatch>
         _vehicleMeshOrdinalBatches =
             [];
@@ -8967,10 +8973,24 @@ public sealed class D3D11RenderWindow : Form
         if (batch.MaterialChangeSets is
             { Count: > 0 } changeSets)
         {
+            if (!_vehicleOrderedMaterialChangeSets.TryGetValue(
+                    batch,
+                    out var orderedChangeSets))
+            {
+                orderedChangeSets =
+                    changeSets
+                        .OrderBy(
+                            static set =>
+                                set.GroupIndex)
+                        .ToArray();
+
+                _vehicleOrderedMaterialChangeSets[
+                    batch] =
+                    orderedChangeSets;
+            }
+
             foreach (var changeSet in
-                     changeSets.OrderBy(
-                         static set =>
-                             set.GroupIndex))
+                     orderedChangeSets)
             {
                 var value =
                     ResolveSectionNumericValue(
@@ -20528,6 +20548,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleTextTextureRenderer = null;
             _vehicleAnimationParentBatches.Clear();
             _vehicleDrawItems.Clear();
+            _vehicleOrderedMaterialChangeSets.Clear();
 
             _objectSamplerPerformance?.Dispose();
             _objectSampler?.Dispose();
