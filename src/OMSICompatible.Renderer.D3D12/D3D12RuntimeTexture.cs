@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using OMSICompatible.Renderer.Common;
 using Vortice.Direct3D12;
 using Vortice.DXGI;
@@ -25,17 +26,72 @@ public sealed class D3D12RuntimeTexture :
     public GpuDescriptorHandle GpuHandle =>
         _descriptorHeap.GetGPUDescriptorHandleForHeapStart();
 
+    public static bool TryCreateFromFile(
+        ID3D12Device device,
+        ID3D12CommandQueue queue,
+        string path,
+        out D3D12RuntimeTexture? texture)
+    {
+        texture =
+            null;
+
+        if (string.IsNullOrWhiteSpace(
+                path) ||
+            !File.Exists(
+                path))
+        {
+            return false;
+        }
+
+        if (string.Equals(
+                Path.GetExtension(
+                    path),
+                ".dds",
+                StringComparison.OrdinalIgnoreCase) &&
+            TryReadBcDds(
+                path,
+                out var format,
+                out var width,
+                out var height,
+                out var payload,
+                out var sourceRowBytes,
+                out var sourceRows))
+        {
+            texture =
+                CreatePayload(
+                    device,
+                    queue,
+                    format,
+                    width,
+                    height,
+                    payload,
+                    sourceRowBytes,
+                    sourceRows);
+
+            return true;
+        }
+
+        if (!RuntimeRgbaTextureDecoder.TryRead(
+                path,
+                out var decoded))
+        {
+            return false;
+        }
+
+        texture =
+            Create(
+                device,
+                queue,
+                decoded);
+
+        return true;
+    }
+
     public static D3D12RuntimeTexture Create(
         ID3D12Device device,
         ID3D12CommandQueue queue,
         RuntimeDecodedTexture decoded)
     {
-        ArgumentNullException.ThrowIfNull(
-            device);
-
-        ArgumentNullException.ThrowIfNull(
-            queue);
-
         ArgumentNullException.ThrowIfNull(
             decoded);
 
@@ -54,11 +110,58 @@ public sealed class D3D12RuntimeTexture :
                 nameof(decoded));
         }
 
+        return CreatePayload(
+            device,
+            queue,
+            Format.R8G8B8A8_UNorm,
+            decoded.Width,
+            decoded.Height,
+            decoded.Pixels,
+            checked(
+                decoded.Width *
+                4),
+            decoded.Height);
+    }
+
+    private static D3D12RuntimeTexture CreatePayload(
+        ID3D12Device device,
+        ID3D12CommandQueue queue,
+        Format format,
+        int width,
+        int height,
+        byte[] payload,
+        int sourceRowBytes,
+        int sourceRows)
+    {
+        ArgumentNullException.ThrowIfNull(
+            device);
+
+        ArgumentNullException.ThrowIfNull(
+            queue);
+
+        if (width <=
+                0 ||
+            height <=
+                0 ||
+            sourceRowBytes <=
+                0 ||
+            sourceRows <=
+                0 ||
+            payload.Length <
+                checked(
+                    sourceRowBytes *
+                    sourceRows))
+        {
+            throw new ArgumentException(
+                "Invalid texture payload.",
+                nameof(payload));
+        }
+
         var description =
             ResourceDescription.Texture2D(
-                Format.R8G8B8A8_UNorm,
-                (uint)decoded.Width,
-                (uint)decoded.Height,
+                format,
+                (uint)width,
+                (uint)height,
                 arraySize:
                     1,
                 mipLevels:
@@ -106,11 +209,6 @@ public sealed class D3D12RuntimeTexture :
                     checked(
                         (int)uploadBytes)];
 
-            var sourceRowBytes =
-                checked(
-                    decoded.Width *
-                    4);
-
             var destinationRowBytes =
                 checked(
                     (int)layouts[0]
@@ -122,12 +220,18 @@ public sealed class D3D12RuntimeTexture :
                     (int)layouts[0]
                         .Offset);
 
+            var copyRows =
+                Math.Min(
+                    sourceRows,
+                    checked(
+                        (int)rowCounts[0]));
+
             for (var row = 0;
                  row <
-                     decoded.Height;
+                     copyRows;
                  row++)
             {
-                decoded.Pixels.AsSpan(
+                payload.AsSpan(
                         row *
                             sourceRowBytes,
                         sourceRowBytes)
@@ -219,6 +323,231 @@ public sealed class D3D12RuntimeTexture :
         finally
         {
             upload.Dispose();
+        }
+    }
+
+    private static bool TryReadBcDds(
+        string path,
+        out Format format,
+        out int width,
+        out int height,
+        out byte[] payload,
+        out int sourceRowBytes,
+        out int sourceRows)
+    {
+        format =
+            Format.Unknown;
+        width =
+            0;
+        height =
+            0;
+        payload =
+            Array.Empty<byte>();
+        sourceRowBytes =
+            0;
+        sourceRows =
+            0;
+
+        try
+        {
+            using var stream =
+                new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read);
+
+            if (stream.Length <
+                128)
+            {
+                return false;
+            }
+
+            Span<byte> header =
+                stackalloc byte[
+                    128];
+
+            stream.ReadExactly(
+                header);
+
+            if (header[0] !=
+                    (byte)'D' ||
+                header[1] !=
+                    (byte)'D' ||
+                header[2] !=
+                    (byte)'S' ||
+                header[3] !=
+                    (byte)' ')
+            {
+                return false;
+            }
+
+            height =
+                BinaryPrimitives
+                    .ReadInt32LittleEndian(
+                        header[
+                            12..
+                            16]);
+
+            width =
+                BinaryPrimitives
+                    .ReadInt32LittleEndian(
+                        header[
+                            16..
+                            20]);
+
+            if (width <=
+                    0 ||
+                height <=
+                    0 ||
+                width >
+                    16_384 ||
+                height >
+                    16_384)
+            {
+                return false;
+            }
+
+            var fourCc =
+                BinaryPrimitives
+                    .ReadUInt32LittleEndian(
+                        header[
+                            84..
+                            88]);
+
+            const uint dxt1 =
+                0x31545844;
+            const uint dxt2 =
+                0x32545844;
+            const uint dxt3 =
+                0x33545844;
+            const uint dxt4 =
+                0x34545844;
+            const uint dxt5 =
+                0x35545844;
+            const uint dx10 =
+                0x30315844;
+
+            if (fourCc ==
+                dx10)
+            {
+                Span<byte> dx10Header =
+                    stackalloc byte[
+                        20];
+
+                stream.ReadExactly(
+                    dx10Header);
+
+                var dxgiFormat =
+                    BinaryPrimitives
+                        .ReadUInt32LittleEndian(
+                            dx10Header[
+                                0..
+                                4]);
+
+                fourCc =
+                    dxgiFormat switch
+                    {
+                        71 or 72 =>
+                            dxt1,
+                        74 or 75 =>
+                            dxt3,
+                        77 or 78 =>
+                            dxt5,
+                        _ =>
+                            fourCc
+                    };
+            }
+
+            var blockBytes =
+                fourCc switch
+                {
+                    dxt1 =>
+                        8,
+                    dxt2 or
+                    dxt3 or
+                    dxt4 or
+                    dxt5 =>
+                        16,
+                    _ =>
+                        0
+                };
+
+            format =
+                fourCc switch
+                {
+                    dxt1 =>
+                        Format.BC1_UNorm,
+                    dxt2 or
+                    dxt3 =>
+                        Format.BC2_UNorm,
+                    dxt4 or
+                    dxt5 =>
+                        Format.BC3_UNorm,
+                    _ =>
+                        Format.Unknown
+                };
+
+            if (blockBytes ==
+                    0 ||
+                format ==
+                    Format.Unknown)
+            {
+                return false;
+            }
+
+            var blocksWide =
+                Math.Max(
+                    1,
+                    (width +
+                     3) /
+                    4);
+
+            var blocksHigh =
+                Math.Max(
+                    1,
+                    (height +
+                     3) /
+                    4);
+
+            sourceRowBytes =
+                checked(
+                    blocksWide *
+                    blockBytes);
+
+            sourceRows =
+                blocksHigh;
+
+            var byteCount =
+                checked(
+                    sourceRowBytes *
+                    sourceRows);
+
+            if (stream.Length -
+                    stream.Position <
+                byteCount)
+            {
+                return false;
+            }
+
+            payload =
+                new byte[
+                    byteCount];
+
+            stream.ReadExactly(
+                payload);
+
+            return true;
+        }
+        catch (Exception exception)
+            when (exception is
+                IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                NotSupportedException or
+                OverflowException)
+        {
+            return false;
         }
     }
 
