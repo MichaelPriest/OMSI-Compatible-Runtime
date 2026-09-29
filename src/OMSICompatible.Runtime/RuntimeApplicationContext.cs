@@ -59,6 +59,12 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<int, TrafficScriptRuntimeState>
         _trafficScriptRuntimes =
             [];
+    private readonly List<WorldTrafficAgentState>
+        _trafficAgentStateBuffer =
+            [];
+    private readonly List<RuntimeTrafficAgentInfo>
+        _runtimeTrafficAgentBuffer =
+            [];
     private readonly HashSet<int>
         _activeTrafficScriptAgentIds =
             [];
@@ -2553,8 +2559,10 @@ internal sealed class RuntimeApplicationContext :
         StepTrafficSimulation(
             double deltaSeconds)
     {
+        _trafficAgentStateBuffer.Clear();
+
         var agents =
-            new List<WorldTrafficAgentState>();
+            _trafficAgentStateBuffer;
 
         if (_trafficSimulation is
             { } roadSimulation)
@@ -2693,29 +2701,41 @@ internal sealed class RuntimeApplicationContext :
             agents,
             deltaSeconds);
 
-        return agents
-            .Select(
-                agent =>
-                    new RuntimeTrafficAgentInfo(
-                        agent.AgentIndex,
-                        agent.SegmentIndex,
-                        agent.DistanceMeters,
-                        agent.SpeedMetersPerSecond,
-                        agent.VehiclePath,
-                        RuntimeWorldXFromSource(
-                            agent.Position.X),
-                        agent.Position.Y,
-                        agent.Position.Z,
-                        RuntimeHeadingRadiansFromSource(
-                            agent.HeadingRadians),
-                        agent.AiBrakeLight,
-                        agent.AiBlinkerLeft,
-                        agent.AiBlinkerRight,
-                        agent.TraveledDistanceMeters,
-                        -agent.PathCurvaturePerMeter,
-                        ResolveTrafficScriptRuntime(
-                            agent)))
-            .ToArray();
+        _runtimeTrafficAgentBuffer.Clear();
+
+        if (_runtimeTrafficAgentBuffer.Capacity <
+            agents.Count)
+        {
+            _runtimeTrafficAgentBuffer.Capacity =
+                agents.Count;
+        }
+
+        foreach (var agent in
+                 agents)
+        {
+            _runtimeTrafficAgentBuffer.Add(
+                new RuntimeTrafficAgentInfo(
+                    agent.AgentIndex,
+                    agent.SegmentIndex,
+                    agent.DistanceMeters,
+                    agent.SpeedMetersPerSecond,
+                    agent.VehiclePath,
+                    RuntimeWorldXFromSource(
+                        agent.Position.X),
+                    agent.Position.Y,
+                    agent.Position.Z,
+                    RuntimeHeadingRadiansFromSource(
+                        agent.HeadingRadians),
+                    agent.AiBrakeLight,
+                    agent.AiBlinkerLeft,
+                    agent.AiBlinkerRight,
+                    agent.TraveledDistanceMeters,
+                    -agent.PathCurvaturePerMeter,
+                    ResolveTrafficScriptRuntime(
+                        agent)));
+        }
+
+        return _runtimeTrafficAgentBuffer;
     }
 
     private void UpdateTrafficScriptRuntimes(
