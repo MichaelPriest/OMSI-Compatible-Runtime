@@ -6265,18 +6265,20 @@ public sealed class D3D11RenderWindow : Form
         var offset =
             center -
             cameraPosition;
+        var distanceSquared =
+            offset.LengthSquared();
         var maximumDistance =
             (float)_maximumObjectVisibilityMeters +
             radius;
 
-        if (offset.LengthSquared() >
+        if (distanceSquared >
             maximumDistance *
             maximumDistance)
         {
             return false;
         }
 
-        if (offset.LengthSquared() <=
+        if (distanceSquared <=
             (TrafficFrustumCullNearDistanceMeters +
              radius) *
             (TrafficFrustumCullNearDistanceMeters +
@@ -6306,6 +6308,60 @@ public sealed class D3D11RenderWindow : Form
             0.001f)
         {
             return false;
+        }
+
+        var framePressure =
+            _lastObservedFrameMilliseconds >
+                    0.0
+                ? _lastObservedFrameMilliseconds /
+                    Math.Max(
+                        _targetFrameMilliseconds,
+                        1.0)
+                : 1.0;
+
+        if (framePressure >=
+                1.15 &&
+            distanceSquared >
+                120.0f *
+                120.0f &&
+            radius >
+                0.0f)
+        {
+            var projectionScale =
+                MathF.Max(
+                    MathF.Abs(
+                        viewProjection.M11),
+                    MathF.Abs(
+                        viewProjection.M22));
+
+            var projectedRadiusNdc =
+                radius *
+                projectionScale /
+                MathF.Abs(
+                    clip.W);
+
+            var viewportPixels =
+                Math.Max(
+                    1,
+                    Math.Min(
+                        ClientSize.Width,
+                        ClientSize.Height));
+
+            var projectedDiameterPixels =
+                projectedRadiusNdc *
+                viewportPixels;
+
+            var minimumVisiblePixels =
+                framePressure >=
+                        1.50
+                    ? 2.5f
+                    : 1.5f;
+
+            if (projectedDiameterPixels <
+                minimumVisiblePixels)
+            {
+                return false;
+            }
         }
 
         var margin =
