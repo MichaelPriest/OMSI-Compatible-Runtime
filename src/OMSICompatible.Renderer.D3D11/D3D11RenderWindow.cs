@@ -5932,17 +5932,41 @@ public sealed class D3D11RenderWindow : Form
             1,
             _terrainMaskSampler);
 
+        _deviceContext.OMSetBlendState(
+            null);
+        _deviceContext.PSUnsetShaderResource(
+            0);
+        _deviceContext.PSUnsetShaderResource(
+            1);
+        _deviceContext.PSUnsetShaderResource(
+            2);
+
+        ID3D11BlendState? activeBlendState =
+            null;
+        ID3D11PixelShader? activePixelShader =
+            null;
+        ID3D11ShaderResourceView? activeTextureView =
+            null;
+        ID3D11ShaderResourceView? activeMaskView =
+            null;
+        ID3D11ShaderResourceView? activeDetailView =
+            null;
+
         foreach (var batch in
             _terrainGeometry.Batches)
         {
-            if (batch.VertexCount == 0)
+            if (batch.VertexCount ==
+                0)
             {
                 continue;
             }
 
-            RuntimeGpuTexture? texture = null;
-            RuntimeGpuTexture? mask = null;
-            RuntimeGpuTexture? detail = null;
+            RuntimeGpuTexture? texture =
+                null;
+            RuntimeGpuTexture? mask =
+                null;
+            RuntimeGpuTexture? detail =
+                null;
 
             var hasTexture =
                 batch.TexturePath is
@@ -5965,72 +5989,141 @@ public sealed class D3D11RenderWindow : Form
                     detailPath,
                     out detail);
 
-            _deviceContext.PSUnsetShaderResource(0);
-            _deviceContext.PSUnsetShaderResource(1);
-            _deviceContext.PSUnsetShaderResource(2);
-            _deviceContext.OMSetBlendState(null);
+            ID3D11BlendState? desiredBlendState =
+                null;
+            ID3D11PixelShader desiredPixelShader;
+            ID3D11ShaderResourceView? desiredTextureView =
+                null;
+            ID3D11ShaderResourceView? desiredMaskView =
+                null;
+            ID3D11ShaderResourceView? desiredDetailView =
+                null;
 
             if (batch.AdditiveLightmap &&
                 hasTexture)
             {
-                _deviceContext.OMSetBlendState(
-                    _terrainAdditiveBlendState);
-
-                _deviceContext.PSSetShader(
-                    _terrainLightmapPixelShader);
-
-                _deviceContext.PSSetShaderResource(
-                    0,
-                    texture!.View);
+                desiredBlendState =
+                    _terrainAdditiveBlendState;
+                desiredPixelShader =
+                    _terrainLightmapPixelShader;
+                desiredTextureView =
+                    texture!.View;
             }
             else if (hasMask &&
                      hasTexture)
             {
-                _deviceContext.OMSetBlendState(
-                    _terrainAlphaBlendState);
-
-                _deviceContext.PSSetShader(
+                desiredBlendState =
+                    _terrainAlphaBlendState;
+                desiredPixelShader =
                     hasDetail
                         ? _terrainLayerDetailPixelShader
-                        : _terrainLayerPixelShader);
-
-                _deviceContext.PSSetShaderResource(
-                    0,
-                    texture!.View);
-
-                _deviceContext.PSSetShaderResource(
-                    1,
-                    mask!.View);
-
-                if (hasDetail)
-                {
-                    _deviceContext.PSSetShaderResource(
-                        2,
-                        detail!.View);
-                }
+                        : _terrainLayerPixelShader;
+                desiredTextureView =
+                    texture!.View;
+                desiredMaskView =
+                    mask!.View;
+                desiredDetailView =
+                    hasDetail
+                        ? detail!.View
+                        : null;
             }
             else if (hasTexture)
             {
-                _deviceContext.PSSetShader(
+                desiredPixelShader =
                     hasDetail
                         ? _terrainBaseDetailPixelShader
-                        : _terrainTexturedPixelShader);
-
-                _deviceContext.PSSetShaderResource(
-                    0,
-                    texture!.View);
-
-                if (hasDetail)
-                {
-                    _deviceContext.PSSetShaderResource(
-                        2,
-                        detail!.View);
-                }
+                        : _terrainTexturedPixelShader;
+                desiredTextureView =
+                    texture!.View;
+                desiredDetailView =
+                    hasDetail
+                        ? detail!.View
+                        : null;
             }
             else
             {
+                desiredPixelShader =
+                    _terrainPixelShader;
+            }
+
+            if (!ReferenceEquals(
+                    activeBlendState,
+                    desiredBlendState))
+            {
+                _deviceContext.OMSetBlendState(
+                    desiredBlendState);
+                activeBlendState =
+                    desiredBlendState;
+            }
+
+            if (!ReferenceEquals(
+                    activePixelShader,
+                    desiredPixelShader))
+            {
                 _deviceContext.PSSetShader(
-                    _terrainPixelShader);
+                    desiredPixelShader);
+                activePixelShader =
+                    desiredPixelShader;
+            }
+
+            if (!ReferenceEquals(
+                    activeTextureView,
+                    desiredTextureView))
+            {
+                if (desiredTextureView is null)
+                {
+                    _deviceContext.PSUnsetShaderResource(
+                        0);
+                }
+                else
+                {
+                    _deviceContext.PSSetShaderResource(
+                        0,
+                        desiredTextureView);
+                }
+
+                activeTextureView =
+                    desiredTextureView;
+            }
+
+            if (!ReferenceEquals(
+                    activeMaskView,
+                    desiredMaskView))
+            {
+                if (desiredMaskView is null)
+                {
+                    _deviceContext.PSUnsetShaderResource(
+                        1);
+                }
+                else
+                {
+                    _deviceContext.PSSetShaderResource(
+                        1,
+                        desiredMaskView);
+                }
+
+                activeMaskView =
+                    desiredMaskView;
+            }
+
+            if (!ReferenceEquals(
+                    activeDetailView,
+                    desiredDetailView))
+            {
+                if (desiredDetailView is null)
+                {
+                    _deviceContext.PSUnsetShaderResource(
+                        2);
+                }
+                else
+                {
+                    _deviceContext.PSSetShaderResource(
+                        2,
+                        desiredDetailView);
+                }
+
+                activeDetailView =
+                    desiredDetailView;
             }
 
             _deviceContext.Draw(
@@ -6038,13 +6131,20 @@ public sealed class D3D11RenderWindow : Form
                 batch.StartVertex);
         }
 
-        _deviceContext.OMSetBlendState(null);
-        _deviceContext.OMSetDepthStencilState(null);
-        _deviceContext.PSUnsetShaderResource(0);
-        _deviceContext.PSUnsetShaderResource(1);
-        _deviceContext.PSUnsetShaderResource(2);
-        _deviceContext.PSUnsetShaderResource(3);
-        _deviceContext.RSSetState(null);
+        _deviceContext.OMSetBlendState(
+            null);
+        _deviceContext.OMSetDepthStencilState(
+            null);
+        _deviceContext.PSUnsetShaderResource(
+            0);
+        _deviceContext.PSUnsetShaderResource(
+            1);
+        _deviceContext.PSUnsetShaderResource(
+            2);
+        _deviceContext.PSUnsetShaderResource(
+            3);
+        _deviceContext.RSSetState(
+            null);
     }
 
     private void DrawSplines()
