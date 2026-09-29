@@ -276,6 +276,9 @@ public sealed class D3D11RenderWindow : Form
     private IReadOnlyList<RuntimeRailSignalRouteStateInfo>
         _railSignalRouteStates =
             Array.Empty<RuntimeRailSignalRouteStateInfo>();
+    private readonly Dictionary<long, OmsiScriptRuntime>
+        _railSignalRuntimeByObjectId =
+            [];
     private readonly System.Windows.Forms.Timer _renderTimer;
     private readonly RuntimeFreeCamera _camera = new();
     private readonly RuntimeDriveVehicle _vehicle;
@@ -736,6 +739,7 @@ public sealed class D3D11RenderWindow : Form
         _railSignalRouteStates =
             _railSignalStateProvider?.Invoke() ??
             Array.Empty<RuntimeRailSignalRouteStateInfo>();
+        RebuildRailSignalRuntimeLookup();
         _scriptRuntime = scriptRuntime;
         _sectionScriptRuntimes =
             sectionScriptRuntimes is null
@@ -6284,6 +6288,24 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(null);
     }
 
+    private void RebuildRailSignalRuntimeLookup()
+    {
+        _railSignalRuntimeByObjectId.Clear();
+
+        foreach (var state in
+                 _railSignalRouteStates)
+        {
+            if (state.ScriptRuntime is null)
+            {
+                continue;
+            }
+
+            _railSignalRuntimeByObjectId[
+                state.SignalObjectId] =
+                state.ScriptRuntime;
+        }
+    }
+
     private bool IsDynamicSceneryBatchVisible(
         RuntimeObjectBatch batch)
     {
@@ -6299,19 +6321,9 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
-        var runtime =
-            _railSignalRouteStates
-                .Where(
-                    state =>
-                        state.SignalObjectId ==
-                            batch.ObjectId &&
-                        state.ScriptRuntime is not null)
-                .Select(
-                    static state =>
-                        state.ScriptRuntime)
-                .FirstOrDefault();
-
-        if (runtime is null)
+        if (!_railSignalRuntimeByObjectId.TryGetValue(
+                batch.ObjectId,
+                out var runtime))
         {
             return true;
         }
@@ -10044,6 +10056,8 @@ public sealed class D3D11RenderWindow : Form
             _railSignalRouteStates =
                 _railSignalStateProvider() ??
                 Array.Empty<RuntimeRailSignalRouteStateInfo>();
+
+            RebuildRailSignalRuntimeLookup();
         }
 
         var controllerFrame =
