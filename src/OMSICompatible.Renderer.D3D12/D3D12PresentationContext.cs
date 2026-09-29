@@ -374,6 +374,12 @@ public sealed class D3D12PresentationContext :
                                         DescriptorRangeType.ShaderResourceView,
                                         1,
                                         0)),
+                                ShaderVisibility.Pixel),
+                            new RootParameter1(
+                                new RootConstants(
+                                    2,
+                                    0,
+                                    1),
                                 ShaderVisibility.Pixel)
                         ],
                         [
@@ -398,6 +404,11 @@ public sealed class D3D12PresentationContext :
 
                 Texture2D DiffuseTexture : register(t0);
                 SamplerState DiffuseSampler : register(s0);
+
+                cbuffer MaterialConstants : register(b2)
+                {
+                    float AlphaCutoff;
+                };
 
                 struct VsInput
                 {
@@ -437,10 +448,21 @@ public sealed class D3D12PresentationContext :
 
                 float4 PSMain(VsOutput input) : SV_Target0
                 {
-                    return input.color *
+                    float4 color =
+                        input.color *
                         DiffuseTexture.Sample(
                             DiffuseSampler,
                             input.uv);
+
+                    if (AlphaCutoff >=
+                        0.0)
+                    {
+                        clip(
+                            color.a -
+                            AlphaCutoff);
+                    }
+
+                    return color;
                 }
                 """;
 
@@ -853,6 +875,11 @@ public sealed class D3D12PresentationContext :
             1,
             ref staticModel);
 
+        _commandList.SetGraphicsRoot32BitConstant(
+            3,
+            -1.0f,
+            0);
+
         var renderTarget =
             _renderTargets[
                 _backBufferIndex];
@@ -923,6 +950,13 @@ public sealed class D3D12PresentationContext :
                 BindTexture(
                     ResolveTexture(
                         batch.TexturePath));
+
+                _commandList.SetGraphicsRoot32BitConstant(
+                    3,
+                    batch.AlphaCutout
+                        ? 0.5f
+                        : -1.0f,
+                    0);
 
                 _commandList.DrawInstanced(
                     batch.VertexCount,
@@ -1015,6 +1049,11 @@ public sealed class D3D12PresentationContext :
 
             _commandList.SetPipelineState(
                 _pipelineState);
+
+            _commandList.SetGraphicsRoot32BitConstant(
+                3,
+                -1.0f,
+                0);
 
             return;
         }
@@ -1141,6 +1180,11 @@ public sealed class D3D12PresentationContext :
 
         BindTexture(
             _fallbackTexture);
+
+        _commandList.SetGraphicsRoot32BitConstant(
+            3,
+            -1.0f,
+            0);
 
         var renderTarget =
             _renderTargets[
