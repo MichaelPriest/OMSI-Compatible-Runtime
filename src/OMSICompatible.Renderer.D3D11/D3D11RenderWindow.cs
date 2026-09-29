@@ -481,6 +481,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11PixelShader? _terrainLightmapPixelShader;
     private ID3D11InputLayout? _terrainInputLayout;
     private ID3D11SamplerState? _terrainTextureSampler;
+    private ID3D11SamplerState? _terrainTextureSamplerPerformance;
     private ID3D11SamplerState? _terrainMaskSampler;
     private ID3D11BlendState? _terrainAlphaBlendState;
     private ID3D11BlendState? _terrainAdditiveBlendState;
@@ -509,6 +510,7 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11DepthStencilState? _objectDepthDisabledState;
     private ID3D11InputLayout? _objectInputLayout;
     private ID3D11SamplerState? _objectSampler;
+    private ID3D11SamplerState? _objectSamplerPerformance;
     private RuntimeGpuTextureLoader? _objectTextureLoader;
     private RuntimeOmsiTextTextureRenderer? _vehicleTextTextureRenderer;
     private readonly Dictionary<string, RuntimeGpuTexture>
@@ -3438,6 +3440,14 @@ public sealed class D3D11RenderWindow : Form
             _device.CreateSamplerState(
                 SamplerDescription.LinearWrap);
 
+        _terrainTextureSamplerPerformance =
+            _device.CreateSamplerState(
+                new SamplerDescription(
+                    Filter.MinMagMipLinear,
+                    TextureAddressMode.Wrap,
+                    mipLODBias:
+                        1.0f));
+
         _terrainMaskSampler =
             _device.CreateSamplerState(
                 SamplerDescription.LinearClamp);
@@ -3687,6 +3697,14 @@ public sealed class D3D11RenderWindow : Form
         _objectSampler =
             _device.CreateSamplerState(
                 SamplerDescription.LinearWrap);
+
+        _objectSamplerPerformance =
+            _device.CreateSamplerState(
+                new SamplerDescription(
+                    Filter.MinMagMipLinear,
+                    TextureAddressMode.Wrap,
+                    mipLODBias:
+                        1.0f));
 
         _objectTextureLoader =
             new RuntimeGpuTextureLoader(
@@ -5929,9 +5947,17 @@ public sealed class D3D11RenderWindow : Form
             0,
             _terrainCameraBuffer);
 
+        var usePerformanceTextureLod =
+            _lastObservedFrameMilliseconds >
+                _targetFrameMilliseconds *
+                1.20;
+
         _deviceContext.PSSetSampler(
             0,
-            _terrainTextureSampler);
+            usePerformanceTextureLod &&
+                    _terrainTextureSamplerPerformance is not null
+                ? _terrainTextureSamplerPerformance
+                : _terrainTextureSampler);
 
         _deviceContext.PSSetSampler(
             1,
@@ -6424,9 +6450,17 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.VSSetConstantBuffer(
             0,
             _terrainCameraBuffer);
+        var usePerformanceTextureLod =
+            _lastObservedFrameMilliseconds >
+                _targetFrameMilliseconds *
+                1.20;
+
         _deviceContext.PSSetSampler(
             0,
-            _objectSampler);
+            usePerformanceTextureLod &&
+                    _objectSamplerPerformance is not null
+                ? _objectSamplerPerformance
+                : _objectSampler);
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
@@ -20397,6 +20431,7 @@ public sealed class D3D11RenderWindow : Form
             _terrainAdditiveBlendState?.Dispose();
             _terrainAlphaBlendState?.Dispose();
             _terrainMaskSampler?.Dispose();
+            _terrainTextureSamplerPerformance?.Dispose();
             _terrainTextureSampler?.Dispose();
             _terrainInputLayout?.Dispose();
             _terrainLightmapPixelShader?.Dispose();
@@ -20444,6 +20479,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleTextTextureRenderer = null;
             _vehicleAnimationParentBatches.Clear();
 
+            _objectSamplerPerformance?.Dispose();
             _objectSampler?.Dispose();
             _objectDepthDisabledState?.Dispose();
             _objectDepthReadState?.Dispose();
