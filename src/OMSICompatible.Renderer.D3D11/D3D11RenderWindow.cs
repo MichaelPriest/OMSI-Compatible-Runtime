@@ -525,6 +525,11 @@ public sealed class D3D11RenderWindow : Form
         MaximumStreamingTextureUploadBudgetMilliseconds;
     private RuntimeObjectGeometry _objectGeometry =
         RuntimeObjectGeometry.Empty;
+    private readonly Dictionary<
+        RuntimeSceneryRenderPass,
+        RuntimeObjectBatch[]>
+        _objectBatchesByRenderPass =
+            [];
     private uint _objectVertexCount;
 
     private ID3D11Buffer? _vehicleExteriorVertexBuffer;
@@ -2136,6 +2141,8 @@ public sealed class D3D11RenderWindow : Form
         _objectGeometry =
             prepared.Objects;
 
+        RebuildObjectRenderPassBatches();
+
         _objectVertexCount =
             (uint)_objectGeometry.Vertices.Length;
 
@@ -3529,6 +3536,8 @@ public sealed class D3D11RenderWindow : Form
                 useNativeOmsiModelSpace: true,
                 isolatedObjectIds:
                     _windowInfo.DynamicSceneryObjectIds);
+
+        RebuildObjectRenderPassBatches();
 
         if (_objectGeometry.Vertices.Length == 0 &&
             _splineGeometry.Vertices.Length == 0 &&
@@ -5931,11 +5940,43 @@ public sealed class D3D11RenderWindow : Form
     private void DrawObjects(
         RuntimeSceneryRenderPass renderPass)
     {
+        if (!_objectBatchesByRenderPass.TryGetValue(
+                renderPass,
+                out var batches) ||
+            batches.Length ==
+                0)
+        {
+            return;
+        }
+
         DrawTexturedGeometry(
             _objectVertexBuffer,
             _objectVertexCount,
-            _objectGeometry.Batches,
-            renderPass);
+            batches,
+            renderPass,
+            batchesMatchRenderPass: true);
+    }
+
+    private void RebuildObjectRenderPassBatches()
+    {
+        _objectBatchesByRenderPass.Clear();
+
+        foreach (RuntimeSceneryRenderPass renderPass in
+                 Enum.GetValues<
+                     RuntimeSceneryRenderPass>())
+        {
+            _objectBatchesByRenderPass[
+                renderPass] =
+                _objectGeometry.Batches
+                    .Where(
+                        batch =>
+                            batch.VertexCount >
+                                0 &&
+                            MatchesSceneryRenderPass(
+                                batch.RenderType,
+                                renderPass))
+                    .ToArray();
+        }
     }
 
     private static bool MatchesSceneryRenderPass(
@@ -6065,7 +6106,8 @@ public sealed class D3D11RenderWindow : Form
         ID3D11Buffer? vertexBuffer,
         uint vertexCount,
         IReadOnlyList<RuntimeObjectBatch> batches,
-        RuntimeSceneryRenderPass? sceneryRenderPass = null)
+        RuntimeSceneryRenderPass? sceneryRenderPass = null,
+        bool batchesMatchRenderPass = false)
     {
         if (_deviceContext is null ||
             CurrentRenderTargetView is null ||
@@ -6124,6 +6166,7 @@ public sealed class D3D11RenderWindow : Form
         {
             if (batch.VertexCount == 0 ||
                 (sceneryRenderPass.HasValue &&
+                 !batchesMatchRenderPass &&
                  !MatchesSceneryRenderPass(
                      batch.RenderType,
                      sceneryRenderPass.Value)) ||
