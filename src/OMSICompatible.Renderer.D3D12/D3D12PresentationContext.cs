@@ -605,7 +605,8 @@ public sealed class D3D12PresentationContext :
     }
 
     public D3D12RuntimeObjectResources CreateObjectResources(
-        ReadOnlySpan<RuntimeObjectVertex> vertices)
+        ReadOnlySpan<RuntimeObjectVertex> vertices,
+        IReadOnlyList<RuntimeObjectDrawBatch>? batches = null)
     {
         ObjectDisposedException.ThrowIf(
             _disposed,
@@ -613,7 +614,8 @@ public sealed class D3D12PresentationContext :
 
         return D3D12RuntimeObjectResources.Create(
             _device,
-            vertices);
+            vertices,
+            batches);
     }
 
     public void SetViewProjection(
@@ -873,6 +875,28 @@ public sealed class D3D12PresentationContext :
         _commandList.IASetVertexBuffers(
             0,
             resources.Buffer.View);
+
+        if (resources.Batches.Count >
+            0)
+        {
+            foreach (var batch in
+                     resources.Batches)
+            {
+                if (batch.VertexCount ==
+                    0)
+                {
+                    continue;
+                }
+
+                _commandList.DrawInstanced(
+                    batch.VertexCount,
+                    1,
+                    batch.StartVertex,
+                    0);
+            }
+
+            return;
+        }
 
         _commandList.DrawInstanced(
             checked(
