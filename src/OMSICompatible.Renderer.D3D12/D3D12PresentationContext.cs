@@ -1038,6 +1038,13 @@ public sealed class D3D12PresentationContext :
                     ResolveTexture(
                         batch.TexturePath));
 
+                _commandList.SetGraphicsRoot32BitConstant(
+                    3,
+                    batch.AlphaCutout
+                        ? 0.35f
+                        : -1.0f,
+                    0);
+
                 _commandList.DrawInstanced(
                     batch.VertexCount,
                     1,
