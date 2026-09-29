@@ -1009,14 +1009,23 @@ public sealed class D3D12PresentationContext :
                     continue;
                 }
 
-                BindTexture(
-                    ResolveTexture(
-                        batch.TexturePath));
+                BindMaterialTextures(
+                    batch.TexturePath,
+                    transMapPath:
+                        null);
 
-                _commandList.SetGraphicsRoot32BitConstant(
+                Span<float> terrainMaterialConstants =
+                    stackalloc float[4]
+                    {
+                        -1.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f
+                    };
+
+                _commandList.SetGraphicsRoot32BitConstants(
                     3,
-                    -1.0f,
-                    0);
+                    terrainMaterialConstants);
 
                 _commandList.DrawInstanced(
                     batch.VertexCount,
@@ -1201,17 +1210,6 @@ public sealed class D3D12PresentationContext :
         }
     }
 
-    private void BindTexture(
-        D3D12RuntimeTexture texture)
-    {
-        _commandList.SetDescriptorHeaps(
-            texture.DescriptorHeap);
-
-        _commandList.SetGraphicsRootDescriptorTable(
-            2,
-            texture.GpuHandle);
-    }
-
     private void BindMaterialTextures(
         string? diffusePath,
         string? transMapPath)
@@ -1309,8 +1307,11 @@ public sealed class D3D12PresentationContext :
             1,
             ref _modelMatrix);
 
-        BindTexture(
-            _fallbackTexture);
+        BindMaterialTextures(
+            diffusePath:
+                null,
+            transMapPath:
+                null);
 
         Span<float> defaultMaterialConstants =
             stackalloc float[4]
