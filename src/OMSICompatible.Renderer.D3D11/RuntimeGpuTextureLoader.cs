@@ -103,7 +103,7 @@ internal sealed class RuntimeGpuTextureLoader
 
     public RuntimeGpuTextureLoader(
         ID3D11Device device,
-        ID3D11DeviceContext deviceContext)
+        ID3D11DeviceContext? deviceContext = null)
     {
         _device =
             device ??
@@ -112,8 +112,7 @@ internal sealed class RuntimeGpuTextureLoader
 
         _deviceContext =
             deviceContext ??
-            throw new ArgumentNullException(
-                nameof(deviceContext));
+            _device.ImmediateContext;
     }
 
     public static int WarmFileCache(
@@ -725,6 +724,22 @@ internal sealed class RuntimeGpuTextureLoader
                         span.Slice(
                             16,
                             4));
+
+            var mipMapCount =
+                BinaryPrimitives
+                    .ReadInt32LittleEndian(
+                        span.Slice(
+                            28,
+                            4));
+
+            mipMapCount =
+                Math.Clamp(
+                    mipMapCount <=
+                            0
+                        ? 1
+                        : mipMapCount,
+                    1,
+                    16);
 
             if (width <=
                     0 ||
