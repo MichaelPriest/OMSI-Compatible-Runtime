@@ -57,6 +57,8 @@ public sealed class WorldTrafficSimulation
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
     private readonly Dictionary<int, double> _segmentLengthsByIndex;
     private readonly HashSet<long> _crossingSceneryObjectIds;
+    private readonly Dictionary<long, int[]>
+        _crossingCandidateSegmentsBySceneryObjectId;
     private readonly Dictionary<long, TrafficSignalGroupState> _trafficSignalGroups;
     private readonly List<Agent> _agents;
     private readonly WorldTrafficPathSegment[] _roadSegments = [];
@@ -111,6 +113,40 @@ public sealed class WorldTrafficSimulation
                     static group =>
                         group.Key)
                 .ToHashSet();
+
+        _crossingCandidateSegmentsBySceneryObjectId =
+            _crossingSceneryObjectIds
+                .ToDictionary(
+                    static crossingId =>
+                        crossingId,
+                    crossingId =>
+                    {
+                        var crossingSegments =
+                            network.Segments
+                                .Where(
+                                    segment =>
+                                        segment.SceneryObjectId ==
+                                        crossingId)
+                                .Select(
+                                    static segment =>
+                                        segment.Index)
+                                .ToHashSet();
+
+                        return network.Segments
+                            .Where(
+                                segment =>
+                                    crossingSegments.Contains(
+                                        segment.Index) ||
+                                    segment.ForwardConnections.Any(
+                                        crossingSegments.Contains) ||
+                                    segment.ReverseConnections.Any(
+                                        crossingSegments.Contains))
+                            .Select(
+                                static segment =>
+                                    segment.Index)
+                            .Distinct()
+                            .ToArray();
+                    });
 
         _trafficSignalGroups =
             network.Segments
@@ -817,6 +853,10 @@ public sealed class WorldTrafficSimulation
                     {
                         agent.PendingRespawn =
                             true;
+                        RemoveActiveAgentBucket(
+                            activeAgentsBySegment,
+                            agent.SegmentIndex,
+                            agent);
 
                         if (!TryPlaceRecycledAgent(
                                 agent))
@@ -829,6 +869,9 @@ public sealed class WorldTrafficSimulation
 
                         agent.PendingRespawn =
                             false;
+                        AddActiveAgentBucket(
+                            activeAgentsBySegment,
+                            agent);
                     }
 
                     agent.ActivationPlacementValidated =
@@ -848,6 +891,9 @@ public sealed class WorldTrafficSimulation
 
                     agent.PendingRespawn =
                         false;
+                    AddActiveAgentBucket(
+                        activeAgentsBySegment,
+                        agent);
                 }
 
                 var collisionHoldActive =
@@ -869,7 +915,8 @@ public sealed class WorldTrafficSimulation
                     blockedEntryDistance =
                         ResolveBlockedEntryDistance(
                             agent,
-                            currentSegment);
+                            currentSegment,
+                            activeAgentsBySegment);
                 }
 
                 var targetSpeed =
@@ -947,7 +994,8 @@ public sealed class WorldTrafficSimulation
                     {
                         if (!TryAdvanceSegment(
                                 agent,
-                                segment))
+                                segment,
+                                activeAgentsBySegment))
                         {
                             break;
                         }
@@ -995,7 +1043,8 @@ public sealed class WorldTrafficSimulation
 
                     if (!TryAdvanceSegment(
                             agent,
-                            segment))
+                            segment,
+                            activeAgentsBySegment))
                     {
                         remaining =
                             0.0;
@@ -1045,7 +1094,8 @@ public sealed class WorldTrafficSimulation
 
     private bool TryAdvanceSegment(
         Agent agent,
-        WorldTrafficPathSegment segment)
+        WorldTrafficPathSegment segment,
+        Dictionary<int, List<Agent>> activeAgentsBySegment)
     {
         var next =
             ResolveNextSegmentIndex(
@@ -1060,6 +1110,10 @@ public sealed class WorldTrafficSimulation
             if (TryRecycleTerminalAgent(
                     agent))
             {
+                RemoveActiveAgentBucket(
+                    activeAgentsBySegment,
+                    agent.SegmentIndex,
+                    agent);
                 return false;
             }
 
@@ -1074,7 +1128,8 @@ public sealed class WorldTrafficSimulation
         if (!CanEnterSegment(
                 agent,
                 segment,
-                nextSegment))
+                nextSegment,
+                activeAgentsBySegment))
         {
             agent.SpeedMetersPerSecond =
                 0.0;
@@ -1084,8 +1139,16 @@ public sealed class WorldTrafficSimulation
             return false;
         }
 
+        var previousSegmentIndex =
+            agent.SegmentIndex;
+
         agent.SegmentIndex =
             next.Value;
+
+        MoveActiveAgentBucket(
+            activeAgentsBySegment,
+            previousSegmentIndex,
+            agent);
 
         agent.DistanceMeters =
             agent.TravelForward
@@ -1535,7 +1598,8 @@ public sealed class WorldTrafficSimulation
     private bool CanEnterSegment(
         Agent agent,
         WorldTrafficPathSegment currentSegment,
-        WorldTrafficPathSegment nextSegment)
+        WorldTrafficPathSegment nextSegment,
+        IReadOnlyDictionary<int, List<Agent>> activeAgentsBySegment)
     {
         if (!IsTrafficSignalGreen(
                 nextSegment))
@@ -1555,7 +1619,8 @@ public sealed class WorldTrafficSimulation
 
         if (IsCrossingExitBlocked(
                 agent,
-                nextSegment))
+                nextSegment,
+                activeAgentsBySegment))
         {
             return false;
         }
@@ -1568,7 +1633,9 @@ public sealed class WorldTrafficSimulation
         }
 
         foreach (var other in
-                 _agents)
+                 EnumerateCrossingCandidateAgents(
+                     crossingId,
+                     activeAgentsBySegment))
         {
             if (ReferenceEquals(
                     other,
@@ -1635,7 +1702,8 @@ public sealed class WorldTrafficSimulation
             // even though it has no safe path through the junction.
             if (IsCrossingExitBlocked(
                     other,
-                    otherNextSegment))
+                    otherNextSegment,
+                    activeAgentsBySegment))
             {
                 continue;
             }
@@ -1822,7 +1890,8 @@ public sealed class WorldTrafficSimulation
 
     private bool IsCrossingExitBlocked(
         Agent agent,
-        WorldTrafficPathSegment crossingSegment)
+        WorldTrafficPathSegment crossingSegment,
+        IReadOnlyDictionary<int, List<Agent>> activeAgentsBySegment)
     {
         var exitIndex =
             ResolveNextSegmentIndex(
@@ -1842,7 +1911,9 @@ public sealed class WorldTrafficSimulation
                 exitSegment);
 
         foreach (var other in
-                 _agents)
+                 GetActiveSegmentAgents(
+                     exitSegment.Index,
+                     activeAgentsBySegment))
         {
             if (ReferenceEquals(
                     other,
@@ -3240,22 +3311,116 @@ public sealed class WorldTrafficSimulation
                 continue;
             }
 
-            if (!buckets.TryGetValue(
-                    agent.SegmentIndex,
-                    out var bucket))
-            {
-                bucket =
-                    [];
-                buckets[
-                    agent.SegmentIndex] =
-                    bucket;
-            }
-
-            bucket.Add(
+            AddActiveAgentBucket(
+                buckets,
                 agent);
         }
 
         return buckets;
+    }
+
+    private IEnumerable<Agent> EnumerateCrossingCandidateAgents(
+        long crossingId,
+        IReadOnlyDictionary<int, List<Agent>> activeAgentsBySegment)
+    {
+        if (!_crossingCandidateSegmentsBySceneryObjectId.TryGetValue(
+                crossingId,
+                out var candidateSegmentIndices))
+        {
+            yield break;
+        }
+
+        foreach (var segmentIndex in
+                 candidateSegmentIndices)
+        {
+            if (!activeAgentsBySegment.TryGetValue(
+                    segmentIndex,
+                    out var candidates))
+            {
+                continue;
+            }
+
+            foreach (var candidate in
+                     candidates)
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    private static IReadOnlyList<Agent> GetActiveSegmentAgents(
+        int segmentIndex,
+        IReadOnlyDictionary<int, List<Agent>> activeAgentsBySegment) =>
+        activeAgentsBySegment.TryGetValue(
+            segmentIndex,
+            out var agents)
+            ? agents
+            : Array.Empty<Agent>();
+
+    private static void AddActiveAgentBucket(
+        Dictionary<int, List<Agent>> buckets,
+        Agent agent)
+    {
+        if (!buckets.TryGetValue(
+                agent.SegmentIndex,
+                out var bucket))
+        {
+            bucket =
+                [];
+            buckets[
+                agent.SegmentIndex] =
+                bucket;
+        }
+
+        if (!bucket.Contains(
+                agent))
+        {
+            bucket.Add(
+                agent);
+        }
+    }
+
+    private static void RemoveActiveAgentBucket(
+        Dictionary<int, List<Agent>> buckets,
+        int segmentIndex,
+        Agent agent)
+    {
+        if (!buckets.TryGetValue(
+                segmentIndex,
+                out var bucket))
+        {
+            return;
+        }
+
+        bucket.Remove(
+            agent);
+
+        if (bucket.Count ==
+            0)
+        {
+            buckets.Remove(
+                segmentIndex);
+        }
+    }
+
+    private static void MoveActiveAgentBucket(
+        Dictionary<int, List<Agent>> buckets,
+        int previousSegmentIndex,
+        Agent agent)
+    {
+        if (previousSegmentIndex ==
+            agent.SegmentIndex)
+        {
+            return;
+        }
+
+        RemoveActiveAgentBucket(
+            buckets,
+            previousSegmentIndex,
+            agent);
+        AddActiveAgentBucket(
+            buckets,
+            agent);
     }
 
     private TrafficLead? FindLeadingObservation(
@@ -3811,7 +3976,8 @@ public sealed class WorldTrafficSimulation
 
     private double? ResolveBlockedEntryDistance(
         Agent agent,
-        WorldTrafficPathSegment segment)
+        WorldTrafficPathSegment segment,
+        IReadOnlyDictionary<int, List<Agent>> activeAgentsBySegment)
     {
         var nextIndex =
             ResolveNextSegmentIndex(
@@ -3825,7 +3991,8 @@ public sealed class WorldTrafficSimulation
             CanEnterSegment(
                 agent,
                 segment,
-                nextSegment))
+                nextSegment,
+                activeAgentsBySegment))
         {
             return null;
         }
