@@ -46,6 +46,14 @@ public sealed class D3D11RenderWindow : Form
         public Matrix4x4 World;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimeTrafficInstanceData
+    {
+        public const uint SizeInBytes = 64;
+
+        public Matrix4x4 World;
+    }
+
     private sealed record PreparedTrafficVehicleGeometry(
         string Path,
         RuntimeObjectGeometry Geometry);
@@ -542,6 +550,12 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11Buffer? _vehicleMaterialBuffer;
     private ID3D11Buffer? _vehicleSkinBuffer;
     private ID3D11VertexShader? _vehicleVertexShader;
+    private ID3D11VertexShader? _trafficInstancedVertexShader;
+    private ID3D11InputLayout? _trafficInstancedInputLayout;
+    private ID3D11Buffer? _trafficInstanceBuffer;
+    private int _trafficInstanceBufferCapacity;
+    private RuntimeTrafficInstanceData[] _trafficInstanceScratch =
+        Array.Empty<RuntimeTrafficInstanceData>();
     private ID3D11PixelShader? _vehicleColorPixelShader;
     private ID3D11PixelShader? _vehicleLightPixelShader;
     private ID3D11PixelShader? _vehicleTexturedPixelShader;
@@ -3330,6 +3344,12 @@ public sealed class D3D11RenderWindow : Form
                 "VSMain",
                 "vs_4_0");
 
+        ReadOnlyMemory<byte> instancedVertexShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "VSMainInstanced",
+                "vs_4_0");
+
         ReadOnlyMemory<byte> colorPixelShaderByteCode =
             Compiler.CompileFromFile(
                 shaderFile,
@@ -4079,6 +4099,10 @@ public sealed class D3D11RenderWindow : Form
             _device.CreateVertexShader(
                 vertexShaderByteCode.Span);
 
+        _trafficInstancedVertexShader =
+            _device.CreateVertexShader(
+                instancedVertexShaderByteCode.Span);
+
         _vehicleColorPixelShader =
             _device.CreatePixelShader(
                 colorPixelShaderByteCode.Span);
@@ -4111,6 +4135,11 @@ public sealed class D3D11RenderWindow : Form
             _device.CreateInputLayout(
                 CreateVehicleInputElements(),
                 vertexShaderByteCode.Span);
+
+        _trafficInstancedInputLayout =
+            _device.CreateInputLayout(
+                CreateTrafficVehicleInstancedInputElements(),
+                instancedVertexShaderByteCode.Span);
 
         _vehicleSampler =
             _device.CreateSamplerState(
@@ -4533,6 +4562,73 @@ public sealed class D3D11RenderWindow : Form
             Format.R32G32B32A32_Float,
             48,
             0)
+    ];
+
+    private static InputElementDescription[]
+        CreateTrafficVehicleInstancedInputElements() =>
+    [
+        new InputElementDescription(
+            "POSITION",
+            0,
+            Format.R32G32B32_Float,
+            0,
+            0),
+        new InputElementDescription(
+            "COLOR",
+            0,
+            Format.R32G32B32A32_Float,
+            12,
+            0),
+        new InputElementDescription(
+            "TEXCOORD",
+            0,
+            Format.R32G32_Float,
+            28,
+            0),
+        new InputElementDescription(
+            "NORMAL",
+            0,
+            Format.R32G32B32_Float,
+            36,
+            0),
+        new InputElementDescription(
+            "BLENDWEIGHT",
+            0,
+            Format.R32G32B32A32_Float,
+            48,
+            0),
+        new InputElementDescription(
+            "INSTANCEWORLD",
+            0,
+            Format.R32G32B32A32_Float,
+            0,
+            1,
+            InputClassification.PerInstanceData,
+            1),
+        new InputElementDescription(
+            "INSTANCEWORLD",
+            1,
+            Format.R32G32B32A32_Float,
+            16,
+            1,
+            InputClassification.PerInstanceData,
+            1),
+        new InputElementDescription(
+            "INSTANCEWORLD",
+            2,
+            Format.R32G32B32A32_Float,
+            32,
+            1,
+            InputClassification.PerInstanceData,
+            1),
+        new InputElementDescription(
+            "INSTANCEWORLD",
+            3,
+            Format.R32G32B32A32_Float,
+            48,
+            1,
+            InputClassification.PerInstanceData,
+            1)
     ];
 
     private static string ShaderPath(string fileName)
@@ -6592,6 +6688,98 @@ public sealed class D3D11RenderWindow : Form
                    -margin &&
                clip.Y <=
                    margin;
+    }
+
+    private bool TryUploadTrafficInstances(
+        IReadOnlyList<TrafficVehicleDrawItem> drawItems)
+    {
+        if (_device is null ||
+            _deviceContext is null ||
+            drawItems.Count ==
+                0)
+        {
+            return false;
+        }
+
+        var requiredCount =
+            drawItems.Count;
+
+        if (_trafficInstanceScratch.Length <
+            requiredCount)
+        {
+            var scratchCapacity =
+                Math.Max(
+                    64,
+                    _trafficInstanceScratch.Length);
+
+            while (scratchCapacity <
+                   requiredCount)
+            {
+                scratchCapacity *=
+                    2;
+            }
+
+            Array.Resize(
+                ref _trafficInstanceScratch,
+                scratchCapacity);
+        }
+
+        for (var index = 0;
+             index < requiredCount;
+             index++)
+        {
+            _trafficInstanceScratch[
+                index] =
+                new RuntimeTrafficInstanceData
+                {
+                    World =
+                        drawItems[
+                            index]
+                            .VehicleWorld
+                };
+        }
+
+        if (_trafficInstanceBuffer is null ||
+            _trafficInstanceBufferCapacity <
+                requiredCount)
+        {
+            var capacity =
+                Math.Max(
+                    64,
+                    _trafficInstanceBufferCapacity);
+
+            while (capacity <
+                   requiredCount)
+            {
+                capacity *=
+                    2;
+            }
+
+            _trafficInstanceBuffer?.Dispose();
+
+            _trafficInstanceBuffer =
+                _device.CreateBuffer(
+                    new BufferDescription(
+                        (uint)(
+                            capacity *
+                            RuntimeTrafficInstanceData.SizeInBytes),
+                        BindFlags.VertexBuffer,
+                        ResourceUsage.Dynamic,
+                        CpuAccessFlags.Write));
+
+            _trafficInstanceBufferCapacity =
+                capacity;
+        }
+
+        _trafficInstanceBuffer.SetData(
+            _deviceContext,
+            _trafficInstanceScratch
+                .AsSpan(
+                    0,
+                    requiredCount),
+            MapMode.WriteDiscard);
+
+        return true;
     }
 
     private void DrawTrafficVehicles()
@@ -19826,6 +20014,15 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAlphaBlendState?.Dispose();
             _vehicleSampler?.Dispose();
             _vehicleInputLayout?.Dispose();
+            _trafficInstancedInputLayout?.Dispose();
+            _trafficInstancedVertexShader?.Dispose();
+            _trafficInstanceBuffer?.Dispose();
+            _trafficInstanceBuffer =
+                null;
+            _trafficInstanceBufferCapacity =
+                0;
+            _trafficInstanceScratch =
+                Array.Empty<RuntimeTrafficInstanceData>();
             _vehicleAlphaBlendTransMapPixelShader?.Dispose();
             _vehicleAlphaCutoutTransMapPixelShader?.Dispose();
             _vehicleAlphaBlendPixelShader?.Dispose();
