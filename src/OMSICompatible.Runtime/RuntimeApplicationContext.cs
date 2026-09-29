@@ -842,17 +842,19 @@ internal sealed class RuntimeApplicationContext :
                         0
                     ? geometry.Terrain.Center
                     : new Vector3(
-                        runtimeInfo.Tiles.Average(
-                            static tile =>
-                                tile.X) *
-                            300.0f +
-                        150.0f,
+                        (float)(
+                            runtimeInfo.Tiles.Average(
+                                static tile =>
+                                    tile.X) *
+                            300.0 +
+                            150.0),
                         0.0f,
-                        runtimeInfo.Tiles.Average(
-                            static tile =>
-                                tile.Y) *
-                            300.0f +
-                        150.0f);
+                        (float)(
+                            runtimeInfo.Tiles.Average(
+                                static tile =>
+                                    tile.Y) *
+                            300.0 +
+                            150.0));
 
             graphics.SetRenderOrigin(
                 center);
