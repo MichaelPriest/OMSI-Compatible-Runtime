@@ -8322,6 +8322,15 @@ public sealed class D3D11RenderWindow : Form
         ID3D11ShaderResourceView? activeVehicleBumpMapView =
             null;
 
+        var hasActiveVehicleWorld =
+            false;
+        var activeVehicleWorld =
+            Matrix4x4.Identity;
+        var hasActiveVehicleSkin =
+            false;
+        var activeVehicleSkin =
+            default(RuntimeVehicleSkinConstants);
+
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
         _deviceContext.PSUnsetShaderResource(2);
@@ -8358,30 +8367,57 @@ public sealed class D3D11RenderWindow : Form
                 }
             }
 
-            model[0] =
-                new RuntimeModelConstants
-                {
-                    World =
-                        CreateVehicleAnimationMatrix(
-                            batch) *
-                        CreateArticulatedSectionMatrix(
-                            batch.SectionIndex) *
-                        vehicleWorld
-                };
+            var desiredVehicleWorld =
+                CreateVehicleAnimationMatrix(
+                    batch) *
+                CreateArticulatedSectionMatrix(
+                    batch.SectionIndex) *
+                vehicleWorld;
 
-            _vehicleModelBuffer.SetData(
-                _deviceContext,
-                model,
-                MapMode.WriteDiscard);
+            if (!hasActiveVehicleWorld ||
+                activeVehicleWorld !=
+                    desiredVehicleWorld)
+            {
+                model[0] =
+                    new RuntimeModelConstants
+                    {
+                        World =
+                            desiredVehicleWorld
+                    };
 
-            skinConstants[0] =
+                _vehicleModelBuffer.SetData(
+                    _deviceContext,
+                    model,
+                    MapMode.WriteDiscard);
+
+                activeVehicleWorld =
+                    desiredVehicleWorld;
+                hasActiveVehicleWorld =
+                    true;
+            }
+
+            var desiredVehicleSkin =
                 ResolveVehicleSkinConstants(
                     batch);
 
-            _vehicleSkinBuffer.SetData(
-                _deviceContext,
-                skinConstants,
-                MapMode.WriteDiscard);
+            if (!hasActiveVehicleSkin ||
+                !VehicleSkinConstantsEqual(
+                    activeVehicleSkin,
+                    desiredVehicleSkin))
+            {
+                skinConstants[0] =
+                    desiredVehicleSkin;
+
+                _vehicleSkinBuffer.SetData(
+                    _deviceContext,
+                    skinConstants,
+                    MapMode.WriteDiscard);
+
+                activeVehicleSkin =
+                    desiredVehicleSkin;
+                hasActiveVehicleSkin =
+                    true;
+            }
 
             materialConstants[0] =
                 new RuntimeVehicleMaterialConstants
@@ -8660,6 +8696,18 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(6);
         _deviceContext.RSSetState(null);
     }
+
+    private static bool VehicleSkinConstantsEqual(
+        RuntimeVehicleSkinConstants first,
+        RuntimeVehicleSkinConstants second) =>
+        first.Bone0 ==
+            second.Bone0 &&
+        first.Bone1 ==
+            second.Bone1 &&
+        first.Bone2 ==
+            second.Bone2 &&
+        first.Bone3 ==
+            second.Bone3;
 
     private void SetVehicleShaderResource(
         uint slot,
