@@ -53,6 +53,20 @@ struct VertexInput
     float4 SkinWeights : BLENDWEIGHT;
 };
 
+struct VertexInputInstanced
+{
+    float3 Position : POSITION;
+    float4 Color : COLOR;
+    float2 Uv : TEXCOORD;
+    float3 Normal : NORMAL;
+    float4 SkinWeights : BLENDWEIGHT;
+
+    float4 InstanceWorld0 : INSTANCEWORLD0;
+    float4 InstanceWorld1 : INSTANCEWORLD1;
+    float4 InstanceWorld2 : INSTANCEWORLD2;
+    float4 InstanceWorld3 : INSTANCEWORLD3;
+};
+
 struct VertexOutput
 {
     float4 Position : SV_POSITION;
@@ -148,6 +162,107 @@ VertexOutput VSMain(VertexInput input)
             mul(
                 skinnedNormal,
                 (float3x3)World));
+
+    output.WorldPosition =
+        worldPosition.xyz;
+
+    return output;
+}
+
+VertexOutput VSMainInstanced(
+    VertexInputInstanced input)
+{
+    VertexOutput output;
+
+    float4 sourcePosition =
+        float4(
+            input.Position,
+            1.0f);
+
+    float4 weights =
+        max(
+            input.SkinWeights,
+            0.0f);
+
+    float skinSum =
+        saturate(
+            weights.x +
+            weights.y +
+            weights.z +
+            weights.w);
+
+    float baseWeight =
+        1.0f -
+        skinSum;
+
+    float4 skinnedPosition =
+        sourcePosition *
+            baseWeight +
+        mul(
+            sourcePosition,
+            SkinBone0) *
+            weights.x +
+        mul(
+            sourcePosition,
+            SkinBone1) *
+            weights.y +
+        mul(
+            sourcePosition,
+            SkinBone2) *
+            weights.z +
+        mul(
+            sourcePosition,
+            SkinBone3) *
+            weights.w;
+
+    float3 skinnedNormal =
+        input.Normal *
+            baseWeight +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone0) *
+            weights.x +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone1) *
+            weights.y +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone2) *
+            weights.z +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone3) *
+            weights.w;
+
+    row_major float4x4 instanceWorld =
+        float4x4(
+            input.InstanceWorld0,
+            input.InstanceWorld1,
+            input.InstanceWorld2,
+            input.InstanceWorld3);
+
+    float4 worldPosition =
+        mul(
+            skinnedPosition,
+            instanceWorld);
+
+    output.Position =
+        mul(
+            worldPosition,
+            ViewProjection);
+
+    output.Color =
+        input.Color;
+
+    output.Uv =
+        input.Uv;
+
+    output.WorldNormal =
+        normalize(
+            mul(
+                skinnedNormal,
+                (float3x3)instanceWorld));
 
     output.WorldPosition =
         worldPosition.xyz;
