@@ -4246,17 +4246,59 @@ public sealed class D3D11RenderWindow : Form
 
         CreateReflectionResources();
 
+        static IEnumerable<string?>
+            EnumerateKnownVehicleTexturePaths(
+                RuntimeObjectBatch batch)
+        {
+            yield return
+                batch.TexturePath;
+            yield return
+                batch.TransMapTexturePath;
+            yield return
+                batch.LightMapTexturePath;
+            yield return
+                batch.MaterialChangeTexturePath;
+            yield return
+                batch.EnvMapTexturePath;
+            yield return
+                batch.EnvMapMaskTexturePath;
+            yield return
+                batch.BumpMapTexturePath;
+
+            if (batch.MaterialChangeSets is not
+                { Count: > 0 } changeSets)
+            {
+                yield break;
+            }
+
+            foreach (var changeSet in
+                     changeSets)
+            {
+                foreach (var item in
+                         changeSet.Items)
+                {
+                    yield return
+                        item.TransMapTexturePath;
+                    yield return
+                        item.LightMapTexturePath;
+                    yield return
+                        item.MaterialChangeTexturePath;
+                    yield return
+                        item.EnvMapTexturePath;
+                    yield return
+                        item.EnvMapMaskTexturePath;
+                    yield return
+                        item.BumpMapTexturePath;
+                }
+            }
+        }
+
         var vehicleTexturePaths =
             _vehicleExteriorGeometry.Batches
                 .Concat(
                     _vehicleInteriorGeometry.Batches)
                 .SelectMany(
-                    static batch =>
-                        new[]
-                        {
-                            batch.TexturePath,
-                            batch.TransMapTexturePath
-                        })
+                    EnumerateKnownVehicleTexturePaths)
                 .Where(
                     static path =>
                         !string.IsNullOrWhiteSpace(
