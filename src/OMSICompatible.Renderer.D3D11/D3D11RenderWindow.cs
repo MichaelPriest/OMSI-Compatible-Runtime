@@ -54,6 +54,22 @@ public sealed class D3D11RenderWindow : Form
         public Matrix4x4 World;
     }
 
+    private struct TrafficVehicleBindingState
+    {
+        public bool HasMaterial;
+        public RuntimeVehicleMaterialConstants Material;
+        public ID3D11BlendState? BlendState;
+        public ID3D11DepthStencilState? DepthState;
+        public ID3D11PixelShader? PixelShader;
+        public ID3D11ShaderResourceView? DiffuseView;
+        public ID3D11ShaderResourceView? TransMapView;
+        public ID3D11ShaderResourceView? LightMapView;
+        public ID3D11ShaderResourceView? MaterialChangeView;
+        public ID3D11ShaderResourceView? EnvMapView;
+        public ID3D11ShaderResourceView? EnvMapMaskView;
+        public ID3D11ShaderResourceView? BumpMapView;
+    }
+
     private sealed record PreparedTrafficVehicleGeometry(
         string Path,
         RuntimeObjectGeometry Geometry);
@@ -7272,6 +7288,22 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
+        var trafficBindings =
+            default(TrafficVehicleBindingState);
+
+        _deviceContext.OMSetBlendState(
+            null);
+        _deviceContext.OMSetDepthStencilState(
+            null);
+
+        for (var slot = 0;
+             slot <= 6;
+             slot++)
+        {
+            _deviceContext.PSUnsetShaderResource(
+                (uint)slot);
+        }
+
         // Opaque/cutout geometry is safe to batch by material. Static AI
         // batches use a per-instance world matrix stream. For animated
         // wheel/steering batches, vehicles farther than the animation detail
@@ -7361,7 +7393,8 @@ public sealed class D3D11RenderWindow : Form
                             { Count: > 0 } ||
                         !TryPrepareTrafficVehicleBatch(
                             batch,
-                            materialConstants))
+                            materialConstants,
+                            ref trafficBindings))
                     {
                         continue;
                     }
@@ -7431,7 +7464,8 @@ public sealed class D3D11RenderWindow : Form
                             { Count: > 0 } ||
                         !TryPrepareTrafficVehicleBatch(
                             batch,
-                            materialConstants))
+                            materialConstants,
+                            ref trafficBindings))
                     {
                         continue;
                     }
@@ -7471,7 +7505,8 @@ public sealed class D3D11RenderWindow : Form
                          { Count: > 0 }) ||
                     !TryPrepareTrafficVehicleBatch(
                         batch,
-                        materialConstants))
+                        materialConstants,
+                        ref trafficBindings))
                 {
                     continue;
                 }
@@ -7591,7 +7626,8 @@ public sealed class D3D11RenderWindow : Form
                 if (!batch.AlphaBlend ||
                     !TryPrepareTrafficVehicleBatch(
                         batch,
-                        materialConstants))
+                        materialConstants,
+                        ref trafficBindings))
                 {
                     continue;
                 }
@@ -7638,7 +7674,8 @@ public sealed class D3D11RenderWindow : Form
 
     private bool TryPrepareTrafficVehicleBatch(
         RuntimeObjectBatch batch,
-        Span<RuntimeVehicleMaterialConstants> materialConstants)
+        Span<RuntimeVehicleMaterialConstants> materialConstants,
+        ref TrafficVehicleBindingState bindingState)
     {
         if (_deviceContext is null ||
             _vehicleMaterialBuffer is null ||
@@ -7652,7 +7689,7 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
-        materialConstants[0] =
+        var desiredMaterial =
             new RuntimeVehicleMaterialConstants
             {
                 AlphaScale = 1.0f,
@@ -7681,62 +7718,96 @@ public sealed class D3D11RenderWindow : Form
                         batch.BaseAllColor)
             };
 
-        _vehicleMaterialBuffer.SetData(
-            _deviceContext,
-            materialConstants,
-            MapMode.WriteDiscard);
+        if (!bindingState.HasMaterial ||
+            !VehicleMaterialConstantsEqual(
+                bindingState.Material,
+                desiredMaterial))
+        {
+            materialConstants[0] =
+                desiredMaterial;
 
-        _deviceContext.OMSetBlendState(
+            _vehicleMaterialBuffer.SetData(
+                _deviceContext,
+                materialConstants,
+                MapMode.WriteDiscard);
+
+            bindingState.Material =
+                desiredMaterial;
+            bindingState.HasMaterial =
+                true;
+        }
+
+        var desiredBlendState =
             batch.AlphaBlend
                 ? _vehicleAlphaBlendState
-                : null);
+                : null;
 
-        _deviceContext.OMSetDepthStencilState(
+        if (!ReferenceEquals(
+                bindingState.BlendState,
+                desiredBlendState))
+        {
+            _deviceContext.OMSetBlendState(
+                desiredBlendState);
+            bindingState.BlendState =
+                desiredBlendState;
+        }
+
+        var desiredDepthState =
             batch.AlphaBlend
                 ? _vehicleDepthReadState
                 : batch.NoZCheck
                     ? _vehicleDepthDisabledState
                     : batch.NoZWrite
                         ? _vehicleDepthReadState
-                        : null);
+                        : null;
 
-        for (var slot = 0;
-             slot <= 6;
-             slot++)
+        if (!ReferenceEquals(
+                bindingState.DepthState,
+                desiredDepthState))
         {
-            _deviceContext.PSUnsetShaderResource(
-                (uint)slot);
+            _deviceContext.OMSetDepthStencilState(
+                desiredDepthState);
+            bindingState.DepthState =
+                desiredDepthState;
         }
 
-        if (_materialReflectionMapEnabled &&
+        ID3D11ShaderResourceView? envMapView =
+            null;
+        ID3D11ShaderResourceView? envMapMaskView =
+            null;
+        ID3D11ShaderResourceView? bumpMapView =
+            null;
+
+        if (_materialReflectionMapEnabled)
+        {
             TryGetVehicleTextureView(
                 batch.EnvMapTexturePath,
-                out var envMapView))
-        {
-            _deviceContext.PSSetShaderResource(
-                4,
-                envMapView!);
-        }
+                out envMapView);
 
-        if (_materialReflectionMapEnabled &&
             TryGetVehicleTextureView(
                 batch.EnvMapMaskTexturePath,
-                out var envMapMaskView))
-        {
-            _deviceContext.PSSetShaderResource(
-                5,
-                envMapMaskView!);
+                out envMapMaskView);
         }
 
-        if (_materialBumpMapEnabled &&
+        if (_materialBumpMapEnabled)
+        {
             TryGetVehicleTextureView(
                 batch.BumpMapTexturePath,
-                out var bumpMapView))
-        {
-            _deviceContext.PSSetShaderResource(
-                6,
-                bumpMapView!);
+                out bumpMapView);
         }
+
+        SetVehicleShaderResource(
+            4,
+            envMapView,
+            ref bindingState.EnvMapView);
+        SetVehicleShaderResource(
+            5,
+            envMapMaskView,
+            ref bindingState.EnvMapMaskView);
+        SetVehicleShaderResource(
+            6,
+            bumpMapView,
+            ref bindingState.BumpMapView);
 
         var hasDiffuseTexture =
             TryGetVehicleTextureView(
@@ -7764,24 +7835,36 @@ public sealed class D3D11RenderWindow : Form
                 return false;
             }
 
-            if (hasTransMap)
-            {
-                _deviceContext.PSSetShaderResource(
-                    1,
-                    transMapView!);
-            }
+            ID3D11ShaderResourceView? lightMapView =
+                null;
 
-            if (_materialLightMapEnabled &&
+            if (_materialLightMapEnabled)
+            {
                 TryGetVehicleTextureView(
                     batch.LightMapTexturePath,
-                    out var lightMapView))
-            {
-                _deviceContext.PSSetShaderResource(
-                    2,
-                    lightMapView!);
+                    out lightMapView);
             }
 
-            _deviceContext.PSSetShader(
+            SetVehicleShaderResource(
+                0,
+                textureView,
+                ref bindingState.DiffuseView);
+            SetVehicleShaderResource(
+                1,
+                hasTransMap
+                    ? transMapView
+                    : null,
+                ref bindingState.TransMapView);
+            SetVehicleShaderResource(
+                2,
+                lightMapView,
+                ref bindingState.LightMapView);
+            SetVehicleShaderResource(
+                3,
+                null,
+                ref bindingState.MaterialChangeView);
+
+            var desiredPixelShader =
                 batch.AlphaCutout
                     ? hasTransMap
                         ? _vehicleAlphaCutoutTransMapPixelShader
@@ -7790,11 +7873,17 @@ public sealed class D3D11RenderWindow : Form
                         ? hasTransMap
                             ? _vehicleAlphaBlendTransMapPixelShader
                             : _vehicleAlphaBlendPixelShader
-                        : _vehicleTexturedPixelShader);
+                        : _vehicleTexturedPixelShader;
 
-            _deviceContext.PSSetShaderResource(
-                0,
-                textureView!);
+            if (!ReferenceEquals(
+                    bindingState.PixelShader,
+                    desiredPixelShader))
+            {
+                _deviceContext.PSSetShader(
+                    desiredPixelShader);
+                bindingState.PixelShader =
+                    desiredPixelShader;
+            }
 
             return true;
         }
@@ -7805,8 +7894,32 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
-        _deviceContext.PSSetShader(
-            _vehicleColorPixelShader);
+        SetVehicleShaderResource(
+            0,
+            null,
+            ref bindingState.DiffuseView);
+        SetVehicleShaderResource(
+            1,
+            null,
+            ref bindingState.TransMapView);
+        SetVehicleShaderResource(
+            2,
+            null,
+            ref bindingState.LightMapView);
+        SetVehicleShaderResource(
+            3,
+            null,
+            ref bindingState.MaterialChangeView);
+
+        if (!ReferenceEquals(
+                bindingState.PixelShader,
+                _vehicleColorPixelShader))
+        {
+            _deviceContext.PSSetShader(
+                _vehicleColorPixelShader);
+            bindingState.PixelShader =
+                _vehicleColorPixelShader;
+        }
 
         return true;
     }
