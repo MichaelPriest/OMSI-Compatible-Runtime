@@ -8259,6 +8259,8 @@ public sealed class D3D11RenderWindow : Form
             null;
         ID3D11DepthStencilState? activeVehicleDepthState =
             null;
+        ID3D11PixelShader? activeVehiclePixelShader =
+            null;
 
         foreach (var draw in
                  _vehicleDrawItems)
@@ -8516,7 +8518,7 @@ public sealed class D3D11RenderWindow : Form
                         materialChangeView!);
                 }
 
-                _deviceContext.PSSetShader(
+                var desiredPixelShader =
                     materialState.AlphaCutout
                         ? hasTransMap
                             ? _vehicleAlphaCutoutTransMapPixelShader
@@ -8525,7 +8527,18 @@ public sealed class D3D11RenderWindow : Form
                             ? hasTransMap
                                 ? _vehicleAlphaBlendTransMapPixelShader
                                 : _vehicleAlphaBlendPixelShader
-                            : _vehicleTexturedPixelShader);
+                            : _vehicleTexturedPixelShader;
+
+                if (!ReferenceEquals(
+                        activeVehiclePixelShader,
+                        desiredPixelShader))
+                {
+                    _deviceContext.PSSetShader(
+                        desiredPixelShader);
+
+                    activeVehiclePixelShader =
+                        desiredPixelShader;
+                }
 
                 _deviceContext.PSSetShaderResource(
                     0,
@@ -8541,8 +8554,16 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
-                _deviceContext.PSSetShader(
-                    _vehicleColorPixelShader);
+                if (!ReferenceEquals(
+                        activeVehiclePixelShader,
+                        _vehicleColorPixelShader))
+                {
+                    _deviceContext.PSSetShader(
+                        _vehicleColorPixelShader);
+
+                    activeVehiclePixelShader =
+                        _vehicleColorPixelShader;
+                }
             }
 
             _deviceContext.Draw(
