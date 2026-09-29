@@ -5486,6 +5486,153 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    private bool IsReflectionTargetVisibleInMainView(
+        RuntimeReflectionTarget target)
+    {
+        if (_vehiclePreviewMode)
+        {
+            return true;
+        }
+
+        var camera =
+            target.Camera;
+
+        var center =
+            _vehicle.GetDriverCameraPosition(
+                new RuntimeDriverCameraInfo(
+                    camera.X,
+                    camera.Y,
+                    camera.Z,
+                    camera.EyeDistance,
+                    camera.FieldOfViewDegrees,
+                    camera.HeadingDegrees,
+                    camera.PitchDegrees));
+
+        var radius =
+            (float)Math.Max(
+                camera.VisibilityThreshold ??
+                    0.0,
+                0.0);
+
+        var viewProjection =
+            CreateViewProjection(
+                ignoreOverride: true);
+
+        var centerClip =
+            Vector4.Transform(
+                new Vector4(
+                    center,
+                    1.0f),
+                viewProjection);
+
+        if (!float.IsFinite(
+                centerClip.X) ||
+            !float.IsFinite(
+                centerClip.Y) ||
+            !float.IsFinite(
+                centerClip.W) ||
+            centerClip.W <=
+                0.001f)
+        {
+            return false;
+        }
+
+        var clipRadiusX =
+            0.0f;
+        var clipRadiusY =
+            0.0f;
+
+        if (radius >
+            0.0001f)
+        {
+            Span<Vector3> offsets =
+                stackalloc Vector3[3]
+                {
+                    Vector3.UnitX * radius,
+                    Vector3.UnitY * radius,
+                    Vector3.UnitZ * radius
+                };
+
+            foreach (var offset in
+                     offsets)
+            {
+                var edgeClip =
+                    Vector4.Transform(
+                        new Vector4(
+                            center + offset,
+                            1.0f),
+                        viewProjection);
+
+                if (!float.IsFinite(
+                        edgeClip.X) ||
+                    !float.IsFinite(
+                        edgeClip.Y) ||
+                    !float.IsFinite(
+                        edgeClip.W) ||
+                    edgeClip.W <=
+                        0.001f)
+                {
+                    continue;
+                }
+
+                var centerNdcX =
+                    centerClip.X /
+                    centerClip.W;
+                var centerNdcY =
+                    centerClip.Y /
+                    centerClip.W;
+                var edgeNdcX =
+                    edgeClip.X /
+                    edgeClip.W;
+                var edgeNdcY =
+                    edgeClip.Y /
+                    edgeClip.W;
+
+                clipRadiusX =
+                    Math.Max(
+                        clipRadiusX,
+                        Math.Abs(
+                            edgeNdcX -
+                            centerNdcX));
+                clipRadiusY =
+                    Math.Max(
+                        clipRadiusY,
+                        Math.Abs(
+                            edgeNdcY -
+                            centerNdcY));
+            }
+        }
+
+        // Give the mirror sphere a small guard band so camera vibration at
+        // the edge of the picture cannot make its texture flicker.
+        const float guardBand =
+            0.08f;
+
+        var ndcX =
+            centerClip.X /
+            centerClip.W;
+        var ndcY =
+            centerClip.Y /
+            centerClip.W;
+
+        return ndcX >=
+                   -1.0f -
+                       clipRadiusX -
+                       guardBand &&
+               ndcX <=
+                   1.0f +
+                       clipRadiusX +
+                       guardBand &&
+               ndcY >=
+                   -1.0f -
+                       clipRadiusY -
+                       guardBand &&
+               ndcY <=
+                   1.0f +
+                       clipRadiusY +
+                       guardBand;
+    }
+
     private bool ShouldRenderReflectionTarget(
         RuntimeReflectionTarget target)
     {
@@ -5497,9 +5644,15 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
-        // OMSI's optional reflection-camera value is preserved as a neutral
-        // visibility threshold. Its distance semantics are not established,
-        // so do not invent distance-based mirror culling here.
+        // [add_camera_reflexion_2]'s optional value is the radius of the
+        // mirror-visibility sphere. OMSI/openOMSI skip the reflection redraw
+        // when that sphere is outside the main camera frustum. This avoids a
+        // complete secondary scene pass for mirrors the player cannot see.
+        if (!IsReflectionTargetVisibleInMainView(
+                target))
+        {
+            return false;
+        }
 
         if (!target.HasRendered ||
             target.Camera.ContinuousRendering ||
@@ -9608,9 +9761,11 @@ public sealed class D3D11RenderWindow : Form
             _exteriorCameraDistanceScale);
     }
 
-    private Matrix4x4 CreateViewProjection()
+    private Matrix4x4 CreateViewProjection(
+        bool ignoreOverride = false)
     {
-        if (_viewProjectionOverride.HasValue)
+        if (!ignoreOverride &&
+            _viewProjectionOverride.HasValue)
         {
             return _viewProjectionOverride.Value;
         }
