@@ -1085,20 +1085,17 @@ public sealed class D3D12PresentationContext :
             return cached;
         }
 
-        if (!RuntimeRgbaTextureDecoder.TryRead(
-                path,
-                out var decoded))
-        {
-            return _fallbackTexture;
-        }
-
         try
         {
-            var created =
-                D3D12RuntimeTexture.Create(
+            if (!D3D12RuntimeTexture.TryCreateFromFile(
                     _device,
                     _queue,
-                    decoded);
+                    path,
+                    out var created) ||
+                created is null)
+            {
+                return _fallbackTexture;
+            }
 
             _textureCache[path] =
                 created;
