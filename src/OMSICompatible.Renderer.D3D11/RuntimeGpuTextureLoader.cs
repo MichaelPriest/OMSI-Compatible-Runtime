@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.WIC;
@@ -485,6 +486,22 @@ internal sealed class RuntimeGpuTextureLoader
                             80,
                             4));
 
+            var mipMapCount =
+                BinaryPrimitives
+                    .ReadInt32LittleEndian(
+                        span.Slice(
+                            28,
+                            4));
+
+            mipMapCount =
+                Math.Clamp(
+                    mipMapCount <=
+                            0
+                        ? 1
+                        : mipMapCount,
+                    1,
+                    16);
+
             var fourCc =
                 BinaryPrimitives
                     .ReadUInt32LittleEndian(
@@ -793,7 +810,8 @@ internal sealed class RuntimeGpuTextureLoader
                         stream,
                         width,
                         height,
-                        bcFormat.Value);
+                        bcFormat.Value,
+                        mipMapCount);
 
                 if (compressed is not null)
                 {
@@ -909,42 +927,14 @@ internal sealed class RuntimeGpuTextureLoader
         Stream stream,
         int width,
         int height,
-        BcFormat format)
+        BcFormat format,
+        int requestedMipLevels)
     {
         var blockBytes =
             format ==
                 BcFormat.Bc1
                 ? 8
                 : 16;
-
-        var blocksX =
-            (width +
-             3) /
-            4;
-        var blocksY =
-            (height +
-             3) /
-            4;
-
-        var requiredBytes =
-            checked(
-                blocksX *
-                blocksY *
-                blockBytes);
-
-        if (stream.Length -
-                stream.Position <
-            requiredBytes)
-        {
-            return null;
-        }
-
-        var compressed =
-            new byte[
-                requiredBytes];
-
-        stream.ReadExactly(
-            compressed);
 
         var gpuFormat =
             format switch
@@ -965,16 +955,172 @@ internal sealed class RuntimeGpuTextureLoader
             return null;
         }
 
+        var maximumMipLevels =
+            1 +
+            (int)Math.Floor(
+                Math.Log2(
+                    Math.Max(
+                        width,
+                        height)));
+
+        var mipLevels =
+            Math.Clamp(
+                requestedMipLevels,
+                1,
+                maximumMipLevels);
+
+        var mipData =
+            new List<byte[]>(
+                mipLevels);
+
+        var mipWidth =
+            width;
+        var mipHeight =
+            height;
+        long totalCompressedBytes =
+            0;
+
+        for (var mip = 0;
+             mip < mipLevels;
+             mip++)
+        {
+            var blocksX =
+                Math.Max(
+                    1,
+                    (mipWidth +
+                     3) /
+                    4);
+
+            var blocksY =
+                Math.Max(
+                    1,
+                    (mipHeight +
+                     3) /
+                    4);
+
+            var requiredBytes =
+                checked(
+                    blocksX *
+                    blocksY *
+                    blockBytes);
+
+            if (stream.Length -
+                    stream.Position <
+                requiredBytes)
+            {
+                break;
+            }
+
+            var compressed =
+                new byte[
+                    requiredBytes];
+
+            stream.ReadExactly(
+                compressed);
+
+            mipData.Add(
+                compressed);
+
+            totalCompressedBytes +=
+                compressed.LongLength;
+
+            mipWidth =
+                Math.Max(
+                    1,
+                    mipWidth /
+                    2);
+
+            mipHeight =
+                Math.Max(
+                    1,
+                    mipHeight /
+                    2);
+        }
+
+        if (mipData.Count ==
+            0)
+        {
+            return null;
+        }
+
+        var handles =
+            new GCHandle[
+                mipData.Count];
+
         try
         {
+            var initialData =
+                new SubresourceData[
+                    mipData.Count];
+
+            mipWidth =
+                width;
+            mipHeight =
+                height;
+
+            for (var mip = 0;
+                 mip < mipData.Count;
+                 mip++)
+            {
+                handles[mip] =
+                    GCHandle.Alloc(
+                        mipData[mip],
+                        GCHandleType.Pinned);
+
+                var blocksX =
+                    Math.Max(
+                        1,
+                        (mipWidth +
+                         3) /
+                        4);
+
+                var blocksY =
+                    Math.Max(
+                        1,
+                        (mipHeight +
+                         3) /
+                        4);
+
+                var rowPitch =
+                    checked(
+                        (uint)(
+                            blocksX *
+                            blockBytes));
+
+                var slicePitch =
+                    checked(
+                        rowPitch *
+                        (uint)blocksY);
+
+                initialData[mip] =
+                    new SubresourceData(
+                        handles[mip]
+                            .AddrOfPinnedObject(),
+                        rowPitch,
+                        slicePitch);
+
+                mipWidth =
+                    Math.Max(
+                        1,
+                        mipWidth /
+                        2);
+
+                mipHeight =
+                    Math.Max(
+                        1,
+                        mipHeight /
+                        2);
+            }
+
             var texture =
                 _device.CreateTexture2D(
-                    compressed.AsSpan(),
                     gpuFormat,
                     (uint)width,
                     (uint)height,
                     mipLevels:
-                        1,
+                        (uint)mipData.Count,
+                    initialData:
+                        initialData,
                     bindFlags:
                         BindFlags
                             .ShaderResource);
@@ -988,12 +1134,12 @@ internal sealed class RuntimeGpuTextureLoader
 
             Interlocked.Add(
                 ref _directBcTextureUploadBytes,
-                compressed.LongLength);
+                totalCompressedBytes);
 
             return new RuntimeGpuTexture(
                 texture,
                 view,
-                compressed.LongLength);
+                totalCompressedBytes);
         }
         catch (Exception exception)
             when (
@@ -1009,6 +1155,17 @@ internal sealed class RuntimeGpuTextureLoader
                     true)
         {
             return null;
+        }
+        finally
+        {
+            foreach (var handle in
+                     handles)
+            {
+                if (handle.IsAllocated)
+                {
+                    handle.Free();
+                }
+            }
         }
     }
 
