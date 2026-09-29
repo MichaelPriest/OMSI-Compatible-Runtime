@@ -650,17 +650,10 @@ public sealed class D3D11RenderWindow : Form
     private readonly List<TrafficVehicleDrawItem>
         _trafficVisibleDrawItems =
             [];
-    private readonly List<TrafficVehicleDrawItem>
-        _trafficFarInstancedDrawItems =
-            [];
-
-    private const float TrafficAnimationDetailDistanceMeters =
-        200.0f;
 
     private readonly record struct TrafficVehicleDrawItem(
         RuntimeTrafficAgentInfo Agent,
-        Matrix4x4 VehicleWorld,
-        float DistanceSquared);
+        Matrix4x4 VehicleWorld);
 
     private readonly uint _reflectionTextureSize;
     private readonly string _reflectionMode;
@@ -7024,7 +7017,9 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool TryUploadTrafficInstances(
-        IReadOnlyList<TrafficVehicleDrawItem> drawItems)
+        IReadOnlyList<TrafficVehicleDrawItem> drawItems,
+        RuntimeObjectBatch? animationBatch = null,
+        RuntimeVehicleInfo? vehicleInfo = null)
     {
         if (_device is null ||
             _deviceContext is null ||
@@ -7061,14 +7056,30 @@ public sealed class D3D11RenderWindow : Form
              index < requiredCount;
              index++)
         {
+            var drawItem =
+                drawItems[
+                    index];
+
+            var world =
+                drawItem.VehicleWorld;
+
+            if (animationBatch is not null &&
+                vehicleInfo is not null)
+            {
+                world =
+                    CreateTrafficVehicleAnimationMatrix(
+                        animationBatch,
+                        drawItem.Agent,
+                        vehicleInfo) *
+                    world;
+            }
+
             _trafficInstanceScratch[
                 index] =
                 new RuntimeTrafficInstanceData
                 {
                     World =
-                        drawItems[
-                            index]
-                            .VehicleWorld
+                        world
                 };
         }
 
@@ -7178,16 +7189,6 @@ public sealed class D3D11RenderWindow : Form
                     vehicleInfo.Physics.AiDeltaHeightMeters ??
                     0.0);
 
-            var cameraDx =
-                (float)agent.X -
-                cameraPosition.X;
-            var cameraDy =
-                (float)agent.Y -
-                cameraPosition.Y;
-            var cameraDz =
-                (float)agent.Z -
-                cameraPosition.Z;
-
             var drawItem =
                 new TrafficVehicleDrawItem(
                     agent,
@@ -7197,13 +7198,7 @@ public sealed class D3D11RenderWindow : Form
                         (float)agent.X,
                         (float)agent.Y +
                             heightOffset,
-                        (float)agent.Z),
-                    cameraDx *
-                        cameraDx +
-                    cameraDy *
-                        cameraDy +
-                    cameraDz *
-                        cameraDz);
+                        (float)agent.Z));
 
             _trafficVisibleDrawItems.Add(
                 drawItem);
@@ -7410,35 +7405,11 @@ public sealed class D3D11RenderWindow : Form
                     true;
             }
 
-            _trafficFarInstancedDrawItems.Clear();
+            var animatedInstanced =
+                false;
 
             if (canInstance &&
                 hasAnimatedOpaqueBatches)
-            {
-                var detailDistanceSquared =
-                    TrafficAnimationDetailDistanceMeters *
-                    TrafficAnimationDetailDistanceMeters;
-
-                foreach (var drawItem in
-                         pair.Value)
-                {
-                    if (drawItem.DistanceSquared >=
-                        detailDistanceSquared)
-                    {
-                        _trafficFarInstancedDrawItems.Add(
-                            drawItem);
-                    }
-                }
-            }
-
-            var farAnimatedInstanced =
-                false;
-
-            if (_trafficFarInstancedDrawItems.Count >
-                    1 &&
-                TryUploadTrafficInstances(
-                    _trafficFarInstancedDrawItems) &&
-                _trafficInstanceBuffer is not null)
             {
                 _deviceContext.IASetInputLayout(
                     _trafficInstancedInputLayout);
@@ -7451,18 +7422,31 @@ public sealed class D3D11RenderWindow : Form
                     vertexBuffer,
                     RuntimeObjectVertex.SizeInBytes);
 
-                _deviceContext.IASetVertexBuffer(
-                    1,
-                    _trafficInstanceBuffer,
-                    RuntimeTrafficInstanceData.SizeInBytes);
-
                 foreach (var batch in
                          renderBatches)
                 {
                     if (batch.AlphaBlend ||
                         batch.Animations is not
-                            { Count: > 0 } ||
-                        !TryPrepareTrafficVehicleBatch(
+                            { Count: > 0 })
+                    {
+                        continue;
+                    }
+
+                    if (!TryUploadTrafficInstances(
+                            pair.Value,
+                            batch,
+                            vehicleInfo) ||
+                        _trafficInstanceBuffer is null)
+                    {
+                        continue;
+                    }
+
+                    _deviceContext.IASetVertexBuffer(
+                        1,
+                        _trafficInstanceBuffer,
+                        RuntimeTrafficInstanceData.SizeInBytes);
+
+                    if (!TryPrepareTrafficVehicleBatch(
                             batch,
                             materialConstants,
                             ref trafficBindings))
@@ -7472,13 +7456,13 @@ public sealed class D3D11RenderWindow : Form
 
                     _deviceContext.DrawInstanced(
                         batch.VertexCount,
-                        (uint)_trafficFarInstancedDrawItems.Count,
+                        (uint)pair.Value.Count,
                         batch.StartVertex,
                         0);
-                }
 
-                farAnimatedInstanced =
-                    true;
+                    animatedInstanced =
+                        true;
+                }
             }
 
             _deviceContext.IASetInputLayout(
@@ -7492,17 +7476,18 @@ public sealed class D3D11RenderWindow : Form
                 vertexBuffer,
                 RuntimeObjectVertex.SizeInBytes);
 
-            var detailThresholdSquared =
-                TrafficAnimationDetailDistanceMeters *
-                TrafficAnimationDetailDistanceMeters;
-
             foreach (var batch in
                      renderBatches)
             {
+                var animated =
+                    batch.Animations is
+                        { Count: > 0 };
+
                 if (batch.AlphaBlend ||
                     (staticInstanced &&
-                     batch.Animations is not
-                         { Count: > 0 }) ||
+                     !animated) ||
+                    (animatedInstanced &&
+                     animated) ||
                     !TryPrepareTrafficVehicleBatch(
                         batch,
                         materialConstants,
@@ -7511,21 +7496,9 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
-                var animated =
-                    batch.Animations is
-                        { Count: > 0 };
-
                 foreach (var drawItem in
                          pair.Value)
                 {
-                    if (animated &&
-                        farAnimatedInstanced &&
-                        drawItem.DistanceSquared >=
-                            detailThresholdSquared)
-                    {
-                        continue;
-                    }
-
                     model[0] =
                         new RuntimeModelConstants
                         {
@@ -21038,7 +21011,6 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleLightMeshes.Clear();
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
-            _trafficFarInstancedDrawItems.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
