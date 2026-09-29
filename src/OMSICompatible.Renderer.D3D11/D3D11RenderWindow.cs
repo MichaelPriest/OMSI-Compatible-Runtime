@@ -597,10 +597,17 @@ public sealed class D3D11RenderWindow : Form
     private readonly List<TrafficVehicleDrawItem>
         _trafficVisibleDrawItems =
             [];
+    private readonly List<TrafficVehicleDrawItem>
+        _trafficFarInstancedDrawItems =
+            [];
+
+    private const float TrafficAnimationDetailDistanceMeters =
+        200.0f;
 
     private readonly record struct TrafficVehicleDrawItem(
         RuntimeTrafficAgentInfo Agent,
-        Matrix4x4 VehicleWorld);
+        Matrix4x4 VehicleWorld,
+        float DistanceSquared);
 
     private readonly uint _reflectionTextureSize;
     private readonly string _reflectionMode;
@@ -6845,6 +6852,16 @@ public sealed class D3D11RenderWindow : Form
                     vehicleInfo.Physics.AiDeltaHeightMeters ??
                     0.0);
 
+            var cameraDx =
+                (float)agent.X -
+                cameraPosition.X;
+            var cameraDy =
+                (float)agent.Y -
+                cameraPosition.Y;
+            var cameraDz =
+                (float)agent.Z -
+                cameraPosition.Z;
+
             var drawItem =
                 new TrafficVehicleDrawItem(
                     agent,
@@ -6854,7 +6871,13 @@ public sealed class D3D11RenderWindow : Form
                         (float)agent.X,
                         (float)agent.Y +
                             heightOffset,
-                        (float)agent.Z));
+                        (float)agent.Z),
+                    cameraDx *
+                        cameraDx +
+                    cameraDy *
+                        cameraDy +
+                    cameraDz *
+                        cameraDz);
 
             _trafficVisibleDrawItems.Add(
                 drawItem);
@@ -6940,9 +6963,11 @@ public sealed class D3D11RenderWindow : Form
             _terrainRasterizerState);
 
         // Opaque/cutout geometry is safe to batch by material. Static AI
-        // batches also use a per-instance world matrix stream, collapsing N
-        // vehicles of the same model into one DrawInstanced call per batch.
-        // Animated wheel/steering batches stay on the original per-agent path.
+        // batches use a per-instance world matrix stream. For animated
+        // wheel/steering batches, vehicles farther than the animation detail
+        // radius use the same instanced base pose: at that distance the
+        // wheel motion is below useful screen detail, while near vehicles
+        // keep the full OMSI animation path.
         foreach (var pair in
                  _trafficVisibleDrawItemsByVehiclePath)
         {
@@ -6973,16 +6998,34 @@ public sealed class D3D11RenderWindow : Form
                     renderBatches;
             }
 
-            var canUseInstancing =
+            var hasStaticOpaqueBatches =
+                renderBatches.Any(
+                    static batch =>
+                        !batch.AlphaBlend &&
+                        batch.Animations is not
+                            { Count: > 0 });
+
+            var hasAnimatedOpaqueBatches =
+                renderBatches.Any(
+                    static batch =>
+                        !batch.AlphaBlend &&
+                        batch.Animations is
+                            { Count: > 0 });
+
+            var canInstance =
                 pair.Value.Count >
                     1 &&
                 _trafficInstancedVertexShader is not null &&
-                _trafficInstancedInputLayout is not null &&
+                _trafficInstancedInputLayout is not null;
+
+            var staticInstanced =
+                false;
+
+            if (canInstance &&
+                hasStaticOpaqueBatches &&
                 TryUploadTrafficInstances(
                     pair.Value) &&
-                _trafficInstanceBuffer is not null;
-
-            if (canUseInstancing)
+                _trafficInstanceBuffer is not null)
             {
                 _deviceContext.IASetInputLayout(
                     _trafficInstancedInputLayout);
@@ -6997,7 +7040,7 @@ public sealed class D3D11RenderWindow : Form
 
                 _deviceContext.IASetVertexBuffer(
                     1,
-                    _trafficInstanceBuffer!,
+                    _trafficInstanceBuffer,
                     RuntimeTrafficInstanceData.SizeInBytes);
 
                 foreach (var batch in
@@ -7019,11 +7062,81 @@ public sealed class D3D11RenderWindow : Form
                         batch.StartVertex,
                         0);
                 }
+
+                staticInstanced =
+                    true;
             }
 
-            // Restore the normal vehicle input path for animated opaque
-            // batches. If there is only one visible vehicle, every opaque
-            // batch naturally uses this path and avoids instance-buffer work.
+            _trafficFarInstancedDrawItems.Clear();
+
+            if (canInstance &&
+                hasAnimatedOpaqueBatches)
+            {
+                var detailDistanceSquared =
+                    TrafficAnimationDetailDistanceMeters *
+                    TrafficAnimationDetailDistanceMeters;
+
+                foreach (var drawItem in
+                         pair.Value)
+                {
+                    if (drawItem.DistanceSquared >=
+                        detailDistanceSquared)
+                    {
+                        _trafficFarInstancedDrawItems.Add(
+                            drawItem);
+                    }
+                }
+            }
+
+            var farAnimatedInstanced =
+                false;
+
+            if (_trafficFarInstancedDrawItems.Count >
+                    1 &&
+                TryUploadTrafficInstances(
+                    _trafficFarInstancedDrawItems) &&
+                _trafficInstanceBuffer is not null)
+            {
+                _deviceContext.IASetInputLayout(
+                    _trafficInstancedInputLayout);
+
+                _deviceContext.VSSetShader(
+                    _trafficInstancedVertexShader);
+
+                _deviceContext.IASetVertexBuffer(
+                    0,
+                    vertexBuffer,
+                    RuntimeObjectVertex.SizeInBytes);
+
+                _deviceContext.IASetVertexBuffer(
+                    1,
+                    _trafficInstanceBuffer,
+                    RuntimeTrafficInstanceData.SizeInBytes);
+
+                foreach (var batch in
+                         renderBatches)
+                {
+                    if (batch.AlphaBlend ||
+                        batch.Animations is not
+                            { Count: > 0 } ||
+                        !TryPrepareTrafficVehicleBatch(
+                            batch,
+                            materialConstants))
+                    {
+                        continue;
+                    }
+
+                    _deviceContext.DrawInstanced(
+                        batch.VertexCount,
+                        (uint)_trafficFarInstancedDrawItems.Count,
+                        batch.StartVertex,
+                        0);
+                }
+
+                farAnimatedInstanced =
+                    true;
+            }
+
             _deviceContext.IASetInputLayout(
                 _vehicleInputLayout);
 
@@ -7035,11 +7148,15 @@ public sealed class D3D11RenderWindow : Form
                 vertexBuffer,
                 RuntimeObjectVertex.SizeInBytes);
 
+            var detailThresholdSquared =
+                TrafficAnimationDetailDistanceMeters *
+                TrafficAnimationDetailDistanceMeters;
+
             foreach (var batch in
                      renderBatches)
             {
                 if (batch.AlphaBlend ||
-                    (canUseInstancing &&
+                    (staticInstanced &&
                      batch.Animations is not
                          { Count: > 0 }) ||
                     !TryPrepareTrafficVehicleBatch(
@@ -7049,9 +7166,21 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
+                var animated =
+                    batch.Animations is
+                        { Count: > 0 };
+
                 foreach (var drawItem in
                          pair.Value)
                 {
+                    if (animated &&
+                        farAnimatedInstanced &&
+                        drawItem.DistanceSquared >=
+                            detailThresholdSquared)
+                    {
+                        continue;
+                    }
+
                     model[0] =
                         new RuntimeModelConstants
                         {
@@ -20116,6 +20245,7 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleLightMeshes.Clear();
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
+            _trafficFarInstancedDrawItems.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
