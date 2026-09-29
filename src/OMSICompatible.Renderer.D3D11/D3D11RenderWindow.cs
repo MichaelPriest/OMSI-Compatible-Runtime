@@ -330,6 +330,17 @@ public sealed class D3D11RenderWindow : Form
     private readonly Dictionary<int, TrafficOmsiAudioState>
         _trafficOmsiAudio =
             [];
+    private readonly HashSet<int>
+        _activeTrafficAudioAgentIds =
+            [];
+    private readonly List<int>
+        _staleTrafficAudioAgentIds =
+            [];
+
+    private const float TrafficAudioActivationDistanceMeters =
+        180.0f;
+    private const float TrafficAudioDeactivationDistanceMeters =
+        240.0f;
     private bool _controllerInputEnabled = true;
     private float _controllerClutchInput;
     private readonly Stopwatch _frameClock = Stopwatch.StartNew();
@@ -10793,21 +10804,30 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        var activeAgentIds =
-            _trafficAgents
-                .Select(
-                    static agent =>
-                        agent.AgentIndex)
-                .ToHashSet();
+        _activeTrafficAudioAgentIds.Clear();
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            _activeTrafficAudioAgentIds.Add(
+                agent.AgentIndex);
+        }
+
+        _staleTrafficAudioAgentIds.Clear();
+
+        foreach (var agentId in
+                 _trafficOmsiAudio.Keys)
+        {
+            if (!_activeTrafficAudioAgentIds.Contains(
+                    agentId))
+            {
+                _staleTrafficAudioAgentIds.Add(
+                    agentId);
+            }
+        }
 
         foreach (var staleAgentId in
-                 _trafficOmsiAudio
-                     .Keys
-                     .Where(
-                         id =>
-                             !activeAgentIds.Contains(
-                                 id))
-                     .ToArray())
+                 _staleTrafficAudioAgentIds)
         {
             _trafficOmsiAudio[
                 staleAgentId]
@@ -10834,26 +10854,87 @@ public sealed class D3D11RenderWindow : Form
                     _trafficAgents.Count,
                     1));
 
+        var activationDistanceSquared =
+            TrafficAudioActivationDistanceMeters *
+            TrafficAudioActivationDistanceMeters;
+
+        var deactivationDistanceSquared =
+            TrafficAudioDeactivationDistanceMeters *
+            TrafficAudioDeactivationDistanceMeters;
+
         foreach (var agent in
                  _trafficAgents)
         {
+            var dx =
+                (float)agent.X -
+                listenerPosition.X;
+            var dy =
+                (float)agent.Y -
+                listenerPosition.Y;
+            var dz =
+                (float)agent.Z -
+                listenerPosition.Z;
+
+            var distanceSquared =
+                dx *
+                    dx +
+                dy *
+                    dy +
+                dz *
+                    dz;
+
+            _trafficOmsiAudio.TryGetValue(
+                agent.AgentIndex,
+                out var state);
+
+            if (distanceSquared >
+                deactivationDistanceSquared)
+            {
+                if (state is not null)
+                {
+                    state.Audio.Dispose();
+
+                    _trafficOmsiAudio.Remove(
+                        agent.AgentIndex);
+                }
+
+                continue;
+            }
+
             if (!_windowInfo.TrafficVehicleAssets.TryGetValue(
                     agent.VehiclePath,
                     out var vehicleInfo) ||
                 string.IsNullOrWhiteSpace(
                     vehicleInfo.SoundConfigPath))
             {
+                if (state is not null)
+                {
+                    state.Audio.Dispose();
+
+                    _trafficOmsiAudio.Remove(
+                        agent.AgentIndex);
+                }
+
                 continue;
             }
 
-            if (!_trafficOmsiAudio.TryGetValue(
-                    agent.AgentIndex,
-                    out var state) ||
+            var needsNewAudio =
+                state is null ||
                 !state.VehiclePath.Equals(
                     agent.VehiclePath,
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (needsNewAudio)
             {
                 state?.Audio.Dispose();
+
+                if (distanceSquared >
+                    activationDistanceSquared)
+                {
+                    _trafficOmsiAudio.Remove(
+                        agent.AgentIndex);
+                    continue;
+                }
 
                 var audio =
                     RuntimeOmsiAudioHost.TryCreate(
@@ -20107,6 +20188,8 @@ public sealed class D3D11RenderWindow : Form
             }
 
             _trafficOmsiAudio.Clear();
+            _activeTrafficAudioAgentIds.Clear();
+            _staleTrafficAudioAgentIds.Clear();
 
             _vehicle.Dispose();
 
