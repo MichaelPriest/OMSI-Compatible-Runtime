@@ -8261,6 +8261,28 @@ public sealed class D3D11RenderWindow : Form
             null;
         ID3D11PixelShader? activeVehiclePixelShader =
             null;
+        ID3D11ShaderResourceView? activeVehicleDiffuseView =
+            null;
+        ID3D11ShaderResourceView? activeVehicleTransMapView =
+            null;
+        ID3D11ShaderResourceView? activeVehicleLightMapView =
+            null;
+        ID3D11ShaderResourceView? activeVehicleMaterialChangeView =
+            null;
+        ID3D11ShaderResourceView? activeVehicleEnvMapView =
+            null;
+        ID3D11ShaderResourceView? activeVehicleEnvMapMaskView =
+            null;
+        ID3D11ShaderResourceView? activeVehicleBumpMapView =
+            null;
+
+        _deviceContext.PSUnsetShaderResource(0);
+        _deviceContext.PSUnsetShaderResource(1);
+        _deviceContext.PSUnsetShaderResource(2);
+        _deviceContext.PSUnsetShaderResource(3);
+        _deviceContext.PSUnsetShaderResource(4);
+        _deviceContext.PSUnsetShaderResource(5);
+        _deviceContext.PSUnsetShaderResource(6);
 
         foreach (var draw in
                  _vehicleDrawItems)
@@ -8405,56 +8427,43 @@ public sealed class D3D11RenderWindow : Form
                     desiredDepthState;
             }
 
-            _deviceContext.PSUnsetShaderResource(
-                0);
+            ID3D11ShaderResourceView? envMapView =
+                null;
+            ID3D11ShaderResourceView? envMapMaskView =
+                null;
+            ID3D11ShaderResourceView? bumpMapView =
+                null;
 
-            _deviceContext.PSUnsetShaderResource(
-                1);
-
-            _deviceContext.PSUnsetShaderResource(
-                2);
-
-            _deviceContext.PSUnsetShaderResource(
-                3);
-
-            _deviceContext.PSUnsetShaderResource(
-                4);
-
-            _deviceContext.PSUnsetShaderResource(
-                5);
-
-            _deviceContext.PSUnsetShaderResource(
-                6);
-
-            if (_materialReflectionMapEnabled &&
+            if (_materialReflectionMapEnabled)
+            {
                 TryGetVehicleTextureView(
                     materialState.EnvMapTexturePath,
-                    out var envMapView))
-            {
-                _deviceContext.PSSetShaderResource(
-                    4,
-                    envMapView!);
-            }
+                    out envMapView);
 
-            if (_materialReflectionMapEnabled &&
                 TryGetVehicleTextureView(
                     materialState.EnvMapMaskTexturePath,
-                    out var envMapMaskView))
-            {
-                _deviceContext.PSSetShaderResource(
-                    5,
-                    envMapMaskView!);
+                    out envMapMaskView);
             }
 
-            if (_materialBumpMapEnabled &&
+            if (_materialBumpMapEnabled)
+            {
                 TryGetVehicleTextureView(
                     materialState.BumpMapTexturePath,
-                    out var bumpMapView))
-            {
-                _deviceContext.PSSetShaderResource(
-                    6,
-                    bumpMapView!);
+                    out bumpMapView);
             }
+
+            SetVehicleShaderResource(
+                4,
+                envMapView,
+                ref activeVehicleEnvMapView);
+            SetVehicleShaderResource(
+                5,
+                envMapMaskView,
+                ref activeVehicleEnvMapMaskView);
+            SetVehicleShaderResource(
+                6,
+                bumpMapView,
+                ref activeVehicleBumpMapView);
 
             ID3D11ShaderResourceView?
                 textureView;
@@ -8492,31 +8501,36 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
-                if (hasTransMap)
-                {
-                    _deviceContext.PSSetShaderResource(
-                        1,
-                        transMapView!);
-                }
+                ID3D11ShaderResourceView? lightMapView =
+                    null;
+                ID3D11ShaderResourceView? materialChangeView =
+                    null;
 
-                if (_materialLightMapEnabled &&
+                if (_materialLightMapEnabled)
+                {
                     TryGetVehicleTextureView(
                         materialState.LightMapTexturePath,
-                        out var lightMapView))
-                {
-                    _deviceContext.PSSetShaderResource(
-                        2,
-                        lightMapView!);
+                        out lightMapView);
                 }
 
-                if (TryGetVehicleTextureView(
-                        materialState.MaterialChangeTexturePath,
-                        out var materialChangeView))
-                {
-                    _deviceContext.PSSetShaderResource(
-                        3,
-                        materialChangeView!);
-                }
+                TryGetVehicleTextureView(
+                    materialState.MaterialChangeTexturePath,
+                    out materialChangeView);
+
+                SetVehicleShaderResource(
+                    1,
+                    hasTransMap
+                        ? transMapView
+                        : null,
+                    ref activeVehicleTransMapView);
+                SetVehicleShaderResource(
+                    2,
+                    lightMapView,
+                    ref activeVehicleLightMapView);
+                SetVehicleShaderResource(
+                    3,
+                    materialChangeView,
+                    ref activeVehicleMaterialChangeView);
 
                 var desiredPixelShader =
                     materialState.AlphaCutout
@@ -8540,9 +8554,10 @@ public sealed class D3D11RenderWindow : Form
                         desiredPixelShader;
                 }
 
-                _deviceContext.PSSetShaderResource(
+                SetVehicleShaderResource(
                     0,
-                    textureView!);
+                    textureView,
+                    ref activeVehicleDiffuseView);
             }
             else
             {
@@ -8553,6 +8568,23 @@ public sealed class D3D11RenderWindow : Form
                 {
                     continue;
                 }
+
+                SetVehicleShaderResource(
+                    0,
+                    null,
+                    ref activeVehicleDiffuseView);
+                SetVehicleShaderResource(
+                    1,
+                    null,
+                    ref activeVehicleTransMapView);
+                SetVehicleShaderResource(
+                    2,
+                    null,
+                    ref activeVehicleLightMapView);
+                SetVehicleShaderResource(
+                    3,
+                    null,
+                    ref activeVehicleMaterialChangeView);
 
                 if (!ReferenceEquals(
                         activeVehiclePixelShader,
@@ -8581,6 +8613,35 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(5);
         _deviceContext.PSUnsetShaderResource(6);
         _deviceContext.RSSetState(null);
+    }
+
+    private void SetVehicleShaderResource(
+        uint slot,
+        ID3D11ShaderResourceView? desired,
+        ref ID3D11ShaderResourceView? active)
+    {
+        if (_deviceContext is null ||
+            ReferenceEquals(
+                active,
+                desired))
+        {
+            return;
+        }
+
+        if (desired is null)
+        {
+            _deviceContext.PSUnsetShaderResource(
+                slot);
+        }
+        else
+        {
+            _deviceContext.PSSetShaderResource(
+                slot,
+                desired);
+        }
+
+        active =
+            desired;
     }
 
     private void DrawVehicleLights()
