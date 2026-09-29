@@ -8330,6 +8330,10 @@ public sealed class D3D11RenderWindow : Form
             false;
         var activeVehicleSkin =
             default(RuntimeVehicleSkinConstants);
+        var hasActiveVehicleMaterial =
+            false;
+        var activeVehicleMaterial =
+            default(RuntimeVehicleMaterialConstants);
 
         _deviceContext.PSUnsetShaderResource(0);
         _deviceContext.PSUnsetShaderResource(1);
@@ -8419,7 +8423,7 @@ public sealed class D3D11RenderWindow : Form
                     true;
             }
 
-            materialConstants[0] =
+            var desiredVehicleMaterial =
                 new RuntimeVehicleMaterialConstants
                 {
                     AlphaScale =
@@ -8468,10 +8472,24 @@ public sealed class D3D11RenderWindow : Form
                             materialState.MaterialChangeAllColor)
                 };
 
-            _vehicleMaterialBuffer.SetData(
-                _deviceContext,
-                materialConstants,
-                MapMode.WriteDiscard);
+            if (!hasActiveVehicleMaterial ||
+                !VehicleMaterialConstantsEqual(
+                    activeVehicleMaterial,
+                    desiredVehicleMaterial))
+            {
+                materialConstants[0] =
+                    desiredVehicleMaterial;
+
+                _vehicleMaterialBuffer.SetData(
+                    _deviceContext,
+                    materialConstants,
+                    MapMode.WriteDiscard);
+
+                activeVehicleMaterial =
+                    desiredVehicleMaterial;
+                hasActiveVehicleMaterial =
+                    true;
+            }
 
             var desiredBlendState =
                 materialState.AlphaBlend
@@ -8696,6 +8714,32 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.PSUnsetShaderResource(6);
         _deviceContext.RSSetState(null);
     }
+
+    private static bool VehicleMaterialConstantsEqual(
+        RuntimeVehicleMaterialConstants first,
+        RuntimeVehicleMaterialConstants second) =>
+        first.AlphaScale ==
+            second.AlphaScale &&
+        first.LightMapStrength ==
+            second.LightMapStrength &&
+        first.MaterialChangeStrength ==
+            second.MaterialChangeStrength &&
+        first.EnvMapStrength ==
+            second.EnvMapStrength &&
+        first.EnvMapMaskEnabled ==
+            second.EnvMapMaskEnabled &&
+        first.BumpMapStrength ==
+            second.BumpMapStrength &&
+        first.MaterialChangeTextureEnabled ==
+            second.MaterialChangeTextureEnabled &&
+        first.MaterialChangeColorEnabled ==
+            second.MaterialChangeColorEnabled &&
+        first.MaterialChangeDiffuse ==
+            second.MaterialChangeDiffuse &&
+        first.BaseEmissive ==
+            second.BaseEmissive &&
+        first.MaterialChangeEmissive ==
+            second.MaterialChangeEmissive;
 
     private static bool VehicleSkinConstantsEqual(
         RuntimeVehicleSkinConstants first,
