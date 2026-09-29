@@ -383,19 +383,36 @@ internal sealed class RuntimeGpuTextureLoader
                    TextureFileCache.Count >
                        1)
             {
-                var oldest =
-                    TextureFileCache
-                        .OrderBy(
-                            static pair =>
-                                pair.Value
-                                    .LastUsedGeneration)
-                        .First();
+                string? oldestKey =
+                    null;
+                CachedTextureFile? oldestValue =
+                    null;
+
+                foreach (var pair in
+                         TextureFileCache)
+                {
+                    if (oldestValue is null ||
+                        pair.Value.LastUsedGeneration <
+                            oldestValue.LastUsedGeneration)
+                    {
+                        oldestKey =
+                            pair.Key;
+                        oldestValue =
+                            pair.Value;
+                    }
+                }
+
+                if (oldestKey is null ||
+                    oldestValue is null)
+                {
+                    break;
+                }
 
                 _textureFileCacheBytes -=
-                    oldest.Value.Bytes.LongLength;
+                    oldestValue.Bytes.LongLength;
 
                 TextureFileCache.Remove(
-                    oldest.Key);
+                    oldestKey);
 
                 _textureFileCacheEvictions++;
             }
@@ -2031,19 +2048,36 @@ internal sealed class RuntimeGpuTextureLoader
                        DecodedTextureCache.Count >
                            1)
                 {
-                    var oldest =
-                        DecodedTextureCache
-                            .OrderBy(
-                                static pair =>
-                                    pair.Value
-                                        .LastUsedGeneration)
-                            .First();
+                    string? oldestKey =
+                        null;
+                    CachedDecodedTexture? oldestValue =
+                        null;
+
+                    foreach (var pair in
+                             DecodedTextureCache)
+                    {
+                        if (oldestValue is null ||
+                            pair.Value.LastUsedGeneration <
+                                oldestValue.LastUsedGeneration)
+                        {
+                            oldestKey =
+                                pair.Key;
+                            oldestValue =
+                                pair.Value;
+                        }
+                    }
+
+                    if (oldestKey is null ||
+                        oldestValue is null)
+                    {
+                        break;
+                    }
 
                     _decodedTextureCacheBytes -=
-                        oldest.Value.Pixels.LongLength;
+                        oldestValue.Pixels.LongLength;
 
                     DecodedTextureCache.Remove(
-                        oldest.Key);
+                        oldestKey);
 
                     _decodedTextureCacheEvictions++;
                 }
