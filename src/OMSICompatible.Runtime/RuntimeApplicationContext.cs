@@ -52,6 +52,10 @@ internal sealed class RuntimeApplicationContext :
         _trafficScriptCatalogs =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string?>
+        _trafficHofByVehiclePath =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, TrafficScriptRuntimeState>
         _trafficScriptRuntimes =
             [];
@@ -2801,11 +2805,25 @@ internal sealed class RuntimeApplicationContext :
                             .Physics
                             .AverageWheelDiameterMeters;
 
+                    if (!_trafficHofByVehiclePath.TryGetValue(
+                            agent.VehiclePath,
+                            out var trafficHofPath))
+                    {
+                        trafficHofPath =
+                            ResolveMapHofForBus(
+                                trafficAsset.Bus,
+                                _map.FolderName);
+
+                        _trafficHofByVehiclePath[
+                            agent.VehiclePath] =
+                            trafficHofPath;
+                    }
+
                     ApplyHofToScriptRuntime(
                         runtime,
-                        ResolveMapHofForBus(
-                            trafficAsset.Bus,
-                            _map.FolderName));
+                        trafficHofPath,
+                        writeDiagnostic:
+                            false);
                 }
 
                 SeedTrafficScriptHostVariables(
@@ -3004,7 +3022,8 @@ internal sealed class RuntimeApplicationContext :
 
     private static void ApplyHofToScriptRuntime(
         OmsiScriptRuntime runtime,
-        string? hofPath)
+        string? hofPath,
+        bool writeDiagnostic = true)
     {
         if (string.IsNullOrWhiteSpace(
                 hofPath))
@@ -3053,8 +3072,11 @@ internal sealed class RuntimeApplicationContext :
                 hofName);
         }
 
-        Console.WriteLine(
-            $"[hof] assigned={hofName}; file={hofPath}");
+        if (writeDiagnostic)
+        {
+            Console.WriteLine(
+                $"[hof] assigned={hofName}; file={hofPath}");
+        }
     }
 
     private OmsiScriptRuntime? ResolveTrafficScriptRuntime(
