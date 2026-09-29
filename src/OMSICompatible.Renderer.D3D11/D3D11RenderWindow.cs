@@ -367,6 +367,12 @@ public sealed class D3D11RenderWindow : Form
         _vehicleOrderedMaterialChangeSets =
             new(
                 ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeVehicleMaterialChangeSetInfo,
+        Dictionary<int, RuntimeVehicleMaterialChangeItemInfo>>
+        _vehicleMaterialChangeItems =
+            new(
+                ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(int SectionIndex, int ModelOrdinal), RuntimeObjectBatch>
         _vehicleMeshOrdinalBatches =
             [];
@@ -9017,14 +9023,31 @@ public sealed class D3D11RenderWindow : Form
                 var requestedItem =
                     (int)rounded;
 
-                var item =
-                    changeSet.Items
-                        .FirstOrDefault(
-                            candidate =>
-                                candidate.ItemIndex ==
-                                requestedItem);
+                if (!_vehicleMaterialChangeItems.TryGetValue(
+                        changeSet,
+                        out var itemsByIndex))
+                {
+                    itemsByIndex =
+                        new Dictionary<
+                            int,
+                            RuntimeVehicleMaterialChangeItemInfo>();
 
-                if (item is not null)
+                    foreach (var candidate in
+                             changeSet.Items)
+                    {
+                        itemsByIndex[
+                            candidate.ItemIndex] =
+                            candidate;
+                    }
+
+                    _vehicleMaterialChangeItems[
+                        changeSet] =
+                        itemsByIndex;
+                }
+
+                if (itemsByIndex.TryGetValue(
+                        requestedItem,
+                        out var item))
                 {
                     selectedItem =
                         item;
@@ -20549,6 +20572,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAnimationParentBatches.Clear();
             _vehicleDrawItems.Clear();
             _vehicleOrderedMaterialChangeSets.Clear();
+            _vehicleMaterialChangeItems.Clear();
 
             _objectSamplerPerformance?.Dispose();
             _objectSampler?.Dispose();
