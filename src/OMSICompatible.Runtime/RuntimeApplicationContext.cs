@@ -2735,6 +2735,15 @@ internal sealed class RuntimeApplicationContext :
                 ? deltaSeconds
                 : 0.0;
 
+        var work =
+            new List<(
+                WorldTrafficAgentState Agent,
+                TrafficScriptRuntimeState State)>(
+                agents.Count);
+
+        // Runtime creation, HOF assignment and dictionary mutation stay on
+        // this thread. Once every agent owns its runtime, frame_ai execution
+        // is independent and can safely fan out across worker threads.
         foreach (var agent in
                  agents)
         {
@@ -2756,15 +2765,19 @@ internal sealed class RuntimeApplicationContext :
                     new OmsiScriptRuntime(
                         catalog);
 
-                SeedTrafficScriptHostVariables(
-                    runtime,
-                    agent,
-                    0.0);
+                double? wheelDiameterMeters =
+                    null;
 
                 if (_trafficVehicleAssets.TryGetValue(
                         agent.VehiclePath,
                         out var trafficAsset))
                 {
+                    wheelDiameterMeters =
+                        trafficAsset
+                            .Bus
+                            .Physics
+                            .AverageWheelDiameterMeters;
+
                     ApplyHofToScriptRuntime(
                         runtime,
                         ResolveMapHofForBus(
@@ -2772,35 +2785,80 @@ internal sealed class RuntimeApplicationContext :
                             _map.FolderName));
                 }
 
+                SeedTrafficScriptHostVariables(
+                    runtime,
+                    agent,
+                    0.0,
+                    wheelDiameterMeters);
+
                 runtime.ExecuteInit();
 
                 state =
                     new TrafficScriptRuntimeState(
                         agent.VehiclePath,
-                        runtime);
+                        runtime,
+                        wheelDiameterMeters);
 
                 _trafficScriptRuntimes[
                     agent.AgentIndex] =
                     state;
             }
 
-            SeedTrafficScriptHostVariables(
-                state.Runtime,
-                agent,
-                validDeltaSeconds);
-
-            if (validDeltaSeconds >
-                0.0)
-            {
-                state.Runtime.ExecuteFrameAi();
-            }
+            work.Add(
+                (
+                    agent,
+                    state));
         }
+
+        if (work.Count ==
+            0)
+        {
+            return;
+        }
+
+        if (work.Count <
+                4 ||
+            validDeltaSeconds <=
+                0.0)
+        {
+            foreach (var item in
+                     work)
+            {
+                SeedTrafficScriptHostVariables(
+                    item.State.Runtime,
+                    item.Agent,
+                    validDeltaSeconds,
+                    item.State.WheelDiameterMeters);
+
+                if (validDeltaSeconds >
+                    0.0)
+                {
+                    item.State.Runtime.ExecuteFrameAi();
+                }
+            }
+
+            return;
+        }
+
+        Parallel.ForEach(
+            work,
+            item =>
+            {
+                SeedTrafficScriptHostVariables(
+                    item.State.Runtime,
+                    item.Agent,
+                    validDeltaSeconds,
+                    item.State.WheelDiameterMeters);
+
+                item.State.Runtime.ExecuteFrameAi();
+            });
     }
 
-    private void SeedTrafficScriptHostVariables(
+    private static void SeedTrafficScriptHostVariables(
         OmsiScriptRuntime runtime,
         WorldTrafficAgentState agent,
-        double deltaSeconds)
+        double deltaSeconds,
+        double? wheelDiameterMeters)
     {
         var speedKilometersPerHour =
             agent.SpeedMetersPerSecond *
@@ -2818,23 +2876,10 @@ internal sealed class RuntimeApplicationContext :
             "Timegap",
             deltaSeconds);
 
-        if (!_trafficVehicleAssets.TryGetValue(
-                agent.VehiclePath,
-                out var asset))
-        {
-            return;
-        }
-
-        var wheelDiameter =
-            asset
-                .Bus
-                .Physics
-                .AverageWheelDiameterMeters;
-
-        if (!wheelDiameter.HasValue ||
+        if (!wheelDiameterMeters.HasValue ||
             !double.IsFinite(
-                wheelDiameter.Value) ||
-            wheelDiameter.Value <=
+                wheelDiameterMeters.Value) ||
+            wheelDiameterMeters.Value <=
                 0.0)
         {
             return;
@@ -2842,7 +2887,7 @@ internal sealed class RuntimeApplicationContext :
 
         var circumference =
             Math.PI *
-            wheelDiameter.Value;
+            wheelDiameterMeters.Value;
 
         if (circumference <=
             0.000001)
@@ -3047,7 +3092,8 @@ internal sealed class RuntimeApplicationContext :
 
     private sealed record TrafficScriptRuntimeState(
         string VehiclePath,
-        OmsiScriptRuntime Runtime);
+        OmsiScriptRuntime Runtime,
+        double? WheelDiameterMeters);
 
     private const double RuntimeTileSizeMeters =
         300.0;
