@@ -944,6 +944,10 @@ public sealed class D3D12PresentationContext :
                     continue;
                 }
 
+                _commandList.SetPipelineState(
+                    ResolveObjectPipelineState(
+                        batch));
+
                 _commandList.DrawInstanced(
                     batch.VertexCount,
                     1,
@@ -951,8 +955,14 @@ public sealed class D3D12PresentationContext :
                     0);
             }
 
+            _commandList.SetPipelineState(
+                _pipelineState);
+
             return;
         }
+
+        _commandList.SetPipelineState(
+            _pipelineState);
 
         _commandList.DrawInstanced(
             checked(
@@ -960,6 +970,29 @@ public sealed class D3D12PresentationContext :
             1,
             0,
             0);
+    }
+
+    private ID3D12PipelineState ResolveObjectPipelineState(
+        RuntimeObjectDrawBatch batch)
+    {
+        if (batch.NoZCheck)
+        {
+            return batch.AlphaBlend
+                ? _alphaBlendDepthDisabledPipelineState
+                : _depthDisabledPipelineState;
+        }
+
+        if (batch.AlphaBlend)
+        {
+            return _alphaBlendDepthReadPipelineState;
+        }
+
+        if (batch.NoZWrite)
+        {
+            return _depthReadPipelineState;
+        }
+
+        return _pipelineState;
     }
 
     private void DrawAndPresent(
