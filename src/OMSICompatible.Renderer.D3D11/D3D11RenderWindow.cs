@@ -637,6 +637,8 @@ public sealed class D3D11RenderWindow : Form
     private Matrix4x4? _viewProjectionOverride;
     private Vector3? _cameraPositionOverride;
     private Vector4? _skyViewParametersOverride;
+    private Matrix4x4? _renderSceneViewProjection;
+    private Vector3? _renderSceneCameraPosition;
     private bool _reflectionRenderingEnabled;
     private bool _renderingReflectionPass;
     private readonly bool _vehiclePreviewMode;
@@ -5375,6 +5377,30 @@ public sealed class D3D11RenderWindow : Form
             0);
     }
 
+    private void BeginSceneCameraCache()
+    {
+        _renderSceneViewProjection =
+            CreateViewProjection();
+        _renderSceneCameraPosition =
+            CurrentCameraPosition;
+    }
+
+    private void EndSceneCameraCache()
+    {
+        _renderSceneViewProjection =
+            null;
+        _renderSceneCameraPosition =
+            null;
+    }
+
+    private Matrix4x4 CurrentSceneViewProjection =>
+        _renderSceneViewProjection ??
+        CreateViewProjection();
+
+    private Vector3 CurrentSceneCameraPosition =>
+        _renderSceneCameraPosition ??
+        CurrentCameraPosition;
+
     private void RenderFrame()
     {
         _renderFrameSequence++;
@@ -5433,6 +5459,8 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        BeginSceneCameraCache();
+
         DrawSky();
 
         if (CanDrawTerrain())
@@ -5481,6 +5509,8 @@ public sealed class D3D11RenderWindow : Form
         {
             DrawTileOverview();
         }
+
+        EndSceneCameraCache();
 
         ResolveMainSceneTarget();
             DrawPostProcess();
@@ -5540,6 +5570,8 @@ public sealed class D3D11RenderWindow : Form
                             target.Camera.FieldOfViewDegrees,
                             target.Camera.HeadingDegrees,
                             target.Camera.PitchDegrees));
+
+                BeginSceneCameraCache();
 
                 var reflectionFovRadians =
                     DegreesToRadians(
@@ -5619,6 +5651,8 @@ public sealed class D3D11RenderWindow : Form
 
                 target.HasRendered =
                     true;
+
+                EndSceneCameraCache();
             }
         }
         finally
@@ -5633,6 +5667,7 @@ public sealed class D3D11RenderWindow : Form
             _viewProjectionOverride = null;
             _cameraPositionOverride = null;
             _skyViewParametersOverride = null;
+            EndSceneCameraCache();
         }
     }
 
@@ -5931,9 +5966,9 @@ public sealed class D3D11RenderWindow : Form
             new RuntimeCameraConstants
             {
                 ViewProjection =
-                    CreateViewProjection(),
+                    CurrentSceneViewProjection,
                 CameraPosition =
-                    CurrentCameraPosition,
+                    CurrentSceneCameraPosition,
                 CameraPadding =
                     0.0f
             };
@@ -6468,11 +6503,11 @@ public sealed class D3D11RenderWindow : Form
             sceneryRenderPass.HasValue;
         var cameraPosition =
             cullScenery
-                ? CurrentCameraPosition
+                ? CurrentSceneCameraPosition
                 : Vector3.Zero;
         var viewProjection =
             cullScenery
-                ? CreateViewProjection()
+                ? CurrentSceneViewProjection
                 : Matrix4x4.Identity;
 
         // Every scenery pass starts from a known state, then only changes
@@ -7031,9 +7066,9 @@ public sealed class D3D11RenderWindow : Form
         _trafficVisibleDrawItems.Clear();
 
         var cameraPosition =
-            CurrentCameraPosition;
+            CurrentSceneCameraPosition;
         var viewProjection =
-            CreateViewProjection();
+            CurrentSceneViewProjection;
 
         foreach (var agent in
                  _trafficAgents)
@@ -7799,9 +7834,9 @@ public sealed class D3D11RenderWindow : Form
             _terrainRasterizerState);
 
         var cameraPosition =
-            CurrentCameraPosition;
+            CurrentSceneCameraPosition;
         var viewProjection =
-            CreateViewProjection();
+            CurrentSceneViewProjection;
 
         foreach (var agent in
                  _trafficAgents)
