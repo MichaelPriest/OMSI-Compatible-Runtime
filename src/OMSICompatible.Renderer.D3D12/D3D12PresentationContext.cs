@@ -1000,6 +1000,15 @@ public sealed class D3D12PresentationContext :
                 0,
                 terrain.Buffer.View);
 
+            Span<float> terrainMaterialConstants =
+                stackalloc float[4]
+                {
+                    -1.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f
+                };
+
             foreach (var batch in
                      terrain.Batches)
             {
@@ -1013,15 +1022,6 @@ public sealed class D3D12PresentationContext :
                     batch.TexturePath,
                     transMapPath:
                         null);
-
-                Span<float> terrainMaterialConstants =
-                    stackalloc float[4]
-                    {
-                        -1.0f,
-                        0.0f,
-                        0.0f,
-                        0.0f
-                    };
 
                 _commandList.SetGraphicsRoot32BitConstants(
                     3,
@@ -1099,6 +1099,9 @@ public sealed class D3D12PresentationContext :
         if (resources.Batches.Count >
             0)
         {
+            Span<float> materialConstants =
+                stackalloc float[4];
+
             foreach (var batch in
                      resources.Batches)
             {
@@ -1116,19 +1119,22 @@ public sealed class D3D12PresentationContext :
                     batch.TexturePath,
                     batch.TransMapTexturePath);
 
-                Span<float> materialConstants =
-                    stackalloc float[4]
-                    {
-                        batch.AlphaCutout
-                            ? 0.35f
-                            : -1.0f,
-                        string.IsNullOrWhiteSpace(
-                            batch.TransMapTexturePath)
-                            ? 0.0f
-                            : transMapMode,
-                        0.0f,
-                        0.0f
-                    };
+                materialConstants[0] =
+                    batch.AlphaCutout
+                        ? 0.35f
+                        : -1.0f;
+
+                materialConstants[1] =
+                    string.IsNullOrWhiteSpace(
+                        batch.TransMapTexturePath)
+                        ? 0.0f
+                        : transMapMode;
+
+                materialConstants[2] =
+                    0.0f;
+
+                materialConstants[3] =
+                    0.0f;
 
                 _commandList.SetGraphicsRoot32BitConstants(
                     3,
