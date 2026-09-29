@@ -69,6 +69,16 @@ public readonly struct RuntimeTerrainVertex
     public readonly Vector2 DetailUv;
 }
 
+public sealed record RuntimeObjectDrawBatch(
+    uint StartVertex,
+    uint VertexCount,
+    string? TexturePath,
+    bool AlphaCutout,
+    bool AlphaBlend,
+    string? TransMapTexturePath,
+    bool NoZWrite,
+    bool NoZCheck);
+
 public readonly struct RuntimeObjectVertex
 {
     public const uint SizeInBytes = 64;
