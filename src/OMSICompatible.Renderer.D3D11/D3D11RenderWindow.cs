@@ -10065,13 +10065,13 @@ public sealed class D3D11RenderWindow : Form
         var result =
             Matrix4x4.Identity;
 
+        var animationPhysics =
+            GetTrafficVehicleAnimationPhysics(
+                vehicleInfo);
+
         foreach (var compiled in
                  compiledAnimations)
         {
-            var animationPhysics =
-                GetTrafficVehicleAnimationPhysics(
-                    vehicleInfo);
-
             if (!TryResolveTrafficVehicleAnimationValue(
                     compiled.Binding,
                     agent,
