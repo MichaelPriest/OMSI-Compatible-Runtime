@@ -11613,6 +11613,9 @@ public sealed class D3D11RenderWindow : Form
                 0.0,
                 0.1);
 
+        var trafficStepped =
+            false;
+
         if (_trafficStep is not null)
         {
             _trafficStepAccumulatedSeconds +=
@@ -11637,10 +11640,18 @@ public sealed class D3D11RenderWindow : Form
                     _trafficStep(
                         trafficDeltaSeconds) ??
                     Array.Empty<RuntimeTrafficAgentInfo>();
+
+                trafficStepped =
+                    true;
             }
         }
 
-        if (_trafficSignalStateProvider is not null)
+        // Traffic/signal state changes only when the simulation advances.
+        // Do not allocate fresh snapshots and rebuild lookups at render FPS
+        // when the AI loop intentionally runs at 20-60 Hz.
+        if ((trafficStepped ||
+             _trafficStep is null) &&
+            _trafficSignalStateProvider is not null)
         {
             _trafficSignalStates =
                 _trafficSignalStateProvider() ??
@@ -11649,7 +11660,9 @@ public sealed class D3D11RenderWindow : Form
             RebuildTrafficSignalStateLookup();
         }
 
-        if (_railSignalStateProvider is not null)
+        if ((trafficStepped ||
+             _trafficStep is null) &&
+            _railSignalStateProvider is not null)
         {
             _railSignalRouteStates =
                 _railSignalStateProvider() ??
