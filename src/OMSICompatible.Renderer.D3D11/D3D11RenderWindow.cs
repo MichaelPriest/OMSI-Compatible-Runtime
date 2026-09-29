@@ -614,6 +614,7 @@ public sealed class D3D11RenderWindow : Form
         1536L * 1024L * 1024L;
     private readonly long _maximumStreamingTextureCacheBytes;
     private readonly long _maximumInactiveStreamingTextureCacheBytes;
+    private long _currentStreamingTextureCacheBytes;
     private const int MaximumStreamingTextureUploadsPerFrame =
         4;
     private const double MaximumStreamingTextureUploadBudgetMilliseconds =
@@ -2442,6 +2443,11 @@ public sealed class D3D11RenderWindow : Form
                 oldestPath);
         }
 
+        _currentStreamingTextureCacheBytes =
+            Math.Max(
+                0L,
+                cachedGpuBytes);
+
         Console.WriteLine(
             $"[streaming-textures] cache entries={_objectTextureCache.Count:N0}; gpuMB={Math.Max(0L, cachedGpuBytes) / (1024.0 * 1024.0):0.0}/{_maximumStreamingTextureCacheBytes / (1024.0 * 1024.0):0}; inactive={Math.Max(0, inactiveTextureCount):N0}/{MaximumInactiveStreamingTextureCacheEntries:N0}; inactiveGpuMB={Math.Max(0L, inactiveGpuBytes) / (1024.0 * 1024.0):0.0}/{_maximumInactiveStreamingTextureCacheBytes / (1024.0 * 1024.0):0}");
 
@@ -2645,6 +2651,9 @@ public sealed class D3D11RenderWindow : Form
                 _objectTextureCache[
                     pending.Path] =
                     texture;
+
+                _currentStreamingTextureCacheBytes +=
+                    texture.ApproximateBytes;
 
                 _objectTextureLastUsedGeneration[
                     pending.Path] =
@@ -6718,10 +6727,7 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.PSSetSampler(
             0,
-            usePerformanceTextureLod &&
-                    _objectSamplerPerformance is not null
-                ? _objectSamplerPerformance
-                : _objectSampler);
+            _objectSampler);
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
@@ -6758,6 +6764,8 @@ public sealed class D3D11RenderWindow : Form
             null;
         ID3D11ShaderResourceView? activeTransMapView =
             null;
+        ID3D11SamplerState activeObjectSampler =
+            _objectSampler;
 
         foreach (var batch in batches)
         {
@@ -6776,6 +6784,52 @@ public sealed class D3D11RenderWindow : Form
                     batch))
             {
                 continue;
+            }
+
+            var textureBudgetPressure =
+                _maximumStreamingTextureCacheBytes >
+                        0
+                    ? _currentStreamingTextureCacheBytes /
+                        (double)_maximumStreamingTextureCacheBytes
+                    : 0.0;
+
+            var useFarTextureLod =
+                false;
+
+            if (cullScenery &&
+                _objectSamplerPerformance is not null &&
+                batch.BoundsCenter.HasValue &&
+                textureBudgetPressure >=
+                    0.90)
+            {
+                var distanceSquared =
+                    Vector3.DistanceSquared(
+                        batch.BoundsCenter.Value,
+                        cameraPosition);
+
+                useFarTextureLod =
+                    distanceSquared >=
+                    150.0f *
+                    150.0f;
+            }
+
+            var desiredObjectSampler =
+                (usePerformanceTextureLod ||
+                 useFarTextureLod) &&
+                        _objectSamplerPerformance is not null
+                    ? _objectSamplerPerformance
+                    : _objectSampler;
+
+            if (!ReferenceEquals(
+                    activeObjectSampler,
+                    desiredObjectSampler))
+            {
+                _deviceContext.PSSetSampler(
+                    0,
+                    desiredObjectSampler);
+
+                activeObjectSampler =
+                    desiredObjectSampler;
             }
 
             var desiredBlendState =
