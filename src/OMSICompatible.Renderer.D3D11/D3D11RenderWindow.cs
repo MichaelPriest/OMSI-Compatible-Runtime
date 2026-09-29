@@ -356,6 +356,11 @@ public sealed class D3D11RenderWindow : Form
         _vehicleAnimationParentBatches =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly List<(
+        RuntimeObjectBatch Batch,
+        ResolvedVehicleMaterialState Material)>
+        _vehicleDrawItems =
+            [];
     private readonly Dictionary<(int SectionIndex, int ModelOrdinal), RuntimeObjectBatch>
         _vehicleMeshOrdinalBatches =
             [];
@@ -8178,34 +8183,57 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
-        var drawBatches =
-            geometry.Batches
-                .Where(
-                    batch =>
-                        IsVehicleBatchVisible(
-                            batch) &&
-                        batch.VertexCount >
-                            0)
-                .Select(
-                    batch =>
-                        (
-                            Batch: batch,
-                            Material:
-                                ResolveVehicleMaterialState(
-                                    batch)))
-                // OMSI relies heavily on model.cfg ordering, but transparent
-                // glass/overlays must never be allowed to reveal through an
-                // opaque body that has not written depth yet. Stable OrderBy
-                // preserves original order inside each pass.
-                .OrderBy(
-                    item =>
-                        item.Material.AlphaBlend
-                            ? 1
-                            : 0)
-                .ToArray();
+        _vehicleDrawItems.Clear();
+
+        if (_vehicleDrawItems.Capacity <
+            geometry.Batches.Count)
+        {
+            _vehicleDrawItems.Capacity =
+                geometry.Batches.Count;
+        }
+
+        var opaqueCount =
+            0;
+
+        foreach (var batch in
+                 geometry.Batches)
+        {
+            if (!IsVehicleBatchVisible(
+                    batch) ||
+                batch.VertexCount ==
+                    0)
+            {
+                continue;
+            }
+
+            var material =
+                ResolveVehicleMaterialState(
+                    batch);
+
+            var draw =
+                (
+                    Batch:
+                        batch,
+                    Material:
+                        material);
+
+            if (material.AlphaBlend)
+            {
+                _vehicleDrawItems.Add(
+                    draw);
+            }
+            else
+            {
+                _vehicleDrawItems.Insert(
+                    opaqueCount,
+                    draw);
+
+                opaqueCount++;
+            }
+        }
 
         foreach (var draw in
-                 drawBatches)
+                 _vehicleDrawItems)
         {
             var batch =
                 draw.Batch;
@@ -20499,6 +20527,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleTextTextureRenderer?.Dispose();
             _vehicleTextTextureRenderer = null;
             _vehicleAnimationParentBatches.Clear();
+            _vehicleDrawItems.Clear();
 
             _objectSamplerPerformance?.Dispose();
             _objectSampler?.Dispose();
