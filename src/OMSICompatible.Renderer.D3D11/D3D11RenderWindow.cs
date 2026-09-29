@@ -568,6 +568,17 @@ public sealed class D3D11RenderWindow : Form
         _trafficVehicleLightMeshes =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<TrafficVehicleDrawItem>>
+        _trafficVisibleDrawItemsByVehiclePath =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly List<TrafficVehicleDrawItem>
+        _trafficVisibleDrawItems =
+            [];
+
+    private readonly record struct TrafficVehicleDrawItem(
+        RuntimeTrafficAgentInfo Agent,
+        Matrix4x4 VehicleWorld);
 
     private readonly uint _reflectionTextureSize;
     private readonly string _reflectionMode;
@@ -6172,7 +6183,79 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAlphaBlendTransMapPixelShader is null ||
             _vehicleInputLayout is null ||
             _vehicleSampler is null ||
-            _terrainCameraBuffer is null)
+            _terrainCameraBuffer is null ||
+            _windowInfo.TrafficVehicleAssets is null)
+        {
+            return;
+        }
+
+        foreach (var drawItems in
+                 _trafficVisibleDrawItemsByVehiclePath.Values)
+        {
+            drawItems.Clear();
+        }
+
+        _trafficVisibleDrawItems.Clear();
+
+        var cameraPosition =
+            CurrentCameraPosition;
+        var viewProjection =
+            CreateViewProjection();
+
+        foreach (var agent in
+                 _trafficAgents)
+        {
+            if (!IsTrafficAgentVisible(
+                    agent,
+                    cameraPosition,
+                    viewProjection) ||
+                !_trafficVehicleGeometries.ContainsKey(
+                    agent.VehiclePath) ||
+                !_trafficVehicleVertexBuffers.ContainsKey(
+                    agent.VehiclePath) ||
+                !_windowInfo.TrafficVehicleAssets.TryGetValue(
+                    agent.VehiclePath,
+                    out var vehicleInfo))
+            {
+                continue;
+            }
+
+            var heightOffset =
+                (float)(
+                    vehicleInfo.Physics.AiDeltaHeightMeters ??
+                    0.0);
+
+            var drawItem =
+                new TrafficVehicleDrawItem(
+                    agent,
+                    Matrix4x4.CreateRotationY(
+                        (float)agent.HeadingRadians) *
+                    Matrix4x4.CreateTranslation(
+                        (float)agent.X,
+                        (float)agent.Y +
+                            heightOffset,
+                        (float)agent.Z));
+
+            _trafficVisibleDrawItems.Add(
+                drawItem);
+
+            if (!_trafficVisibleDrawItemsByVehiclePath.TryGetValue(
+                    agent.VehiclePath,
+                    out var vehicleDrawItems))
+            {
+                vehicleDrawItems =
+                    [];
+                _trafficVisibleDrawItemsByVehiclePath[
+                    agent.VehiclePath] =
+                    vehicleDrawItems;
+            }
+
+            vehicleDrawItems.Add(
+                drawItem);
+        }
+
+        if (_trafficVisibleDrawItems.Count ==
+            0)
         {
             return;
         }
@@ -6236,44 +6319,37 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
-        var cameraPosition =
-            CurrentCameraPosition;
-        var viewProjection =
-            CreateViewProjection();
-
-        foreach (var agent in
-                 _trafficAgents)
+        // Opaque/cutout geometry is safe to batch by material. This keeps
+        // vehicle-model transforms per draw, but avoids repeating identical
+        // material buffer writes, texture lookups and pipeline state binds for
+        // every AI vehicle using the same model.
+        foreach (var pair in
+                 _trafficVisibleDrawItemsByVehiclePath)
         {
-            if (!IsTrafficAgentVisible(
-                    agent,
-                    cameraPosition,
-                    viewProjection))
-            {
-                continue;
-            }
-
-            if (!_trafficVehicleGeometries.TryGetValue(
-                    agent.VehiclePath,
+            if (pair.Value.Count ==
+                    0 ||
+                !_trafficVehicleGeometries.TryGetValue(
+                    pair.Key,
                     out var geometry) ||
                 !_trafficVehicleVertexBuffers.TryGetValue(
-                    agent.VehiclePath,
+                    pair.Key,
                     out var vertexBuffer) ||
-                !_windowInfo.TrafficVehicleAssets!.TryGetValue(
-                    agent.VehiclePath,
+                !_windowInfo.TrafficVehicleAssets.TryGetValue(
+                    pair.Key,
                     out var vehicleInfo))
             {
                 continue;
             }
 
             if (!_trafficVehicleRenderBatches.TryGetValue(
-                    agent.VehiclePath,
+                    pair.Key,
                     out var renderBatches))
             {
                 renderBatches =
                     BuildTrafficVehicleRenderBatches(
                         geometry);
                 _trafficVehicleRenderBatches[
-                    agent.VehiclePath] =
+                    pair.Key] =
                     renderBatches;
             }
 
@@ -6282,194 +6358,134 @@ public sealed class D3D11RenderWindow : Form
                 vertexBuffer,
                 RuntimeObjectVertex.SizeInBytes);
 
-            var heightOffset =
-                (float)(
-                    vehicleInfo.Physics.AiDeltaHeightMeters ??
-                    0.0);
-
-            var vehicleWorld =
-                Matrix4x4.CreateRotationY(
-                    (float)agent.HeadingRadians) *
-                Matrix4x4.CreateTranslation(
-                    (float)agent.X,
-                    (float)agent.Y +
-                        heightOffset,
-                    (float)agent.Z);
-
             foreach (var batch in
                      renderBatches)
             {
+                if (batch.AlphaBlend ||
+                    !TryPrepareTrafficVehicleBatch(
+                        batch,
+                        materialConstants))
+                {
+                    continue;
+                }
+
+                foreach (var drawItem in
+                         pair.Value)
+                {
+                    model[0] =
+                        new RuntimeModelConstants
+                        {
+                            World =
+                                CreateTrafficVehicleAnimationMatrix(
+                                    batch,
+                                    drawItem.Agent,
+                                    vehicleInfo) *
+                                drawItem.VehicleWorld
+                        };
+
+                    _vehicleModelBuffer.SetData(
+                        _deviceContext,
+                        model,
+                        MapMode.WriteDiscard);
+
+                    _deviceContext.Draw(
+                        batch.VertexCount,
+                        batch.StartVertex);
+                }
+            }
+        }
+
+        // Keep blended meshes agent-major so windows and other transparent
+        // layers retain their existing relative draw order. They run after
+        // every opaque AI surface, matching the renderer's normal depth flow.
+        string? activeVehiclePath =
+            null;
+        RuntimeVehicleInfo? activeVehicleInfo =
+            null;
+        RuntimeObjectBatch[]? activeRenderBatches =
+            null;
+
+        foreach (var drawItem in
+                 _trafficVisibleDrawItems)
+        {
+            var vehiclePath =
+                drawItem.Agent.VehiclePath;
+
+            if (!string.Equals(
+                    activeVehiclePath,
+                    vehiclePath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (!_trafficVehicleGeometries.TryGetValue(
+                        vehiclePath,
+                        out var geometry) ||
+                    !_trafficVehicleVertexBuffers.TryGetValue(
+                        vehiclePath,
+                        out var vertexBuffer) ||
+                    !_windowInfo.TrafficVehicleAssets.TryGetValue(
+                        vehiclePath,
+                        out activeVehicleInfo))
+                {
+                    activeVehiclePath =
+                        null;
+                    activeRenderBatches =
+                        null;
+                    continue;
+                }
+
+                if (!_trafficVehicleRenderBatches.TryGetValue(
+                        vehiclePath,
+                        out activeRenderBatches))
+                {
+                    activeRenderBatches =
+                        BuildTrafficVehicleRenderBatches(
+                            geometry);
+                    _trafficVehicleRenderBatches[
+                        vehiclePath] =
+                        activeRenderBatches;
+                }
+
+                _deviceContext.IASetVertexBuffer(
+                    0,
+                    vertexBuffer,
+                    RuntimeObjectVertex.SizeInBytes);
+
+                activeVehiclePath =
+                    vehiclePath;
+            }
+
+            if (activeVehicleInfo is null ||
+                activeRenderBatches is null)
+            {
+                continue;
+            }
+
+            foreach (var batch in
+                     activeRenderBatches)
+            {
+                if (!batch.AlphaBlend ||
+                    !TryPrepareTrafficVehicleBatch(
+                        batch,
+                        materialConstants))
+                {
+                    continue;
+                }
+
                 model[0] =
                     new RuntimeModelConstants
                     {
                         World =
                             CreateTrafficVehicleAnimationMatrix(
                                 batch,
-                                agent,
-                                vehicleInfo) *
-                            vehicleWorld
+                                drawItem.Agent,
+                                activeVehicleInfo) *
+                            drawItem.VehicleWorld
                     };
 
                 _vehicleModelBuffer.SetData(
                     _deviceContext,
                     model,
                     MapMode.WriteDiscard);
-
-                materialConstants[0] =
-                    new RuntimeVehicleMaterialConstants
-                    {
-                        AlphaScale = 1.0f,
-                        LightMapStrength =
-                            _materialLightMapEnabled &&
-                            !string.IsNullOrWhiteSpace(
-                                batch.LightMapTexturePath)
-                                ? 1.0f
-                                : 0.0f,
-                        EnvMapStrength =
-                            ResolveVehicleEnvMapStrength(
-                                batch.EnvMapTexturePath,
-                                batch.EnvMapStrength),
-                        EnvMapMaskEnabled =
-                            ResolveVehicleEnvMapMaskEnabled(
-                                batch.EnvMapMaskTexturePath,
-                                batch.HasTransMapDirective &&
-                                string.IsNullOrWhiteSpace(
-                                    batch.TransMapTexturePath)),
-                        BumpMapStrength =
-                            ResolveVehicleBumpMapStrength(
-                                batch.BumpMapTexturePath,
-                                batch.BumpMapStrength),
-                        BaseEmissive =
-                            ResolveVehicleAllColorEmissive(
-                                batch.BaseAllColor)
-                    };
-
-                _vehicleMaterialBuffer.SetData(
-                    _deviceContext,
-                    materialConstants,
-                    MapMode.WriteDiscard);
-
-                _deviceContext.OMSetBlendState(
-                    batch.AlphaBlend
-                        ? _vehicleAlphaBlendState
-                        : null);
-
-                _deviceContext.OMSetDepthStencilState(
-                    batch.AlphaBlend
-                        ? _vehicleDepthReadState
-                        : batch.NoZCheck
-                            ? _vehicleDepthDisabledState
-                            : batch.NoZWrite
-                                ? _vehicleDepthReadState
-                                : null);
-
-                for (var slot = 0;
-                     slot <= 6;
-                     slot++)
-                {
-                    _deviceContext.PSUnsetShaderResource(
-                        (uint)slot);
-                }
-
-                if (_materialReflectionMapEnabled &&
-                    TryGetVehicleTextureView(
-                        batch.EnvMapTexturePath,
-                        out var envMapView))
-                {
-                    _deviceContext.PSSetShaderResource(
-                        4,
-                        envMapView!);
-                }
-
-                if (_materialReflectionMapEnabled &&
-                    TryGetVehicleTextureView(
-                        batch.EnvMapMaskTexturePath,
-                        out var envMapMaskView))
-                {
-                    _deviceContext.PSSetShaderResource(
-                        5,
-                        envMapMaskView!);
-                }
-
-                if (_materialBumpMapEnabled &&
-                    TryGetVehicleTextureView(
-                        batch.BumpMapTexturePath,
-                        out var bumpMapView))
-                {
-                    _deviceContext.PSSetShaderResource(
-                        6,
-                        bumpMapView!);
-                }
-
-                var hasDiffuseTexture =
-                    TryGetVehicleTextureView(
-                        batch.TexturePath,
-                        out var textureView);
-
-                if (hasDiffuseTexture)
-                {
-                    var requiresExternalTransMap =
-                        !string.IsNullOrWhiteSpace(
-                            batch.TransMapTexturePath);
-
-                    var hasTransMap =
-                        TryGetVehicleTextureView(
-                            batch.TransMapTexturePath,
-                            out var transMapView);
-
-                    if (requiresExternalTransMap &&
-                        !hasTransMap)
-                    {
-                        ReportMissingTransMap(
-                            "vehicle",
-                            batch.TexturePath,
-                            batch.TransMapTexturePath);
-                        continue;
-                    }
-
-                    if (hasTransMap)
-                    {
-                        _deviceContext.PSSetShaderResource(
-                            1,
-                            transMapView!);
-                    }
-
-                    if (_materialLightMapEnabled &&
-                        TryGetVehicleTextureView(
-                            batch.LightMapTexturePath,
-                            out var lightMapView))
-                    {
-                        _deviceContext.PSSetShaderResource(
-                            2,
-                            lightMapView!);
-                    }
-
-                    _deviceContext.PSSetShader(
-                        batch.AlphaCutout
-                            ? hasTransMap
-                                ? _vehicleAlphaCutoutTransMapPixelShader
-                                : _vehicleAlphaCutoutPixelShader
-                            : batch.AlphaBlend
-                                ? hasTransMap
-                                    ? _vehicleAlphaBlendTransMapPixelShader
-                                    : _vehicleAlphaBlendPixelShader
-                                : _vehicleTexturedPixelShader);
-
-                    _deviceContext.PSSetShaderResource(
-                        0,
-                        textureView!);
-                }
-                else
-                {
-                    if (batch.AlphaCutout ||
-                        batch.AlphaBlend)
-                    {
-                        continue;
-                    }
-
-                    _deviceContext.PSSetShader(
-                        _vehicleColorPixelShader);
-                }
 
                 _deviceContext.Draw(
                     batch.VertexCount,
@@ -6493,6 +6509,181 @@ public sealed class D3D11RenderWindow : Form
 
         _deviceContext.RSSetState(
             null);
+    }
+
+    private bool TryPrepareTrafficVehicleBatch(
+        RuntimeObjectBatch batch,
+        Span<RuntimeVehicleMaterialConstants> materialConstants)
+    {
+        if (_deviceContext is null ||
+            _vehicleMaterialBuffer is null ||
+            _vehicleColorPixelShader is null ||
+            _vehicleTexturedPixelShader is null ||
+            _vehicleAlphaCutoutPixelShader is null ||
+            _vehicleAlphaBlendPixelShader is null ||
+            _vehicleAlphaCutoutTransMapPixelShader is null ||
+            _vehicleAlphaBlendTransMapPixelShader is null)
+        {
+            return false;
+        }
+
+        materialConstants[0] =
+            new RuntimeVehicleMaterialConstants
+            {
+                AlphaScale = 1.0f,
+                LightMapStrength =
+                    _materialLightMapEnabled &&
+                    !string.IsNullOrWhiteSpace(
+                        batch.LightMapTexturePath)
+                        ? 1.0f
+                        : 0.0f,
+                EnvMapStrength =
+                    ResolveVehicleEnvMapStrength(
+                        batch.EnvMapTexturePath,
+                        batch.EnvMapStrength),
+                EnvMapMaskEnabled =
+                    ResolveVehicleEnvMapMaskEnabled(
+                        batch.EnvMapMaskTexturePath,
+                        batch.HasTransMapDirective &&
+                        string.IsNullOrWhiteSpace(
+                            batch.TransMapTexturePath)),
+                BumpMapStrength =
+                    ResolveVehicleBumpMapStrength(
+                        batch.BumpMapTexturePath,
+                        batch.BumpMapStrength),
+                BaseEmissive =
+                    ResolveVehicleAllColorEmissive(
+                        batch.BaseAllColor)
+            };
+
+        _vehicleMaterialBuffer.SetData(
+            _deviceContext,
+            materialConstants,
+            MapMode.WriteDiscard);
+
+        _deviceContext.OMSetBlendState(
+            batch.AlphaBlend
+                ? _vehicleAlphaBlendState
+                : null);
+
+        _deviceContext.OMSetDepthStencilState(
+            batch.AlphaBlend
+                ? _vehicleDepthReadState
+                : batch.NoZCheck
+                    ? _vehicleDepthDisabledState
+                    : batch.NoZWrite
+                        ? _vehicleDepthReadState
+                        : null);
+
+        for (var slot = 0;
+             slot <= 6;
+             slot++)
+        {
+            _deviceContext.PSUnsetShaderResource(
+                (uint)slot);
+        }
+
+        if (_materialReflectionMapEnabled &&
+            TryGetVehicleTextureView(
+                batch.EnvMapTexturePath,
+                out var envMapView))
+        {
+            _deviceContext.PSSetShaderResource(
+                4,
+                envMapView!);
+        }
+
+        if (_materialReflectionMapEnabled &&
+            TryGetVehicleTextureView(
+                batch.EnvMapMaskTexturePath,
+                out var envMapMaskView))
+        {
+            _deviceContext.PSSetShaderResource(
+                5,
+                envMapMaskView!);
+        }
+
+        if (_materialBumpMapEnabled &&
+            TryGetVehicleTextureView(
+                batch.BumpMapTexturePath,
+                out var bumpMapView))
+        {
+            _deviceContext.PSSetShaderResource(
+                6,
+                bumpMapView!);
+        }
+
+        var hasDiffuseTexture =
+            TryGetVehicleTextureView(
+                batch.TexturePath,
+                out var textureView);
+
+        if (hasDiffuseTexture)
+        {
+            var requiresExternalTransMap =
+                !string.IsNullOrWhiteSpace(
+                    batch.TransMapTexturePath);
+
+            var hasTransMap =
+                TryGetVehicleTextureView(
+                    batch.TransMapTexturePath,
+                    out var transMapView);
+
+            if (requiresExternalTransMap &&
+                !hasTransMap)
+            {
+                ReportMissingTransMap(
+                    "vehicle",
+                    batch.TexturePath,
+                    batch.TransMapTexturePath);
+                return false;
+            }
+
+            if (hasTransMap)
+            {
+                _deviceContext.PSSetShaderResource(
+                    1,
+                    transMapView!);
+            }
+
+            if (_materialLightMapEnabled &&
+                TryGetVehicleTextureView(
+                    batch.LightMapTexturePath,
+                    out var lightMapView))
+            {
+                _deviceContext.PSSetShaderResource(
+                    2,
+                    lightMapView!);
+            }
+
+            _deviceContext.PSSetShader(
+                batch.AlphaCutout
+                    ? hasTransMap
+                        ? _vehicleAlphaCutoutTransMapPixelShader
+                        : _vehicleAlphaCutoutPixelShader
+                    : batch.AlphaBlend
+                        ? hasTransMap
+                            ? _vehicleAlphaBlendTransMapPixelShader
+                            : _vehicleAlphaBlendPixelShader
+                        : _vehicleTexturedPixelShader);
+
+            _deviceContext.PSSetShaderResource(
+                0,
+                textureView!);
+
+            return true;
+        }
+
+        if (batch.AlphaCutout ||
+            batch.AlphaBlend)
+        {
+            return false;
+        }
+
+        _deviceContext.PSSetShader(
+            _vehicleColorPixelShader);
+
+        return true;
     }
 
     private void DrawTrafficVehicleLights()
@@ -19224,6 +19415,8 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleGeometries.Clear();
             _trafficVehicleRenderBatches.Clear();
             _trafficVehicleLightMeshes.Clear();
+            _trafficVisibleDrawItemsByVehiclePath.Clear();
+            _trafficVisibleDrawItems.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
