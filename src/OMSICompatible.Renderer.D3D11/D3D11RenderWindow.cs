@@ -383,10 +383,10 @@ public sealed class D3D11RenderWindow : Form
         ResolvedVehicleMaterialState Material)>
         _vehicleDrawItems =
             [];
-    private readonly List<RuntimeVehicleMeshInfo>
+    private readonly List<RuntimeObjectMeshInfo>
         _vehicleLightMeshes =
             [];
-    private readonly List<RuntimeVehicleMeshInfo>
+    private readonly List<RuntimeObjectMeshInfo>
         _vehicleViewpointLightMeshes =
             [];
     private readonly Dictionary<
@@ -9014,7 +9014,7 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        IReadOnlyList<RuntimeVehicleMeshInfo>
+        IReadOnlyList<RuntimeObjectMeshInfo>
             selectionSource =
                 _vehicleViewpointLightMeshes.Count >
                         0
