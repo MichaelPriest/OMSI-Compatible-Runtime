@@ -9058,19 +9058,22 @@ public sealed class D3D11RenderWindow : Form
         var hasNativeItem =
             selectedItem is not null;
 
-        var legacyActive =
+        var legacyMaterialChangeValue =
             !hasNativeItem &&
             (batch.MaterialChangeSets is null ||
              batch.MaterialChangeSets.Count == 0) &&
             !string.IsNullOrWhiteSpace(
-                batch.MaterialChangeVariable) &&
-            double.IsFinite(
-                ResolveSectionNumericValue(
+                batch.MaterialChangeVariable)
+                ? ResolveSectionNumericValue(
                     batch.SectionIndex,
-                    batch.MaterialChangeVariable)) &&
-            ResolveSectionNumericValue(
-                batch.SectionIndex,
-                batch.MaterialChangeVariable) >= 0.5;
+                    batch.MaterialChangeVariable)
+                : double.NaN;
+
+        var legacyActive =
+            double.IsFinite(
+                legacyMaterialChangeValue) &&
+            legacyMaterialChangeValue >=
+                0.5;
 
         var alphaMode =
             selectedItem?.AlphaMode ??
