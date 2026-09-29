@@ -735,10 +735,17 @@ internal sealed class RuntimeApplicationContext :
                                 isolatedObjectIds:
                                     runtimeInfo.DynamicSceneryObjectIds);
 
+                        var vehicle =
+                            RuntimeVehicleGeometry.Build(
+                                runtimeInfo.Vehicle,
+                                viewpointBit:
+                                    1);
+
                         return (
                             Terrain: terrain,
                             Splines: splines,
-                            Objects: objects
+                            Objects: objects,
+                            Vehicle: vehicle
                         );
                     });
 
@@ -751,6 +758,8 @@ internal sealed class RuntimeApplicationContext :
                 geometry.Splines.Vertices.Length ==
                     0 &&
                 geometry.Objects.Vertices.Length ==
+                    0 &&
+                geometry.Vehicle.Vertices.Length ==
                     0)
             {
                 Console.WriteLine(
@@ -810,6 +819,13 @@ internal sealed class RuntimeApplicationContext :
                         0
                     ? graphics.CreateObjectResources(
                         geometry.Objects.Vertices)
+                    : null;
+
+            using var vehicle =
+                geometry.Vehicle.Vertices.Length >
+                        0
+                    ? graphics.CreateObjectResources(
+                        geometry.Vehicle.Vertices)
                     : null;
 
             var uploadElapsed =
@@ -878,10 +894,26 @@ internal sealed class RuntimeApplicationContext :
             var drawStarted =
                 Stopwatch.GetTimestamp();
 
+            var vehicleModel =
+                runtimeInfo.Spawn is
+                    { } spawn
+                    ? Matrix4x4.CreateRotationY(
+                          (float)(
+                              spawn.HeadingDegrees *
+                              Math.PI /
+                              180.0)) *
+                      Matrix4x4.CreateTranslation(
+                          (float)spawn.X,
+                          (float)spawn.Y,
+                          (float)spawn.Z)
+                    : Matrix4x4.Identity;
+
             graphics.DrawSceneAndPresent(
                 terrain,
                 splines,
                 objects,
+                vehicle,
+                vehicleModel,
                 0.04f,
                 0.06f,
                 0.09f,
@@ -893,7 +925,7 @@ internal sealed class RuntimeApplicationContext :
                     drawStarted);
 
             Console.WriteLine(
-                $"[d3d12-scene] success; terrainVertices={geometry.Terrain.Vertices.Length:N0}; terrainBatches={geometry.Terrain.Batches.Count:N0}; splineVertices={geometry.Splines.Vertices.Length:N0}; objectVertices={geometry.Objects.Vertices.Length:N0}; buildMs={buildElapsed.TotalMilliseconds:0.0}; uploadMs={uploadElapsed.TotalMilliseconds:0.0}; drawMs={drawElapsed.TotalMilliseconds:0.0}; span={span:0.0}m");
+                $"[d3d12-scene] success; terrainVertices={geometry.Terrain.Vertices.Length:N0}; terrainBatches={geometry.Terrain.Batches.Count:N0}; splineVertices={geometry.Splines.Vertices.Length:N0}; objectVertices={geometry.Objects.Vertices.Length:N0}; vehicleVertices={geometry.Vehicle.Vertices.Length:N0}; buildMs={buildElapsed.TotalMilliseconds:0.0}; uploadMs={uploadElapsed.TotalMilliseconds:0.0}; drawMs={drawElapsed.TotalMilliseconds:0.0}; span={span:0.0}m");
         }
         catch (Exception exception)
         {
