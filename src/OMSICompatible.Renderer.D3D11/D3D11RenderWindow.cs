@@ -660,6 +660,10 @@ public sealed class D3D11RenderWindow : Form
         35.0f;
     private const float TrafficFrustumCullMargin =
         1.20f;
+    private const float SceneryFrustumCullMargin =
+        1.15f;
+    private const float SceneryFrustumRadiusScale =
+        2.0f;
 
     public D3D11RenderWindow(
         RuntimeWindowInfo windowInfo,
@@ -5797,6 +5801,85 @@ public sealed class D3D11RenderWindow : Form
         };
     }
 
+    private bool IsSceneryBatchVisible(
+        RuntimeObjectBatch batch,
+        Vector3 cameraPosition,
+        Matrix4x4 viewProjection)
+    {
+        if (!batch.BoundsCenter.HasValue)
+        {
+            return true;
+        }
+
+        var center =
+            batch.BoundsCenter.Value;
+        var radius =
+            MathF.Max(
+                batch.BoundsRadius,
+                0.0f);
+        var offset =
+            center -
+            cameraPosition;
+        var maximumDistance =
+            (float)_maximumObjectVisibilityMeters +
+            radius;
+
+        if (offset.LengthSquared() >
+            maximumDistance *
+            maximumDistance)
+        {
+            return false;
+        }
+
+        if (offset.LengthSquared() <=
+            (TrafficFrustumCullNearDistanceMeters +
+             radius) *
+            (TrafficFrustumCullNearDistanceMeters +
+             radius))
+        {
+            return true;
+        }
+
+        var clip =
+            Vector4.Transform(
+                new Vector4(
+                    center,
+                    1.0f),
+                viewProjection);
+
+        if (!float.IsFinite(
+                clip.X) ||
+            !float.IsFinite(
+                clip.Y) ||
+            !float.IsFinite(
+                clip.W))
+        {
+            return true;
+        }
+
+        if (clip.W <=
+            0.001f)
+        {
+            return false;
+        }
+
+        var margin =
+            MathF.Abs(
+                clip.W) *
+            SceneryFrustumCullMargin +
+            radius *
+            SceneryFrustumRadiusScale;
+
+        return clip.X >=
+                   -margin &&
+               clip.X <=
+                   margin &&
+               clip.Y >=
+                   -margin &&
+               clip.Y <=
+                   margin;
+    }
+
     private void DrawTexturedGeometry(
         ID3D11Buffer? vertexBuffer,
         uint vertexCount,
@@ -5845,6 +5928,17 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
+        var cullScenery =
+            sceneryRenderPass.HasValue;
+        var cameraPosition =
+            cullScenery
+                ? CurrentCameraPosition
+                : Vector3.Zero;
+        var viewProjection =
+            cullScenery
+                ? CreateViewProjection()
+                : Matrix4x4.Identity;
+
         foreach (var batch in batches)
         {
             if (batch.VertexCount == 0 ||
@@ -5852,6 +5946,11 @@ public sealed class D3D11RenderWindow : Form
                  !MatchesSceneryRenderPass(
                      batch.RenderType,
                      sceneryRenderPass.Value)) ||
+                (cullScenery &&
+                 !IsSceneryBatchVisible(
+                     batch,
+                     cameraPosition,
+                     viewProjection)) ||
                 !IsDynamicSceneryBatchVisible(
                     batch))
             {

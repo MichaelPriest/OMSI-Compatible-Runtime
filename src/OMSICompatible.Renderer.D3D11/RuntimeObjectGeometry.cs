@@ -44,7 +44,9 @@ public sealed record RuntimeObjectBatch(
     long ObjectId = -1,
     string? RenderType = null,
     bool RequiresExternalTransMap = false,
-    bool Surface = false);
+    bool Surface = false,
+    Vector3? BoundsCenter = null,
+    float BoundsRadius = 0.0f);
 
 public sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
@@ -375,6 +377,10 @@ public static class RuntimeObjectGeometryBuilder
             var start =
                 (uint)vertices.Count;
 
+            var bounds =
+                CalculateBatchBounds(
+                    batchVertices);
+
             vertices.AddRange(
                 batchVertices);
 
@@ -418,7 +424,9 @@ public static class RuntimeObjectGeometryBuilder
                     key.ObjectId,
                     key.RenderType,
                     key.RequiresExternalTransMap,
-                    key.Surface));
+                    key.Surface,
+                    bounds.Center,
+                    bounds.Radius));
         }
 
         return new RuntimeObjectGeometry(
@@ -434,6 +442,64 @@ public static class RuntimeObjectGeometryBuilder
             protectedMeshes,
             missingMeshes,
             hitBudget);
+    }
+
+    private static (
+        Vector3 Center,
+        float Radius)
+        CalculateBatchBounds(
+            IReadOnlyList<RuntimeObjectVertex> vertices)
+    {
+        if (vertices.Count ==
+            0)
+        {
+            return (
+                Vector3.Zero,
+                0.0f);
+        }
+
+        var minimum =
+            new Vector3(
+                float.PositiveInfinity);
+        var maximum =
+            new Vector3(
+                float.NegativeInfinity);
+
+        foreach (var vertex in
+                 vertices)
+        {
+            minimum =
+                Vector3.Min(
+                    minimum,
+                    vertex.Position);
+            maximum =
+                Vector3.Max(
+                    maximum,
+                    vertex.Position);
+        }
+
+        var center =
+            (minimum +
+             maximum) *
+            0.5f;
+        var radiusSquared =
+            0.0f;
+
+        foreach (var vertex in
+                 vertices)
+        {
+            radiusSquared =
+                MathF.Max(
+                    radiusSquared,
+                    Vector3.DistanceSquared(
+                        center,
+                        vertex.Position));
+        }
+
+        return (
+            center,
+            MathF.Sqrt(
+                radiusSquared));
     }
 
     private static bool AppendMesh(
