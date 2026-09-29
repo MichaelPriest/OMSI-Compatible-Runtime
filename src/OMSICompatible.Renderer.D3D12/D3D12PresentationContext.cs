@@ -50,6 +50,8 @@ public sealed class D3D12PresentationContext :
             RenderOrigin =
                 Vector4.Zero
         };
+    private Matrix4x4 _modelMatrix =
+        Matrix4x4.Identity;
     private readonly AutoResetEvent _fenceEvent =
         new(
             false);
@@ -332,6 +334,12 @@ public sealed class D3D12PresentationContext :
                                     0,
                                     0,
                                     20),
+                                ShaderVisibility.Vertex),
+                            new RootParameter1(
+                                new RootConstants(
+                                    1,
+                                    0,
+                                    16),
                                 ShaderVisibility.Vertex)
                         ]));
 
@@ -341,6 +349,11 @@ public sealed class D3D12PresentationContext :
                 {
                     row_major float4x4 ViewProjection;
                     float4 RenderOrigin;
+                };
+
+                cbuffer ModelConstants : register(b1)
+                {
+                    row_major float4x4 Model;
                 };
 
                 struct VsInput
@@ -358,10 +371,17 @@ public sealed class D3D12PresentationContext :
                 VsOutput VSMain(VsInput input)
                 {
                     VsOutput output;
+                    float3 worldPosition =
+                        mul(
+                            float4(
+                                input.position,
+                                1.0),
+                            Model).xyz;
+
                     output.position =
                         mul(
                             float4(
-                                input.position -
+                                worldPosition -
                                     RenderOrigin.xyz,
                                 1.0),
                             ViewProjection);
@@ -620,6 +640,17 @@ public sealed class D3D12PresentationContext :
                 0.0f);
     }
 
+    public void SetModelMatrix(
+        Matrix4x4 modelMatrix)
+    {
+        ObjectDisposedException.ThrowIf(
+            _disposed,
+            this);
+
+        _modelMatrix =
+            modelMatrix;
+    }
+
     public void ClearAndPresent(
         float red,
         float green,
@@ -704,6 +735,10 @@ public sealed class D3D12PresentationContext :
         _commandList.SetGraphicsRoot32BitConstants(
             0,
             ref _frameConstants);
+
+        _commandList.SetGraphicsRoot32BitConstants(
+            1,
+            ref _modelMatrix);
 
         var renderTarget =
             _renderTargets[
@@ -858,6 +893,10 @@ public sealed class D3D12PresentationContext :
         _commandList.SetGraphicsRoot32BitConstants(
             0,
             ref _frameConstants);
+
+        _commandList.SetGraphicsRoot32BitConstants(
+            1,
+            ref _modelMatrix);
 
         var renderTarget =
             _renderTargets[
