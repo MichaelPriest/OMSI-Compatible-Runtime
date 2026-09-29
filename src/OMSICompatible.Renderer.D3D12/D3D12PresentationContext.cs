@@ -38,6 +38,11 @@ public sealed class D3D12PresentationContext :
     private readonly ID3D12GraphicsCommandList _commandList;
     private readonly ID3D12RootSignature _rootSignature;
     private readonly ID3D12PipelineState _pipelineState;
+    private readonly ID3D12PipelineState _alphaBlendPipelineState;
+    private readonly ID3D12PipelineState _depthReadPipelineState;
+    private readonly ID3D12PipelineState _alphaBlendDepthReadPipelineState;
+    private readonly ID3D12PipelineState _depthDisabledPipelineState;
+    private readonly ID3D12PipelineState _alphaBlendDepthDisabledPipelineState;
     private readonly D3D12RuntimeGeometryBuffer _geometryBuffer;
     private readonly ID3D12Fence _fence;
     private readonly int _width;
@@ -72,6 +77,11 @@ public sealed class D3D12PresentationContext :
         ID3D12GraphicsCommandList commandList,
         ID3D12RootSignature rootSignature,
         ID3D12PipelineState pipelineState,
+        ID3D12PipelineState alphaBlendPipelineState,
+        ID3D12PipelineState depthReadPipelineState,
+        ID3D12PipelineState alphaBlendDepthReadPipelineState,
+        ID3D12PipelineState depthDisabledPipelineState,
+        ID3D12PipelineState alphaBlendDepthDisabledPipelineState,
         D3D12RuntimeGeometryBuffer geometryBuffer,
         ID3D12Fence fence,
         int width,
@@ -99,6 +109,16 @@ public sealed class D3D12PresentationContext :
             rootSignature;
         _pipelineState =
             pipelineState;
+        _alphaBlendPipelineState =
+            alphaBlendPipelineState;
+        _depthReadPipelineState =
+            depthReadPipelineState;
+        _alphaBlendDepthReadPipelineState =
+            alphaBlendDepthReadPipelineState;
+        _depthDisabledPipelineState =
+            depthDisabledPipelineState;
+        _alphaBlendDepthDisabledPipelineState =
+            alphaBlendDepthDisabledPipelineState;
         _geometryBuffer =
             geometryBuffer;
         _fence =
@@ -419,54 +439,85 @@ public sealed class D3D12PresentationContext :
                     pixelResult.GetErrors());
             }
 
-            var pipelineStateDescription =
-                new GraphicsPipelineStateDescription
-                {
-                    RootSignature =
-                        rootSignature,
-                    VertexShader =
-                        vertexResult.GetObjectBytecodeMemory(),
-                    PixelShader =
-                        pixelResult.GetObjectBytecodeMemory(),
-                    InputLayout =
-                        new InputLayoutDescription(
+            ID3D12PipelineState CreatePipelineState(
+                BlendDescription blendState,
+                DepthStencilDescription depthStencilState)
+            {
+                return device.CreateGraphicsPipelineState(
+                    new GraphicsPipelineStateDescription
+                    {
+                        RootSignature =
+                            rootSignature,
+                        VertexShader =
+                            vertexResult.GetObjectBytecodeMemory(),
+                        PixelShader =
+                            pixelResult.GetObjectBytecodeMemory(),
+                        InputLayout =
+                            new InputLayoutDescription(
+                                [
+                                    new InputElementDescription(
+                                        "POSITION",
+                                        0,
+                                        Format.R32G32B32_Float,
+                                        0,
+                                        0),
+                                    new InputElementDescription(
+                                        "COLOR",
+                                        0,
+                                        Format.R32G32B32A32_Float,
+                                        12,
+                                        0)
+                                ]),
+                        SampleMask =
+                            uint.MaxValue,
+                        PrimitiveTopologyType =
+                            PrimitiveTopologyType.Triangle,
+                        RasterizerState =
+                            RasterizerDescription.CullNone,
+                        BlendState =
+                            blendState,
+                        DepthStencilState =
+                            depthStencilState,
+                        RenderTargetFormats =
                             [
-                                new InputElementDescription(
-                                    "POSITION",
-                                    0,
-                                    Format.R32G32B32_Float,
-                                    0,
-                                    0),
-                                new InputElementDescription(
-                                    "COLOR",
-                                    0,
-                                    Format.R32G32B32A32_Float,
-                                    12,
-                                    0)
-                            ]),
-                    SampleMask =
-                        uint.MaxValue,
-                    PrimitiveTopologyType =
-                        PrimitiveTopologyType.Triangle,
-                    RasterizerState =
-                        RasterizerDescription.CullNone,
-                    BlendState =
-                        BlendDescription.Opaque,
-                    DepthStencilState =
-                        DepthStencilDescription.Default,
-                    RenderTargetFormats =
-                        [
-                            Format.R8G8B8A8_UNorm
-                        ],
-                    DepthStencilFormat =
-                        Format.D32_Float,
-                    SampleDescription =
-                        SampleDescription.Default
-                };
+                                Format.R8G8B8A8_UNorm
+                            ],
+                        DepthStencilFormat =
+                            Format.D32_Float,
+                        SampleDescription =
+                            SampleDescription.Default
+                    });
+            }
 
             var pipelineState =
-                device.CreateGraphicsPipelineState(
-                    pipelineStateDescription);
+                CreatePipelineState(
+                    BlendDescription.Opaque,
+                    DepthStencilDescription.Default);
+
+            var alphaBlendPipelineState =
+                CreatePipelineState(
+                    BlendDescription.NonPremultiplied,
+                    DepthStencilDescription.Read);
+
+            var depthReadPipelineState =
+                CreatePipelineState(
+                    BlendDescription.Opaque,
+                    DepthStencilDescription.Read);
+
+            var alphaBlendDepthReadPipelineState =
+                CreatePipelineState(
+                    BlendDescription.NonPremultiplied,
+                    DepthStencilDescription.Read);
+
+            var depthDisabledPipelineState =
+                CreatePipelineState(
+                    BlendDescription.Opaque,
+                    DepthStencilDescription.None);
+
+            var alphaBlendDepthDisabledPipelineState =
+                CreatePipelineState(
+                    BlendDescription.NonPremultiplied,
+                    DepthStencilDescription.None);
 
             ReadOnlySpan<RuntimeTerrainVertex> vertices =
             [
@@ -543,6 +594,11 @@ public sealed class D3D12PresentationContext :
                     commandList,
                     rootSignature,
                     pipelineState,
+                    alphaBlendPipelineState,
+                    depthReadPipelineState,
+                    alphaBlendDepthReadPipelineState,
+                    depthDisabledPipelineState,
+                    alphaBlendDepthDisabledPipelineState,
                     geometryBuffer,
                     fence,
                     width,
@@ -1100,6 +1156,11 @@ public sealed class D3D12PresentationContext :
 
         _commandList.Dispose();
         _geometryBuffer.Dispose();
+        _alphaBlendDepthDisabledPipelineState.Dispose();
+        _depthDisabledPipelineState.Dispose();
+        _alphaBlendDepthReadPipelineState.Dispose();
+        _depthReadPipelineState.Dispose();
+        _alphaBlendPipelineState.Dispose();
         _pipelineState.Dispose();
         _rootSignature.Dispose();
         _depthStencil.Dispose();
