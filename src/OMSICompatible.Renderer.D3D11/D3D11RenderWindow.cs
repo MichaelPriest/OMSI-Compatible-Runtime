@@ -2202,7 +2202,8 @@ public sealed class D3D11RenderWindow : Form
 
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
-                _device);
+                _device,
+                _deviceContext);
 
         var regularPaths =
             new HashSet<string>(
@@ -3060,7 +3061,8 @@ public sealed class D3D11RenderWindow : Form
 
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
-                _device);
+                _device,
+                _deviceContext);
 
         var skyPath =
             Path.Combine(
@@ -3688,7 +3690,8 @@ public sealed class D3D11RenderWindow : Form
 
         _objectTextureLoader =
             new RuntimeGpuTextureLoader(
-                _device);
+                _device,
+                _deviceContext);
 
         foreach (var texturePath in
             _objectGeometry.Batches
@@ -4190,7 +4193,8 @@ public sealed class D3D11RenderWindow : Form
 
         _objectTextureLoader ??=
             new RuntimeGpuTextureLoader(
-                _device);
+                _device,
+                _deviceContext);
 
         _vehicleTextTextureRenderer ??=
             new RuntimeOmsiTextTextureRenderer(
