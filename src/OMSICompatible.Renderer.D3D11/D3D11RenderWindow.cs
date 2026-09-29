@@ -8250,6 +8250,16 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
+        _deviceContext.OMSetBlendState(
+            null);
+        _deviceContext.OMSetDepthStencilState(
+            null);
+
+        ID3D11BlendState? activeVehicleBlendState =
+            null;
+        ID3D11DepthStencilState? activeVehicleDepthState =
+            null;
+
         foreach (var draw in
                  _vehicleDrawItems)
         {
@@ -8357,19 +8367,41 @@ public sealed class D3D11RenderWindow : Form
                 materialConstants,
                 MapMode.WriteDiscard);
 
-            _deviceContext.OMSetBlendState(
+            var desiredBlendState =
                 materialState.AlphaBlend
                     ? _vehicleAlphaBlendState
-                    : null);
+                    : null;
 
-            _deviceContext.OMSetDepthStencilState(
+            if (!ReferenceEquals(
+                    activeVehicleBlendState,
+                    desiredBlendState))
+            {
+                _deviceContext.OMSetBlendState(
+                    desiredBlendState);
+
+                activeVehicleBlendState =
+                    desiredBlendState;
+            }
+
+            var desiredDepthState =
                 materialState.AlphaBlend
                     ? _vehicleDepthReadState
                     : materialState.NoZCheck
                         ? _vehicleDepthDisabledState
                         : materialState.NoZWrite
                             ? _vehicleDepthReadState
-                            : null);
+                            : null;
+
+            if (!ReferenceEquals(
+                    activeVehicleDepthState,
+                    desiredDepthState))
+            {
+                _deviceContext.OMSetDepthStencilState(
+                    desiredDepthState);
+
+                activeVehicleDepthState =
+                    desiredDepthState;
+            }
 
             _deviceContext.PSUnsetShaderResource(
                 0);
