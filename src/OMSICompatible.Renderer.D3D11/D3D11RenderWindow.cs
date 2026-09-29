@@ -639,6 +639,10 @@ public sealed class D3D11RenderWindow : Form
         _trafficVehicleRenderBatches =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TrafficVehicleRenderBatchSummary>
+        _trafficVehicleRenderBatchSummaries =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, RuntimeObjectMeshInfo[]>
         _trafficVehicleLightMeshes =
             new(
@@ -654,6 +658,10 @@ public sealed class D3D11RenderWindow : Form
     private readonly record struct TrafficVehicleDrawItem(
         RuntimeTrafficAgentInfo Agent,
         Matrix4x4 VehicleWorld);
+
+    private readonly record struct TrafficVehicleRenderBatchSummary(
+        bool HasStaticOpaque,
+        bool HasAnimatedOpaque);
 
     private readonly uint _reflectionTextureSize;
     private readonly string _reflectionMode;
@@ -7335,19 +7343,57 @@ public sealed class D3D11RenderWindow : Form
                     renderBatches;
             }
 
+            if (!_trafficVehicleRenderBatchSummaries.TryGetValue(
+                    pair.Key,
+                    out var batchSummary))
+            {
+                var hasStaticOpaque =
+                    false;
+                var hasAnimatedOpaque =
+                    false;
+
+                foreach (var batch in
+                         renderBatches)
+                {
+                    if (batch.AlphaBlend)
+                    {
+                        continue;
+                    }
+
+                    if (batch.Animations is
+                        { Count: > 0 })
+                    {
+                        hasAnimatedOpaque =
+                            true;
+                    }
+                    else
+                    {
+                        hasStaticOpaque =
+                            true;
+                    }
+
+                    if (hasStaticOpaque &&
+                        hasAnimatedOpaque)
+                    {
+                        break;
+                    }
+                }
+
+                batchSummary =
+                    new TrafficVehicleRenderBatchSummary(
+                        hasStaticOpaque,
+                        hasAnimatedOpaque);
+
+                _trafficVehicleRenderBatchSummaries[
+                    pair.Key] =
+                    batchSummary;
+            }
+
             var hasStaticOpaqueBatches =
-                renderBatches.Any(
-                    static batch =>
-                        !batch.AlphaBlend &&
-                        batch.Animations is not
-                            { Count: > 0 });
+                batchSummary.HasStaticOpaque;
 
             var hasAnimatedOpaqueBatches =
-                renderBatches.Any(
-                    static batch =>
-                        !batch.AlphaBlend &&
-                        batch.Animations is
-                            { Count: > 0 });
+                batchSummary.HasAnimatedOpaque;
 
             var canInstance =
                 pair.Value.Count >
@@ -21008,6 +21054,7 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleVertexBuffers.Clear();
             _trafficVehicleGeometries.Clear();
             _trafficVehicleRenderBatches.Clear();
+            _trafficVehicleRenderBatchSummaries.Clear();
             _trafficVehicleLightMeshes.Clear();
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
