@@ -6467,11 +6467,15 @@ public sealed class D3D11RenderWindow : Form
                     clip.W);
 
             var viewportPixels =
-                Math.Max(
-                    1,
-                    Math.Min(
-                        ClientSize.Width,
-                        ClientSize.Height));
+                _viewProjectionOverride.HasValue
+                    ? (int)Math.Max(
+                        _reflectionTextureSize,
+                        1u)
+                    : Math.Max(
+                        1,
+                        Math.Min(
+                            ClientSize.Width,
+                            ClientSize.Height));
 
             var projectedDiameterPixels =
                 projectedRadiusNdc *
