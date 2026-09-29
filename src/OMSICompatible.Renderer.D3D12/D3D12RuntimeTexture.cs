@@ -23,6 +23,9 @@ public sealed class D3D12RuntimeTexture :
     public ID3D12DescriptorHeap DescriptorHeap =>
         _descriptorHeap;
 
+    public CpuDescriptorHandle CpuHandle =>
+        _descriptorHeap.GetCPUDescriptorHandleForHeapStart();
+
     public GpuDescriptorHandle GpuHandle =>
         _descriptorHeap.GetGPUDescriptorHandleForHeapStart();
 
