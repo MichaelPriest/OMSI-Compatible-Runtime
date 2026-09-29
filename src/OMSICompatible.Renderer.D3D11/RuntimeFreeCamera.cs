@@ -1,4 +1,5 @@
 using System.Numerics;
+using OMSICompatible.Renderer.Common;
 
 namespace OMSICompatible.Renderer.D3D11;
 
