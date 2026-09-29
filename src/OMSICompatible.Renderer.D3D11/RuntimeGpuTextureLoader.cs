@@ -99,14 +99,21 @@ internal sealed class RuntimeGpuTextureLoader
         64L * 1024L * 1024L;
 
     private readonly ID3D11Device _device;
+    private readonly ID3D11DeviceContext _deviceContext;
 
     public RuntimeGpuTextureLoader(
-        ID3D11Device device)
+        ID3D11Device device,
+        ID3D11DeviceContext deviceContext)
     {
         _device =
             device ??
             throw new ArgumentNullException(
                 nameof(device));
+
+        _deviceContext =
+            deviceContext ??
+            throw new ArgumentNullException(
+                nameof(deviceContext));
     }
 
     public static int WarmFileCache(
@@ -2266,30 +2273,58 @@ internal sealed class RuntimeGpuTextureLoader
         int height)
     {
         var texture =
-            _device
-                .CreateTexture2D(
-                    pixels,
-                    Format
-                        .R8G8B8A8_UNorm,
-                    (uint)width,
-                    (uint)height,
-                    mipLevels: 1,
-                    bindFlags:
-                        BindFlags
-                            .ShaderResource);
+            _device.CreateTexture2D(
+                Format.R8G8B8A8_UNorm,
+                (uint)width,
+                (uint)height,
+                mipLevels:
+                    0,
+                bindFlags:
+                    BindFlags.ShaderResource |
+                    BindFlags.RenderTarget,
+                miscFlags:
+                    ResourceOptionFlags.GenerateMips);
+
+        _deviceContext.UpdateSubresource(
+            pixels,
+            texture,
+            subresource:
+                0,
+            rowPitch:
+                checked(
+                    (uint)width *
+                    4u),
+            depthPitch:
+                checked(
+                    (uint)width *
+                    (uint)height *
+                    4u));
 
         var view =
-            _device
-                .CreateShaderResourceView(
-                    texture);
+            _device.CreateShaderResourceView(
+                texture);
+
+        _deviceContext.GenerateMips(
+            view);
+
+        var baseBytes =
+            checked(
+                (long)width *
+                height *
+                4L);
+
+        // Full mip chains converge to ~4/3 of the base level for
+        // two-dimensional textures.
+        var approximateBytes =
+            checked(
+                baseBytes +
+                baseBytes /
+                    3L);
 
         return new RuntimeGpuTexture(
             texture,
             view,
-            checked(
-                (long)width *
-                height *
-                4L));
+            approximateBytes);
     }
 
 
