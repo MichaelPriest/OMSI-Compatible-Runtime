@@ -88,6 +88,13 @@ public sealed class D3D11RenderWindow : Form
         Vector3 Pivot,
         Vector3 Axis);
 
+    private readonly record struct TrafficVehicleAnimationPhysics(
+        double? WheelBaseMeters,
+        double? TrackWidthMeters,
+        double? MaximumSteeringRadians,
+        double? AverageWheelRadiusMeters,
+        double[] WheelRadiiMeters);
+
     private sealed record PreparedTrafficVehicleGeometry(
         string Path,
         RuntimeObjectGeometry Geometry);
@@ -679,6 +686,12 @@ public sealed class D3D11RenderWindow : Form
         RuntimeObjectBatch,
         CompiledTrafficAnimation[]>
         _compiledTrafficAnimations =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeVehicleInfo,
+        TrafficVehicleAnimationPhysics>
+        _trafficVehicleAnimationPhysics =
             new(
                 ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, RuntimeObjectMeshInfo[]>
@@ -10055,10 +10068,14 @@ public sealed class D3D11RenderWindow : Form
         foreach (var compiled in
                  compiledAnimations)
         {
+            var animationPhysics =
+                GetTrafficVehicleAnimationPhysics(
+                    vehicleInfo);
+
             if (!TryResolveTrafficVehicleAnimationValue(
                     compiled.Binding,
                     agent,
-                    vehicleInfo,
+                    animationPhysics,
                     out var variableValue))
             {
                 continue;
@@ -10114,7 +10131,7 @@ public sealed class D3D11RenderWindow : Form
     private static bool TryResolveTrafficVehicleAnimationValue(
         TrafficAnimationBinding binding,
         RuntimeTrafficAgentInfo agent,
-        RuntimeVehicleInfo vehicleInfo,
+        TrafficVehicleAnimationPhysics physics,
         out double value)
     {
         return binding.Kind switch
@@ -10123,13 +10140,13 @@ public sealed class D3D11RenderWindow : Form
                 TryResolveTrafficSteeringAnimationValue(
                     binding,
                     agent,
-                    vehicleInfo,
+                    physics,
                     out value),
             TrafficAnimationBindingKind.WheelRotation =>
                 TryResolveTrafficWheelRotationAnimationValue(
                     binding,
                     agent,
-                    vehicleInfo,
+                    physics,
                     out value),
             _ =>
                 FailTrafficAnimationValue(
@@ -10234,31 +10251,15 @@ public sealed class D3D11RenderWindow : Form
             isLeft);
     }
 
-    private static bool FailTrafficAnimationValue(
-        out double value)
+    private TrafficVehicleAnimationPhysics
+        GetTrafficVehicleAnimationPhysics(
+            RuntimeVehicleInfo vehicleInfo)
     {
-        value =
-            0.0;
-
-        return false;
-    }
-
-    private static bool TryResolveTrafficSteeringAnimationValue(
-        TrafficAnimationBinding binding,
-        RuntimeTrafficAgentInfo agent,
-        RuntimeVehicleInfo vehicleInfo,
-        out double value)
-    {
-        value =
-            0.0;
-
-        var curvature =
-            agent.PathCurvaturePerMeter;
-
-        if (!double.IsFinite(
-                curvature))
+        if (_trafficVehicleAnimationPhysics.TryGetValue(
+                vehicleInfo,
+                out var cached))
         {
-            return false;
+            return cached;
         }
 
         var wheelBase =
@@ -10279,6 +10280,170 @@ public sealed class D3D11RenderWindow : Form
                     vehicleInfo.Physics.FrontAxleLongitudinalMeters.Value -
                     vehicleInfo.Physics.RearAxleLongitudinalMeters.Value);
         }
+
+        if (wheelBase.HasValue &&
+            (!double.IsFinite(
+                 wheelBase.Value) ||
+             wheelBase.Value <=
+                 0.0))
+        {
+            wheelBase =
+                null;
+        }
+
+        var trackWidth =
+            vehicleInfo
+                .Physics
+                .TrackWidthMeters;
+
+        if ((!trackWidth.HasValue ||
+             !double.IsFinite(
+                 trackWidth.Value) ||
+             trackWidth.Value <=
+                 0.0) &&
+            vehicleInfo.Physics.Axles is
+                { Count: > 0 })
+        {
+            trackWidth =
+                vehicleInfo
+                    .Physics
+                    .Axles[0]
+                    .MaximumWidthMeters;
+        }
+
+        if (trackWidth.HasValue &&
+            (!double.IsFinite(
+                 trackWidth.Value) ||
+             trackWidth.Value <=
+                 0.0))
+        {
+            trackWidth =
+                null;
+        }
+
+        double? maximumSteeringRadians =
+            null;
+
+        var maximumSteeringDegrees =
+            vehicleInfo
+                .Physics
+                .MaximumSteeringAngleDegrees;
+
+        if (maximumSteeringDegrees.HasValue &&
+            double.IsFinite(
+                maximumSteeringDegrees.Value) &&
+            maximumSteeringDegrees.Value >
+                0.0)
+        {
+            maximumSteeringRadians =
+                DegreesToRadians(
+                    maximumSteeringDegrees.Value);
+        }
+
+        var axleCount =
+            vehicleInfo.Physics.Axles?
+                .Count ??
+            0;
+
+        var wheelRadii =
+            new double[
+                axleCount];
+
+        for (var index = 0;
+             index < axleCount;
+             index++)
+        {
+            var diameter =
+                vehicleInfo
+                    .Physics
+                    .Axles![
+                        index]
+                    .WheelDiameterMeters;
+
+            if (!diameter.HasValue ||
+                !double.IsFinite(
+                    diameter.Value) ||
+                diameter.Value <=
+                    0.0)
+            {
+                continue;
+            }
+
+            wheelRadii[
+                index] =
+                Math.Clamp(
+                    diameter.Value *
+                        0.5,
+                    0.05,
+                    2.0);
+        }
+
+        double? averageWheelRadius =
+            null;
+
+        var averageDiameter =
+            vehicleInfo
+                .Physics
+                .AverageWheelDiameterMeters;
+
+        if (averageDiameter.HasValue &&
+            double.IsFinite(
+                averageDiameter.Value) &&
+            averageDiameter.Value >
+                0.0)
+        {
+            averageWheelRadius =
+                Math.Clamp(
+                    averageDiameter.Value *
+                        0.5,
+                    0.05,
+                    2.0);
+        }
+
+        var result =
+            new TrafficVehicleAnimationPhysics(
+                wheelBase,
+                trackWidth,
+                maximumSteeringRadians,
+                averageWheelRadius,
+                wheelRadii);
+
+        _trafficVehicleAnimationPhysics[
+            vehicleInfo] =
+            result;
+
+        return result;
+    }
+
+    private static bool FailTrafficAnimationValue(
+        out double value)
+    {
+        value =
+            0.0;
+
+        return false;
+    }
+
+    private static bool TryResolveTrafficSteeringAnimationValue(
+        TrafficAnimationBinding binding,
+        RuntimeTrafficAgentInfo agent,
+        TrafficVehicleAnimationPhysics physics,
+        out double value)
+    {
+        value =
+            0.0;
+
+        var curvature =
+            agent.PathCurvaturePerMeter;
+
+        if (!double.IsFinite(
+                curvature))
+        {
+            return false;
+        }
+
+        var wheelBase =
+            physics.WheelBaseMeters;
 
         if (!wheelBase.HasValue ||
             !double.IsFinite(
@@ -10311,25 +10476,8 @@ public sealed class D3D11RenderWindow : Form
                 wheelBase.Value *
                 absoluteCurvature);
 
-        double? trackWidth =
-            vehicleInfo
-                .Physics
-                .TrackWidthMeters;
-
-        if ((!trackWidth.HasValue ||
-             !double.IsFinite(
-                 trackWidth.Value) ||
-             trackWidth.Value <=
-                 0.0) &&
-            vehicleInfo.Physics.Axles is
-                { Count: > 0 })
-        {
-            trackWidth =
-                vehicleInfo
-                    .Physics
-                    .Axles[0]
-                    .MaximumWidthMeters;
-        }
+        var trackWidth =
+            physics.TrackWidthMeters;
 
         var steering =
             centerSteering;
@@ -10383,26 +10531,16 @@ public sealed class D3D11RenderWindow : Form
         steering *=
             direction;
 
-        var maximumSteeringDegrees =
-            vehicleInfo
-                .Physics
-                .MaximumSteeringAngleDegrees;
+        var maximumSteeringRadians =
+            physics.MaximumSteeringRadians;
 
-        if (maximumSteeringDegrees.HasValue &&
-            double.IsFinite(
-                maximumSteeringDegrees.Value) &&
-            maximumSteeringDegrees.Value >
-                0.0)
+        if (maximumSteeringRadians.HasValue)
         {
-            var maximumSteeringRadians =
-                DegreesToRadians(
-                    maximumSteeringDegrees.Value);
-
             steering =
                 Math.Clamp(
                     steering,
-                    -maximumSteeringRadians,
-                    maximumSteeringRadians);
+                    -maximumSteeringRadians.Value,
+                    maximumSteeringRadians.Value);
         }
 
         value =
@@ -10414,54 +10552,47 @@ public sealed class D3D11RenderWindow : Form
     private static bool TryResolveTrafficWheelRotationAnimationValue(
         TrafficAnimationBinding binding,
         RuntimeTrafficAgentInfo agent,
-        RuntimeVehicleInfo vehicleInfo,
+        TrafficVehicleAnimationPhysics physics,
         out double value)
     {
         value =
             0.0;
 
-        double? diameter =
+        double? radius =
             null;
 
-        if (vehicleInfo.Physics.Axles is
-                { Count: > 0 } &&
-            binding.AxleIndex >=
+        if (binding.AxleIndex >=
                 0 &&
             binding.AxleIndex <
-                vehicleInfo.Physics.Axles.Count)
+                physics.WheelRadiiMeters.Length)
         {
-            diameter =
-                vehicleInfo
-                    .Physics
-                    .Axles[
-                        binding.AxleIndex]
-                    .WheelDiameterMeters;
+            var candidate =
+                physics.WheelRadiiMeters[
+                    binding.AxleIndex];
+
+            if (candidate >
+                0.0)
+            {
+                radius =
+                    candidate;
+            }
         }
 
-        diameter ??=
-            vehicleInfo
-                .Physics
-                .AverageWheelDiameterMeters;
+        radius ??=
+            physics.AverageWheelRadiusMeters;
 
-        if (!diameter.HasValue ||
+        if (!radius.HasValue ||
             !double.IsFinite(
-                diameter.Value) ||
-            diameter.Value <=
+                radius.Value) ||
+            radius.Value <=
                 0.0)
         {
             return false;
         }
 
-        var radius =
-            Math.Clamp(
-                diameter.Value *
-                    0.5,
-                0.05,
-                2.0);
-
         value =
             agent.TraveledDistanceMeters /
-            radius;
+            radius.Value;
 
         if (!double.IsFinite(
                 value))
@@ -21195,6 +21326,7 @@ public sealed class D3D11RenderWindow : Form
             _trafficVehicleRenderBatchSummaries.Clear();
             _trafficAnimationBindings.Clear();
             _compiledTrafficAnimations.Clear();
+            _trafficVehicleAnimationPhysics.Clear();
             _trafficVehicleLightMeshes.Clear();
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
