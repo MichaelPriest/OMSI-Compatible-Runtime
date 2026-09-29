@@ -227,19 +227,36 @@ public static class RuntimeRgbaTextureDecoder
                    Cache.Count >
                        1)
             {
-                var oldest =
-                    Cache
-                        .OrderBy(
-                            static pair =>
-                                pair.Value
-                                    .LastUsedGeneration)
-                        .First();
+                string? oldestKey =
+                    null;
+                CachedTexture? oldestValue =
+                    null;
+
+                foreach (var pair in
+                         Cache)
+                {
+                    if (oldestValue is null ||
+                        pair.Value.LastUsedGeneration <
+                            oldestValue.LastUsedGeneration)
+                    {
+                        oldestKey =
+                            pair.Key;
+                        oldestValue =
+                            pair.Value;
+                    }
+                }
+
+                if (oldestKey is null ||
+                    oldestValue is null)
+                {
+                    break;
+                }
 
                 _cacheBytes -=
-                    oldest.Value.Texture.Pixels.LongLength;
+                    oldestValue.Texture.Pixels.LongLength;
 
                 Cache.Remove(
-                    oldest.Key);
+                    oldestKey);
             }
         }
 
