@@ -6939,10 +6939,10 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.RSSetState(
             _terrainRasterizerState);
 
-        // Opaque/cutout geometry is safe to batch by material. This keeps
-        // vehicle-model transforms per draw, but avoids repeating identical
-        // material buffer writes, texture lookups and pipeline state binds for
-        // every AI vehicle using the same model.
+        // Opaque/cutout geometry is safe to batch by material. Static AI
+        // batches also use a per-instance world matrix stream, collapsing N
+        // vehicles of the same model into one DrawInstanced call per batch.
+        // Animated wheel/steering batches stay on the original per-agent path.
         foreach (var pair in
                  _trafficVisibleDrawItemsByVehiclePath)
         {
@@ -6973,6 +6973,63 @@ public sealed class D3D11RenderWindow : Form
                     renderBatches;
             }
 
+            var canUseInstancing =
+                pair.Value.Count >
+                    1 &&
+                _trafficInstancedVertexShader is not null &&
+                _trafficInstancedInputLayout is not null &&
+                TryUploadTrafficInstances(
+                    pair.Value) &&
+                _trafficInstanceBuffer is not null;
+
+            if (canUseInstancing)
+            {
+                _deviceContext.IASetInputLayout(
+                    _trafficInstancedInputLayout);
+
+                _deviceContext.VSSetShader(
+                    _trafficInstancedVertexShader);
+
+                _deviceContext.IASetVertexBuffer(
+                    0,
+                    vertexBuffer,
+                    RuntimeObjectVertex.SizeInBytes);
+
+                _deviceContext.IASetVertexBuffer(
+                    1,
+                    _trafficInstanceBuffer!,
+                    RuntimeTrafficInstanceData.SizeInBytes);
+
+                foreach (var batch in
+                         renderBatches)
+                {
+                    if (batch.AlphaBlend ||
+                        batch.Animations is
+                            { Count: > 0 } ||
+                        !TryPrepareTrafficVehicleBatch(
+                            batch,
+                            materialConstants))
+                    {
+                        continue;
+                    }
+
+                    _deviceContext.DrawInstanced(
+                        batch.VertexCount,
+                        (uint)pair.Value.Count,
+                        batch.StartVertex,
+                        0);
+                }
+            }
+
+            // Restore the normal vehicle input path for animated opaque
+            // batches. If there is only one visible vehicle, every opaque
+            // batch naturally uses this path and avoids instance-buffer work.
+            _deviceContext.IASetInputLayout(
+                _vehicleInputLayout);
+
+            _deviceContext.VSSetShader(
+                _vehicleVertexShader);
+
             _deviceContext.IASetVertexBuffer(
                 0,
                 vertexBuffer,
@@ -6982,6 +7039,9 @@ public sealed class D3D11RenderWindow : Form
                      renderBatches)
             {
                 if (batch.AlphaBlend ||
+                    (canUseInstancing &&
+                     batch.Animations is not
+                         { Count: > 0 }) ||
                     !TryPrepareTrafficVehicleBatch(
                         batch,
                         materialConstants))
@@ -7014,6 +7074,12 @@ public sealed class D3D11RenderWindow : Form
                 }
             }
         }
+
+        _deviceContext.IASetInputLayout(
+            _vehicleInputLayout);
+
+        _deviceContext.VSSetShader(
+            _vehicleVertexShader);
 
         // Keep blended meshes agent-major so windows and other transparent
         // layers retain their existing relative draw order. They run after
