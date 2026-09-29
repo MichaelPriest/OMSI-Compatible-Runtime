@@ -4053,6 +4053,12 @@ public sealed class D3D11RenderWindow : Form
                 "VSMain",
                 "vs_4_0");
 
+        ReadOnlyMemory<byte> instancedVertexShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "VSMainInstanced",
+                "vs_4_0");
+
         ReadOnlyMemory<byte> colorPixelShaderByteCode =
             Compiler.CompileFromFile(
                 shaderFile,
