@@ -2650,27 +2650,18 @@ public sealed class WorldTrafficSimulation
         TrafficSignalGroupState group,
         int signalIndex)
     {
-        var targetSegments =
-            group.Segments
-                .Where(
-                    segment =>
-                        segment.TrafficSignal?.SignalIndex ==
-                            signalIndex)
-                .ToArray();
-
-        if (targetSegments.Length ==
-            0)
-        {
-            return false;
-        }
-
         foreach (var target in
-                 targetSegments)
+                 group.Segments)
         {
+            if (target.TrafficSignal?.SignalIndex !=
+                signalIndex)
+            {
+                continue;
+            }
+
             var approachDistance =
                 Math.Max(
-                    target.TrafficSignal?.ApproachDistanceMeters ??
-                        0.0,
+                    target.TrafficSignal.ApproachDistanceMeters,
                     0.0);
 
             foreach (var agent in
