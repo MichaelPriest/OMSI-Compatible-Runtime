@@ -3938,6 +3938,113 @@ try
             secondRoadPath.Index,
         "Forward road path did not connect across linked OMSI splines.");
 
+    var syntheticLineTrack =
+        new OmsiTimetableTrack(
+            "SyntheticLineTrack",
+            "synthetic.ttr",
+            [
+                new OmsiTimetableTrackEntry(
+                    firstRoadPath.SplineId,
+                    firstRoadPath.LocalPathIndex,
+                    0,
+                    25.0),
+                new OmsiTimetableTrackEntry(
+                    secondRoadPath.SplineId,
+                    secondRoadPath.LocalPathIndex,
+                    0,
+                    25.0)
+            ]);
+
+    var resolvedLineRoute =
+        WorldLineAiRouteResolver.Resolve(
+            syntheticLineTrack,
+            trafficPaths);
+
+    Require(
+        resolvedLineRoute.FullyResolved &&
+        resolvedLineRoute.SegmentIndices.Count ==
+            2 &&
+        resolvedLineRoute.SegmentIndices[0] ==
+            firstRoadPath.Index &&
+        resolvedLineRoute.SegmentIndices[1] ==
+            secondRoadPath.Index,
+        "LineAI did not resolve ordered OMSI TTR entries to the exact connected road segments.");
+
+    var ambiguousLineNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    100,
+                    9900,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    101,
+                    9900,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            20.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            20.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>())
+            ],
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0);
+
+    var ambiguousLineRoute =
+        WorldLineAiRouteResolver.Resolve(
+            new OmsiTimetableTrack(
+                "Ambiguous",
+                "ambiguous.ttr",
+                [
+                    new OmsiTimetableTrackEntry(
+                        9900,
+                        0,
+                        0,
+                        10.0)
+                ]),
+            ambiguousLineNetwork);
+
+    Require(
+        !ambiguousLineRoute.FullyResolved &&
+        ambiguousLineRoute.UnresolvedEntryCount ==
+            1 &&
+        ambiguousLineRoute.AmbiguousEntryCount ==
+            1 &&
+        ambiguousLineRoute.SegmentIndices.Count ==
+            0,
+        "LineAI guessed an ambiguous OMSI timetable path instead of failing closed.");
+
     var signalControlledPath =
         trafficPaths.Segments.Single(
             static segment =>
