@@ -928,8 +928,18 @@ public sealed class D3D11RenderWindow : Form
     private FeatureLevel _featureLevel;
     private readonly bool _vsync;
     private readonly bool _showFps;
+    private readonly bool _profileEnabled;
     private readonly Label? _fpsLabel;
     private long _fpsFrameCount;
+    private double _profileWindowStartSeconds;
+    private long _profileFrameCount;
+    private long _profileFramesOver50Milliseconds;
+    private double _profileSimulationMilliseconds;
+    private double _profileTrafficMilliseconds;
+    private double _profileTextureUploadMilliseconds;
+    private double _profileRenderMilliseconds;
+    private double _profileMirrorMilliseconds;
+    private double _profileWorstFrameMilliseconds;
     private double _fpsSampleStartSeconds;
     private double _fpsPreviousFrameSeconds;
     private double _previousRenderTickSeconds;
@@ -1122,8 +1132,21 @@ public sealed class D3D11RenderWindow : Form
         _showFps =
             showFps &&
             !vehiclePreviewMode;
+        _profileEnabled =
+            string.Equals(
+                Environment.GetEnvironmentVariable(
+                    "OMSI_PROFILE"),
+                "1",
+                StringComparison.OrdinalIgnoreCase) ||
+            bool.TryParse(
+                Environment.GetEnvironmentVariable(
+                    "OMSI_PROFILE"),
+                out var profileEnabled) &&
+            profileEnabled;
         _fpsSampleStartSeconds =
             _frameClock.Elapsed.TotalSeconds;
+        _profileWindowStartSeconds =
+            _fpsSampleStartSeconds;
         _fpsPreviousFrameSeconds =
             _fpsSampleStartSeconds;
         _previousRenderTickSeconds =
@@ -5993,14 +6016,80 @@ public sealed class D3D11RenderWindow : Form
                 1000.0;
         }
 
+        var simulationStarted =
+            _profileEnabled
+                ? Stopwatch.GetTimestamp()
+                : 0L;
+
         if (!_simulationPaused)
         {
             UpdateSimulation();
             CheckStreamingCenter();
         }
 
+        if (_profileEnabled)
+        {
+            _profileSimulationMilliseconds +=
+                Stopwatch.GetElapsedTime(
+                        simulationStarted)
+                    .TotalMilliseconds;
+        }
+
+        var textureUploadStarted =
+            _profileEnabled
+                ? Stopwatch.GetTimestamp()
+                : 0L;
+
         ProcessStreamingTextureLoadQueue();
+
+        if (_profileEnabled)
+        {
+            _profileTextureUploadMilliseconds +=
+                Stopwatch.GetElapsedTime(
+                        textureUploadStarted)
+                    .TotalMilliseconds;
+        }
+
+        var renderStarted =
+            _profileEnabled
+                ? Stopwatch.GetTimestamp()
+                : 0L;
+
         RenderFrame();
+
+        if (_profileEnabled)
+        {
+            _profileRenderMilliseconds +=
+                Stopwatch.GetElapsedTime(
+                        renderStarted)
+                    .TotalMilliseconds;
+
+            _profileFrameCount++;
+
+            var observedMilliseconds =
+                tickDeltaSeconds >
+                        0.0 &&
+                    tickDeltaSeconds <
+                        1.0
+                    ? tickDeltaSeconds *
+                        1000.0
+                    : 0.0;
+
+            if (observedMilliseconds >
+                50.0)
+            {
+                _profileFramesOver50Milliseconds++;
+            }
+
+            _profileWorstFrameMilliseconds =
+                Math.Max(
+                    _profileWorstFrameMilliseconds,
+                    observedMilliseconds);
+
+            WriteProfileSnapshotIfNeeded(
+                tickNowSeconds);
+        }
+
         UpdateFpsOverlay();
 
         if (_omsiMenuBar?.Visible ==
@@ -6227,7 +6316,20 @@ public sealed class D3D11RenderWindow : Form
 
         if (_reflectionRenderingEnabled)
         {
+            var mirrorStarted =
+                _profileEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
+
             RenderReflectionTargets();
+
+            if (_profileEnabled)
+            {
+                _profileMirrorMilliseconds +=
+                    Stopwatch.GetElapsedTime(
+                            mirrorStarted)
+                        .TotalMilliseconds;
+            }
         }
 
         _deviceContext.ClearRenderTargetView(
@@ -13292,10 +13394,23 @@ public sealed class D3D11RenderWindow : Form
                 _trafficStepAccumulatedSeconds =
                     0.0;
 
+                var trafficStarted =
+                    _profileEnabled
+                        ? Stopwatch.GetTimestamp()
+                        : 0L;
+
                 _trafficAgents =
                     _trafficStep(
                         trafficDeltaSeconds) ??
                     Array.Empty<RuntimeTrafficAgentInfo>();
+
+                if (_profileEnabled)
+                {
+                    _profileTrafficMilliseconds +=
+                        Stopwatch.GetElapsedTime(
+                                trafficStarted)
+                            .TotalMilliseconds;
+                }
 
                 _lastTrafficSimulationStepSeconds =
                     now;
@@ -22710,6 +22825,93 @@ public sealed class D3D11RenderWindow : Form
         _deviceContext.Draw(
             _tileVertexCount,
             0);
+    }
+
+    private void WriteProfileSnapshotIfNeeded(
+        double nowSeconds)
+    {
+        if (!_profileEnabled)
+        {
+            return;
+        }
+
+        var elapsedSeconds =
+            nowSeconds -
+            _profileWindowStartSeconds;
+
+        if (elapsedSeconds <
+            10.0)
+        {
+            return;
+        }
+
+        var frames =
+            Math.Max(
+                _profileFrameCount,
+                1L);
+
+        var averageSimulationMilliseconds =
+            _profileSimulationMilliseconds /
+            frames;
+
+        var averageTrafficMilliseconds =
+            _profileTrafficMilliseconds /
+            frames;
+
+        var averageTextureUploadMilliseconds =
+            _profileTextureUploadMilliseconds /
+            frames;
+
+        var averageMirrorMilliseconds =
+            _profileMirrorMilliseconds /
+            frames;
+
+        var averageMainRenderMilliseconds =
+            Math.Max(
+                0.0,
+                _profileRenderMilliseconds -
+                    _profileMirrorMilliseconds) /
+            frames;
+
+        long gpuTextureBytes =
+            0L;
+
+        foreach (var texture in
+                 _objectTextureCache.Values)
+        {
+            gpuTextureBytes +=
+                texture.ApproximateBytes;
+        }
+
+        var managedBytes =
+            GC.GetTotalMemory(
+                forceFullCollection:
+                    false);
+
+        Console.WriteLine(
+            $"[profile] frames={_profileFrameCount:N0}; over50ms={_profileFramesOver50Milliseconds:N0}; sim={averageSimulationMilliseconds:0.00}ms; traffic={averageTrafficMilliseconds:0.00}ms; texUpload={averageTextureUploadMilliseconds:0.00}ms; mirrors={averageMirrorMilliseconds:0.00}ms; renderMain={averageMainRenderMilliseconds:0.00}ms; worst={_profileWorstFrameMilliseconds:0.0}ms; agents={_trafficAgents.Count:N0}; sceneryBatches={_objectGeometry.Batches.Count:N0}; gpuTextures={gpuTextureBytes / (1024.0 * 1024.0):0.0}MB; managed={managedBytes / (1024.0 * 1024.0):0.0}MB");
+
+        Console.WriteLine(
+            $"[profile-textures] {RuntimeGpuTextureLoader.GetFileCacheDiagnostics()}");
+
+        _profileWindowStartSeconds =
+            nowSeconds;
+        _profileFrameCount =
+            0;
+        _profileFramesOver50Milliseconds =
+            0;
+        _profileSimulationMilliseconds =
+            0.0;
+        _profileTrafficMilliseconds =
+            0.0;
+        _profileTextureUploadMilliseconds =
+            0.0;
+        _profileRenderMilliseconds =
+            0.0;
+        _profileMirrorMilliseconds =
+            0.0;
+        _profileWorstFrameMilliseconds =
+            0.0;
     }
 
     private void UpdateFpsOverlay()
