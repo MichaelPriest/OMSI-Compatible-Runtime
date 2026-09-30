@@ -661,6 +661,9 @@ public sealed class D3D11RenderWindow : Form
     private int _trafficInstanceBufferCapacity;
     private RuntimeTrafficInstanceData[] _trafficInstanceScratch =
         Array.Empty<RuntimeTrafficInstanceData>();
+    private RuntimeTrafficInstanceData[] _trafficLastUploadedInstances =
+        Array.Empty<RuntimeTrafficInstanceData>();
+    private int _trafficLastUploadedInstanceCount;
     private ID3D11PixelShader? _vehicleColorPixelShader;
     private ID3D11PixelShader? _vehicleLightPixelShader;
     private ID3D11PixelShader? _vehicleTexturedPixelShader;
@@ -7557,6 +7560,9 @@ public sealed class D3D11RenderWindow : Form
                 };
         }
 
+        var bufferRecreated =
+            false;
+
         if (_trafficInstanceBuffer is null ||
             _trafficInstanceBufferCapacity <
                 requiredCount)
@@ -7587,15 +7593,62 @@ public sealed class D3D11RenderWindow : Form
 
             _trafficInstanceBufferCapacity =
                 capacity;
+            _trafficLastUploadedInstanceCount =
+                0;
+            bufferRecreated =
+                true;
+        }
+
+        var currentInstances =
+            _trafficInstanceScratch.AsSpan(
+                0,
+                requiredCount);
+
+        if (!bufferRecreated &&
+            _trafficLastUploadedInstanceCount ==
+                requiredCount &&
+            _trafficLastUploadedInstances.Length >=
+                requiredCount &&
+            MemoryMarshal.AsBytes(
+                    currentInstances)
+                .SequenceEqual(
+                    MemoryMarshal.AsBytes(
+                        _trafficLastUploadedInstances.AsSpan(
+                            0,
+                            requiredCount))))
+        {
+            return true;
         }
 
         _trafficInstanceBuffer.SetData(
             _deviceContext,
-            _trafficInstanceScratch
-                .AsSpan(
-                    0,
-                    requiredCount),
+            currentInstances,
             MapMode.WriteDiscard);
+
+        if (_trafficLastUploadedInstances.Length <
+            requiredCount)
+        {
+            var cacheCapacity =
+                Math.Max(
+                    64,
+                    _trafficLastUploadedInstances.Length);
+
+            while (cacheCapacity <
+                   requiredCount)
+            {
+                cacheCapacity *=
+                    2;
+            }
+
+            Array.Resize(
+                ref _trafficLastUploadedInstances,
+                cacheCapacity);
+        }
+
+        currentInstances.CopyTo(
+            _trafficLastUploadedInstances);
+        _trafficLastUploadedInstanceCount =
+            requiredCount;
 
         return true;
     }
