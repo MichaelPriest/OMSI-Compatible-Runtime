@@ -372,6 +372,11 @@ public sealed class D3D11RenderWindow : Form
         _resolvedVehicleDynamicTexturePaths =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<
+        int,
+        RuntimeVehicleTextTextureInfo?>
+        _vehicleTextTextureDefinitions =
+            [];
     private readonly HashSet<string> _reportedMissingTransMaps =
         new(
             StringComparer.OrdinalIgnoreCase);
@@ -12692,12 +12697,21 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
-        var definition =
-            _windowInfo.Vehicle.TextTextures
-                .FirstOrDefault(
-                    texture =>
-                        texture.Index ==
-                        textTextureIndex.Value);
+        if (!_vehicleTextTextureDefinitions.TryGetValue(
+                textTextureIndex.Value,
+                out var definition))
+        {
+            definition =
+                _windowInfo.Vehicle.TextTextures
+                    .FirstOrDefault(
+                        texture =>
+                            texture.Index ==
+                            textTextureIndex.Value);
+
+            _vehicleTextTextureDefinitions[
+                textTextureIndex.Value] =
+                definition;
+        }
 
         if (definition is null)
         {
@@ -23196,6 +23210,7 @@ public sealed class D3D11RenderWindow : Form
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
             _resolvedVehicleDynamicTexturePaths.Clear();
+            _vehicleTextTextureDefinitions.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
