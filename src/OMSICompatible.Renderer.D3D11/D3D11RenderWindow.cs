@@ -368,6 +368,10 @@ public sealed class D3D11RenderWindow : Form
     private readonly HashSet<string> _reportedMissingVehicleFonts =
         new(
             StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string>
+        _resolvedVehicleDynamicTexturePaths =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _reportedMissingTransMaps =
         new(
             StringComparer.OrdinalIgnoreCase);
@@ -12803,6 +12807,15 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
+        if (_resolvedVehicleDynamicTexturePaths.TryGetValue(
+                normalized,
+                out var cachedResolved))
+        {
+            resolved =
+                cachedResolved;
+            return true;
+        }
+
         string root;
 
         try
@@ -12903,6 +12916,10 @@ public sealed class D3D11RenderWindow : Form
                 {
                     continue;
                 }
+
+                _resolvedVehicleDynamicTexturePaths[
+                    normalized] =
+                    fullPath;
 
                 resolved =
                     fullPath;
@@ -23178,6 +23195,7 @@ public sealed class D3D11RenderWindow : Form
             _compiledTrafficVehicleLightEffects.Clear();
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
+            _resolvedVehicleDynamicTexturePaths.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
