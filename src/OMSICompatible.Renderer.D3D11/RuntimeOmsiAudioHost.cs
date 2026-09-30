@@ -1965,7 +1965,7 @@ internal sealed class RuntimeOmsiAudioHost :
 
         for (var index = 0;
              index + 1 <
-                 points.Length;
+                 points.Count;
              index++)
         {
             var left =
