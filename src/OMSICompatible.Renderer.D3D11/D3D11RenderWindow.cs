@@ -946,11 +946,22 @@ public sealed class D3D11RenderWindow : Form
 
     private readonly uint _reflectionTextureSize;
     private readonly string _reflectionMode;
-    private long _reflectionFrameIndex;
+    private ulong _reflectionTurn;
     private double _reflectionBudgetLastSeconds;
     private double _reflectionBudgetCredits;
     private const double ReflectionUpdatesPerSecondBudget =
         75.0;
+    private const double ReflectionMinimumUpdatesPerMirrorPerSecond =
+        8.0;
+    private const double ReflectionBudgetBurst =
+        2.5;
+    private const int MaximumReflectionUpdatesPerFrame =
+        2;
+    private const float ReflectionMinimumVisibilityRadiusMeters =
+        0.3f;
+    private readonly List<RuntimeReflectionTarget>
+        _visibleReflectionTargets =
+            [];
     private readonly Dictionary<string, RuntimeReflectionTarget>
         _reflectionTargets =
             new(
@@ -998,6 +1009,8 @@ public sealed class D3D11RenderWindow : Form
     private long _profileVehicleDrawCalls;
     private long _profileLightDrawCalls;
     private long _profileReflectionDrawCalls;
+    private long _profileReflectionUpdates;
+    private long _profileVisibleReflectionTargets;
     private double _profileWorstFrameMilliseconds;
     private double _fpsSampleStartSeconds;
     private double _fpsPreviousFrameSeconds;
@@ -6633,74 +6646,124 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        _reflectionFrameIndex++;
+        _visibleReflectionTargets.Clear();
+
+        foreach (var target in
+                 _reflectionTargets.Values)
+        {
+            if (ShouldRenderReflectionTarget(
+                    target))
+            {
+                _visibleReflectionTargets.Add(
+                    target);
+            }
+        }
+
+        if (_profileEnabled)
+        {
+            _profileVisibleReflectionTargets +=
+                _visibleReflectionTargets.Count;
+        }
+
+        if (_visibleReflectionTargets.Count == 0)
+        {
+            return;
+        }
+
+        var fullQuality =
+            _reflectionMode is
+                "full" or
+                "complete";
 
         var nowSeconds =
             _frameClock.Elapsed.TotalSeconds;
 
-        if (_reflectionBudgetLastSeconds <=
-            0.0)
+        if (!fullQuality)
         {
-            _reflectionBudgetLastSeconds =
-                nowSeconds;
-            _reflectionBudgetCredits =
+            var updatesPerSecond =
                 Math.Max(
-                    1.0,
+                    ReflectionUpdatesPerSecondBudget,
+                    _visibleReflectionTargets.Count *
+                    ReflectionMinimumUpdatesPerMirrorPerSecond);
+
+            if (_reflectionBudgetLastSeconds <=
+                0.0)
+            {
+                _reflectionBudgetLastSeconds =
+                    nowSeconds;
+                _reflectionBudgetCredits =
                     Math.Min(
-                        _reflectionTargets.Count,
-                        4));
-        }
-        else
-        {
-            var elapsedSeconds =
-                Math.Max(
-                    0.0,
-                    nowSeconds -
-                    _reflectionBudgetLastSeconds);
-
-            _reflectionBudgetLastSeconds =
-                nowSeconds;
-
-            var maximumBurstCredits =
-                Math.Max(
-                    1.0,
+                        MaximumReflectionUpdatesPerFrame,
+                        _visibleReflectionTargets.Count);
+            }
+            else
+            {
+                // Do not repay a long blocked/stalled frame with a burst of
+                // mirror scene passes. openOMSI applies the same bounded-dt
+                // idea and caps mirror redraws per frame.
+                var elapsedSeconds =
                     Math.Min(
-                        _reflectionTargets.Count,
-                        4));
+                        0.1,
+                        Math.Max(
+                            0.0,
+                            nowSeconds -
+                            _reflectionBudgetLastSeconds));
 
-            _reflectionBudgetCredits =
-                Math.Min(
-                    maximumBurstCredits,
-                    _reflectionBudgetCredits +
-                    elapsedSeconds *
-                    ReflectionUpdatesPerSecondBudget);
+                _reflectionBudgetLastSeconds =
+                    nowSeconds;
+
+                _reflectionBudgetCredits =
+                    Math.Min(
+                        ReflectionBudgetBurst,
+                        _reflectionBudgetCredits +
+                        elapsedSeconds *
+                        updatesPerSecond);
+            }
         }
+
+        var maximumUpdates =
+            fullQuality
+                ? _visibleReflectionTargets.Count
+                : Math.Min(
+                    MaximumReflectionUpdatesPerFrame,
+                    _visibleReflectionTargets.Count);
+
+        var renderedUpdates =
+            0;
 
         try
         {
-            foreach (var target in
-                     _reflectionTargets.Values)
+            while (renderedUpdates <
+                   maximumUpdates)
             {
-                if (!ShouldRenderReflectionTarget(
-                        target))
-                {
-                    continue;
-                }
-
-                var useGlobalBudget =
-                    _reflectionMode is not
-                        ("full" or "complete") &&
-                    target.HasRendered;
-
-                if (useGlobalBudget &&
+                if (!fullQuality &&
                     _reflectionBudgetCredits <
                         1.0)
                 {
-                    continue;
+                    break;
                 }
 
-                if (useGlobalBudget)
+                RuntimeReflectionTarget target;
+
+                if (fullQuality)
                 {
+                    target =
+                        _visibleReflectionTargets[
+                            renderedUpdates];
+                }
+                else
+                {
+                    var targetIndex =
+                        (int)(
+                            _reflectionTurn %
+                            (ulong)_visibleReflectionTargets.Count);
+
+                    _reflectionTurn++;
+
+                    target =
+                        _visibleReflectionTargets[
+                            targetIndex];
+
                     _reflectionBudgetCredits -=
                         1.0;
                 }
@@ -6812,6 +6875,13 @@ public sealed class D3D11RenderWindow : Form
                 target.HasRendered =
                     true;
 
+                renderedUpdates++;
+
+                if (_profileEnabled)
+                {
+                    _profileReflectionUpdates++;
+                }
+
                 EndSceneCameraCache();
             }
         }
@@ -6859,7 +6929,7 @@ public sealed class D3D11RenderWindow : Form
             (float)Math.Max(
                 camera.VisibilityThreshold ??
                     0.0,
-                0.0);
+                ReflectionMinimumVisibilityRadiusMeters);
 
         var viewProjection =
             CreateViewProjection(
@@ -6993,63 +7063,10 @@ public sealed class D3D11RenderWindow : Form
 
         // [add_camera_reflexion_2]'s optional value is the radius of the
         // mirror-visibility sphere. OMSI/openOMSI skip the reflection redraw
-        // when that sphere is outside the main camera frustum. This avoids a
-        // complete secondary scene pass for mirrors the player cannot see.
-        if (!IsReflectionTargetVisibleInMainView(
-                target))
-        {
-            return false;
-        }
-
-        if (!target.HasRendered ||
-            target.Camera.ContinuousRendering ||
-            _reflectionMode is
-                "full" or
-                "complete")
-        {
-            return true;
-        }
-
-        if (_reflectionMode !=
-            "economy")
-        {
-            return true;
-        }
-
-        var framePressure =
-            ResolveSceneryFramePressure();
-
-        var interval =
-            Math.Clamp(
-                (target.Camera.Index +
-                 1) *
-                    2,
-                2,
-                12);
-
-        if (framePressure >=
-            1.50)
-        {
-            interval =
-                Math.Min(
-                    interval *
-                        2,
-                    24);
-        }
-        else if (framePressure >=
-                 1.15)
-        {
-            interval =
-                Math.Min(
-                    interval +
-                        2,
-                    18);
-        }
-
-        return (_reflectionFrameIndex +
-                target.Camera.Index) %
-               interval ==
-               0;
+        // when that sphere is outside the main camera frustum. The scheduler
+        // handles cadence separately so all visible mirrors get a fair turn.
+        return IsReflectionTargetVisibleInMainView(
+            target);
     }
 
     private ID3D11RenderTargetView?
@@ -23305,7 +23322,7 @@ public sealed class D3D11RenderWindow : Form
                     false);
 
         Console.WriteLine(
-            $"[profile] frames={_profileFrameCount:N0}; over50ms={_profileFramesOver50Milliseconds:N0}; sim={averageSimulationMilliseconds:0.00}ms; traffic={averageTrafficMilliseconds:0.00}ms; texUpload={averageTextureUploadMilliseconds:0.00}ms; mirrors={averageMirrorMilliseconds:0.00}ms; renderMain={averageMainRenderMilliseconds:0.00}ms; worst={_profileWorstFrameMilliseconds:0.0}ms; agents={_trafficAgents.Count:N0}; sceneryBatches={_objectGeometry.Batches.Count:N0}; draws/frame=scenery:{_profileSceneryDrawCalls / (double)frames:0.0},spline:{_profileSplineDrawCalls / (double)frames:0.0},terrain:{_profileTerrainDrawCalls / (double)frames:0.0},traffic:{_profileTrafficDrawCalls / (double)frames:0.0},vehicle:{_profileVehicleDrawCalls / (double)frames:0.0},lights:{_profileLightDrawCalls / (double)frames:0.0},reflection:{_profileReflectionDrawCalls / (double)frames:0.0}; gpuTextures={gpuTextureBytes / (1024.0 * 1024.0):0.0}MB; managed={managedBytes / (1024.0 * 1024.0):0.0}MB");
+            $"[profile] frames={_profileFrameCount:N0}; over50ms={_profileFramesOver50Milliseconds:N0}; sim={averageSimulationMilliseconds:0.00}ms; traffic={averageTrafficMilliseconds:0.00}ms; texUpload={averageTextureUploadMilliseconds:0.00}ms; mirrors={averageMirrorMilliseconds:0.00}ms; mirrorUpdates/frame={_profileReflectionUpdates / (double)frames:0.00}; mirrorsVisible/frame={_profileVisibleReflectionTargets / (double)frames:0.00}; renderMain={averageMainRenderMilliseconds:0.00}ms; worst={_profileWorstFrameMilliseconds:0.0}ms; agents={_trafficAgents.Count:N0}; sceneryBatches={_objectGeometry.Batches.Count:N0}; draws/frame=scenery:{_profileSceneryDrawCalls / (double)frames:0.0},spline:{_profileSplineDrawCalls / (double)frames:0.0},terrain:{_profileTerrainDrawCalls / (double)frames:0.0},traffic:{_profileTrafficDrawCalls / (double)frames:0.0},vehicle:{_profileVehicleDrawCalls / (double)frames:0.0},lights:{_profileLightDrawCalls / (double)frames:0.0},reflection:{_profileReflectionDrawCalls / (double)frames:0.0}; gpuTextures={gpuTextureBytes / (1024.0 * 1024.0):0.0}MB; managed={managedBytes / (1024.0 * 1024.0):0.0}MB");
 
         Console.WriteLine(
             $"[profile-textures] {RuntimeGpuTextureLoader.GetFileCacheDiagnostics()}");
@@ -23339,6 +23356,10 @@ public sealed class D3D11RenderWindow : Form
         _profileLightDrawCalls =
             0;
         _profileReflectionDrawCalls =
+            0;
+        _profileReflectionUpdates =
+            0;
+        _profileVisibleReflectionTargets =
             0;
         _profileWorstFrameMilliseconds =
             0.0;
