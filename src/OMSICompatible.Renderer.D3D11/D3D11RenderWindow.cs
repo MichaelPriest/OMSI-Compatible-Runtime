@@ -724,6 +724,10 @@ public sealed class D3D11RenderWindow : Form
     private readonly uint _reflectionTextureSize;
     private readonly string _reflectionMode;
     private long _reflectionFrameIndex;
+    private double _reflectionBudgetLastSeconds;
+    private double _reflectionBudgetCredits;
+    private const double ReflectionUpdatesPerSecondBudget =
+        75.0;
     private readonly Dictionary<string, RuntimeReflectionTarget>
         _reflectionTargets =
             new(
@@ -5721,6 +5725,47 @@ public sealed class D3D11RenderWindow : Form
 
         _reflectionFrameIndex++;
 
+        var nowSeconds =
+            _frameClock.Elapsed.TotalSeconds;
+
+        if (_reflectionBudgetLastSeconds <=
+            0.0)
+        {
+            _reflectionBudgetLastSeconds =
+                nowSeconds;
+            _reflectionBudgetCredits =
+                Math.Max(
+                    1.0,
+                    Math.Min(
+                        _reflectionTargets.Count,
+                        4));
+        }
+        else
+        {
+            var elapsedSeconds =
+                Math.Max(
+                    0.0,
+                    nowSeconds -
+                    _reflectionBudgetLastSeconds);
+
+            _reflectionBudgetLastSeconds =
+                nowSeconds;
+
+            var maximumBurstCredits =
+                Math.Max(
+                    1.0,
+                    Math.Min(
+                        _reflectionTargets.Count,
+                        4));
+
+            _reflectionBudgetCredits =
+                Math.Min(
+                    maximumBurstCredits,
+                    _reflectionBudgetCredits +
+                    elapsedSeconds *
+                    ReflectionUpdatesPerSecondBudget);
+        }
+
         try
         {
             foreach (var target in
@@ -5730,6 +5775,24 @@ public sealed class D3D11RenderWindow : Form
                         target))
                 {
                     continue;
+                }
+
+                var useGlobalBudget =
+                    _reflectionMode is not
+                        ("full" or "complete") &&
+                    target.HasRendered;
+
+                if (useGlobalBudget &&
+                    _reflectionBudgetCredits <
+                        1.0)
+                {
+                    continue;
+                }
+
+                if (useGlobalBudget)
+                {
+                    _reflectionBudgetCredits -=
+                        1.0;
                 }
 
                 _deviceContext.PSUnsetShaderResource(0);
