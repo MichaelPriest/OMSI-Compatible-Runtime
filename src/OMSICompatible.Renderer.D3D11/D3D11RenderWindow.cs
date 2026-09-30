@@ -496,6 +496,22 @@ public sealed class D3D11RenderWindow : Form
                 ReferenceEqualityComparer.Instance);
     private readonly Dictionary<
         RuntimeObjectBatch,
+        Matrix4x4>
+        _vehicleAnimationMatrixFrameStates =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
+        RuntimeVehicleSkinConstants>
+        _vehicleSkinFrameStates =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly HashSet<string>
+        _vehicleAnimationVisitedScratch =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
         RuntimeVehicleMaterialChangeSetInfo[]>
         _vehicleOrderedMaterialChangeSets =
             new(
@@ -6427,6 +6443,8 @@ public sealed class D3D11RenderWindow : Form
         _renderFrameSequence++;
         _dynamicSceneryVisibilityFrameCache.Clear();
         _vehicleDynamicMaterialFrameStates.Clear();
+        _vehicleAnimationMatrixFrameStates.Clear();
+        _vehicleSkinFrameStates.Clear();
         ReleaseRetiredStreamingVertexBuffers();
 
         if (_deviceContext is null ||
@@ -11891,6 +11909,13 @@ public sealed class D3D11RenderWindow : Form
     private RuntimeVehicleSkinConstants ResolveVehicleSkinConstants(
         RuntimeObjectBatch batch)
     {
+        if (_vehicleSkinFrameStates.TryGetValue(
+                batch,
+                out var cached))
+        {
+            return cached;
+        }
+
         var identity =
             Matrix4x4.Identity;
 
@@ -11909,6 +11934,10 @@ public sealed class D3D11RenderWindow : Form
         if (targets is null ||
             targets.Count == 0)
         {
+            _vehicleSkinFrameStates[
+                batch] =
+                result;
+
             return result;
         }
 
@@ -11951,6 +11980,10 @@ public sealed class D3D11RenderWindow : Form
                     break;
             }
         }
+
+        _vehicleSkinFrameStates[
+            batch] =
+            result;
 
         return result;
     }
@@ -12596,20 +12629,32 @@ public sealed class D3D11RenderWindow : Form
     private Matrix4x4 CreateVehicleAnimationMatrix(
         RuntimeObjectBatch batch)
     {
-        var visited =
-            new HashSet<string>(
-                StringComparer.OrdinalIgnoreCase);
+        if (_vehicleAnimationMatrixFrameStates.TryGetValue(
+                batch,
+                out var cached))
+        {
+            return cached;
+        }
+
+        _vehicleAnimationVisitedScratch.Clear();
 
         if (!string.IsNullOrWhiteSpace(
                 batch.MeshIdentifier))
         {
-            visited.Add(
+            _vehicleAnimationVisitedScratch.Add(
                 batch.MeshIdentifier);
         }
 
-        return CreateVehicleAnimationMatrixWithParents(
-            batch,
-            visited);
+        var result =
+            CreateVehicleAnimationMatrixWithParents(
+                batch,
+                _vehicleAnimationVisitedScratch);
+
+        _vehicleAnimationMatrixFrameStates[
+            batch] =
+            result;
+
+        return result;
     }
 
     private Matrix4x4 CreateVehicleAnimationMatrixWithParents(
@@ -23469,6 +23514,9 @@ public sealed class D3D11RenderWindow : Form
                 false;
             _vehicleStaticMaterialStates.Clear();
             _vehicleDynamicMaterialFrameStates.Clear();
+            _vehicleAnimationMatrixFrameStates.Clear();
+            _vehicleSkinFrameStates.Clear();
+            _vehicleAnimationVisitedScratch.Clear();
             _vehicleOrderedMaterialChangeSets.Clear();
             _vehicleMaterialChangeItems.Clear();
 
