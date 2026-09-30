@@ -13501,11 +13501,8 @@ public sealed class D3D11RenderWindow : Form
                      _articulatedOmsiAudio)
             {
                 var section =
-                    _windowInfo.Vehicle?.Sections?
-                        .FirstOrDefault(
-                            item =>
-                                item.Index ==
-                                pair.Key);
+                    ResolveVehicleSection(
+                        pair.Key);
 
                 if (section is null)
                 {
