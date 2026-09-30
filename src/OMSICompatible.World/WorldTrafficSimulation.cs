@@ -2999,13 +2999,12 @@ public sealed class WorldTrafficSimulation
             return false;
         }
 
-        segment =
-            default!;
-        travelForward =
+        var bestSegment =
+            default(WorldTrafficPathSegment);
+        var bestTravelForward =
             true;
-        distanceAlongSegment =
+        var bestDistanceAlongSegment =
             0.0;
-
         var bestDistanceSquared =
             double.PositiveInfinity;
 
@@ -3168,13 +3167,13 @@ public sealed class WorldTrafficSimulation
                 bestDistanceSquared =
                     candidateDistanceSquared;
 
-                segment =
+                bestSegment =
                     candidate;
 
-                travelForward =
+                bestTravelForward =
                     candidateTravelForward;
 
-                distanceAlongSegment =
+                bestDistanceAlongSegment =
                     accumulated +
                     length *
                         t;
@@ -3222,18 +3221,28 @@ public sealed class WorldTrafficSimulation
             bestDistanceSquared <=
                 64.0;
 
+        segment =
+            resolved &&
+            bestSegment is not null
+                ? bestSegment
+                : default!;
+        travelForward =
+            bestTravelForward;
+        distanceAlongSegment =
+            bestDistanceAlongSegment;
+
         _externalObstaclePathCacheValid =
             true;
         _externalObstaclePathCacheResolved =
             resolved;
         _externalObstaclePathCacheSegment =
             resolved
-                ? segment
+                ? bestSegment
                 : null;
         _externalObstaclePathCacheTravelForward =
-            travelForward;
+            bestTravelForward;
         _externalObstaclePathCacheDistanceAlongSegment =
-            distanceAlongSegment;
+            bestDistanceAlongSegment;
 
         return resolved;
     }
