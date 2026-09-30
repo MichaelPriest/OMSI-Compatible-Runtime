@@ -12,6 +12,9 @@ concurrency:
 
 jobs:
   build-x64:
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_tag: ${{ steps.version.outputs.version_tag }}
     # Native ODE x64 is compiled with MSVC. Pin the image so the
     # Visual Studio 2022 generator/toolchain remains deterministic.
     runs-on: windows-2022
@@ -20,7 +23,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build ODE x64 single precision
+      - name: Resolve numbered test version
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $baseVersion = "0.1.0-alpha.1"
+          $version = $baseVersion
+          $versionTag = "v$baseVersion"
+
+          if ("$env:GITHUB_EVENT_NAME" -eq "pull_request" -and
+              "$env:PR_NUMBER" -eq "2") {
+            $next = 1
+            $releaseTags = @(
+              gh release list --repo "$env:GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName'
+            )
+
+            foreach ($releaseTag in $releaseTags) {
+              if ($releaseTag -match '^v0\.1\.0-alpha\.1-test\.(\d+)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -74,7 +98,7 @@ jobs:
         run: dotnet restore OMSI-Compatible-Runtime.slnx
 
       - name: Build x64
-        run: dotnet build OMSI-Compatible-Runtime.slnx -c Release --no-restore
+        run: dotnet build OMSI-Compatible-Runtime.slnx -c Release --no-restore -p:Version=${{ steps.version.outputs.version }}
 
       - name: Stage ODE x64 for smoke test
         shell: pwsh
@@ -98,6 +122,7 @@ jobs:
           -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
+          -p:Version=${{ steps.version.outputs.version }}
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Launcher-Legacy
 
       - name: Publish WinUI Launcher x64
@@ -112,6 +137,7 @@ jobs:
           -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
+          -p:Version=${{ steps.version.outputs.version }}
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64
 
       - name: Create and verify primary WinUI launcher alias
@@ -161,6 +187,7 @@ jobs:
           -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
+          -p:Version=${{ steps.version.outputs.version }}
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime
 
       - name: Publish OMSI plugin host x86
@@ -173,6 +200,7 @@ jobs:
           -p:UseAppHost=true
           -p:DebugType=None
           -p:DebugSymbols=false
+          -p:Version=${{ steps.version.outputs.version }}
           -o artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime/PluginHost-x86
 
       - name: Verify OMSI plugin host x86 package
@@ -191,7 +219,8 @@ jobs:
         shell: pwsh
         run: |
           @'
-          OMSI Compatible Runtime x64 - PRE-ALPHA UI (PORTABLE SELF-CONTAINED)
+          OMSI Compatible Runtime x64 - ${{ steps.version.outputs.version }}
+          PRE-ALPHA UI (PORTABLE SELF-CONTAINED)
 
           INÍCIO
           ======
@@ -392,7 +421,7 @@ jobs:
           compression-level: 6
 
   publish-pr2-test-release:
-    name: Publish PR #2 Test Release
+    name: Publish PR #2 Numbered Test Release
     needs: build-x64
     if: >-
       github.event_name == 'pull_request' &&
@@ -415,32 +444,41 @@ jobs:
           name: OMSI-Compatible-Runtime-alpha-ui-win-x64-portable
           path: package
 
-      - name: Create or update stable Test Release
+      - name: Create numbered and stable Test Releases
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_NUMBER: ${{ github.run_number }}
+          VERSION: ${{ needs.build-x64.outputs.version }}
+          VERSION_TAG: ${{ needs.build-x64.outputs.version_tag }}
         run: |
           set -euo pipefail
 
-          tag="pr2-test-latest"
-          archive="OMSI-Compatible-Runtime-PR2-Test-win-x64.zip"
+          numbered_tag="$VERSION_TAG"
+          stable_tag="pr2-test-latest"
+          numbered_archive="OMSI-Compatible-Runtime-$VERSION-win-x64.zip"
+          stable_archive="OMSI-Compatible-Runtime-PR2-Test-win-x64.zip"
 
-          rm -f "$archive"
+          rm -f "$numbered_archive" "$stable_archive"
           (
             cd package
-            zip -qr "../$archive" .
+            zip -qr "../$numbered_archive" .
           )
+          cp "$numbered_archive" "$stable_archive"
 
-          git tag -f "$tag" "$HEAD_SHA"
-          git push --force origin "refs/tags/$tag"
+          git tag "$numbered_tag" "$HEAD_SHA"
+          git push origin "refs/tags/$numbered_tag"
 
-          cat > release-notes.md <<EOF
-          # OMSI Compatible Runtime — PR #2 Test Release
+          git tag -f "$stable_tag" "$HEAD_SHA"
+          git push --force origin "refs/tags/$stable_tag"
 
-          Build automático validado pelo CI antes da publicação.
+          cat > numbered-release-notes.md <<EOF
+          # OMSI Compatible Runtime $VERSION
 
+          Teste numerada automática validada pelo CI antes da publicação.
+
+          - Versão: $VERSION
           - PR: #2 (DRAFT)
           - Branch: fix/runtime-visual-controls-pass
           - HEAD: $HEAD_SHA
@@ -450,19 +488,35 @@ jobs:
           - ODE: x64 single precision
           - Smoke test: obrigatório
 
-          O ZIP contém:
-          - `OMSICompatible.Launcher.exe`: novo launcher principal WinUI 3;
-          - `Launcher-Legacy/OMSICompatible.Launcher.Legacy.exe`: launcher anterior preservado como fallback com prévia 3D D3D11;
-          - `Runtime/OMSICompatible.Runtime.exe`: runtime x64;
-          - ODE e dependências necessárias.
+          O ZIP contém o launcher WinUI 3 principal, o launcher legado de fallback,
+          o Runtime x64, PluginHost x86 para compatibilidade OMSI e dependências ODE.
 
-          A nova interface é agora a entrada padrão do pacote. O launcher legado continua incluído apenas para preservar a prévia 3D enquanto ela é migrada ao WinUI.
+          Numeração adotada a partir desta build:
+          `v0.1.0-alpha.1-test.N`
           EOF
 
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$archive" --clobber
-            gh release edit "$tag"               --title "OMSI Compatible Runtime — PR #2 Test"               --notes-file release-notes.md               --prerelease
-          else
-            gh release create "$tag" "$archive"               --title "OMSI Compatible Runtime — PR #2 Test"               --notes-file release-notes.md               --prerelease
-          fi
+          gh release create "$numbered_tag" "$numbered_archive"             --title "OMSI Compatible Runtime $VERSION"             --notes-file numbered-release-notes.md             --prerelease
 
+          cat > stable-release-notes.md <<EOF
+          # OMSI Compatible Runtime — PR #2 Test
+
+          Atalho estável para a teste numerada mais recente.
+
+          - Versão atual: $VERSION
+          - Tag numerada: $numbered_tag
+          - PR: #2 (DRAFT)
+          - Branch: fix/runtime-visual-controls-pass
+          - HEAD: $HEAD_SHA
+          - CI: #$RUN_NUMBER
+          - Plataforma: Windows x64
+
+          Para histórico e identificação exata de builds, use sempre a versão
+          numerada `v0.1.0-alpha.1-test.N`.
+          EOF
+
+          if gh release view "$stable_tag" >/dev/null 2>&1; then
+            gh release upload "$stable_tag" "$stable_archive" --clobber
+            gh release edit "$stable_tag"               --title "OMSI Compatible Runtime — PR #2 Test ($VERSION)"               --notes-file stable-release-notes.md               --prerelease
+          else
+            gh release create "$stable_tag" "$stable_archive"               --title "OMSI Compatible Runtime — PR #2 Test ($VERSION)"               --notes-file stable-release-notes.md               --prerelease
+          fi
