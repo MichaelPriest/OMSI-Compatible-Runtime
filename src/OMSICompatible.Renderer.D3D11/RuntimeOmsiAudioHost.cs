@@ -563,6 +563,15 @@ internal sealed class RuntimeOmsiAudioHost :
     private readonly Dictionary<int, bool>
         _oneShotConditionState =
             [];
+    private readonly HashSet<int>
+        _engineRelatedLoopIds =
+            [];
+    private readonly HashSet<int>
+        _starterConditionSoundIds =
+            [];
+    private readonly Dictionary<int, RuntimeOmsiSoundCurve>
+        _playbackCurvesBySoundId =
+            [];
     private readonly HashSet<string>
         _reportedFailures =
             new(
@@ -589,6 +598,38 @@ internal sealed class RuntimeOmsiAudioHost :
                 maximumVoiceCount,
                 1,
                 10_000);
+
+        foreach (var sound in
+                 sounds)
+        {
+            if (sound.Loop &&
+                IsEngineRelatedLoop(
+                    sound))
+            {
+                _engineRelatedLoopIds.Add(
+                    sound.Id);
+            }
+
+            if (HasStarterCondition(
+                    sound))
+            {
+                _starterConditionSoundIds.Add(
+                    sound.Id);
+            }
+
+            foreach (var curve in
+                     sound.VolumeCurves)
+            {
+                if (curve.Variable ==
+                    "-1")
+                {
+                    _playbackCurvesBySoundId[
+                        sound.Id] =
+                        curve;
+                    break;
+                }
+            }
+        }
     }
 
     public int SoundCount =>
@@ -724,7 +765,7 @@ internal sealed class RuntimeOmsiAudioHost :
                                         StringComparer.OrdinalIgnoreCase));
 
                     return
-                        $"loop#{sound.Id}:{Path.GetFileName(sound.FilePath)}:{(IsEngineRelatedLoop(sound) ? "engine" : "other")}:pitch={sound.PitchVariable ?? "<none>"}:curves={curveVariables}:conditions={conditionVariables}";
+                        $"loop#{sound.Id}:{Path.GetFileName(sound.FilePath)}:{(_engineRelatedLoopIds.Contains(sound.Id) ? "engine" : "other")}:pitch={sound.PitchVariable ?? "<none>"}:curves={curveVariables}:conditions={conditionVariables}";
                 })
             .ToArray();
 
@@ -1008,10 +1049,10 @@ internal sealed class RuntimeOmsiAudioHost :
             // remain exempt so the crank sound can play before engine_on.
             if (!engineRunning &&
                 sound.Loop &&
-                IsEngineRelatedLoop(
-                    sound) &&
-                !HasStarterCondition(
-                    sound))
+                _engineRelatedLoopIds.Contains(
+                    sound.Id) &&
+                !_starterConditionSoundIds.Contains(
+                    sound.Id))
             {
                 volume =
                     0.0f;
@@ -1356,18 +1397,13 @@ internal sealed class RuntimeOmsiAudioHost :
             voice.CurrentVolume;
     }
 
-    private static float EvaluatePlaybackTimeGain(
+    private float EvaluatePlaybackTimeGain(
         RuntimeOmsiSoundDefinition sound,
         float playbackSeconds)
     {
-        var playbackCurve =
-            sound.VolumeCurves
-                .FirstOrDefault(
-                    static curve =>
-                        curve.Variable ==
-                        "-1");
-
-        if (playbackCurve is null)
+        if (!_playbackCurvesBySoundId.TryGetValue(
+                sound.Id,
+                out var playbackCurve))
         {
             return 1.0f;
         }
@@ -1831,13 +1867,15 @@ internal sealed class RuntimeOmsiAudioHost :
         RuntimeOmsiSoundDefinition sound,
         OmsiScriptRuntime? scriptRuntime)
     {
-        if (sound.Conditions.Any(
-                condition =>
-                    !ConditionMatches(
-                        condition,
-                        scriptRuntime)))
+        foreach (var condition in
+                 sound.Conditions)
         {
-            return 0.0f;
+            if (!ConditionMatches(
+                    condition,
+                    scriptRuntime))
+            {
+                return 0.0f;
+            }
         }
 
         var volume =
