@@ -54,6 +54,15 @@ public sealed class D3D11RenderWindow : Form
         public Matrix4x4 World;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RuntimeTrafficLightInstanceData
+    {
+        public const uint SizeInBytes = 80;
+
+        public Matrix4x4 World;
+        public Vector4 Color;
+    }
+
     private struct TrafficVehicleBindingState
     {
         public bool HasMaterial;
@@ -742,6 +751,13 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11VertexShader? _vehicleVertexShader;
     private ID3D11VertexShader? _trafficInstancedVertexShader;
     private ID3D11InputLayout? _trafficInstancedInputLayout;
+    private ID3D11VertexShader? _trafficLightInstancedVertexShader;
+    private ID3D11PixelShader? _trafficLightInstancedPixelShader;
+    private ID3D11InputLayout? _trafficLightInstancedInputLayout;
+    private ID3D11Buffer? _trafficLightInstanceBuffer;
+    private int _trafficLightInstanceBufferCapacity;
+    private RuntimeTrafficLightInstanceData[] _trafficLightInstanceScratch =
+        Array.Empty<RuntimeTrafficLightInstanceData>();
     private RuntimeTrafficInstanceData[] _trafficInstanceScratch =
         Array.Empty<RuntimeTrafficInstanceData>();
     private readonly Dictionary<
@@ -4740,6 +4756,12 @@ public sealed class D3D11RenderWindow : Form
                 "VSMainInstanced",
                 "vs_4_0");
 
+        ReadOnlyMemory<byte> lightInstancedVertexShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "VSMainLightInstanced",
+                "vs_4_0");
+
         ReadOnlyMemory<byte> colorPixelShaderByteCode =
             Compiler.CompileFromFile(
                 shaderFile,
@@ -4756,6 +4778,12 @@ public sealed class D3D11RenderWindow : Form
             Compiler.CompileFromFile(
                 shaderFile,
                 "PSLightEffect",
+                "ps_4_0");
+
+        ReadOnlyMemory<byte> lightInstancedPixelShaderByteCode =
+            Compiler.CompileFromFile(
+                shaderFile,
+                "PSLightEffectInstanced",
                 "ps_4_0");
 
         ReadOnlyMemory<byte> alphaCutoutPixelShaderByteCode =
@@ -4789,6 +4817,14 @@ public sealed class D3D11RenderWindow : Form
         _trafficInstancedVertexShader =
             _device.CreateVertexShader(
                 instancedVertexShaderByteCode.Span);
+
+        _trafficLightInstancedVertexShader =
+            _device.CreateVertexShader(
+                lightInstancedVertexShaderByteCode.Span);
+
+        _trafficLightInstancedPixelShader =
+            _device.CreatePixelShader(
+                lightInstancedPixelShaderByteCode.Span);
 
         _vehicleColorPixelShader =
             _device.CreatePixelShader(
@@ -4827,6 +4863,11 @@ public sealed class D3D11RenderWindow : Form
             _device.CreateInputLayout(
                 CreateTrafficVehicleInstancedInputElements(),
                 instancedVertexShaderByteCode.Span);
+
+        _trafficLightInstancedInputLayout =
+            _device.CreateInputLayout(
+                CreateTrafficLightInstancedInputElements(),
+                lightInstancedVertexShaderByteCode.Span);
 
         _vehicleSampler =
             _device.CreateSamplerState(
@@ -5356,6 +5397,63 @@ public sealed class D3D11RenderWindow : Form
             3,
             Format.R32G32B32A32_Float,
             48,
+            1,
+            InputClassification.PerInstanceData,
+            1)
+    ];
+
+    private static InputElementDescription[]
+        CreateTrafficLightInstancedInputElements() =>
+    [
+        new InputElementDescription(
+            "POSITION",
+            0,
+            Format.R32G32B32_Float,
+            0,
+            0),
+        new InputElementDescription(
+            "TEXCOORD",
+            0,
+            Format.R32G32_Float,
+            28,
+            0),
+        new InputElementDescription(
+            "INSTANCEWORLD",
+            0,
+            Format.R32G32B32A32_Float,
+            0,
+            1,
+            InputClassification.PerInstanceData,
+            1),
+        new InputElementDescription(
+            "INSTANCEWORLD",
+            1,
+            Format.R32G32B32A32_Float,
+            16,
+            1,
+            InputClassification.PerInstanceData,
+            1),
+        new InputElementDescription(
+            "INSTANCEWORLD",
+            2,
+            Format.R32G32B32A32_Float,
+            32,
+            1,
+            InputClassification.PerInstanceData,
+            1),
+        new InputElementDescription(
+            "INSTANCEWORLD",
+            3,
+            Format.R32G32B32A32_Float,
+            48,
+            1,
+            InputClassification.PerInstanceData,
+            1),
+        new InputElementDescription(
+            "INSTANCECOLOR",
+            0,
+            Format.R32G32B32A32_Float,
+            64,
             1,
             InputClassification.PerInstanceData,
             1)
@@ -22921,6 +23019,15 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAlphaBlendState?.Dispose();
             _vehicleSampler?.Dispose();
             _vehicleInputLayout?.Dispose();
+            _trafficLightInstanceBuffer?.Dispose();
+            _trafficLightInstanceBuffer = null;
+            _trafficLightInstanceBufferCapacity =
+                0;
+            _trafficLightInstanceScratch =
+                Array.Empty<RuntimeTrafficLightInstanceData>();
+            _trafficLightInstancedInputLayout?.Dispose();
+            _trafficLightInstancedPixelShader?.Dispose();
+            _trafficLightInstancedVertexShader?.Dispose();
             _trafficInstancedInputLayout?.Dispose();
             _trafficInstancedVertexShader?.Dispose();
 
