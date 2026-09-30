@@ -8,6 +8,7 @@ using OmsiCompat.Physics.Ode;
 using OmsiCompat.Vehicles;
 using OmsiCompat.Scripting;
 using OMSICompatible.World;
+using OMSICompatible.Multiplayer;
 
 var root = Path.Combine(
     Path.GetTempPath(),
@@ -7179,6 +7180,261 @@ try
     Require(
         world.TerrainParseIssueCount == 0,
         "Synthetic terrain should parse without issues.");
+
+    Require(
+        OpenOmsiLanProtocol.NormalizeVehiclePath(
+            @"Vehicles\Synthetic\Synthetic.bus") ==
+        "Vehicles/Synthetic/Synthetic.bus" &&
+        OpenOmsiLanProtocol.NormalizeVehiclePath(
+            @"..\Synthetic.bus") is null &&
+        OpenOmsiLanProtocol.NormalizeVehiclePath(
+            @"C:\OMSI\Vehicles\Synthetic.bus") is null,
+        "openOMSI LAN vehicle path validation is unsafe or incompatible.");
+
+    var lanPose =
+        new OpenOmsiLanPose
+        {
+            Id =
+                2,
+            Name =
+                "Smoke Driver",
+            VehiclePath =
+                "Vehicles/Synthetic/Synthetic.bus",
+            Paint =
+                "Test",
+            Line =
+                "76",
+            Destination =
+                "Bahnhof",
+            Tour =
+                "76/1",
+            DisplayTexts =
+                ["76", "Bahnhof"],
+            LengthMeters =
+                18.0f,
+            WidthMeters =
+                2.5f,
+            BoxOffsetMeters =
+                -1.5f,
+            SyncTableHash =
+                0x1234ABCD,
+            X =
+                123.45,
+            Y =
+                -456.78,
+            Z =
+                12.34,
+            HeadingDegrees =
+                271.25f,
+            PitchDegrees =
+                1.25f,
+            BankDegrees =
+                -0.75f,
+            SpeedKph =
+                43.2f,
+            SteeringDegrees =
+                -12.4f,
+            Flags =
+                OpenOmsiLanProtocol.FlagVehicle |
+                OpenOmsiLanProtocol.FlagEngine |
+                OpenOmsiLanProtocol.FlagElectrics |
+                OpenOmsiLanProtocol.FlagBrake,
+            HeadLights =
+                2,
+            InteriorLights =
+                1,
+            Blinker =
+                1,
+            Rpm =
+                1375.0f,
+            Throttle =
+                0.65f,
+            Brake =
+                0.2f,
+            Passengers =
+                37,
+            Doors =
+                [0.0f, 0.5f, 1.0f],
+            Suspension =
+                [0.01f, -0.015f, 0.02f, -0.025f],
+            RearSections =
+                [
+                    new OpenOmsiLanPartPose(
+                        120.0,
+                        -462.0,
+                        12.30,
+                        269.5f)
+                ],
+            Lamps =
+                [1.0f, 0.5f, 0.0f],
+            Switches =
+                [1.0f, -2.0f],
+            Values =
+                [0.25f, 1375.0f]
+        };
+
+    var lanInfo =
+        OpenOmsiLanProtocol.EncodeInfo(
+            lanPose);
+
+    Require(
+        OpenOmsiLanProtocol.TryDecodeInfo(
+            lanInfo,
+            out var decodedLanInfo) &&
+        decodedLanInfo.Id ==
+            lanPose.Id &&
+        decodedLanInfo.VehiclePath ==
+            lanPose.VehiclePath &&
+        decodedLanInfo.Line ==
+            lanPose.Line &&
+        decodedLanInfo.Destination ==
+            lanPose.Destination &&
+        decodedLanInfo.Tour ==
+            lanPose.Tour &&
+        decodedLanInfo.DisplayTexts.SequenceEqual(
+            lanPose.DisplayTexts),
+        "openOMSI LAN INFO round-trip failed.");
+
+    var lanState =
+        OpenOmsiLanStateCodec.Encode(
+            lanPose,
+            65530);
+
+    Require(
+        lanState.Length <=
+            OpenOmsiLanProtocol.MaximumStateBytes &&
+        OpenOmsiLanStateCodec.TryDecode(
+            lanState,
+            out var decodedSequence,
+            out var decodedLanState) &&
+        decodedSequence ==
+            65530 &&
+        decodedLanState.Id ==
+            lanPose.Id &&
+        Math.Abs(
+            decodedLanState.X -
+            lanPose.X) <
+            0.011 &&
+        Math.Abs(
+            decodedLanState.Y -
+            lanPose.Y) <
+            0.011 &&
+        Math.Abs(
+            decodedLanState.Z -
+            lanPose.Z) <
+            0.011 &&
+        Math.Abs(
+            decodedLanState.SpeedKph -
+            lanPose.SpeedKph) <
+            0.051 &&
+        decodedLanState.Doors.Count ==
+            lanPose.Doors.Count &&
+        decodedLanState.RearSections.Count ==
+            1 &&
+        OpenOmsiLanProtocol.SequenceIsNewer(
+            2,
+            ushort.MaxValue),
+        "openOMSI LAN binary STATE round-trip/sequence wrap failed.");
+
+    var lanWorld =
+        new OpenOmsiLanWorld(
+            "maps/SyntheticMap/global.cfg",
+            "2026-09-30",
+            12.0 * 3600.0,
+            string.Empty,
+            "autumn");
+
+    using var lanHost =
+        OpenOmsiLanSession.Host(
+            0,
+            "Smoke Host",
+            lanWorld,
+            tryNextPorts:
+                false);
+
+    using var lanClient =
+        OpenOmsiLanSession.Join(
+            $"127.0.0.1:{lanHost.LocalPort}",
+            "Smoke Client",
+            lanWorld);
+
+    var hostPose =
+        lanPose.Clone();
+
+    hostPose.Id =
+        1;
+
+    hostPose.Name =
+        "Smoke Host";
+
+    var clientPose =
+        lanPose.Clone();
+
+    clientPose.Id =
+        0;
+
+    clientPose.Name =
+        "Smoke Client";
+
+    clientPose.X +=
+        12.0;
+
+    var lanConnected =
+        false;
+
+    for (var lanStep = 0;
+         lanStep <
+             300;
+         lanStep++)
+    {
+        lanClient.Tick(
+            0.02,
+            clientPose);
+
+        lanHost.Tick(
+            0.02,
+            hostPose);
+
+        lanClient.Tick(
+            0.02,
+            clientPose);
+
+        if (lanClient.Connected &&
+            lanHost.SnapshotPeers()
+                .Any(
+                    static peer =>
+                        peer.HasInfo &&
+                        peer.HasState) &&
+            lanClient.SnapshotPeers()
+                .Any(
+                    static peer =>
+                        peer.Id ==
+                        1 &&
+                        peer.HasInfo &&
+                        peer.HasState))
+        {
+            lanConnected =
+                true;
+
+            break;
+        }
+
+        Thread.Sleep(
+            2);
+    }
+
+    Require(
+        lanConnected &&
+        lanHost.SnapshotPeers().Count ==
+            1 &&
+        lanClient.SnapshotPeers()
+            .Any(
+                peer =>
+                    peer.Id ==
+                        1 &&
+                    peer.Pose.VehiclePath ==
+                        hostPose.VehiclePath),
+        "openOMSI LAN protocol-5 host/client loopback handshake, INFO or STATE relay failed.");
 
     Console.WriteLine("OMSI Compatible Runtime smoke test passed.");
     Console.WriteLine(

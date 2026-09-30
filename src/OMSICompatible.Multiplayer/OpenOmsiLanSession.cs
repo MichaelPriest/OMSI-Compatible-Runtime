@@ -56,6 +56,8 @@ public sealed class OpenOmsiLanSession :
     private readonly byte[] _receiveBuffer =
         new byte[
             OpenOmsiLanProtocol.MaximumDatagramBytes + 1];
+    private readonly ulong _nonce =
+        CreateNonce();
 
     private IPEndPoint? _host;
     private uint _nextId = 2;
@@ -133,10 +135,13 @@ public sealed class OpenOmsiLanSession :
         for (var offset = 0; offset < tries; offset++)
         {
             var candidate =
-                Math.Clamp(
-                    port + offset,
-                    1,
-                    ushort.MaxValue);
+                port == 0 &&
+                !tryNextPorts
+                    ? 0
+                    : Math.Clamp(
+                        port + offset,
+                        1,
+                        ushort.MaxValue);
 
             Socket? socket =
                 null;
@@ -655,7 +660,7 @@ public sealed class OpenOmsiLanSession :
                 path,
                 OpenOmsiLanProtocol.EncodeWorld(
                     World),
-                CreateNonce().ToString(
+                _nonce.ToString(
                     "X16",
                     CultureInfo.InvariantCulture)),
             _host);
