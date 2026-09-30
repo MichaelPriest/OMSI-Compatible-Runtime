@@ -401,6 +401,28 @@ public sealed class D3D11RenderWindow : Form
         _vehicleAnimationValues =
             new(
                 ReferenceEqualityComparer.Instance);
+    private readonly HashSet<RuntimeVehicleAnimationInfo>
+        _seenVehicleAnimations =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<int, RuntimeVehicleSectionInfo>
+        _vehicleSectionsByIndex =
+            [];
+    private readonly Dictionary<int, int>
+        _sectionOmsiAxleStartIndexBySectionIndex =
+            [];
+    private static readonly string[]
+        SharedSectionInheritedVariables =
+        [
+            "engine_on",
+            "engine_injection_on",
+            "engine_n",
+            "engine_M",
+            "elec_busbar_main",
+            "elec_busbar_main_sw",
+            "elec_bus_main",
+            "Snd_OutsideVol"
+        ];
     private readonly Dictionary<RuntimeVehicleLightEffectInfo, double>
         _vehicleLightValues =
             new(
@@ -938,6 +960,35 @@ public sealed class D3D11RenderWindow : Form
         string? reflectionMode = "economy")
     {
         _windowInfo = windowInfo;
+
+        var sectionAxleStart =
+            Math.Max(
+                windowInfo.Vehicle?.Physics?.Axles?.Count ??
+                    0,
+                2);
+
+        foreach (var section in
+                 windowInfo.Vehicle?.Sections?
+                     .OrderBy(
+                         static item =>
+                             item.Index) ??
+                 Enumerable.Empty<RuntimeVehicleSectionInfo>())
+        {
+            _vehicleSectionsByIndex[
+                section.Index] =
+                section;
+
+            _sectionOmsiAxleStartIndexBySectionIndex[
+                section.Index] =
+                sectionAxleStart;
+
+            sectionAxleStart +=
+                Math.Max(
+                    section.Physics?.Axles?.Count ??
+                        0,
+                    1);
+        }
+
         _trafficStep =
             trafficStep;
         _trafficCollisionResponse =
@@ -16790,9 +16841,10 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        _seenVehicleAnimations.Clear();
+
         var seen =
-            new HashSet<RuntimeVehicleAnimationInfo>(
-                ReferenceEqualityComparer.Instance);
+            _seenVehicleAnimations;
 
         var meshes =
             _windowInfo.Vehicle?.Meshes;
@@ -18329,11 +18381,11 @@ public sealed class D3D11RenderWindow : Form
 
     private RuntimeVehicleSectionInfo? ResolveVehicleSection(
         int sectionIndex) =>
-        _windowInfo.Vehicle?.Sections?
-            .FirstOrDefault(
-                section =>
-                    section.Index ==
-                    sectionIndex);
+        _vehicleSectionsByIndex.TryGetValue(
+            sectionIndex,
+            out var section)
+                ? section
+                : null;
 
     private OmsiScriptRuntime? ResolveScriptRuntimeForSection(
         int sectionIndex) =>
@@ -18522,36 +18574,15 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private int ResolveSectionOmsiAxleStartIndex(
-        int sectionIndex)
-    {
-        var start =
-            Math.Max(
-                _windowInfo.Vehicle?.Physics?.Axles?.Count ??
-                0,
-                2);
-
-        foreach (var section in
-                 _windowInfo.Vehicle?.Sections?
-                     .OrderBy(
-                         static item =>
-                             item.Index) ??
-                 Enumerable.Empty<RuntimeVehicleSectionInfo>())
-        {
-            if (section.Index ==
-                sectionIndex)
-            {
-                return start;
-            }
-
-            start +=
-                Math.Max(
-                    section.Physics?.Axles?.Count ??
-                    0,
-                    1);
-        }
-
-        return start;
-    }
+        int sectionIndex) =>
+        _sectionOmsiAxleStartIndexBySectionIndex.TryGetValue(
+            sectionIndex,
+            out var start)
+                ? start
+                : Math.Max(
+                    _windowInfo.Vehicle?.Physics?.Axles?.Count ??
+                        0,
+                    2);
 
     private void UpdateSectionScriptHostVariables(
         OmsiScriptRuntime runtime,
@@ -18656,17 +18687,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicle.VerticalAccelerationMetersPerSecondSquared);
 
         foreach (var sharedVariable in
-                 new[]
-                 {
-                     "engine_on",
-                     "engine_injection_on",
-                     "engine_n",
-                     "engine_M",
-                     "elec_busbar_main",
-                     "elec_busbar_main_sw",
-                     "elec_bus_main",
-                     "Snd_OutsideVol"
-                 })
+                 SharedSectionInheritedVariables)
         {
             InheritLeadScriptValueWhenPassive(
                 runtime,
@@ -20193,11 +20214,8 @@ public sealed class D3D11RenderWindow : Form
                  _articulatedOmsiAudio)
         {
             var section =
-                _windowInfo.Vehicle?.Sections?
-                    .FirstOrDefault(
-                        item =>
-                            item.Index ==
-                            pair.Key);
+                ResolveVehicleSection(
+                    pair.Key);
 
             if (section is null)
             {
