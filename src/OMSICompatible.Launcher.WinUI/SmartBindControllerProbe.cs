@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OMSICompatible.Launcher;
 using System.Globalization;
 using Vortice.DirectInput;
 
