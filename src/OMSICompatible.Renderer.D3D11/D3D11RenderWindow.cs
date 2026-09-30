@@ -420,6 +420,12 @@ public sealed class D3D11RenderWindow : Form
     private bool _vehicleLightMeshCacheInitialized;
     private readonly Dictionary<
         RuntimeObjectBatch,
+        ResolvedVehicleMaterialState>
+        _vehicleStaticMaterialStates =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
         RuntimeVehicleMaterialChangeSetInfo[]>
         _vehicleOrderedMaterialChangeSets =
             new(
@@ -9811,6 +9817,20 @@ public sealed class D3D11RenderWindow : Form
     private ResolvedVehicleMaterialState ResolveVehicleMaterialState(
         RuntimeObjectBatch batch)
     {
+        var hasDynamicMaterialSelection =
+            batch.MaterialChangeSets is
+                { Count: > 0 } ||
+            !string.IsNullOrWhiteSpace(
+                batch.MaterialChangeVariable);
+
+        if (!hasDynamicMaterialSelection &&
+            _vehicleStaticMaterialStates.TryGetValue(
+                batch,
+                out var cachedStaticMaterial))
+        {
+            return cachedStaticMaterial;
+        }
+
         RuntimeVehicleMaterialChangeItemInfo? selectedItem =
             null;
 
@@ -9977,42 +9997,52 @@ public sealed class D3D11RenderWindow : Form
         var itemFreeTextures =
             selectedItem?.FreeTextures;
 
-        return new ResolvedVehicleMaterialState(
-            alphaMode == 1,
-            alphaMode == 2,
-            transMap,
-            batch.NoZWrite ||
-                (selectedItem?.NoZWrite ?? false),
-            batch.NoZCheck ||
-                (selectedItem?.NoZCheck ?? false),
-            selectedItem?.AlphaScaleVariable ??
-                batch.AlphaScaleVariable,
-            selectedItem?.LightMapTexturePath ??
-                batch.LightMapTexturePath,
-            selectedItem?.LightMapVariable ??
-                batch.LightMapVariable,
-            changeTexture,
-            changeColor,
-            selectedItem?.EnvMapTexturePath ??
-                batch.EnvMapTexturePath,
-            selectedItem?.EnvMapTexturePath is not null
-                ? selectedItem.EnvMapStrength
-                : batch.EnvMapStrength,
-            selectedItem?.EnvMapMaskTexturePath ??
-                batch.EnvMapMaskTexturePath,
-            selectedItem?.BumpMapTexturePath ??
-                batch.BumpMapTexturePath,
-            selectedItem?.BumpMapTexturePath is not null
-                ? selectedItem.BumpMapStrength
-                : batch.BumpMapStrength,
-            itemFreeTextures is { Count: > 0 }
-                ? itemFreeTextures
-                : batch.FreeTextures,
-            selectedItem?.TextTextureIndex ??
-                batch.TextTextureIndex,
-            hasNativeItem ||
-                legacyActive,
-            useDiffuseAlphaAsEnvMapMask);
+        var resolved =
+            new ResolvedVehicleMaterialState(
+                alphaMode == 1,
+                alphaMode == 2,
+                transMap,
+                batch.NoZWrite ||
+                    (selectedItem?.NoZWrite ?? false),
+                batch.NoZCheck ||
+                    (selectedItem?.NoZCheck ?? false),
+                selectedItem?.AlphaScaleVariable ??
+                    batch.AlphaScaleVariable,
+                selectedItem?.LightMapTexturePath ??
+                    batch.LightMapTexturePath,
+                selectedItem?.LightMapVariable ??
+                    batch.LightMapVariable,
+                changeTexture,
+                changeColor,
+                selectedItem?.EnvMapTexturePath ??
+                    batch.EnvMapTexturePath,
+                selectedItem?.EnvMapTexturePath is not null
+                    ? selectedItem.EnvMapStrength
+                    : batch.EnvMapStrength,
+                selectedItem?.EnvMapMaskTexturePath ??
+                    batch.EnvMapMaskTexturePath,
+                selectedItem?.BumpMapTexturePath ??
+                    batch.BumpMapTexturePath,
+                selectedItem?.BumpMapTexturePath is not null
+                    ? selectedItem.BumpMapStrength
+                    : batch.BumpMapStrength,
+                itemFreeTextures is { Count: > 0 }
+                    ? itemFreeTextures
+                    : batch.FreeTextures,
+                selectedItem?.TextTextureIndex ??
+                    batch.TextTextureIndex,
+                hasNativeItem ||
+                    legacyActive,
+                useDiffuseAlphaAsEnvMapMask);
+
+        if (!hasDynamicMaterialSelection)
+        {
+            _vehicleStaticMaterialStates[
+                batch] =
+                resolved;
+        }
+
+        return resolved;
     }
 
     private readonly record struct ResolvedVehicleMaterialState(
@@ -21637,6 +21667,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleViewpointLightMeshes.Clear();
             _vehicleLightMeshCacheInitialized =
                 false;
+            _vehicleStaticMaterialStates.Clear();
             _vehicleOrderedMaterialChangeSets.Clear();
             _vehicleMaterialChangeItems.Clear();
 
