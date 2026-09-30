@@ -62,6 +62,10 @@ public sealed class WorldTrafficSimulation
         32;
     private const double TrafficLaneGridCellMeters =
         50.0;
+    private const double TrafficDistantPlanningEnterDistanceMeters =
+        650.0;
+    private const double TrafficDistantPlanningExitDistanceMeters =
+        550.0;
 
     private readonly WorldTrafficPathNetwork _network;
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
@@ -1003,15 +1007,24 @@ public sealed class WorldTrafficSimulation
                     agent.CollisionHoldUntilSeconds >
                     _simulationElapsedSeconds;
 
+                var useDistantPlanning =
+                    ShouldUseDistantPlanning(
+                        agent);
+
                 var leading =
-                    FindLeadingObservation(
-                        agent,
-                        activeAgentsBySegment);
+                    useDistantPlanning
+                        ? FindDistantLeadingObservation(
+                            agent,
+                            activeAgentsBySegment)
+                        : FindLeadingObservation(
+                            agent,
+                            activeAgentsBySegment);
 
                 double? blockedEntryDistance =
                     null;
 
-                if (_segmentsByIndex.TryGetValue(
+                if (!useDistantPlanning &&
+                    _segmentsByIndex.TryGetValue(
                         agent.SegmentIndex,
                         out var currentSegment))
                 {
@@ -3828,6 +3841,186 @@ public sealed class WorldTrafficSimulation
             agent);
     }
 
+    private bool ShouldUseDistantPlanning(
+        Agent agent)
+    {
+        if (_externalObstacle is not
+                { } obstacle ||
+            !_segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var segment))
+        {
+            agent.UsesDistantPlanning =
+                false;
+            return false;
+        }
+
+        SampleSegment(
+            segment,
+            agent.DistanceMeters,
+            out var position,
+            out _);
+
+        var deltaX =
+            position.X -
+            obstacle.Position.X;
+        var deltaZ =
+            position.Z -
+            obstacle.Position.Z;
+
+        var threshold =
+            agent.UsesDistantPlanning
+                ? TrafficDistantPlanningExitDistanceMeters
+                : TrafficDistantPlanningEnterDistanceMeters;
+
+        var useDistantPlanning =
+            deltaX *
+                deltaX +
+            deltaZ *
+                deltaZ >
+            threshold *
+                threshold;
+
+        agent.UsesDistantPlanning =
+            useDistantPlanning;
+
+        return useDistantPlanning;
+    }
+
+    private TrafficLead? FindDistantLeadingObservation(
+        Agent agent,
+        IReadOnlyDictionary<int, List<Agent>> activeAgentsBySegment)
+    {
+        if (!_segmentsByIndex.TryGetValue(
+                agent.SegmentIndex,
+                out var currentSegment))
+        {
+            return null;
+        }
+
+        TrafficLead? nearest =
+            null;
+
+        void ConsiderCandidate(
+            Agent candidate,
+            double routeDistanceMeters)
+        {
+            if (ReferenceEquals(
+                    candidate,
+                    agent) ||
+                candidate.PendingRespawn ||
+                candidate.ActivationTimeSeconds >
+                    _simulationElapsedSeconds ||
+                candidate.TravelForward !=
+                    agent.TravelForward ||
+                routeDistanceMeters <=
+                    0.0001)
+            {
+                return;
+            }
+
+            var bumperClearance =
+                routeDistanceMeters -
+                EstimateTrafficVehicleHalfLength(
+                    agent.VehiclePath) -
+                EstimateTrafficVehicleHalfLength(
+                    candidate.VehiclePath);
+
+            if (bumperClearance <=
+                    0.0001 ||
+                nearest.HasValue &&
+                bumperClearance >=
+                    nearest.Value.DistanceMeters)
+            {
+                return;
+            }
+
+            nearest =
+                new TrafficLead(
+                    bumperClearance,
+                    Math.Max(
+                        candidate.SpeedMetersPerSecond,
+                        0.0));
+        }
+
+        if (activeAgentsBySegment.TryGetValue(
+                currentSegment.Index,
+                out var currentCandidates))
+        {
+            foreach (var candidate in
+                     currentCandidates)
+            {
+                var routeDistance =
+                    agent.TravelForward
+                        ? candidate.DistanceMeters -
+                          agent.DistanceMeters
+                        : agent.DistanceMeters -
+                          candidate.DistanceMeters;
+
+                ConsiderCandidate(
+                    candidate,
+                    routeDistance);
+            }
+        }
+
+        var nextIndex =
+            ResolveNextSegmentIndex(
+                agent,
+                currentSegment);
+
+        if (!nextIndex.HasValue ||
+            !_segmentsByIndex.TryGetValue(
+                nextIndex.Value,
+                out var nextSegment) ||
+            !activeAgentsBySegment.TryGetValue(
+                nextIndex.Value,
+                out var nextCandidates))
+        {
+            return nearest;
+        }
+
+        var currentLength =
+            SegmentLength(
+                currentSegment);
+
+        var distanceToCurrentExit =
+            agent.TravelForward
+                ? Math.Max(
+                    currentLength -
+                        agent.DistanceMeters,
+                    0.0)
+                : Math.Max(
+                    agent.DistanceMeters,
+                    0.0);
+
+        var nextLength =
+            SegmentLength(
+                nextSegment);
+
+        foreach (var candidate in
+                 nextCandidates)
+        {
+            var candidateDistanceFromEntry =
+                agent.TravelForward
+                    ? Math.Clamp(
+                        candidate.DistanceMeters,
+                        0.0,
+                        nextLength)
+                    : Math.Clamp(
+                        nextLength -
+                            candidate.DistanceMeters,
+                        0.0,
+                        nextLength);
+
+            ConsiderCandidate(
+                candidate,
+                distanceToCurrentExit +
+                candidateDistanceFromEntry);
+        }
+
+        return nearest;
+    }
+
     private TrafficLead? FindLeadingObservation(
         Agent agent,
         IReadOnlyDictionary<int, List<Agent>> activeAgentsBySegment)
@@ -5408,6 +5601,12 @@ public sealed class WorldTrafficSimulation
                 0.0);
 
         public bool BrakeLight
+        {
+            get;
+            set;
+        }
+
+        public bool UsesDistantPlanning
         {
             get;
             set;
