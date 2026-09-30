@@ -86,7 +86,17 @@ internal sealed class RuntimeOmsiAudioHost :
                 Viewpoint,
                 Trigger,
                 Conditions.ToArray(),
-                VolumeCurves.ToArray(),
+                VolumeCurves
+                    .Select(
+                        static curve =>
+                            new RuntimeOmsiSoundCurve(
+                                curve.Variable,
+                                curve.Points
+                                    .OrderBy(
+                                        static point =>
+                                            point.X)
+                                    .ToArray()))
+                    .ToArray(),
                 PitchVariable,
                 PitchReferenceValue,
                 DeclaredSampleRate,
@@ -1900,12 +1910,12 @@ internal sealed class RuntimeOmsiAudioHost :
             return 1.0;
         }
 
+        // Points are normalized once when sound.cfg is parsed. Audio
+        // curves are evaluated many times per second for every nearby AI
+        // vehicle, so sorting and allocating here would turn a static file
+        // property into recurring frame work.
         var points =
-            curve.Points
-                .OrderBy(
-                    static point =>
-                        point.X)
-                .ToArray();
+            curve.Points;
 
         // OMSI sound.cfg curves are active only inside the declared
         // [pnt] domain. The stock MAN comments explicitly state that below
