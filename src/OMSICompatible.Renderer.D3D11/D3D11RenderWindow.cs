@@ -802,6 +802,10 @@ public sealed class D3D11RenderWindow : Form
     private int _trafficLightInstanceBufferCapacity;
     private RuntimeTrafficLightInstanceData[] _trafficLightInstanceScratch =
         Array.Empty<RuntimeTrafficLightInstanceData>();
+    private ID3D11Buffer? _vehicleLightInstanceBuffer;
+    private int _vehicleLightInstanceBufferCapacity;
+    private RuntimeTrafficLightInstanceData[] _vehicleLightInstanceScratch =
+        Array.Empty<RuntimeTrafficLightInstanceData>();
     private RuntimeTrafficInstanceData[] _trafficInstanceScratch =
         Array.Empty<RuntimeTrafficInstanceData>();
     private readonly Dictionary<
@@ -10970,6 +10974,75 @@ public sealed class D3D11RenderWindow : Form
             desired;
     }
 
+    private bool TryUploadVehicleLightInstances(
+        int count,
+        out ID3D11Buffer? instanceBuffer)
+    {
+        instanceBuffer =
+            null;
+
+        if (_device is null ||
+            _deviceContext is null ||
+            count <=
+                0)
+        {
+            return false;
+        }
+
+        if (_vehicleLightInstanceBuffer is null ||
+            _vehicleLightInstanceBufferCapacity <
+                count)
+        {
+            var capacity =
+                Math.Max(
+                    32,
+                    _vehicleLightInstanceBufferCapacity);
+
+            while (capacity <
+                   count)
+            {
+                capacity *=
+                    2;
+            }
+
+            _vehicleLightInstanceBuffer?.Dispose();
+
+            _vehicleLightInstanceBuffer =
+                _device.CreateBuffer(
+                    new BufferDescription(
+                        (uint)(
+                            capacity *
+                            RuntimeTrafficLightInstanceData.SizeInBytes),
+                        BindFlags.VertexBuffer,
+                        ResourceUsage.Default,
+                        CpuAccessFlags.None));
+
+            _vehicleLightInstanceBufferCapacity =
+                capacity;
+        }
+
+        _deviceContext.UpdateSubresource(
+            _vehicleLightInstanceScratch.AsSpan(
+                0,
+                count),
+            _vehicleLightInstanceBuffer,
+            region:
+                new Box(
+                    0,
+                    0,
+                    0,
+                    checked(
+                        count *
+                        (int)RuntimeTrafficLightInstanceData.SizeInBytes),
+                    1,
+                    1));
+
+        instanceBuffer =
+            _vehicleLightInstanceBuffer;
+
+        return true;
+    }
+
     private void DrawVehicleLights()
     {
         if (_vehicleRemoved)
@@ -10982,15 +11055,12 @@ public sealed class D3D11RenderWindow : Form
 
         if (vehicle is null ||
             _deviceContext is null ||
-            _renderTargetView is null ||
-            _depthStencilView is null ||
+            CurrentRenderTargetView is null ||
+            CurrentDepthStencilView is null ||
             _vehicleLightVertexBuffer is null ||
-            _vehicleModelBuffer is null ||
-            _vehicleMaterialBuffer is null ||
-            _vehicleSkinBuffer is null ||
-            _vehicleVertexShader is null ||
-            _vehicleLightPixelShader is null ||
-            _vehicleInputLayout is null ||
+            _trafficLightInstancedVertexShader is null ||
+            _trafficLightInstancedPixelShader is null ||
+            _trafficLightInstancedInputLayout is null ||
             _terrainCameraBuffer is null ||
             _terrainAdditiveBlendState is null ||
             _vehicleDepthReadState is null)
@@ -11075,74 +11145,8 @@ public sealed class D3D11RenderWindow : Form
         var vehicleWorld =
             _vehicle.CreateWorldMatrix();
 
-        Span<RuntimeModelConstants> model =
-            stackalloc RuntimeModelConstants[1];
-
-        Span<RuntimeVehicleMaterialConstants> material =
-            stackalloc RuntimeVehicleMaterialConstants[1];
-
-        _deviceContext.OMSetRenderTargets(
-            _renderTargetView,
-            _depthStencilView);
-
-        _deviceContext.IASetPrimitiveTopology(
-            PrimitiveTopology.TriangleList);
-
-        _deviceContext.IASetInputLayout(
-            _vehicleInputLayout);
-
-        _deviceContext.IASetVertexBuffer(
-            0,
-            _vehicleLightVertexBuffer,
-            RuntimeObjectVertex.SizeInBytes);
-
-        _deviceContext.VSSetShader(
-            _vehicleVertexShader);
-
-        _deviceContext.VSSetConstantBuffer(
-            0,
-            _terrainCameraBuffer);
-
-        _deviceContext.VSSetConstantBuffer(
-            1,
-            _vehicleModelBuffer);
-
-        Span<RuntimeVehicleSkinConstants> lightSkin =
-            stackalloc RuntimeVehicleSkinConstants[1];
-
-        lightSkin[0] =
-            new RuntimeVehicleSkinConstants
-            {
-                Bone0 = Matrix4x4.Identity,
-                Bone1 = Matrix4x4.Identity,
-                Bone2 = Matrix4x4.Identity,
-                Bone3 = Matrix4x4.Identity
-            };
-
-        _vehicleSkinBuffer.SetData(
-            _deviceContext,
-            lightSkin,
-            MapMode.WriteDiscard);
-
-        _deviceContext.VSSetConstantBuffer(
-            3,
-            _vehicleSkinBuffer);
-
-        _deviceContext.PSSetShader(
-            _vehicleLightPixelShader);
-
-        _deviceContext.PSSetConstantBuffer(
-            2,
-            _vehicleMaterialBuffer);
-
-        _deviceContext.OMSetBlendState(
-            _terrainAdditiveBlendState);
-
-        _deviceContext.OMSetDepthStencilState(
-            _vehicleDepthReadState);
-
-        _deviceContext.RSSetState(
-            _terrainRasterizerState);
+        var instanceCount =
+            0;
 
         foreach (var mesh in
                  selectionSource)
@@ -11223,14 +11227,11 @@ public sealed class D3D11RenderWindow : Form
                     Vector3.Normalize(
                         toCamera);
 
-                var directionalAttenuation =
+                brightness *=
                     ResolveVehicleLightDirectionalAttenuation(
                         light,
                         parentTransform,
                         cameraDirection);
-
-                brightness *=
-                    directionalAttenuation;
 
                 if (brightness <=
                     0.0001)
@@ -11248,26 +11249,25 @@ public sealed class D3D11RenderWindow : Form
                         0.005,
                         20.0);
 
-                var billboard =
-                    Matrix4x4.CreateScale(
-                        size) *
-                    Matrix4x4.CreateBillboard(
-                        center,
-                        cameraPosition,
-                        Vector3.UnitY,
-                        Vector3.UnitZ);
+                if (_vehicleLightInstanceScratch.Length <=
+                    instanceCount)
+                {
+                    var capacity =
+                        Math.Max(
+                            32,
+                            _vehicleLightInstanceScratch.Length);
 
-                model[0] =
-                    new RuntimeModelConstants
+                    while (capacity <=
+                           instanceCount)
                     {
-                        World =
-                            billboard
-                    };
+                        capacity *=
+                            2;
+                    }
 
-                _vehicleModelBuffer.SetData(
-                    _deviceContext,
-                    model,
-                    MapMode.WriteDiscard);
+                    Array.Resize(
+                        ref _vehicleLightInstanceScratch,
+                        capacity);
+                }
 
                 var normalizedBrightness =
                     (float)Math.Clamp(
@@ -11275,11 +11275,19 @@ public sealed class D3D11RenderWindow : Form
                         0.0,
                         16.0);
 
-                material[0] =
-                    new RuntimeVehicleMaterialConstants
+                _vehicleLightInstanceScratch[
+                    instanceCount++] =
+                    new RuntimeTrafficLightInstanceData
                     {
-                        AlphaScale = 1.0f,
-                        MaterialChangeDiffuse =
+                        World =
+                            Matrix4x4.CreateScale(
+                                size) *
+                            Matrix4x4.CreateBillboard(
+                                center,
+                                cameraPosition,
+                                Vector3.UnitY,
+                                Vector3.UnitZ),
+                        Color =
                             new Vector4(
                                 light.Red / 255.0f *
                                     normalizedBrightness,
@@ -11289,17 +11297,63 @@ public sealed class D3D11RenderWindow : Form
                                     normalizedBrightness,
                                 1.0f)
                     };
-
-                _vehicleMaterialBuffer.SetData(
-                    _deviceContext,
-                    material,
-                    MapMode.WriteDiscard);
-
-                _deviceContext.Draw(
-                    6,
-                    0);
             }
         }
+
+        if (instanceCount ==
+                0 ||
+            !TryUploadVehicleLightInstances(
+                instanceCount,
+                out var instanceBuffer) ||
+            instanceBuffer is null)
+        {
+            return;
+        }
+
+        _deviceContext.OMSetRenderTargets(
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            _trafficLightInstancedInputLayout);
+
+        _deviceContext.IASetVertexBuffer(
+            0,
+            _vehicleLightVertexBuffer,
+            RuntimeObjectVertex.SizeInBytes);
+
+        _deviceContext.IASetVertexBuffer(
+            1,
+            instanceBuffer,
+            RuntimeTrafficLightInstanceData.SizeInBytes);
+
+        _deviceContext.VSSetShader(
+            _trafficLightInstancedVertexShader);
+
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.PSSetShader(
+            _trafficLightInstancedPixelShader);
+
+        _deviceContext.OMSetBlendState(
+            _terrainAdditiveBlendState);
+
+        _deviceContext.OMSetDepthStencilState(
+            _vehicleDepthReadState);
+
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+
+        _deviceContext.DrawInstanced(
+            6,
+            (uint)instanceCount,
+            0,
+            0);
 
         _deviceContext.OMSetBlendState(
             null);
@@ -23554,6 +23608,12 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAlphaBlendState?.Dispose();
             _vehicleSampler?.Dispose();
             _vehicleInputLayout?.Dispose();
+            _vehicleLightInstanceBuffer?.Dispose();
+            _vehicleLightInstanceBuffer = null;
+            _vehicleLightInstanceBufferCapacity =
+                0;
+            _vehicleLightInstanceScratch =
+                Array.Empty<RuntimeTrafficLightInstanceData>();
             _trafficLightInstanceBuffer?.Dispose();
             _trafficLightInstanceBuffer = null;
             _trafficLightInstanceBufferCapacity =
