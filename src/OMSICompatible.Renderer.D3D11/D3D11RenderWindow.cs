@@ -514,6 +514,12 @@ public sealed class D3D11RenderWindow : Form
                 ReferenceEqualityComparer.Instance);
     private readonly Dictionary<
         RuntimeObjectBatch,
+        string?>
+        _vehicleDiffuseTexturePathFrameStates =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
         bool>
         _vehicleBatchVisibilityFrameStates =
             new(
@@ -6475,6 +6481,7 @@ public sealed class D3D11RenderWindow : Form
         _vehicleAnimationMatrixFrameStates.Clear();
         _vehicleSkinFrameStates.Clear();
         _vehicleMaterialConstantsFrameStates.Clear();
+        _vehicleDiffuseTexturePathFrameStates.Clear();
         _vehicleBatchVisibilityFrameStates.Clear();
         _vehicleLightMeshVisibilityFrameStates.Clear();
         ReleaseRetiredStreamingVertexBuffers();
@@ -13216,51 +13223,67 @@ public sealed class D3D11RenderWindow : Form
         RuntimeObjectBatch batch,
         IReadOnlyList<RuntimeVehicleFreeTextureInfo>? bindings)
     {
-
-        if (bindings is null ||
-            bindings.Count == 0)
+        if (_vehicleDiffuseTexturePathFrameStates.TryGetValue(
+                batch,
+                out var cached))
         {
-            return batch.TexturePath;
+            return cached;
         }
 
-        var baseFileName =
-            Path.GetFileName(
-                batch.TexturePath);
+        string? resolvedPath =
+            batch.TexturePath;
 
-        foreach (var binding in
-                 bindings)
+        if (bindings is not null &&
+            bindings.Count >
+                0)
         {
-            if (!string.IsNullOrWhiteSpace(
-                    binding.SourceTextureName) &&
-                !string.Equals(
-                    Path.GetFileName(
-                        binding.SourceTextureName),
-                    baseFileName,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
+            var baseFileName =
+                Path.GetFileName(
+                    batch.TexturePath);
 
-            var value =
-                ResolveSectionStringValue(
-                    batch.SectionIndex,
-                    binding.VariableName);
-
-            if (string.IsNullOrWhiteSpace(
-                    value))
+            foreach (var binding in
+                     bindings)
             {
-                continue;
-            }
+                if (!string.IsNullOrWhiteSpace(
+                        binding.SourceTextureName) &&
+                    !string.Equals(
+                        Path.GetFileName(
+                            binding.SourceTextureName),
+                        baseFileName,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
 
-            if (TryResolveVehicleDynamicTexturePath(
-                    value,
-                    out var resolved))
-            {
-                return resolved;
+                var value =
+                    ResolveSectionStringValue(
+                        batch.SectionIndex,
+                        binding.VariableName);
+
+                if (string.IsNullOrWhiteSpace(
+                        value))
+                {
+                    continue;
+                }
+
+                if (!TryResolveVehicleDynamicTexturePath(
+                        value,
+                        out var resolved))
+                {
+                    continue;
+                }
+
+                resolvedPath =
+                    resolved;
+                break;
             }
         }
 
-        return batch.TexturePath;
+        _vehicleDiffuseTexturePathFrameStates[
+            batch] =
+            resolvedPath;
+
+        return resolvedPath;
     }
 
     private bool TryResolveVehicleDynamicTexturePath(
@@ -23722,6 +23745,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleAnimationMatrixFrameStates.Clear();
             _vehicleSkinFrameStates.Clear();
             _vehicleMaterialConstantsFrameStates.Clear();
+            _vehicleDiffuseTexturePathFrameStates.Clear();
             _vehicleBatchVisibilityFrameStates.Clear();
             _vehicleLightMeshVisibilityFrameStates.Clear();
             _vehicleAnimationVisitedScratch.Clear();
