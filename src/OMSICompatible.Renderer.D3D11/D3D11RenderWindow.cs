@@ -408,8 +408,16 @@ public sealed class D3D11RenderWindow : Form
     private readonly Dictionary<int, RuntimeVehicleSectionInfo>
         _vehicleSectionsByIndex =
             [];
+    private RuntimeVehicleSectionInfo[] _orderedVehicleSections =
+        Array.Empty<RuntimeVehicleSectionInfo>();
     private readonly Dictionary<int, int>
         _sectionOmsiAxleStartIndexBySectionIndex =
+            [];
+    private readonly Dictionary<int, Matrix4x4>
+        _articulatedSectionMatrixCache =
+            [];
+    private readonly HashSet<int>
+        _articulatedSectionMatrixVisited =
             [];
     private static readonly string[]
         SharedSectionInheritedVariables =
@@ -879,8 +887,10 @@ public sealed class D3D11RenderWindow : Form
     private readonly bool _vehicleToVehicleCollisionsEnabled;
     private readonly bool _vehicleLandscapeCollisionsEnabled;
     private readonly HashSet<int> _activeTrafficCollisionAgents = [];
+    private readonly HashSet<int> _trafficCollisionScratch = [];
     private readonly Dictionary<int, double> _lastTrafficCollisionSeconds = [];
     private readonly HashSet<int> _activeSceneryCollisionVolumes = [];
+    private readonly HashSet<int> _sceneryCollisionScratch = [];
     private IReadOnlyList<RuntimeSceneryCollisionVolume> _sceneryCollisionVolumes =
         Array.Empty<RuntimeSceneryCollisionVolume>();
     private int _trafficCollisionCount;
@@ -961,6 +971,14 @@ public sealed class D3D11RenderWindow : Form
     {
         _windowInfo = windowInfo;
 
+        _orderedVehicleSections =
+            windowInfo.Vehicle?.Sections?
+                .OrderBy(
+                    static item =>
+                        item.Index)
+                .ToArray() ??
+            Array.Empty<RuntimeVehicleSectionInfo>();
+
         var sectionAxleStart =
             Math.Max(
                 windowInfo.Vehicle?.Physics?.Axles?.Count ??
@@ -968,11 +986,7 @@ public sealed class D3D11RenderWindow : Form
                 2);
 
         foreach (var section in
-                 windowInfo.Vehicle?.Sections?
-                     .OrderBy(
-                         static item =>
-                             item.Index) ??
-                 Enumerable.Empty<RuntimeVehicleSectionInfo>())
+                 _orderedVehicleSections)
         {
             _vehicleSectionsByIndex[
                 section.Index] =
@@ -14121,8 +14135,10 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        _sceneryCollisionScratch.Clear();
+
         var collided =
-            new HashSet<int>();
+            _sceneryCollisionScratch;
 
         var impactApplied =
             false;
@@ -14290,17 +14306,9 @@ public sealed class D3D11RenderWindow : Form
                 correction;
         }
 
-        _activeSceneryCollisionVolumes.RemoveWhere(
-            key =>
-                !collided.Contains(
-                    key));
-
-        foreach (var key in
-                 collided)
-        {
-            _activeSceneryCollisionVolumes.Add(
-                key);
-        }
+        _activeSceneryCollisionVolumes.Clear();
+        _activeSceneryCollisionVolumes.UnionWith(
+            collided);
     }
 
     private static bool TryResolveTriangleMeshCorrection(
@@ -14674,8 +14682,10 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        _trafficCollisionScratch.Clear();
+
         var collided =
-            new HashSet<int>();
+            _trafficCollisionScratch;
 
         var heading =
             (float)player.HeadingRadians;
@@ -14860,18 +14870,9 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
-        _activeTrafficCollisionAgents
-            .RemoveWhere(
-                id =>
-                    !collided.Contains(
-                        id));
-
-        foreach (var id in
-                 collided)
-        {
-            _activeTrafficCollisionAgents.Add(
-                id);
-        }
+        _activeTrafficCollisionAgents.Clear();
+        _activeTrafficCollisionAgents.UnionWith(
+            collided);
     }
 
     private void ResolveTrafficVehicleCollisionHalfExtents(
@@ -16425,20 +16426,17 @@ public sealed class D3D11RenderWindow : Form
     private void UpdateArticulatedSections(
         float deltaSeconds)
     {
-        var sections =
-            _windowInfo.Vehicle?.Sections;
-
-        if (sections is null ||
-            sections.Count == 0 ||
+        if (_orderedVehicleSections.Length ==
+                0 ||
             deltaSeconds <= 0.0f)
         {
             return;
         }
 
+        _articulatedSectionMatrixCache.Clear();
+
         foreach (var section in
-                 sections.OrderBy(
-                     static item =>
-                         item.Index))
+                 _orderedVehicleSections)
         {
             if (_vehicle.TryGetOdeArticulatedSectionState(
                     section.Index,
@@ -16726,43 +16724,58 @@ public sealed class D3D11RenderWindow : Form
     private Matrix4x4 CreateArticulatedSectionMatrix(
         int sectionIndex)
     {
-        if (sectionIndex <= 0)
+        if (sectionIndex <=
+            0)
         {
             return Matrix4x4.Identity;
         }
 
-        var sections =
-            _windowInfo.Vehicle?.Sections;
+        if (_articulatedSectionMatrixCache.TryGetValue(
+                sectionIndex,
+                out var cached))
+        {
+            return cached;
+        }
 
-        if (sections is null ||
-            sections.Count == 0)
+        if (_orderedVehicleSections.Length ==
+            0)
         {
             return Matrix4x4.Identity;
         }
+
+        _articulatedSectionMatrixVisited.Clear();
 
         return CreateArticulatedSectionMatrix(
             sectionIndex,
-            sections,
-            new HashSet<int>());
+            _articulatedSectionMatrixVisited);
     }
 
     private Matrix4x4 CreateArticulatedSectionMatrix(
         int sectionIndex,
-        IReadOnlyList<RuntimeVehicleSectionInfo> sections,
         ISet<int> visited)
     {
-        if (sectionIndex <= 0 ||
-            !visited.Add(
+        if (sectionIndex <=
+            0)
+        {
+            return Matrix4x4.Identity;
+        }
+
+        if (_articulatedSectionMatrixCache.TryGetValue(
+                sectionIndex,
+                out var cached))
+        {
+            return cached;
+        }
+
+        if (!visited.Add(
                 sectionIndex))
         {
             return Matrix4x4.Identity;
         }
 
         var section =
-            sections.FirstOrDefault(
-                item =>
-                    item.Index ==
-                    sectionIndex);
+            ResolveVehicleSection(
+                sectionIndex);
 
         if (section is null)
         {
@@ -16799,16 +16812,20 @@ public sealed class D3D11RenderWindow : Form
             Matrix4x4.CreateTranslation(
                 pivot);
 
-        if (section.ParentIndex <= 0)
-        {
-            return local;
-        }
+        var result =
+            section.ParentIndex <=
+                    0
+                ? local
+                : local *
+                  CreateArticulatedSectionMatrix(
+                      section.ParentIndex,
+                      visited);
 
-        return local *
-               CreateArticulatedSectionMatrix(
-                   section.ParentIndex,
-                   sections,
-                   visited);
+        _articulatedSectionMatrixCache[
+            sectionIndex] =
+            result;
+
+        return result;
     }
 
     private static float NormalizeRadians(
