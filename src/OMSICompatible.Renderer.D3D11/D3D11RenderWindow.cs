@@ -706,9 +706,19 @@ public sealed class D3D11RenderWindow : Form
         _objectBatchVisibilityIndices =
             new(
                 ReferenceEqualityComparer.Instance);
-    private bool[] _mainSceneryBatchVisibility =
-        Array.Empty<bool>();
+    private byte[] _mainSceneryBatchVisibility =
+        Array.Empty<byte>();
     private bool _mainSceneryBatchVisibilityPrepared;
+    private const byte SceneryVisibilityUnknown =
+        0;
+    private const byte SceneryVisibilityHidden =
+        1;
+    private const byte SceneryVisibilityVisible =
+        2;
+    private const float SceneryCullSizeHysteresis =
+        0.15f;
+    private const float SceneryCullDistanceHysteresis =
+        0.05f;
     private const int ParallelSceneryCullThreshold =
         128;
     private uint _objectVertexCount;
@@ -6945,7 +6955,7 @@ public sealed class D3D11RenderWindow : Form
             _objectGeometry.Batches.Count)
         {
             _mainSceneryBatchVisibility =
-                new bool[
+                new byte[
                     _objectGeometry.Batches.Count];
         }
 
@@ -7205,6 +7215,10 @@ public sealed class D3D11RenderWindow : Form
                 batches.Count,
                 index =>
                 {
+                    var previousState =
+                        _mainSceneryBatchVisibility[
+                            index];
+
                     _mainSceneryBatchVisibility[
                         index] =
                         EvaluateSceneryBatchVisibility(
@@ -7213,7 +7227,10 @@ public sealed class D3D11RenderWindow : Form
                             cameraPosition,
                             viewProjection,
                             framePressure,
-                            viewportPixels);
+                            viewportPixels,
+                            previousState)
+                            ? SceneryVisibilityVisible
+                            : SceneryVisibilityHidden;
                 });
         }
         else
@@ -7223,6 +7240,10 @@ public sealed class D3D11RenderWindow : Form
                  batches.Count;
                  index++)
             {
+                var previousState =
+                    _mainSceneryBatchVisibility[
+                        index];
+
                 _mainSceneryBatchVisibility[
                     index] =
                     EvaluateSceneryBatchVisibility(
@@ -7231,7 +7252,10 @@ public sealed class D3D11RenderWindow : Form
                         cameraPosition,
                         viewProjection,
                         framePressure,
-                        viewportPixels);
+                        viewportPixels,
+                        previousState)
+                        ? SceneryVisibilityVisible
+                        : SceneryVisibilityHidden;
             }
         }
 
@@ -7264,7 +7288,8 @@ public sealed class D3D11RenderWindow : Form
                 _mainSceneryBatchVisibility.Length)
         {
             return _mainSceneryBatchVisibility[
-                visibilityIndex];
+                       visibilityIndex] ==
+                   SceneryVisibilityVisible;
         }
 
         var viewportPixels =
@@ -7283,7 +7308,8 @@ public sealed class D3D11RenderWindow : Form
             cameraPosition,
             viewProjection,
             ResolveSceneryFramePressure(),
-            viewportPixels);
+            viewportPixels,
+            SceneryVisibilityUnknown);
     }
 
     private bool EvaluateSceneryBatchVisibility(
@@ -7291,7 +7317,8 @@ public sealed class D3D11RenderWindow : Form
         Vector3 cameraPosition,
         Matrix4x4 viewProjection,
         double framePressure,
-        int viewportPixels)
+        int viewportPixels,
+        byte previousVisibilityState)
     {
         if (!batch.BoundsCenter.HasValue)
         {
@@ -7312,6 +7339,19 @@ public sealed class D3D11RenderWindow : Form
         var maximumDistance =
             (float)_maximumObjectVisibilityMeters +
             radius;
+
+        maximumDistance *=
+            previousVisibilityState switch
+            {
+                SceneryVisibilityVisible =>
+                    1.0f +
+                    SceneryCullDistanceHysteresis,
+                SceneryVisibilityHidden =>
+                    1.0f -
+                    SceneryCullDistanceHysteresis,
+                _ =>
+                    1.0f
+            };
 
         if (distanceSquared >
             maximumDistance *
@@ -7388,6 +7428,19 @@ public sealed class D3D11RenderWindow : Form
                             1.15
                         ? 1.5f
                         : 0.65f;
+
+            minimumVisiblePixels *=
+                previousVisibilityState switch
+                {
+                    SceneryVisibilityVisible =>
+                        1.0f -
+                        SceneryCullSizeHysteresis,
+                    SceneryVisibilityHidden =>
+                        1.0f +
+                        SceneryCullSizeHysteresis,
+                    _ =>
+                        1.0f
+                };
 
             if (projectedDiameterPixels <
                 minimumVisiblePixels)
@@ -22660,7 +22713,7 @@ public sealed class D3D11RenderWindow : Form
             _streamingTextureDroppedMipLevels.Clear();
             _objectBatchVisibilityIndices.Clear();
             _mainSceneryBatchVisibility =
-                Array.Empty<bool>();
+                Array.Empty<byte>();
             _mainSceneryBatchVisibilityPrepared =
                 false;
 
