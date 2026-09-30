@@ -407,6 +407,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly float _mouseSteeringSensitivity;
     private readonly float _throttlePedalResponse;
     private readonly float _brakePedalResponse;
+    private readonly float _wheelRangeDegrees;
+    private readonly float _wheelLockDegrees;
+    private readonly float _fieldOfViewDegrees;
     private RuntimeOmsiGameControllerHost? _omsiGameController;
     private RuntimeOmsiAudioHost? _omsiAudio;
     private readonly Dictionary<int, RuntimeOmsiAudioHost>
@@ -1087,6 +1090,9 @@ public sealed class D3D11RenderWindow : Form
         double mouseSteeringSensitivity = 1.0,
         double throttlePedalResponse = 1.0,
         double brakePedalResponse = 1.0,
+        double wheelRangeDegrees = 900.0,
+        double wheelLockDegrees = 0.0,
+        double fieldOfViewDegrees = 0.0,
         IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null,
         int masterVolumePercent = 100,
         bool automaticSteeringCenter = false,
@@ -1313,6 +1319,25 @@ public sealed class D3D11RenderWindow : Form
                 brakePedalResponse,
                 0.25,
                 4.0);
+        _wheelRangeDegrees =
+            (float)Math.Clamp(
+                wheelRangeDegrees,
+                90.0,
+                2880.0);
+        _wheelLockDegrees =
+            wheelLockDegrees >= 45.0
+                ? (float)Math.Clamp(
+                    wheelLockDegrees,
+                    45.0,
+                    2880.0)
+                : 0.0f;
+        _fieldOfViewDegrees =
+            fieldOfViewDegrees >= 20.0
+                ? (float)Math.Clamp(
+                    fieldOfViewDegrees,
+                    20.0,
+                    120.0)
+                : 0.0f;
         _automaticSteeringCenter =
             automaticSteeringCenter;
         _omsiKeyboardBindings =
@@ -3550,7 +3575,14 @@ public sealed class D3D11RenderWindow : Form
                 Handle,
                 _controllerDeadZone,
                 _throttlePedalResponse,
-                _brakePedalResponse);
+                _brakePedalResponse,
+                _wheelLockDegrees >= 45.0f
+                    ? Math.Clamp(
+                        _wheelRangeDegrees /
+                        _wheelLockDegrees,
+                        0.1f,
+                        20.0f)
+                    : 1.0f);
 
         if (_omsiGameController is not null)
         {
@@ -3985,8 +4017,10 @@ public sealed class D3D11RenderWindow : Form
             pitch =
                 _camera.Pitch;
             verticalFieldOfViewRadians =
-                MathF.PI /
-                3.0f;
+                DegreesToRadians(
+                    _fieldOfViewDegrees >= 20.0f
+                        ? _fieldOfViewDegrees
+                        : 60.0f);
         }
         else
         {
@@ -4019,14 +4053,16 @@ public sealed class D3D11RenderWindow : Form
 
                 verticalFieldOfViewRadians =
                     DegreesToRadians(
-                        Math.Clamp(
-                            camera.FieldOfViewDegrees *
-                            Math.Clamp(
-                                _interiorCameraFieldOfViewScale,
-                                0.35f,
-                                2.0f),
-                            18.0,
-                            120.0));
+                        _fieldOfViewDegrees >= 20.0f
+                            ? _fieldOfViewDegrees
+                            : Math.Clamp(
+                                camera.FieldOfViewDegrees *
+                                Math.Clamp(
+                                    _interiorCameraFieldOfViewScale,
+                                    0.35f,
+                                    2.0f),
+                                18.0,
+                                120.0));
             }
             else if (_vehicleViewMode ==
                          RuntimeVehicleViewMode.Passenger &&
@@ -4054,14 +4090,16 @@ public sealed class D3D11RenderWindow : Form
 
                 verticalFieldOfViewRadians =
                     DegreesToRadians(
-                        Math.Clamp(
-                            camera.FieldOfViewDegrees *
-                            Math.Clamp(
-                                _interiorCameraFieldOfViewScale,
-                                0.35f,
-                                2.0f),
-                            18.0,
-                            120.0));
+                        _fieldOfViewDegrees >= 20.0f
+                            ? _fieldOfViewDegrees
+                            : Math.Clamp(
+                                camera.FieldOfViewDegrees *
+                                Math.Clamp(
+                                    _interiorCameraFieldOfViewScale,
+                                    0.35f,
+                                    2.0f),
+                                18.0,
+                                120.0));
             }
             else
             {
@@ -4082,8 +4120,10 @@ public sealed class D3D11RenderWindow : Form
                         1.25f);
 
                 verticalFieldOfViewRadians =
-                    MathF.PI /
-                    3.0f;
+                    DegreesToRadians(
+                        _fieldOfViewDegrees >= 20.0f
+                            ? _fieldOfViewDegrees
+                            : 60.0f);
             }
         }
 
@@ -13671,7 +13711,8 @@ public sealed class D3D11RenderWindow : Form
         {
             return _camera.CreateViewProjection(
                 aspect,
-                _terrainGeometry);
+                _terrainGeometry,
+                _fieldOfViewDegrees);
         }
 
         if (_vehicleViewMode ==
@@ -13691,7 +13732,9 @@ public sealed class D3D11RenderWindow : Form
                 _terrainGeometry,
                 _interiorCameraYawOffsetRadians,
                 _interiorCameraPitchOffsetRadians,
-                _interiorCameraFieldOfViewScale);
+                _interiorCameraFieldOfViewScale,
+                fieldOfViewOverrideDegrees:
+                    _fieldOfViewDegrees);
         }
 
         if (_vehicleViewMode ==
@@ -13711,7 +13754,9 @@ public sealed class D3D11RenderWindow : Form
                 _terrainGeometry,
                 _interiorCameraYawOffsetRadians,
                 _interiorCameraPitchOffsetRadians,
-                _interiorCameraFieldOfViewScale);
+                _interiorCameraFieldOfViewScale,
+                fieldOfViewOverrideDegrees:
+                    _fieldOfViewDegrees);
         }
 
         if (_vehicleViewMode !=
@@ -13731,7 +13776,9 @@ public sealed class D3D11RenderWindow : Form
                 _terrainGeometry,
                 _interiorCameraYawOffsetRadians,
                 _interiorCameraPitchOffsetRadians,
-                _interiorCameraFieldOfViewScale);
+                _interiorCameraFieldOfViewScale,
+                fieldOfViewOverrideDegrees:
+                    _fieldOfViewDegrees);
         }
 
         return _vehicle.CreateChaseViewProjection(
@@ -13740,7 +13787,9 @@ public sealed class D3D11RenderWindow : Form
             _windowInfo.Vehicle?.OutsideCameraCenter,
             _exteriorCameraYawOffsetRadians,
             _exteriorCameraPitchOffsetRadians,
-            _exteriorCameraDistanceScale);
+            _exteriorCameraDistanceScale,
+            fieldOfViewOverrideDegrees:
+                _fieldOfViewDegrees);
     }
 
     private double ResolveTrafficStepIntervalSeconds()

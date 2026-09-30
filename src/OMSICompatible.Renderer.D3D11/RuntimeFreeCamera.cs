@@ -289,7 +289,8 @@ internal sealed class RuntimeFreeCamera
 
     public Matrix4x4 CreateViewProjection(
         float aspect,
-        RuntimeTerrainGeometry geometry)
+        RuntimeTerrainGeometry geometry,
+        float fieldOfViewDegrees = 0.0f)
     {
         ArgumentNullException.ThrowIfNull(geometry);
 
@@ -322,7 +323,12 @@ internal sealed class RuntimeFreeCamera
 
         var projection =
             Matrix4x4.CreatePerspectiveFieldOfView(
-                MathF.PI / 3.0f,
+                fieldOfViewDegrees >= 20.0f
+                    ? fieldOfViewDegrees *
+                        MathF.PI /
+                        180.0f
+                    : MathF.PI /
+                        3.0f,
                 aspect,
                 nearPlane,
                 farPlane);

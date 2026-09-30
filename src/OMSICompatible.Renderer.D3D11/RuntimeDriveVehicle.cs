@@ -2636,7 +2636,8 @@ internal sealed class RuntimeDriveVehicle :
         float headingOffsetRadians = 0.0f,
         float pitchOffsetRadians = 0.0f,
         float fieldOfViewScale = 1.0f,
-        double? maximumRenderDistanceMeters = null)
+        double? maximumRenderDistanceMeters = null,
+        double fieldOfViewOverrideDegrees = 0.0)
     {
         var localEye =
             new Vector3(
@@ -2717,14 +2718,19 @@ internal sealed class RuntimeDriveVehicle :
                 300.0f);
 
         var fovDegrees =
-            Math.Clamp(
-                camera.FieldOfViewDegrees *
-                Math.Clamp(
-                    fieldOfViewScale,
-                    0.35f,
-                    2.0f),
-                18.0,
-                120.0);
+            fieldOfViewOverrideDegrees >= 20.0
+                ? Math.Clamp(
+                    fieldOfViewOverrideDegrees,
+                    20.0,
+                    120.0)
+                : Math.Clamp(
+                    camera.FieldOfViewDegrees *
+                    Math.Clamp(
+                        fieldOfViewScale,
+                        0.35f,
+                        2.0f),
+                    18.0,
+                    120.0);
 
         var fallbackFarPlane =
             MathF.Max(
@@ -2786,7 +2792,8 @@ internal sealed class RuntimeDriveVehicle :
         RuntimeTerrainGeometry terrainGeometry,
         float headingOffsetRadians = 0.0f,
         float pitchOffsetRadians = 0.0f,
-        float fieldOfViewScale = 1.0f)
+        float fieldOfViewScale = 1.0f,
+        double fieldOfViewOverrideDegrees = 0.0)
     {
         return CreateDriverViewProjection(
             new RuntimeDriverCameraInfo(
@@ -2801,7 +2808,9 @@ internal sealed class RuntimeDriveVehicle :
             terrainGeometry,
             headingOffsetRadians,
             pitchOffsetRadians,
-            fieldOfViewScale);
+            fieldOfViewScale,
+            fieldOfViewOverrideDegrees:
+                fieldOfViewOverrideDegrees);
     }
 
     public Matrix4x4 CreateChaseViewProjection(
@@ -2810,7 +2819,8 @@ internal sealed class RuntimeDriveVehicle :
         RuntimeOutsideCameraCenterInfo? outsideCenter,
         float orbitYawRadians = 0.0f,
         float orbitPitchRadians = 0.0f,
-        float distanceScale = 1.0f)
+        float distanceScale = 1.0f,
+        double fieldOfViewOverrideDegrees = 0.0)
     {
         var forward =
             new Vector3(
@@ -2907,7 +2917,13 @@ internal sealed class RuntimeDriveVehicle :
 
         var projection =
             Matrix4x4.CreatePerspectiveFieldOfView(
-                MathF.PI / 3.0f,
+                DegreesToRadians(
+                    fieldOfViewOverrideDegrees >= 20.0
+                        ? Math.Clamp(
+                            fieldOfViewOverrideDegrees,
+                            20.0,
+                            120.0)
+                        : 60.0),
                 MathF.Max(aspect, 0.1f),
                 0.2f,
                 MathF.Max(

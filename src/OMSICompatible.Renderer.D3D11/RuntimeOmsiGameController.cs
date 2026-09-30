@@ -98,13 +98,15 @@ internal sealed class RuntimeOmsiGameControllerHost :
     private readonly float _deadZone;
     private readonly float _throttleResponse;
     private readonly float _brakeResponse;
+    private readonly float _steeringGain;
 
     private RuntimeOmsiGameControllerHost(
         IDirectInput8 directInput,
         List<DeviceBinding> devices,
         float deadZone,
         float throttleResponse,
-        float brakeResponse)
+        float brakeResponse,
+        float steeringGain)
     {
         _directInput =
             directInput;
@@ -125,6 +127,11 @@ internal sealed class RuntimeOmsiGameControllerHost :
                 brakeResponse,
                 0.25f,
                 4.0f);
+        _steeringGain =
+            Math.Clamp(
+                steeringGain,
+                0.1f,
+                20.0f);
     }
 
     public int ConnectedDeviceCount =>
@@ -136,7 +143,8 @@ internal sealed class RuntimeOmsiGameControllerHost :
             IntPtr windowHandle,
             float deadZone = 0.0f,
             float throttleResponse = 1.0f,
-            float brakeResponse = 1.0f)
+            float brakeResponse = 1.0f,
+            float steeringGain = 1.0f)
     {
         var configs =
             LoadConfiguration(
@@ -255,7 +263,8 @@ internal sealed class RuntimeOmsiGameControllerHost :
                 devices,
                 deadZone,
                 throttleResponse,
-                brakeResponse);
+                brakeResponse,
+                steeringGain);
         }
         catch (Exception ex)
         {
@@ -332,9 +341,13 @@ internal sealed class RuntimeOmsiGameControllerHost :
                 {
                     case 0:
                         steering =
-                            ApplySignedDeadZone(
-                                value,
-                                _deadZone);
+                            Math.Clamp(
+                                ApplySignedDeadZone(
+                                    value,
+                                    _deadZone) *
+                                _steeringGain,
+                                -1.0f,
+                                1.0f);
                         break;
 
                     case 1:
