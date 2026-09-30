@@ -1040,6 +1040,37 @@ internal sealed class RuntimeGpuTextureLoader
         return null;
     }
 
+    public RuntimeGpuTexture? TryCreatePreparedBcUpgrade(
+        string path)
+    {
+        if (string.IsNullOrWhiteSpace(
+                path) ||
+            string.Equals(
+                Path.GetExtension(
+                    path),
+                ".dds",
+                StringComparison.OrdinalIgnoreCase) ||
+            !TryGetPreparedBcTextureCacheEntry(
+                path,
+                out var preparedBc) ||
+            preparedBc is null)
+        {
+            return null;
+        }
+
+        var compressed =
+            TryCreatePreparedBcTexture(
+                preparedBc);
+
+        if (compressed is not null)
+        {
+            ReleaseDecodedTextureCacheEntry(
+                path);
+        }
+
+        return compressed;
+    }
+
     public RuntimeGpuTexture? TryLoadReducedDds(
         string path,
         int topMipLevelsToDrop,
