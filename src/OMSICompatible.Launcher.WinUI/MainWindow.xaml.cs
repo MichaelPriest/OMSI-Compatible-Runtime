@@ -79,6 +79,10 @@ public sealed partial class MainWindow :
     private string _controlsKeyboardPath =
         string.Empty;
 
+    private IReadOnlyList<SmartBindDeviceInfo>
+        _smartBindDevices =
+            Array.Empty<SmartBindDeviceInfo>();
+
     private string _controlCategory =
         "all";
 
@@ -2963,6 +2967,195 @@ public sealed partial class MainWindow :
             SetStatus(
                 $"VehiclePanel: falha ao gravar binding — {exception.Message}");
         }
+    }
+
+    private void DetectSmartBindDevicesButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        try
+        {
+            _smartBindDevices =
+                SmartBindControllerProbe
+                    .EnumerateDevices();
+
+            SmartBindDeviceComboBox.ItemsSource =
+                _smartBindDevices;
+
+            SmartBindDeviceComboBox.SelectedIndex =
+                _smartBindDevices.Count >
+                    0
+                    ? 0
+                    : -1;
+
+            SmartBindStatusText.Text =
+                _smartBindDevices.Count ==
+                    0
+                    ? "Nenhum volante/gamepad DirectInput conectado."
+                    : $"{_smartBindDevices.Count} dispositivo(s) detectado(s).";
+        }
+        catch (Exception exception)
+        {
+            SmartBindStatusText.Text =
+                $"Falha ao detectar controles: {exception.Message}";
+        }
+    }
+
+    private async void CaptureSmartBindAxisButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (SmartBindDeviceComboBox.SelectedItem is not
+                SmartBindDeviceInfo device ||
+            SmartBindAxisFunctionComboBox.SelectedItem is not
+                ComboBoxItem functionItem ||
+            !int.TryParse(
+                functionItem.Tag?.ToString(),
+                out var function))
+        {
+            SmartBindStatusText.Text =
+                "Selecione um dispositivo e uma função do eixo.";
+            return;
+        }
+
+        var controllerPath =
+            ResolveControllerConfigPath();
+
+        if (string.IsNullOrWhiteSpace(
+                controllerPath))
+        {
+            SmartBindStatusText.Text =
+                "Configure primeiro a pasta do OMSI.";
+            return;
+        }
+
+        try
+        {
+            SmartBindStatusText.Text =
+                "Mova somente o eixo desejado...";
+
+            var result =
+                await SmartBindControllerProbe
+                    .CaptureAsync(
+                        device,
+                        WindowNative.GetWindowHandle(
+                            this),
+                        SmartBindCaptureKind.Axis,
+                        CancellationToken.None);
+
+            if (result is null)
+            {
+                SmartBindStatusText.Text =
+                    "Nenhum eixo foi detectado em 7 segundos.";
+                return;
+            }
+
+            SmartBindControllerProbe.BindAxis(
+                controllerPath,
+                device.Name,
+                result.Index,
+                function);
+
+            SmartBindStatusText.Text =
+                $"Eixo {result.Index} capturado e gravado para {functionItem.Content}. Backup .smartbind.bak preservado.";
+
+            UpdateControlsView();
+        }
+        catch (Exception exception)
+        {
+            SmartBindStatusText.Text =
+                $"SmartBind eixo: {exception.Message}";
+        }
+    }
+
+    private async void CaptureSmartBindButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (SmartBindDeviceComboBox.SelectedItem is not
+                SmartBindDeviceInfo device)
+        {
+            SmartBindStatusText.Text =
+                "Selecione um volante/gamepad.";
+            return;
+        }
+
+        if (ControlsKeyboardList.SelectedItem is not
+                KeyboardDisplayRow row)
+        {
+            SmartBindStatusText.Text =
+                "Selecione primeiro um comando OMSI na lista.";
+            return;
+        }
+
+        var controllerPath =
+            ResolveControllerConfigPath();
+
+        if (string.IsNullOrWhiteSpace(
+                controllerPath))
+        {
+            SmartBindStatusText.Text =
+                "Configure primeiro a pasta do OMSI.";
+            return;
+        }
+
+        try
+        {
+            SmartBindStatusText.Text =
+                $"Pressione no controle o botão para: {row.Trigger}";
+
+            var result =
+                await SmartBindControllerProbe
+                    .CaptureAsync(
+                        device,
+                        WindowNative.GetWindowHandle(
+                            this),
+                        SmartBindCaptureKind.Button,
+                        CancellationToken.None);
+
+            if (result is null)
+            {
+                SmartBindStatusText.Text =
+                    "Nenhum botão foi detectado em 7 segundos.";
+                return;
+            }
+
+            SmartBindControllerProbe.BindButton(
+                controllerPath,
+                device.Name,
+                result.Index,
+                row.Trigger,
+                ControlsContinuousCheck.IsChecked ==
+                    true);
+
+            SmartBindStatusText.Text =
+                $"Botão {result.Index} → {row.Trigger}. Backup .smartbind.bak preservado.";
+
+            UpdateControlsView();
+        }
+        catch (Exception exception)
+        {
+            SmartBindStatusText.Text =
+                $"SmartBind botão: {exception.Message}";
+        }
+    }
+
+    private string ResolveControllerConfigPath()
+    {
+        var contentRoot =
+            ContentPathBox.Text
+                ?.Trim();
+
+        if (string.IsNullOrWhiteSpace(
+                contentRoot))
+        {
+            return string.Empty;
+        }
+
+        return Path.Combine(
+            contentRoot,
+            "Inputs",
+            "gamectrler.cfg");
     }
 
     private static string TryReadText(

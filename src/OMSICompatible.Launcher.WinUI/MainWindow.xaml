@@ -888,7 +888,29 @@
                                 <TextBlock Text="SMARTBIND"
                                            Foreground="#1B1F24"
                                            FontWeight="Bold"/>
-                                <TextBlock Text="A calibração de volante, pedais, zona morta e curvas permanece na aba Configurações → Condução e colisões. A detecção automática de eixos será integrada aqui na próxima etapa."
+                                <ComboBox x:Name="SmartBindDeviceComboBox"
+                                          Header="Volante / gamepad"
+                                          DisplayMemberPath="Display"/>
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="6">
+                                    <Button Content="DETECTAR"
+                                            Click="DetectSmartBindDevicesButton_Click"/>
+                                    <Button Content="CAPTURAR BOTÃO"
+                                            Click="CaptureSmartBindButton_Click"/>
+                                </StackPanel>
+                                <ComboBox x:Name="SmartBindAxisFunctionComboBox"
+                                          Header="Função do eixo"
+                                          SelectedIndex="0">
+                                    <ComboBoxItem Content="Volante" Tag="0"/>
+                                    <ComboBoxItem Content="Freio" Tag="1"/>
+                                    <ComboBoxItem Content="Acelerador" Tag="2"/>
+                                    <ComboBoxItem Content="Embreagem" Tag="3"/>
+                                    <ComboBoxItem Content="Acelerador + freio combinado" Tag="4"/>
+                                </ComboBox>
+                                <Button Content="MOVER EIXO PARA CAPTURAR"
+                                        Click="CaptureSmartBindAxisButton_Click"/>
+                                <TextBlock x:Name="SmartBindStatusText"
+                                           Text="Clique em DETECTAR para localizar controles DirectInput."
                                            TextWrapping="Wrap"
                                            Foreground="#4B555E"
                                            FontSize="11"/>
