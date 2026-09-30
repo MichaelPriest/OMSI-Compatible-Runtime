@@ -6706,6 +6706,9 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
+        var framePressure =
+            ResolveSceneryFramePressure();
+
         var interval =
             Math.Clamp(
                 (target.Camera.Index +
