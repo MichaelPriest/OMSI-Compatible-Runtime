@@ -3532,9 +3532,6 @@ public sealed class WorldTrafficSimulation
 
         _nextSegmentCandidates.Clear();
 
-        var totalWeight =
-            0.0;
-
         foreach (var candidateIndex in
                  connections)
         {
@@ -3570,17 +3567,10 @@ public sealed class WorldTrafficSimulation
                 new WeightedSegmentCandidate(
                     candidate,
                     weight));
-
-            totalWeight +=
-                weight;
         }
 
         if (_nextSegmentCandidates.Count ==
-                0 ||
-            !double.IsFinite(
-                totalWeight) ||
-            totalWeight <=
-                0.0)
+            0)
         {
             return null;
         }
@@ -3589,6 +3579,24 @@ public sealed class WorldTrafficSimulation
             static (left, right) =>
                 left.Segment.Index.CompareTo(
                     right.Segment.Index));
+
+        var totalWeight =
+            0.0;
+
+        foreach (var candidate in
+                 _nextSegmentCandidates)
+        {
+            totalWeight +=
+                candidate.Weight;
+        }
+
+        if (!double.IsFinite(
+                totalWeight) ||
+            totalWeight <=
+                0.0)
+        {
+            return null;
+        }
 
         var selector =
             (((agent.AgentIndex +
