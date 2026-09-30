@@ -64,6 +64,22 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         OmsiTextBox(string.Empty);
     private readonly ListBox _routeMessages =
         OmsiListBox();
+    private readonly ListBox _commsMessages =
+        OmsiListBox();
+    private readonly TextBox _commsInput =
+        OmsiTextBox(string.Empty);
+    private readonly Label _commsVoiceState =
+        new()
+        {
+            AutoSize = false,
+            Text = "VOZ: PTT F10 · aguardando sessão",
+            ForeColor = OmsiText,
+            Font =
+                new Font(
+                    "Segoe UI",
+                    9.0f,
+                    FontStyle.Bold)
+        };
     private readonly TextBox _routeLine =
         OmsiTextBox(string.Empty);
     private readonly TextBox _routeCode =
@@ -230,6 +246,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
         AddModuleButton(navigation, "DRIVERPASS", ShowDriverPass);
         AddModuleButton(navigation, "FLEETLINK", ShowFleetLink);
+        AddModuleButton(navigation, "COMMSLINK", ShowCommsLink);
         AddModuleButton(navigation, "ASSISTLINK", ShowAssistLink);
         AddModuleButton(navigation, "CONTROLHUB", ShowControlHub);
         AddModuleButton(navigation, "ROUTECORE", ShowRouteCore);
@@ -352,6 +369,18 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 ? "SISTEMA"
                 : message.SenderName;
 
+        if (message.Module.Equals(
+                "COMMSLINK",
+                StringComparison.OrdinalIgnoreCase) &&
+            message.Kind.Equals(
+                "VOICE_STATE",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            _commsVoiceState.Text =
+                message.Text;
+            return;
+        }
+
         var line =
             $"[{timestamp}] {sender}: {message.Text}";
 
@@ -361,6 +390,12 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             case "DRIVERPASS":
                 AppendMessage(
                     _fleetMessages,
+                    line);
+                break;
+
+            case "COMMSLINK":
+                AppendMessage(
+                    _commsMessages,
                     line);
                 break;
 
@@ -611,6 +646,96 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         _contentHost.Controls.Add(root);
     }
 
+    private void ShowCommsLink()
+    {
+        _contentHost.Controls.Clear();
+
+        var root =
+            ModuleRoot(
+                "COMMSLINK",
+                "Chat texto e voz PTT da operação");
+
+        _commsMessages.SetBounds(
+            8,
+            72,
+            520,
+            166);
+
+        _commsVoiceState.SetBounds(
+            8,
+            244,
+            520,
+            28);
+
+        _commsInput.SetBounds(
+            8,
+            278,
+            375,
+            28);
+
+        var send =
+            OmsiButton(
+                "ENVIAR CHAT",
+                132,
+                (_, _) =>
+                {
+                    var text =
+                        _commsInput.Text.Trim();
+
+                    if (RequestMessage(
+                            "COMMSLINK",
+                            "CHAT",
+                            text,
+                            string.Empty))
+                    {
+                        _commsInput.Clear();
+                    }
+                });
+
+        send.SetBounds(
+            396,
+            276,
+            132,
+            32);
+
+        var hint =
+            new Label
+            {
+                AutoSize = false,
+                Text =
+                    "F10 = pressione e segure para falar. Áudio e chat usam a mesma sessão multiplayer.",
+                ForeColor =
+                    Color.FromArgb(
+                        72,
+                        78,
+                        84),
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        8.5f),
+                Bounds =
+                    new Rectangle(
+                        8,
+                        314,
+                        520,
+                        34)
+            };
+
+        root.Controls.Add(
+            _commsMessages);
+        root.Controls.Add(
+            _commsVoiceState);
+        root.Controls.Add(
+            _commsInput);
+        root.Controls.Add(
+            send);
+        root.Controls.Add(
+            hint);
+
+        _contentHost.Controls.Add(
+            root);
+    }
+
     private void ShowAssistLink()
     {
         _contentHost.Controls.Clear();
@@ -850,6 +975,12 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                     _fleetMessages,
                     line);
                 break;
+            case "COMMSLINK":
+                AppendMessage(
+                    _commsMessages,
+                    line);
+                break;
+
             case "ASSISTLINK":
                 AppendMessage(
                     _supportMessages,

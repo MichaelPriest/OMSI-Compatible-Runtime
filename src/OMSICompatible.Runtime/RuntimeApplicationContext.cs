@@ -42,6 +42,9 @@ internal sealed class RuntimeApplicationContext :
     private WorldRailTrafficSimulation? _railTrafficSimulation;
     private WorldDefinition? _currentWorld;
     private OpenOmsiLanSession? _multiplayerSession;
+    private readonly RuntimeCommsLinkVoiceService
+        _commsLinkVoice =
+            new();
     private double _multiplayerStatusAccumulator;
     private readonly HashSet<string>
         _pendingMultiplayerVehiclePaths =
@@ -724,6 +727,10 @@ internal sealed class RuntimeApplicationContext :
 
             _runtimeWindow.DriveOpsMessageRequested +=
                 OnDriveOpsMessageRequested;
+            _runtimeWindow.KeyDown +=
+                OnCommsLinkKeyDown;
+            _runtimeWindow.KeyUp +=
+                OnCommsLinkKeyUp;
 
             StartMultiplayerSession();
 
@@ -762,6 +769,12 @@ internal sealed class RuntimeApplicationContext :
                         OnStreamingCenterChanged;
                     _runtimeWindow.DriveOpsMessageRequested -=
                         OnDriveOpsMessageRequested;
+                    _runtimeWindow.KeyDown -=
+                        OnCommsLinkKeyDown;
+                    _runtimeWindow.KeyUp -=
+                        OnCommsLinkKeyUp;
+
+                    _commsLinkVoice.Dispose();
 
                     _runtimeWindow.Dispose();
                     _runtimeWindow = null;
@@ -797,6 +810,7 @@ internal sealed class RuntimeApplicationContext :
         catch (Exception ex)
         {
             DisposeMultiplayerSession();
+            _commsLinkVoice.Dispose();
             DisposePluginClients();
 
             Console.Error.WriteLine(ex);
@@ -2954,6 +2968,11 @@ internal sealed class RuntimeApplicationContext :
 
             _multiplayerSession.OperationalMessageReceived +=
                 OnMultiplayerOperationalMessage;
+            _multiplayerSession.VoiceFrameReceived +=
+                OnMultiplayerVoiceFrame;
+
+            NotifyCommsLinkVoiceState(
+                "VOZ: PTT F10 · pronto");
 
             _runtimeWindow?.SetDriveOpsNetworkState(
                 _multiplayerSession.Role.ToString().ToUpperInvariant(),
@@ -3069,6 +3088,117 @@ internal sealed class RuntimeApplicationContext :
                 message.TimestampUnixMilliseconds));
     }
 
+    private void OnCommsLinkKeyDown(
+        object? sender,
+        KeyEventArgs e)
+    {
+        if (e.KeyCode !=
+                Keys.F10 ||
+            e.Control ||
+            e.Shift ||
+            e.Alt)
+        {
+            return;
+        }
+
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            !session.Connected)
+        {
+            NotifyCommsLinkVoiceState(
+                "VOZ: indisponível · entre em uma sessão multiplayer");
+            e.SuppressKeyPress =
+                true;
+            return;
+        }
+
+        if (_commsLinkVoice.StartTransmit())
+        {
+            NotifyCommsLinkVoiceState(
+                "VOZ: TRANSMITINDO · solte F10 para encerrar");
+        }
+        else
+        {
+            NotifyCommsLinkVoiceState(
+                $"VOZ: falha no microfone · {_commsLinkVoice.LastError ?? "dispositivo indisponível"}");
+        }
+
+        e.SuppressKeyPress =
+            true;
+    }
+
+    private void OnCommsLinkKeyUp(
+        object? sender,
+        KeyEventArgs e)
+    {
+        if (e.KeyCode !=
+            Keys.F10)
+        {
+            return;
+        }
+
+        if (_commsLinkVoice.IsTransmitting)
+        {
+            _commsLinkVoice.StopTransmit();
+            NotifyCommsLinkVoiceState(
+                "VOZ: PTT F10 · pronto");
+        }
+
+        e.SuppressKeyPress =
+            true;
+    }
+
+    private void OnMultiplayerVoiceFrame(
+        OpenOmsiLanVoiceFrame frame)
+    {
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            frame.SenderId ==
+                session.PlayerId)
+        {
+            return;
+        }
+
+        _commsLinkVoice.Play(
+            frame);
+
+        var speaker =
+            session
+                .SnapshotPeers()
+                .FirstOrDefault(
+                    peer =>
+                        peer.Id ==
+                        frame.SenderId)
+                ?.Name;
+
+        NotifyCommsLinkVoiceState(
+            string.IsNullOrWhiteSpace(
+                speaker)
+                ? $"VOZ: recebendo #{frame.SenderId}"
+                : $"VOZ: {speaker} falando");
+    }
+
+    private void NotifyCommsLinkVoiceState(
+        string text)
+    {
+        _runtimeWindow?.ReceiveDriveOpsMessage(
+            new RuntimeDriveOpsInboundMessage(
+                0,
+                "SISTEMA",
+                string.Empty,
+                string.Empty,
+                "COMMSLINK",
+                "VOICE_STATE",
+                text,
+                string.Empty,
+                DateTimeOffset.UtcNow
+                    .ToUnixTimeMilliseconds()));
+    }
+
     private void DisposeMultiplayerSession()
     {
         var session =
@@ -3084,6 +3214,12 @@ internal sealed class RuntimeApplicationContext :
 
         session.OperationalMessageReceived -=
             OnMultiplayerOperationalMessage;
+        session.VoiceFrameReceived -=
+            OnMultiplayerVoiceFrame;
+
+        _commsLinkVoice.StopTransmit();
+        NotifyCommsLinkVoiceState(
+            "VOZ: PTT F10 · aguardando sessão");
 
         try
         {
@@ -3359,6 +3495,16 @@ internal sealed class RuntimeApplicationContext :
             session.Tick(
                 deltaSeconds,
                 CreateLocalMultiplayerPose());
+
+            while (_commsLinkVoice.TryDequeueOutgoing(
+                       out var voicePcm))
+            {
+                if (!session.SendVoiceFrame(
+                        voicePcm))
+                {
+                    break;
+                }
+            }
         }
         catch (Exception exception)
         {
