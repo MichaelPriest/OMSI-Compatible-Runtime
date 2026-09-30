@@ -91,7 +91,8 @@ internal sealed class RuntimeApplicationContext :
             [];
     private readonly List<(
         WorldTrafficAgentState Agent,
-        TrafficScriptRuntimeState State)>
+        TrafficScriptRuntimeState State,
+        double DeltaSeconds)>
         _trafficScriptWork =
             [];
     private readonly Dictionary<long, OmsiScriptRuntime>
@@ -2840,6 +2841,20 @@ internal sealed class RuntimeApplicationContext :
                 ? deltaSeconds
                 : 0.0;
 
+        var playerObstacle =
+            _runtimeWindow?
+                .PlayerTrafficObstacle;
+
+        var playerWorldX =
+            playerObstacle is null
+                ? double.NaN
+                : -playerObstacle.X;
+
+        var playerWorldZ =
+            playerObstacle is null
+                ? double.NaN
+                : playerObstacle.Z;
+
         _trafficScriptWork.Clear();
 
         if (_trafficScriptWork.Capacity <
@@ -2926,10 +2941,79 @@ internal sealed class RuntimeApplicationContext :
                     state;
             }
 
+            state.AccumulatedFrameAiSeconds +=
+                validDeltaSeconds;
+
+            var targetIntervalSeconds =
+                0.0;
+
+            if (double.IsFinite(
+                    playerWorldX) &&
+                double.IsFinite(
+                    playerWorldZ))
+            {
+                var deltaX =
+                    agent.Position.X -
+                    playerWorldX;
+
+                var deltaZ =
+                    agent.Position.Z -
+                    playerWorldZ;
+
+                var distanceSquared =
+                    deltaX *
+                        deltaX +
+                    deltaZ *
+                        deltaZ;
+
+                if (distanceSquared >=
+                    650.0 *
+                    650.0)
+                {
+                    targetIntervalSeconds =
+                        0.100;
+                }
+                else if (distanceSquared >=
+                         300.0 *
+                         300.0)
+                {
+                    targetIntervalSeconds =
+                        0.050;
+                }
+            }
+
+            if (validDeltaSeconds <=
+                0.0)
+            {
+                SeedTrafficScriptHostVariables(
+                    state.Runtime,
+                    agent,
+                    0.0,
+                    state.WheelDiameterMeters);
+
+                continue;
+            }
+
+            if (targetIntervalSeconds >
+                    0.0 &&
+                state.AccumulatedFrameAiSeconds +
+                    0.000001 <
+                    targetIntervalSeconds)
+            {
+                continue;
+            }
+
+            var executionDeltaSeconds =
+                state.AccumulatedFrameAiSeconds;
+
+            state.AccumulatedFrameAiSeconds =
+                0.0;
+
             _trafficScriptWork.Add(
                 (
                     agent,
-                    state));
+                    state,
+                    executionDeltaSeconds));
         }
 
         if (_trafficScriptWork.Count ==
@@ -2939,9 +3023,7 @@ internal sealed class RuntimeApplicationContext :
         }
 
         if (_trafficScriptWork.Count <
-                4 ||
-            validDeltaSeconds <=
-                0.0)
+            4)
         {
             foreach (var item in
                      _trafficScriptWork)
@@ -2949,14 +3031,10 @@ internal sealed class RuntimeApplicationContext :
                 SeedTrafficScriptHostVariables(
                     item.State.Runtime,
                     item.Agent,
-                    validDeltaSeconds,
+                    item.DeltaSeconds,
                     item.State.WheelDiameterMeters);
 
-                if (validDeltaSeconds >
-                    0.0)
-                {
-                    item.State.Runtime.ExecuteFrameAi();
-                }
+                item.State.Runtime.ExecuteFrameAi();
             }
 
             return;
@@ -2969,7 +3047,7 @@ internal sealed class RuntimeApplicationContext :
                 SeedTrafficScriptHostVariables(
                     item.State.Runtime,
                     item.Agent,
-                    validDeltaSeconds,
+                    item.DeltaSeconds,
                     item.State.WheelDiameterMeters);
 
                 item.State.Runtime.ExecuteFrameAi();
@@ -3216,10 +3294,26 @@ internal sealed class RuntimeApplicationContext :
         IReadOnlyList<RailRuntimeCar> Cars,
         double? TailClearanceMeters);
 
-    private sealed record TrafficScriptRuntimeState(
-        string VehiclePath,
-        OmsiScriptRuntime Runtime,
-        double? WheelDiameterMeters);
+    private sealed class TrafficScriptRuntimeState(
+        string vehiclePath,
+        OmsiScriptRuntime runtime,
+        double? wheelDiameterMeters)
+    {
+        public string VehiclePath { get; } =
+            vehiclePath;
+
+        public OmsiScriptRuntime Runtime { get; } =
+            runtime;
+
+        public double? WheelDiameterMeters { get; } =
+            wheelDiameterMeters;
+
+        public double AccumulatedFrameAiSeconds
+        {
+            get;
+            set;
+        }
+    }
 
     private const double RuntimeTileSizeMeters =
         300.0;
