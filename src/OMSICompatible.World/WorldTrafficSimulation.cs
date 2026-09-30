@@ -1976,8 +1976,7 @@ public sealed class WorldTrafficSimulation
 
         var clearance =
             obstacle.HalfWidthMeters +
-            EstimateTrafficVehicleHalfWidth(
-                agent.VehiclePath) +
+            agent.HalfWidthMeters +
             0.15;
 
         var clearanceSquared =
@@ -2066,10 +2065,8 @@ public sealed class WorldTrafficSimulation
 
             var requiredExitClearance =
                 4.0 +
-                EstimateTrafficVehicleHalfLength(
-                    agent.VehiclePath) +
-                EstimateTrafficVehicleHalfLength(
-                    other.VehiclePath);
+                agent.HalfLengthMeters +
+                other.HalfLengthMeters;
 
             if (distanceFromEntry <=
                     requiredExitClearance &&
@@ -3964,10 +3961,8 @@ public sealed class WorldTrafficSimulation
 
             var bumperClearance =
                 routeDistanceMeters -
-                EstimateTrafficVehicleHalfLength(
-                    agent.VehiclePath) -
-                EstimateTrafficVehicleHalfLength(
-                    candidate.VehiclePath);
+                agent.HalfLengthMeters -
+                candidate.HalfLengthMeters;
 
             if (bumperClearance <=
                     0.0001 ||
@@ -4572,8 +4567,7 @@ public sealed class WorldTrafficSimulation
 
             var headwayBrakingTerm =
                 TrafficBrakingMetersPerSecondSquared *
-                ResolveFollowingTimeHeadwaySeconds(
-                    agent);
+                agent.FollowingTimeHeadwaySeconds;
 
             var followingSpeed =
                 Math.Max(
@@ -4966,12 +4960,12 @@ public sealed class WorldTrafficSimulation
         return vehicles[^1];
     }
 
-    private static double ResolveFollowingTimeHeadwaySeconds(
-        Agent agent)
+    private static double EstimateTrafficFollowingTimeHeadwaySeconds(
+        string? vehiclePath)
     {
         var extension =
             Path.GetExtension(
-                agent.VehiclePath);
+                vehiclePath);
 
         if (extension.Equals(
                 ".bus",
@@ -5634,6 +5628,18 @@ public sealed class WorldTrafficSimulation
 
         public string VehiclePath { get; } =
             vehiclePath;
+
+        public double HalfLengthMeters { get; } =
+            EstimateTrafficVehicleHalfLength(
+                vehiclePath);
+
+        public double HalfWidthMeters { get; } =
+            EstimateTrafficVehicleHalfWidth(
+                vehiclePath);
+
+        public double FollowingTimeHeadwaySeconds { get; } =
+            EstimateTrafficFollowingTimeHeadwaySeconds(
+                vehiclePath);
 
         public int? GroupIndex { get; } =
             groupIndex;
