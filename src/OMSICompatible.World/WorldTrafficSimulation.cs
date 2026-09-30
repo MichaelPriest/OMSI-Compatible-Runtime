@@ -40,6 +40,10 @@ public sealed class WorldTrafficSimulation
         WorldTrafficPathSegment Segment,
         double Weight);
 
+    private readonly record struct RankedSegmentCandidate(
+        WorldTrafficPathSegment Segment,
+        double Rank);
+
     private const double MinimumTrafficSeparationMeters =
         2.0;
     private const double FollowingTimeHeadwaySeconds =
@@ -78,6 +82,9 @@ public sealed class WorldTrafficSimulation
             [];
     private readonly List<WeightedSegmentCandidate>
         _nextSegmentCandidates =
+            [];
+    private readonly List<RankedSegmentCandidate>
+        _recycleSegmentCandidates =
             [];
     private readonly HashSet<int>
         _lookAheadVisitedSegments =
@@ -1360,41 +1367,6 @@ public sealed class WorldTrafficSimulation
             return false;
         }
 
-        var candidates =
-            _roadSegments
-                .Where(
-                    segment =>
-                        IsTrafficGroupAllowed(
-                            segment,
-                            agent.GroupIndex,
-                            agent.DefaultDensityClassIndex) &&
-                        HasUsableTrafficExit(
-                            segment) &&
-                        !IsCriticalRespawnApproach(
-                            agent,
-                            segment))
-                .Select(
-                    segment =>
-                        (
-                            Segment: segment,
-                            Weight:
-                                ResolveTrafficDensityWeight(
-                                    segment,
-                                    agent.GroupIndex,
-                                    agent.DefaultDensityClassIndex)
-                        ))
-                .Where(
-                    static candidate =>
-                        candidate.Weight >
-                            0.0)
-                .ToArray();
-
-        if (candidates.Length ==
-            0)
-        {
-            return false;
-        }
-
         var recycleEpoch =
             Math.Max(
                 0,
@@ -1404,55 +1376,93 @@ public sealed class WorldTrafficSimulation
                         _spawnIntervalSeconds,
                         0.25)));
 
-        var orderedCandidates =
-            candidates
-                .Select(
-                    candidate =>
-                    {
-                        var unitSelector =
-                            ((agent.AgentIndex +
-                              1) *
-                             0.6180339887498949 +
-                             (recycleEpoch +
-                              1) *
-                             0.3819660112501051 +
-                             (candidate.Segment.Index +
-                              1) *
-                             0.4142135623730950) %
-                            1.0;
+        _recycleSegmentCandidates.Clear();
 
-                        unitSelector =
-                            Math.Clamp(
-                                unitSelector,
-                                0.000001,
-                                0.999999);
+        foreach (var segment in
+                 _roadSegments)
+        {
+            if (!IsTrafficGroupAllowed(
+                    segment,
+                    agent.GroupIndex,
+                    agent.DefaultDensityClassIndex) ||
+                !HasUsableTrafficExit(
+                    segment) ||
+                IsCriticalRespawnApproach(
+                    agent,
+                    segment))
+            {
+                continue;
+            }
 
-                        return
-                            (
-                                candidate.Segment,
-                                Rank:
-                                    -Math.Log(
-                                        unitSelector) /
-                                    Math.Max(
-                                        candidate.Weight,
-                                        0.000001)
-                            );
-                    })
-                .OrderBy(
-                    static candidate =>
-                        candidate.Rank)
-                .ThenBy(
-                    static candidate =>
-                        candidate.Segment.Index)
-                .ToArray();
+            var weight =
+                ResolveTrafficDensityWeight(
+                    segment,
+                    agent.GroupIndex,
+                    agent.DefaultDensityClassIndex);
+
+            if (!double.IsFinite(
+                    weight) ||
+                weight <=
+                    0.0)
+            {
+                continue;
+            }
+
+            var unitSelector =
+                ((agent.AgentIndex +
+                  1) *
+                 0.6180339887498949 +
+                 (recycleEpoch +
+                  1) *
+                 0.3819660112501051 +
+                 (segment.Index +
+                  1) *
+                 0.4142135623730950) %
+                1.0;
+
+            unitSelector =
+                Math.Clamp(
+                    unitSelector,
+                    0.000001,
+                    0.999999);
+
+            _recycleSegmentCandidates.Add(
+                new RankedSegmentCandidate(
+                    segment,
+                    -Math.Log(
+                        unitSelector) /
+                    Math.Max(
+                        weight,
+                        0.000001)));
+        }
+
+        if (_recycleSegmentCandidates.Count ==
+            0)
+        {
+            return false;
+        }
+
+        _recycleSegmentCandidates.Sort(
+            static (left, right) =>
+            {
+                var rankComparison =
+                    left.Rank.CompareTo(
+                        right.Rank);
+
+                return rankComparison !=
+                           0
+                    ? rankComparison
+                    : left.Segment.Index.CompareTo(
+                        right.Segment.Index);
+            });
 
         for (var segmentAttempt = 0;
              segmentAttempt <
-                 orderedCandidates.Length;
+                 _recycleSegmentCandidates.Count;
              segmentAttempt++)
         {
             var segment =
-                orderedCandidates[
+                _recycleSegmentCandidates[
                     segmentAttempt]
                     .Segment;
 
@@ -1542,48 +1552,51 @@ public sealed class WorldTrafficSimulation
                 }
 
                 var tooCloseToTraffic =
-                    _agents.Any(
-                        other =>
-                        {
-                            if (ReferenceEquals(
-                                    other,
-                                    agent) ||
-                                other.PendingRespawn ||
-                                other.ActivationTimeSeconds >
-                                    _simulationElapsedSeconds ||
-                                !_segmentsByIndex.TryGetValue(
-                                    other.SegmentIndex,
-                                    out var otherSegment))
-                            {
-                                return false;
-                            }
+                    false;
 
-                            SampleSegment(
-                                otherSegment,
-                                other.DistanceMeters,
-                                out var otherPosition,
-                                out _);
+                foreach (var other in
+                         _agents)
+                {
+                    if (ReferenceEquals(
+                            other,
+                            agent) ||
+                        other.PendingRespawn ||
+                        other.ActivationTimeSeconds >
+                            _simulationElapsedSeconds ||
+                        !_segmentsByIndex.TryGetValue(
+                            other.SegmentIndex,
+                            out var otherSegment))
+                    {
+                        continue;
+                    }
 
-                            var horizontalDistance =
-                                HorizontalDistance(
-                                    spawnPosition,
-                                    otherPosition);
+                    SampleSegment(
+                        otherSegment,
+                        other.DistanceMeters,
+                        out var otherPosition,
+                        out _);
 
-                            if (horizontalDistance <
-                                22.0)
-                            {
-                                return true;
-                            }
+                    var horizontalDistance =
+                        HorizontalDistance(
+                            spawnPosition,
+                            otherPosition);
 
-                            return other.SegmentIndex ==
-                                       segment.Index &&
-                                   other.SpeedMetersPerSecond <=
-                                       2.5 &&
-                                   Math.Abs(
-                                       other.DistanceMeters -
-                                       distance) <
-                                       35.0;
-                        });
+                    if (horizontalDistance <
+                            22.0 ||
+                        (other.SegmentIndex ==
+                             segment.Index &&
+                         other.SpeedMetersPerSecond <=
+                             2.5 &&
+                         Math.Abs(
+                             other.DistanceMeters -
+                             distance) <
+                             35.0))
+                    {
+                        tooCloseToTraffic =
+                            true;
+                        break;
+                    }
+                }
 
                 if (tooCloseToTraffic)
                 {
