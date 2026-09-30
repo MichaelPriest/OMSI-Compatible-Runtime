@@ -658,50 +658,256 @@
             <Grid x:Name="ControlsView"
                   Grid.Column="1"
                   Visibility="Collapsed"
-                  Background="#0A1420">
-                <Grid Margin="28">
+                  Background="#D6DAE0">
+                <Grid Margin="18">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <StackPanel Spacing="5">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon FontFamily="Segoe MDL2 Assets"
-                                      Glyph="&#xE7F8;"
-                                      FontSize="28"
-                                      Foreground="#8DB7FF"/>
-                            <TextBlock Text="Controles" Foreground="White" FontSize="32" FontWeight="Bold" VerticalAlignment="Center"/>
+
+                    <Border Background="#343E48"
+                            Padding="12,8"
+                            CornerRadius="2">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="VEHICLEPANEL  |  CONTROLES OMSI"
+                                           Foreground="White"
+                                           FontSize="19"
+                                           FontWeight="Bold"/>
+                                <TextBlock x:Name="ControlsSubtitleText"
+                                           Text="Física do motorista: OMSI 2 / scripts do veículo"
+                                           Foreground="#D9E1E8"
+                                           FontSize="11"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="ATUALIZAR"
+                                    Click="RefreshControlsButton_Click"
+                                    Padding="16,7"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="1"
+                            Margin="0,8,0,8"
+                            Background="#BEC4CB"
+                            Padding="8"
+                            CornerRadius="2">
+                        <StackPanel Orientation="Horizontal" Spacing="14">
+                            <TextBlock Text="BINDINGS" FontWeight="Bold" Foreground="#1B1F24"/>
+                            <TextBlock x:Name="ControlsBindingCountText" Text="0" Foreground="#1B1F24"/>
+                            <TextBlock Text="TECLAS" FontWeight="Bold" Foreground="#1B1F24"/>
+                            <TextBlock x:Name="ControlsKeyCountText" Text="0" Foreground="#1B1F24"/>
+                            <TextBlock Text="CONTROLADORES" FontWeight="Bold" Foreground="#1B1F24"/>
+                            <TextBlock x:Name="ControlsControllerCountText" Text="0" Foreground="#1B1F24"/>
+                            <TextBlock x:Name="ControlsControllerStateText" Text="OFF" FontWeight="Bold" Foreground="#1B1F24"/>
                         </StackPanel>
-                        <TextBlock x:Name="ControlsSubtitleText" Text="Arquivos reais de entrada OMSI" Foreground="#8FA2B7"/>
-                    </StackPanel>
-                    <StackPanel Grid.Row="1"
-                                Margin="0,12,0,12"
-                                Orientation="Horizontal"
-                                Spacing="12">
-                        <Button Content="Atualizar" Click="RefreshControlsButton_Click"/>
-                        <TextBlock x:Name="ControlsBindingCountText" Text="0" Foreground="White"/>
-                        <TextBlock x:Name="ControlsKeyCountText" Text="0" Foreground="White"/>
-                        <TextBlock x:Name="ControlsControllerCountText" Text="0" Foreground="White"/>
-                        <TextBlock x:Name="ControlsControllerStateText" Text="OFF" Foreground="White"/>
-                    </StackPanel>
+                    </Border>
+
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="310"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
                         </Grid.ColumnDefinitions>
-                        <ListView x:Name="ControlsKeyboardList"
-                                  SelectionMode="None"/>
-                        <StackPanel Grid.Column="1"
-                                    Margin="14,0,0,0"
-                                    Spacing="8">
-                            <TextBlock x:Name="ControlsKeyboardPathText" Text="keyboard.cfg" TextWrapping="Wrap" Foreground="#AFC0D2"/>
-                            <TextBlock x:Name="ControlsControllerPathText" Text="gamectrler.cfg" TextWrapping="Wrap" Foreground="#AFC0D2"/>
-                            <TextBlock x:Name="ControlsKeyboardCountText" Text="0" Foreground="#AFC0D2"/>
-                            <TextBlock x:Name="ControlsKeyTableCountText" Text="0" Foreground="#AFC0D2"/>
-                            <TextBlock x:Name="ControlsKeyTableFileText" Text="" TextWrapping="Wrap" Foreground="#AFC0D2"/>
-                            <TextBlock x:Name="ControlsGameControllerStateText" Text="" Foreground="#AFC0D2"/>
-                        </StackPanel>
+
+                        <Border Background="#C7CDD3"
+                                BorderBrush="#7D8791"
+                                BorderThickness="1"
+                                Padding="10">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="PAINEL DO ÔNIBUS"
+                                           Foreground="#1B1F24"
+                                           FontSize="15"
+                                           FontWeight="Bold"
+                                           HorizontalAlignment="Center"/>
+
+                                <Grid Grid.Row="1"
+                                      Margin="0,12,0,8"
+                                      Background="#AEB6BE">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button Grid.Row="0" Grid.Column="0"
+                                            Margin="4"
+                                            Tag="engine"
+                                            Content="MOTOR&#x0a;ELÉTRICA"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="0" Grid.Column="1"
+                                            Margin="4"
+                                            Tag="doors"
+                                            Content="PORTAS"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="1" Grid.Column="0"
+                                            Margin="4"
+                                            Tag="lights"
+                                            Content="LUZES&#x0a;SETAS"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="1" Grid.Column="1"
+                                            Margin="4"
+                                            Tag="wipers"
+                                            Content="LIMPADORES"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="2" Grid.Column="0"
+                                            Margin="4"
+                                            Tag="drive"
+                                            Content="FREIOS&#x0a;CÂMBIO"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="2" Grid.Column="1"
+                                            Margin="4"
+                                            Tag="steering"
+                                            Content="VOLANTE&#x0a;BUZINA"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="3" Grid.Column="0"
+                                            Margin="4"
+                                            Tag="ibis"
+                                            Content="IBIS&#x0a;BILHETAGEM"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="3" Grid.Column="1"
+                                            Margin="4"
+                                            Tag="views"
+                                            Content="CÂMERAS&#x0a;ESPELHOS"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="4" Grid.Column="0"
+                                            Margin="4"
+                                            Tag="suspension"
+                                            Content="SUSPENSÃO&#x0a;RAMPA"
+                                            Click="ControlCategoryButton_Click"/>
+                                    <Button Grid.Row="4" Grid.Column="1"
+                                            Margin="4"
+                                            Tag="all"
+                                            Content="TODOS"
+                                            Click="ControlCategoryButton_Click"/>
+                                </Grid>
+
+                                <TextBlock Grid.Row="2"
+                                           Text="Clique numa área da cabine para filtrar os comandos reais do keyboard.cfg."
+                                           TextWrapping="Wrap"
+                                           Foreground="#3D454D"
+                                           FontSize="11"/>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="1"
+                                Margin="10,0"
+                                Background="#E5E8EB"
+                                BorderBrush="#7D8791"
+                                BorderThickness="1">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Background="#596775"
+                                        Padding="8">
+                                    <TextBlock x:Name="ControlsCategoryTitle"
+                                               Text="TODOS OS CONTROLES"
+                                               Foreground="White"
+                                               FontWeight="Bold"/>
+                                </Border>
+
+                                <ListView x:Name="ControlsKeyboardList"
+                                          Grid.Row="1"
+                                          SelectionMode="Single"
+                                          SelectionChanged="ControlsKeyboardList_SelectionChanged">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#BBC1C7"
+                                                    BorderThickness="0,0,0,1"
+                                                    Padding="8,6">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="190"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Trigger}"
+                                                               Foreground="#1B1F24"
+                                                               FontWeight="SemiBold"/>
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Key}"
+                                                                   Foreground="#1B1F24"/>
+                                                        <TextBlock Text="{Binding Flags}"
+                                                                   Foreground="#66717B"
+                                                                   FontSize="10"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Background="#C7CDD3"
+                                BorderBrush="#7D8791"
+                                BorderThickness="1"
+                                Padding="10">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="EDITAR COMANDO"
+                                           Foreground="#1B1F24"
+                                           FontSize="15"
+                                           FontWeight="Bold"/>
+                                <TextBlock x:Name="ControlsSelectedTriggerText"
+                                           Text="Selecione um comando"
+                                           TextWrapping="Wrap"
+                                           Foreground="#1B1F24"/>
+                                <ComboBox x:Name="ControlsKeyComboBox"
+                                          Header="Tecla OMSI"
+                                          DisplayMemberPath="Display"/>
+                                <CheckBox x:Name="ControlsContinuousCheck"
+                                          Content="Contínuo"/>
+                                <CheckBox x:Name="ControlsShiftCheck"
+                                          Content="Shift"/>
+                                <CheckBox x:Name="ControlsCtrlCheck"
+                                          Content="Ctrl"/>
+                                <Button Content="GRAVAR NO keyboard.cfg"
+                                        Click="SaveControlBindingButton_Click"/>
+                                <Border Height="1"
+                                        Background="#8A949E"
+                                        Margin="0,6"/>
+                                <TextBlock Text="SMARTBIND"
+                                           Foreground="#1B1F24"
+                                           FontWeight="Bold"/>
+                                <TextBlock Text="A calibração de volante, pedais, zona morta e curvas permanece na aba Configurações → Condução e colisões. A detecção automática de eixos será integrada aqui na próxima etapa."
+                                           TextWrapping="Wrap"
+                                           Foreground="#4B555E"
+                                           FontSize="11"/>
+                                <TextBlock x:Name="ControlsKeyboardPathText"
+                                           Text="keyboard.cfg"
+                                           TextWrapping="Wrap"
+                                           Foreground="#4B555E"
+                                           FontSize="10"/>
+                                <TextBlock x:Name="ControlsControllerPathText"
+                                           Text="gamectrler.cfg"
+                                           TextWrapping="Wrap"
+                                           Foreground="#4B555E"
+                                           FontSize="10"/>
+                                <TextBlock x:Name="ControlsKeyboardCountText" Text="0" Foreground="#4B555E"/>
+                                <TextBlock x:Name="ControlsKeyTableCountText" Text="0" Foreground="#4B555E"/>
+                                <TextBlock x:Name="ControlsKeyTableFileText" Text="" TextWrapping="Wrap" Foreground="#4B555E"/>
+                                <TextBlock x:Name="ControlsGameControllerStateText" Text="" Foreground="#4B555E"/>
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </Grid>
             </Grid>

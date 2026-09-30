@@ -54,7 +54,33 @@ public sealed partial class MainWindow :
     private sealed record KeyboardDisplayRow(
         string Trigger,
         string Key,
-        string Flags);
+        string Flags,
+        int KeyIndex,
+        int RawFlags,
+        int KeyLine,
+        int FlagsLine);
+
+    private sealed record ControlKeyOption(
+        int Index,
+        string Name)
+    {
+        public string Display =>
+            $"{Name}  [{Index}]";
+    }
+
+    private IReadOnlyList<KeyboardDisplayRow>
+        _controlRows =
+            Array.Empty<KeyboardDisplayRow>();
+
+    private IReadOnlyList<ControlKeyOption>
+        _controlKeys =
+            Array.Empty<ControlKeyOption>();
+
+    private string _controlsKeyboardPath =
+        string.Empty;
+
+    private string _controlCategory =
+        "all";
 
     private readonly RuntimeProcessHost _runtime =
         new();
@@ -2497,6 +2523,9 @@ public sealed partial class MainWindow :
                     "Inputs",
                     "keyboard.cfg");
 
+        _controlsKeyboardPath =
+            keyboardPath;
+
         var controllerPath =
             string.IsNullOrWhiteSpace(
                 contentRoot)
@@ -2533,8 +2562,25 @@ public sealed partial class MainWindow :
                 keyboardText,
                 keyTable);
 
-        ControlsKeyboardList.ItemsSource =
+        _controlRows =
             rows;
+
+        _controlKeys =
+            keyTable
+                .OrderBy(
+                    pair =>
+                        pair.Key)
+                .Select(
+                    pair =>
+                        new ControlKeyOption(
+                            pair.Key,
+                            pair.Value))
+                .ToArray();
+
+        ControlsKeyComboBox.ItemsSource =
+            _controlKeys;
+
+        ApplyControlCategoryFilter();
 
         ControlsKeyboardCountText.Text =
             rows.Count.ToString(
@@ -2568,6 +2614,355 @@ public sealed partial class MainWindow :
             _runtimeOptions.GameControllerEnabled
                 ? "Habilitado"
                 : "Desabilitado";
+    }
+
+    private void ControlCategoryButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element ||
+            element.Tag is not string category)
+        {
+            return;
+        }
+
+        _controlCategory =
+            category.Trim().ToLowerInvariant();
+
+        ApplyControlCategoryFilter();
+    }
+
+    private void ApplyControlCategoryFilter()
+    {
+        if (ControlsKeyboardList is null ||
+            ControlsCategoryTitle is null)
+        {
+            return;
+        }
+
+        var filtered =
+            _controlCategory ==
+                "all"
+                ? _controlRows
+                : _controlRows
+                    .Where(
+                        row =>
+                            TriggerMatchesCategory(
+                                row.Trigger,
+                                _controlCategory))
+                    .ToArray();
+
+        ControlsKeyboardList.ItemsSource =
+            filtered;
+
+        ControlsBindingCountText.Text =
+            $"{filtered.Count:N0}/{_controlRows.Count:N0}";
+
+        ControlsKeyCountText.Text =
+            _controlKeys.Count.ToString(
+                "N0");
+
+        ControlsCategoryTitle.Text =
+            _controlCategory switch
+            {
+                "engine" =>
+                    "MOTOR / ELÉTRICA",
+                "doors" =>
+                    "PORTAS",
+                "lights" =>
+                    "LUZES / SETAS",
+                "wipers" =>
+                    "LIMPADORES",
+                "drive" =>
+                    "FREIOS / CÂMBIO",
+                "steering" =>
+                    "VOLANTE / BUZINA",
+                "ibis" =>
+                    "IBIS / BILHETAGEM",
+                "views" =>
+                    "CÂMERAS / ESPELHOS",
+                "suspension" =>
+                    "SUSPENSÃO / RAMPA",
+                _ =>
+                    "TODOS OS CONTROLES"
+            };
+
+        ControlsKeyboardList.SelectedItem =
+            null;
+
+        ClearControlBindingEditor();
+    }
+
+    private static bool TriggerMatchesCategory(
+        string trigger,
+        string category)
+    {
+        var value =
+            trigger.Trim()
+                .ToLowerInvariant();
+
+        string[] terms =
+            category switch
+            {
+                "engine" =>
+                [
+                    "engine",
+                    "motor",
+                    "battery",
+                    "batterie",
+                    "elec",
+                    "ignition",
+                    "starter",
+                    "startbutton"
+                ],
+                "doors" =>
+                [
+                    "door",
+                    "tuer",
+                    "tür",
+                    "frontdoor",
+                    "backdoor"
+                ],
+                "lights" =>
+                [
+                    "light",
+                    "licht",
+                    "blinker",
+                    "indicator",
+                    "headlamp",
+                    "hazard",
+                    "warning"
+                ],
+                "wipers" =>
+                [
+                    "wiper",
+                    "wisch",
+                    "washer"
+                ],
+                "drive" =>
+                [
+                    "brake",
+                    "bremse",
+                    "retarder",
+                    "automatic_",
+                    "gear",
+                    "gang",
+                    "clutch",
+                    "kuppl"
+                ],
+                "steering" =>
+                [
+                    "steer",
+                    "lenk",
+                    "horn",
+                    "hupe"
+                ],
+                "ibis" =>
+                [
+                    "ibis",
+                    "ticket",
+                    "cash",
+                    "printer",
+                    "fare",
+                    "billet",
+                    "almex"
+                ],
+                "views" =>
+                [
+                    "view_",
+                    "camera",
+                    "mirror",
+                    "spiegel"
+                ],
+                "suspension" =>
+                [
+                    "kneel",
+                    "suspension",
+                    "air_",
+                    "ramp",
+                    "lift",
+                    "wheelchair",
+                    "niveau"
+                ],
+                _ =>
+                    []
+            };
+
+        return terms.Any(
+            term =>
+                value.Contains(
+                    term,
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void ControlsKeyboardList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (ControlsKeyboardList.SelectedItem is not
+            KeyboardDisplayRow row)
+        {
+            ClearControlBindingEditor();
+            return;
+        }
+
+        ControlsSelectedTriggerText.Text =
+            row.Trigger;
+
+        ControlsContinuousCheck.IsChecked =
+            (row.RawFlags & 1) !=
+            0;
+        ControlsShiftCheck.IsChecked =
+            (row.RawFlags & 2) !=
+            0;
+        ControlsCtrlCheck.IsChecked =
+            (row.RawFlags & 4) !=
+            0;
+
+        ControlsKeyComboBox.SelectedItem =
+            _controlKeys.FirstOrDefault(
+                key =>
+                    key.Index ==
+                    row.KeyIndex);
+    }
+
+    private void ClearControlBindingEditor()
+    {
+        if (ControlsSelectedTriggerText is null)
+        {
+            return;
+        }
+
+        ControlsSelectedTriggerText.Text =
+            "Selecione um comando";
+        ControlsKeyComboBox.SelectedItem =
+            null;
+        ControlsContinuousCheck.IsChecked =
+            false;
+        ControlsShiftCheck.IsChecked =
+            false;
+        ControlsCtrlCheck.IsChecked =
+            false;
+    }
+
+    private void SaveControlBindingButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (ControlsKeyboardList.SelectedItem is not
+                KeyboardDisplayRow row ||
+            ControlsKeyComboBox.SelectedItem is not
+                ControlKeyOption key)
+        {
+            SetStatus(
+                "VehiclePanel: selecione um comando e uma tecla.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                _controlsKeyboardPath) ||
+            !File.Exists(
+                _controlsKeyboardPath))
+        {
+            SetStatus(
+                "VehiclePanel: keyboard.cfg não encontrado.");
+            return;
+        }
+
+        try
+        {
+            var text =
+                File.ReadAllText(
+                    _controlsKeyboardPath);
+
+            var lines =
+                text
+                    .Replace(
+                        "\r\n",
+                        "\n")
+                    .Replace(
+                        '\r',
+                        '\n')
+                    .Split(
+                        '\n');
+
+            if (row.KeyLine < 0 ||
+                row.KeyLine >= lines.Length ||
+                row.FlagsLine < 0 ||
+                row.FlagsLine >= lines.Length)
+            {
+                throw new InvalidDataException(
+                    "Posição do binding não é válida no keyboard.cfg atual.");
+            }
+
+            var flags =
+                (ControlsContinuousCheck.IsChecked ==
+                    true
+                    ? 1
+                    : 0) |
+                (ControlsShiftCheck.IsChecked ==
+                    true
+                    ? 2
+                    : 0) |
+                (ControlsCtrlCheck.IsChecked ==
+                    true
+                    ? 4
+                    : 0);
+
+            var backup =
+                _controlsKeyboardPath +
+                ".vehiclepanel.bak";
+
+            if (!File.Exists(
+                    backup))
+            {
+                File.Copy(
+                    _controlsKeyboardPath,
+                    backup,
+                    overwrite:
+                        false);
+            }
+
+            lines[
+                row.KeyLine] =
+                key.Index.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+
+            lines[
+                row.FlagsLine] =
+                flags.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+
+            File.WriteAllText(
+                _controlsKeyboardPath,
+                string.Join(
+                    Environment.NewLine,
+                    lines));
+
+            var trigger =
+                row.Trigger;
+
+            UpdateControlsView();
+
+            var visible =
+                ControlsKeyboardList.ItemsSource
+                    as IEnumerable<KeyboardDisplayRow>;
+
+            ControlsKeyboardList.SelectedItem =
+                visible?.FirstOrDefault(
+                    item =>
+                        item.Trigger.Equals(
+                            trigger,
+                            StringComparison.OrdinalIgnoreCase));
+
+            SetStatus(
+                $"VehiclePanel: {trigger} → {key.Name}. Backup: {Path.GetFileName(backup)}");
+        }
+        catch (Exception exception)
+        {
+            SetStatus(
+                $"VehiclePanel: falha ao gravar binding — {exception.Message}");
+        }
     }
 
     private static string TryReadText(
@@ -2751,13 +3146,13 @@ public sealed partial class MainWindow :
                 continue;
             }
 
-            var values =
-                new List<string>(
+            var valueLines =
+                new List<int>(
                     3);
 
             for (var cursor = index + 1;
                  cursor < lines.Length &&
-                 values.Count < 3;
+                 valueLines.Count < 3;
                  cursor++)
             {
                 var value =
@@ -2782,20 +3177,29 @@ public sealed partial class MainWindow :
                     break;
                 }
 
-                values.Add(
-                    value);
+                valueLines.Add(
+                    cursor);
             }
 
-            if (values.Count < 3 ||
+            if (valueLines.Count < 3 ||
                 !int.TryParse(
-                    values[1],
+                    lines[
+                        valueLines[1]]
+                        .Trim(),
                     out var keyIndex) ||
                 !int.TryParse(
-                    values[2],
+                    lines[
+                        valueLines[2]]
+                        .Trim(),
                     out var flags))
             {
                 continue;
             }
+
+            var trigger =
+                lines[
+                    valueLines[0]]
+                    .Trim();
 
             var keyName =
                 keys.TryGetValue(
@@ -2827,13 +3231,17 @@ public sealed partial class MainWindow :
 
             result.Add(
                 new KeyboardDisplayRow(
-                    values[0],
+                    trigger,
                     keyName,
                     flagNames.Count == 0
                         ? "—"
                         : string.Join(
                             " · ",
-                            flagNames)));
+                            flagNames),
+                    keyIndex,
+                    flags,
+                    valueLines[1],
+                    valueLines[2]));
         }
 
         return result;
