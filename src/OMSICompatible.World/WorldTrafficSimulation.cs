@@ -2174,12 +2174,12 @@ public sealed class WorldTrafficSimulation
         return false;
     }
 
-    private static double ResolveApproachRemainingDistance(
+    private double ResolveApproachRemainingDistance(
         Agent agent,
         WorldTrafficPathSegment segment)
     {
         var segmentLength =
-            CalculateSegmentLength(
+            SegmentLength(
                 segment);
 
         return agent.TravelForward
@@ -2192,12 +2192,12 @@ public sealed class WorldTrafficSimulation
                 0.0);
     }
 
-    private static double EstimateApproachArrivalSeconds(
+    private double EstimateApproachArrivalSeconds(
         Agent agent,
         WorldTrafficPathSegment segment)
     {
         var segmentLength =
-            CalculateSegmentLength(
+            SegmentLength(
                 segment);
 
         var remainingDistance =
@@ -2219,7 +2219,7 @@ public sealed class WorldTrafficSimulation
                approachSpeed;
     }
 
-    private static bool ApproachesFromRight(
+    private bool ApproachesFromRight(
         WorldTrafficPathSegment currentSegment,
         bool currentTravelForward,
         WorldTrafficPathSegment otherSegment,
@@ -2252,15 +2252,15 @@ public sealed class WorldTrafficSimulation
                    4.0;
     }
 
-    private static double HeadingAtExit(
+    private double HeadingAtExit(
         WorldTrafficPathSegment segment,
         bool travelForward)
     {
         var length =
-            CalculateSegmentLength(
+            SegmentLength(
                 segment);
 
-        SampleSegmentLinear(
+        SampleSegment(
             segment,
             travelForward
                 ? length
