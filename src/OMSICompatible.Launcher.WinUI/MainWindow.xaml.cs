@@ -2859,6 +2859,14 @@ public sealed partial class MainWindow :
 
         SettingsGameControllerCheck.IsChecked =
             _runtimeOptions.GameControllerEnabled;
+        SettingsControllerDeadZoneBox.Text =
+            _runtimeOptions.ControllerDeadZone.ToString("0.00", culture);
+        SettingsMouseSteeringSensitivityBox.Text =
+            _runtimeOptions.MouseSteeringSensitivity.ToString("0.00", culture);
+        SettingsThrottlePedalResponseBox.Text =
+            _runtimeOptions.ThrottlePedalResponse.ToString("0.00", culture);
+        SettingsBrakePedalResponseBox.Text =
+            _runtimeOptions.BrakePedalResponse.ToString("0.00", culture);
         SettingsAutomaticSteeringCenterCheck.IsChecked =
             _runtimeOptions.AutomaticSteeringCenter;
         SettingsAutomaticClutchCheck.IsChecked =
@@ -3130,6 +3138,30 @@ public sealed partial class MainWindow :
 
         _runtimeOptions.GameControllerEnabled =
             SettingsGameControllerCheck.IsChecked == true;
+        _runtimeOptions.ControllerDeadZone =
+            ToDouble(
+                ParseNumber(SettingsControllerDeadZoneBox.Text),
+                0.0,
+                0.30,
+                _runtimeOptions.ControllerDeadZone);
+        _runtimeOptions.MouseSteeringSensitivity =
+            ToDouble(
+                ParseNumber(SettingsMouseSteeringSensitivityBox.Text),
+                0.25,
+                4.0,
+                _runtimeOptions.MouseSteeringSensitivity);
+        _runtimeOptions.ThrottlePedalResponse =
+            ToDouble(
+                ParseNumber(SettingsThrottlePedalResponseBox.Text),
+                0.25,
+                4.0,
+                _runtimeOptions.ThrottlePedalResponse);
+        _runtimeOptions.BrakePedalResponse =
+            ToDouble(
+                ParseNumber(SettingsBrakePedalResponseBox.Text),
+                0.25,
+                4.0,
+                _runtimeOptions.BrakePedalResponse);
         _runtimeOptions.AutomaticSteeringCenter =
             SettingsAutomaticSteeringCenterCheck.IsChecked == true;
         _runtimeOptions.AutomaticClutch =

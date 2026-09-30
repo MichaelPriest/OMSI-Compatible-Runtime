@@ -597,6 +597,14 @@ internal sealed class RuntimeApplicationContext :
                         _options.Language,
                     gameControllerEnabled:
                         _options.GameControllerEnabled,
+                    controllerDeadZone:
+                        _options.ControllerDeadZone,
+                    mouseSteeringSensitivity:
+                        _options.MouseSteeringSensitivity,
+                    throttlePedalResponse:
+                        _options.ThrottlePedalResponse,
+                    brakePedalResponse:
+                        _options.BrakePedalResponse,
                     sectionScriptRuntimes:
                         sectionScriptRuntimes,
                     masterVolumePercent:

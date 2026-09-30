@@ -403,6 +403,10 @@ public sealed class D3D11RenderWindow : Form
             [];
     private readonly bool _gameControllerEnabled;
     private readonly bool _automaticSteeringCenter;
+    private readonly float _controllerDeadZone;
+    private readonly float _mouseSteeringSensitivity;
+    private readonly float _throttlePedalResponse;
+    private readonly float _brakePedalResponse;
     private RuntimeOmsiGameControllerHost? _omsiGameController;
     private RuntimeOmsiAudioHost? _omsiAudio;
     private readonly Dictionary<int, RuntimeOmsiAudioHost>
@@ -1079,6 +1083,10 @@ public sealed class D3D11RenderWindow : Form
         IReadOnlyDictionary<string, double>? initialVehicleVariables = null,
         string? inputLanguage = null,
         bool gameControllerEnabled = true,
+        double controllerDeadZone = 0.0,
+        double mouseSteeringSensitivity = 1.0,
+        double throttlePedalResponse = 1.0,
+        double brakePedalResponse = 1.0,
         IReadOnlyDictionary<int, OmsiScriptRuntime>? sectionScriptRuntimes = null,
         int masterVolumePercent = 100,
         bool automaticSteeringCenter = false,
@@ -1285,6 +1293,26 @@ public sealed class D3D11RenderWindow : Form
             vehiclePreviewMode;
         _gameControllerEnabled =
             gameControllerEnabled;
+        _controllerDeadZone =
+            (float)Math.Clamp(
+                controllerDeadZone,
+                0.0,
+                0.30);
+        _mouseSteeringSensitivity =
+            (float)Math.Clamp(
+                mouseSteeringSensitivity,
+                0.25,
+                4.0);
+        _throttlePedalResponse =
+            (float)Math.Clamp(
+                throttlePedalResponse,
+                0.25,
+                4.0);
+        _brakePedalResponse =
+            (float)Math.Clamp(
+                brakePedalResponse,
+                0.25,
+                4.0);
         _automaticSteeringCenter =
             automaticSteeringCenter;
         _omsiKeyboardBindings =
@@ -3519,7 +3547,10 @@ public sealed class D3D11RenderWindow : Form
         _omsiGameController =
             RuntimeOmsiGameControllerHost.TryCreate(
                 _windowInfo.ContentRoot,
-                Handle);
+                Handle,
+                _controllerDeadZone,
+                _throttlePedalResponse,
+                _brakePedalResponse);
 
         if (_omsiGameController is not null)
         {
@@ -22999,8 +23030,11 @@ public sealed class D3D11RenderWindow : Form
         // steering mode, so map cursor-right to the opposite raw axis here.
         var horizontal =
             Math.Clamp(
-                (centerX - location.X) /
-                halfWidth,
+                (
+                    (centerX - location.X) /
+                    halfWidth
+                ) *
+                _mouseSteeringSensitivity,
                 -1.0f,
                 1.0f);
 

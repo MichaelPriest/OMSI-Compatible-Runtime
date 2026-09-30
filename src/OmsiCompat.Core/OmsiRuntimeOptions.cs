@@ -28,6 +28,10 @@ public sealed class OmsiRuntimeOptions
     public bool ShowVehiclePreview { get; set; } = true;
     public string TypewriterFont { get; set; } = "Courier New";
     public bool GameControllerEnabled { get; set; }
+    public double ControllerDeadZone { get; set; }
+    public double MouseSteeringSensitivity { get; set; } = 1.0;
+    public double ThrottlePedalResponse { get; set; } = 1.0;
+    public double BrakePedalResponse { get; set; } = 1.0;
 
     public bool ReducedMultithreading { get; set; }
     public bool LoadWholeMapAtStart { get; set; }

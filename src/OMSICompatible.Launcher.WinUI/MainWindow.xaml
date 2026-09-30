@@ -750,6 +750,14 @@
                                                FontSize="18"
                                                FontWeight="SemiBold"/>
                                     <CheckBox x:Name="SettingsGameControllerCheck" Content="Game Controller"/>
+                                    <TextBox x:Name="SettingsControllerDeadZoneBox"
+                                             Header="Zona morta do controle (0,00 a 0,30)"/>
+                                    <TextBox x:Name="SettingsMouseSteeringSensitivityBox"
+                                             Header="Sensibilidade da direção pelo mouse (0,25 a 4,00)"/>
+                                    <TextBox x:Name="SettingsThrottlePedalResponseBox"
+                                             Header="Curva do acelerador (0,25 a 4,00)"/>
+                                    <TextBox x:Name="SettingsBrakePedalResponseBox"
+                                             Header="Curva do freio (0,25 a 4,00)"/>
                                     <CheckBox x:Name="SettingsAutomaticSteeringCenterCheck" Content="Centralização automática da direção"/>
                                     <CheckBox x:Name="SettingsAutomaticClutchCheck" Content="Embreagem automática"/>
                                     <CheckBox x:Name="SettingsReducedSteeringSpeedCheck" Content="Velocidade de direção reduzida"/>
