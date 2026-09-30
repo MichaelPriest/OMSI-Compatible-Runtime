@@ -8910,6 +8910,24 @@ public sealed class D3D11RenderWindow : Form
                 }
             }
 
+            var desiredAlphaScale =
+                _vehiclePreviewMode
+                    ? 1.0f
+                    : ResolveVehicleAlphaScale(
+                        materialState.AlphaScaleVariable,
+                        batch.SectionIndex);
+
+            // openOMSI skips fully faded blended layers instead of paying for
+            // their animation, skinning, texture binds and draw call. Keep
+            // opaque/cutout geometry untouched because it may intentionally
+            // participate in depth even when its material alpha is unusual.
+            if (materialState.AlphaBlend &&
+                desiredAlphaScale <=
+                    0.0001f)
+            {
+                continue;
+            }
+
             var desiredVehicleWorld =
                 CreateVehicleAnimationMatrix(
                     batch) *
@@ -8966,11 +8984,7 @@ public sealed class D3D11RenderWindow : Form
                 new RuntimeVehicleMaterialConstants
                 {
                     AlphaScale =
-                        _vehiclePreviewMode
-                            ? 1.0f
-                            : ResolveVehicleAlphaScale(
-                                materialState.AlphaScaleVariable,
-                                batch.SectionIndex),
+                        desiredAlphaScale,
                     LightMapStrength =
                         ResolveVehicleLightMapStrength(
                             materialState.LightMapTexturePath,
