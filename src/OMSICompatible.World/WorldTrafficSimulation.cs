@@ -76,6 +76,15 @@ public sealed class WorldTrafficSimulation
     private readonly List<WeightedSegmentCandidate>
         _nextSegmentCandidates =
             [];
+    private readonly HashSet<int>
+        _lookAheadVisitedSegments =
+            [];
+    private readonly List<int>
+        _lookAheadSegments =
+            [];
+    private readonly HashSet<int>
+        _routeDistanceVisitedSegments =
+            [];
     private readonly WorldTrafficPathSegment[] _roadSegments = [];
     private readonly Dictionary<(int X, int Z), int[]>
         _roadSegmentsByGridCell =
@@ -3785,9 +3794,11 @@ public sealed class WorldTrafficSimulation
         TrafficLead? nearest =
             null;
 
+        BuildTrafficLookAheadSegments(
+            agent);
+
         foreach (var segmentIndex in
-                 EnumerateTrafficLookAheadSegments(
-                     agent))
+                 _lookAheadSegments)
         {
             if (!activeAgentsBySegment.TryGetValue(
                     segmentIndex,
@@ -3857,17 +3868,23 @@ public sealed class WorldTrafficSimulation
         return nearest;
     }
 
-    private IEnumerable<int> EnumerateTrafficLookAheadSegments(
+    private void BuildTrafficLookAheadSegments(
         Agent agent)
     {
+        _lookAheadSegments.Clear();
+        _lookAheadVisitedSegments.Clear();
+
         if (!_segmentsByIndex.TryGetValue(
                 agent.SegmentIndex,
                 out var segment))
         {
-            yield break;
+            return;
         }
 
-        yield return segment.Index;
+        _lookAheadSegments.Add(
+            segment.Index);
+        _lookAheadVisitedSegments.Add(
+            segment.Index);
 
         var remainingLookAhead =
             TrafficLookAheadMeters;
@@ -3889,12 +3906,6 @@ public sealed class WorldTrafficSimulation
         var current =
             segment;
 
-        var visited =
-            new HashSet<int>
-            {
-                segment.Index
-            };
-
         for (var hop = 0;
              hop <
                  MaximumTrafficLookAheadSegments &&
@@ -3908,16 +3919,17 @@ public sealed class WorldTrafficSimulation
                     current);
 
             if (!nextIndex.HasValue ||
-                !visited.Add(
+                !_lookAheadVisitedSegments.Add(
                     nextIndex.Value) ||
                 !_segmentsByIndex.TryGetValue(
                     nextIndex.Value,
                     out var next))
             {
-                yield break;
+                return;
             }
 
-            yield return next.Index;
+            _lookAheadSegments.Add(
+                next.Index);
 
             remainingLookAhead -=
                 SegmentLength(
@@ -4157,11 +4169,9 @@ public sealed class WorldTrafficSimulation
         var current =
             sourceSegment;
 
-        var visited =
-            new HashSet<int>
-            {
-                sourceSegment.Index
-            };
+        _routeDistanceVisitedSegments.Clear();
+        _routeDistanceVisitedSegments.Add(
+            sourceSegment.Index);
 
         for (var hop = 0;
              hop <
@@ -4176,7 +4186,7 @@ public sealed class WorldTrafficSimulation
                     current);
 
             if (!nextIndex.HasValue ||
-                !visited.Add(
+                !_routeDistanceVisitedSegments.Add(
                     nextIndex.Value) ||
                 !_segmentsByIndex.TryGetValue(
                     nextIndex.Value,
