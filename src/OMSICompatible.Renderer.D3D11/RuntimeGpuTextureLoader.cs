@@ -62,6 +62,12 @@ internal sealed class RuntimeGpuTextureLoader
         DateTime SourceLastWriteUtc,
         long LastUsedGeneration);
 
+    private sealed record CachedPreparedBcTexture(
+        RuntimeBcPreparedTexture? Texture,
+        long SourceLength,
+        DateTime SourceLastWriteUtc,
+        long LastUsedGeneration);
+
     private static readonly object TextureFileCacheGate =
         new();
     private static readonly Dictionary<string, CachedTextureFile>
@@ -85,8 +91,30 @@ internal sealed class RuntimeGpuTextureLoader
     private static long _decodedTextureCacheHits;
     private static long _decodedTextureCacheMisses;
     private static long _decodedTextureCacheEvictions;
+
+    private static readonly object PreparedBcTextureCacheGate =
+        new();
+    private static readonly Dictionary<string, CachedPreparedBcTexture>
+        PreparedBcTextureCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private static long _preparedBcTextureCacheGeneration;
+    private static long _preparedBcTextureCacheBytes;
+    private static long _preparedBcTextureCacheHits;
+    private static long _preparedBcTextureCacheMisses;
+    private static long _preparedBcTextureCacheEvictions;
+    private static long _preparedBcTextureEncoded;
+    private static long _preparedBcTextureRejected;
+
     private static long _directBcTextureUploads;
     private static long _directBcTextureUploadBytes;
+
+    private const long MaximumPreparedBcTextureCacheBytes =
+        256L * 1024L * 1024L;
+    private const long MaximumSinglePreparedBcTextureCacheBytes =
+        64L * 1024L * 1024L;
+    private const int MaximumPreparedBcTextureCacheEntries =
+        4096;
 
     private const long MaximumDecodedTextureCacheBytes =
         256L * 1024L * 1024L;
@@ -234,18 +262,273 @@ internal sealed class RuntimeGpuTextureLoader
             {
                 if (TryReadRgba(
                         path,
-                        out _,
-                        out _,
-                        out _,
+                        out var pixels,
+                        out var width,
+                        out var height,
                         requireCacheable:
                             true))
                 {
+                    WarmPreparedBcTextureCache(
+                        path,
+                        pixels,
+                        width,
+                        height);
+
                     Interlocked.Increment(
                         ref warmed);
                 }
             });
 
         return warmed;
+    }
+
+    private static bool TryGetPreparedBcTextureCacheEntry(
+        string path,
+        out RuntimeBcPreparedTexture? texture)
+    {
+        texture =
+            null;
+
+        FileInfo info;
+
+        try
+        {
+            info =
+                new FileInfo(
+                    path);
+
+            if (!info.Exists ||
+                info.Length <=
+                    0)
+            {
+                return false;
+            }
+        }
+        catch (Exception exception)
+            when (exception is
+                IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                NotSupportedException)
+        {
+            return false;
+        }
+
+        lock (PreparedBcTextureCacheGate)
+        {
+            _preparedBcTextureCacheGeneration++;
+
+            if (!PreparedBcTextureCache.TryGetValue(
+                    path,
+                    out var cached))
+            {
+                _preparedBcTextureCacheMisses++;
+                return false;
+            }
+
+            if (cached.SourceLength !=
+                    info.Length ||
+                cached.SourceLastWriteUtc !=
+                    info.LastWriteTimeUtc)
+            {
+                if (cached.Texture is not null)
+                {
+                    _preparedBcTextureCacheBytes -=
+                        cached.Texture.TotalBytes;
+                }
+
+                PreparedBcTextureCache.Remove(
+                    path);
+
+                _preparedBcTextureCacheMisses++;
+                return false;
+            }
+
+            PreparedBcTextureCache[
+                path] =
+                cached with
+                {
+                    LastUsedGeneration =
+                        _preparedBcTextureCacheGeneration
+                };
+
+            _preparedBcTextureCacheHits++;
+            texture =
+                cached.Texture;
+
+            return true;
+        }
+    }
+
+    private static void WarmPreparedBcTextureCache(
+        string path,
+        byte[] pixels,
+        int width,
+        int height)
+    {
+        if (TryGetPreparedBcTextureCacheEntry(
+                path,
+                out _))
+        {
+            return;
+        }
+
+        FileInfo info;
+
+        try
+        {
+            info =
+                new FileInfo(
+                    path);
+
+            if (!info.Exists ||
+                info.Length <=
+                    0)
+            {
+                return;
+            }
+        }
+        catch (Exception exception)
+            when (exception is
+                IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                NotSupportedException)
+        {
+            return;
+        }
+
+        RuntimeBcPreparedTexture? prepared;
+
+        try
+        {
+            prepared =
+                RuntimeBcTextureEncoder.TryPrepare(
+                    pixels,
+                    width,
+                    height);
+        }
+        catch (Exception exception)
+            when (exception is
+                ArgumentException or
+                OverflowException)
+        {
+            prepared =
+                null;
+        }
+
+        if (prepared is not null &&
+            prepared.TotalBytes >
+                MaximumSinglePreparedBcTextureCacheBytes)
+        {
+            prepared =
+                null;
+        }
+
+        lock (PreparedBcTextureCacheGate)
+        {
+            _preparedBcTextureCacheGeneration++;
+
+            if (PreparedBcTextureCache.TryGetValue(
+                    path,
+                    out var previous) &&
+                previous.Texture is not null)
+            {
+                _preparedBcTextureCacheBytes -=
+                    previous.Texture.TotalBytes;
+            }
+
+            PreparedBcTextureCache[
+                path] =
+                new CachedPreparedBcTexture(
+                    prepared,
+                    info.Length,
+                    info.LastWriteTimeUtc,
+                    _preparedBcTextureCacheGeneration);
+
+            if (prepared is null)
+            {
+                _preparedBcTextureRejected++;
+            }
+            else
+            {
+                _preparedBcTextureEncoded++;
+                _preparedBcTextureCacheBytes +=
+                    prepared.TotalBytes;
+            }
+
+            while ((_preparedBcTextureCacheBytes >
+                        MaximumPreparedBcTextureCacheBytes ||
+                    PreparedBcTextureCache.Count >
+                        MaximumPreparedBcTextureCacheEntries) &&
+                   PreparedBcTextureCache.Count >
+                        1)
+            {
+                string? oldestKey =
+                    null;
+                CachedPreparedBcTexture? oldestValue =
+                    null;
+
+                foreach (var pair in
+                         PreparedBcTextureCache)
+                {
+                    if (string.Equals(
+                            pair.Key,
+                            path,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (oldestValue is null ||
+                        pair.Value.LastUsedGeneration <
+                            oldestValue.LastUsedGeneration)
+                    {
+                        oldestKey =
+                            pair.Key;
+                        oldestValue =
+                            pair.Value;
+                    }
+                }
+
+                if (oldestKey is null ||
+                    oldestValue is null)
+                {
+                    break;
+                }
+
+                if (oldestValue.Texture is not null)
+                {
+                    _preparedBcTextureCacheBytes -=
+                        oldestValue.Texture.TotalBytes;
+                }
+
+                PreparedBcTextureCache.Remove(
+                    oldestKey);
+
+                _preparedBcTextureCacheEvictions++;
+            }
+        }
+    }
+
+    private static void ReleaseDecodedTextureCacheEntry(
+        string path)
+    {
+        lock (DecodedTextureCacheGate)
+        {
+            if (!DecodedTextureCache.TryGetValue(
+                    path,
+                    out var cached))
+            {
+                return;
+            }
+
+            _decodedTextureCacheBytes -=
+                cached.Pixels.LongLength;
+
+            DecodedTextureCache.Remove(
+                path);
+        }
     }
 
     public static string GetFileCacheDiagnostics()
@@ -272,8 +555,34 @@ internal sealed class RuntimeGpuTextureLoader
                     _decodedTextureCacheBytes;
             }
 
+            long preparedHits;
+            long preparedMisses;
+            long preparedEvictions;
+            long preparedEncoded;
+            long preparedRejected;
+            int preparedEntries;
+            long preparedBytes;
+
+            lock (PreparedBcTextureCacheGate)
+            {
+                preparedHits =
+                    _preparedBcTextureCacheHits;
+                preparedMisses =
+                    _preparedBcTextureCacheMisses;
+                preparedEvictions =
+                    _preparedBcTextureCacheEvictions;
+                preparedEncoded =
+                    _preparedBcTextureEncoded;
+                preparedRejected =
+                    _preparedBcTextureRejected;
+                preparedEntries =
+                    PreparedBcTextureCache.Count;
+                preparedBytes =
+                    _preparedBcTextureCacheBytes;
+            }
+
             return
-                $"fileHits={_textureFileCacheHits}; fileMisses={_textureFileCacheMisses}; fileEvictions={_textureFileCacheEvictions}; fileEntries={TextureFileCache.Count}; fileMB={_textureFileCacheBytes / (1024.0 * 1024.0):0.0}/{MaximumTextureFileCacheBytes / (1024.0 * 1024.0):0}; rgbaHits={decodedHits}; rgbaMisses={decodedMisses}; rgbaEvictions={decodedEvictions}; rgbaEntries={decodedEntries}; rgbaMB={decodedBytes / (1024.0 * 1024.0):0.0}/{MaximumDecodedTextureCacheBytes / (1024.0 * 1024.0):0}; bcUploads={Interlocked.Read(ref _directBcTextureUploads)}; bcMB={Interlocked.Read(ref _directBcTextureUploadBytes) / (1024.0 * 1024.0):0.0}";
+                $"fileHits={_textureFileCacheHits}; fileMisses={_textureFileCacheMisses}; fileEvictions={_textureFileCacheEvictions}; fileEntries={TextureFileCache.Count}; fileMB={_textureFileCacheBytes / (1024.0 * 1024.0):0.0}/{MaximumTextureFileCacheBytes / (1024.0 * 1024.0):0}; rgbaHits={decodedHits}; rgbaMisses={decodedMisses}; rgbaEvictions={decodedEvictions}; rgbaEntries={decodedEntries}; rgbaMB={decodedBytes / (1024.0 * 1024.0):0.0}/{MaximumDecodedTextureCacheBytes / (1024.0 * 1024.0):0}; workerBcHits={preparedHits}; workerBcMisses={preparedMisses}; workerBcEvictions={preparedEvictions}; workerBcEntries={preparedEntries}; workerBcEncoded={preparedEncoded}; workerBcRejected={preparedRejected}; workerBcMB={preparedBytes / (1024.0 * 1024.0):0.0}/{MaximumPreparedBcTextureCacheBytes / (1024.0 * 1024.0):0}; bcUploads={Interlocked.Read(ref _directBcTextureUploads)}; bcMB={Interlocked.Read(ref _directBcTextureUploadBytes) / (1024.0 * 1024.0):0.0}";
         }
     }
 
@@ -677,6 +986,27 @@ internal sealed class RuntimeGpuTextureLoader
             if (dds is not null)
             {
                 return dds;
+            }
+        }
+
+        if (TryGetPreparedBcTextureCacheEntry(
+                path,
+                out var preparedBc) &&
+            preparedBc is not null)
+        {
+            var compressed =
+                TryCreatePreparedBcTexture(
+                    preparedBc);
+
+            if (compressed is not null)
+            {
+                // Match openOMSI's worker-upgrade lifetime: once the
+                // compressed GPU copy is known-good, the decoded RGBA copy
+                // is no longer needed in the CPU warm cache.
+                ReleaseDecodedTextureCacheEntry(
+                    path);
+
+                return compressed;
             }
         }
 
@@ -1107,6 +1437,181 @@ internal sealed class RuntimeGpuTextureLoader
         Bc1,
         Bc2,
         Bc3
+    }
+
+    private RuntimeGpuTexture? TryCreatePreparedBcTexture(
+        RuntimeBcPreparedTexture prepared)
+    {
+        if (prepared.Levels.Length ==
+            0)
+        {
+            return null;
+        }
+
+        var format =
+            prepared.Format switch
+            {
+                RuntimeBcCompressionFormat.Bc1 =>
+                    BcFormat.Bc1,
+                RuntimeBcCompressionFormat.Bc3 =>
+                    BcFormat.Bc3,
+                _ =>
+                    BcFormat.Bc3
+            };
+
+        var gpuFormat =
+            format switch
+            {
+                BcFormat.Bc1 =>
+                    Format.BC1_UNorm,
+                BcFormat.Bc3 =>
+                    Format.BC3_UNorm,
+                _ =>
+                    Format.Unknown
+            };
+
+        if (gpuFormat ==
+            Format.Unknown)
+        {
+            return null;
+        }
+
+        var blockBytes =
+            format ==
+                    BcFormat.Bc1
+                ? 8
+                : 16;
+
+        var handles =
+            new GCHandle[
+                prepared.Levels.Length];
+
+        try
+        {
+            var initialData =
+                new SubresourceData[
+                    prepared.Levels.Length];
+
+            var mipWidth =
+                prepared.Width;
+            var mipHeight =
+                prepared.Height;
+
+            for (var mip = 0;
+                 mip <
+                 prepared.Levels.Length;
+                 mip++)
+            {
+                var blocksX =
+                    Math.Max(
+                        1,
+                        (mipWidth +
+                         3) /
+                        4);
+
+                var blocksY =
+                    Math.Max(
+                        1,
+                        (mipHeight +
+                         3) /
+                        4);
+
+                var rowPitch =
+                    checked(
+                        (uint)(
+                            blocksX *
+                            blockBytes));
+
+                var slicePitch =
+                    checked(
+                        rowPitch *
+                        (uint)blocksY);
+
+                if (prepared.Levels[mip].LongLength <
+                    slicePitch)
+                {
+                    return null;
+                }
+
+                handles[mip] =
+                    GCHandle.Alloc(
+                        prepared.Levels[mip],
+                        GCHandleType.Pinned);
+
+                initialData[mip] =
+                    new SubresourceData(
+                        handles[mip]
+                            .AddrOfPinnedObject(),
+                        rowPitch,
+                        slicePitch);
+
+                mipWidth =
+                    Math.Max(
+                        1,
+                        mipWidth /
+                        2);
+
+                mipHeight =
+                    Math.Max(
+                        1,
+                        mipHeight /
+                        2);
+            }
+
+            var texture =
+                _device.CreateTexture2D(
+                    gpuFormat,
+                    (uint)prepared.Width,
+                    (uint)prepared.Height,
+                    mipLevels:
+                        (uint)prepared.Levels.Length,
+                    initialData:
+                        initialData,
+                    bindFlags:
+                        BindFlags.ShaderResource);
+
+            var view =
+                _device.CreateShaderResourceView(
+                    texture);
+
+            Interlocked.Increment(
+                ref _directBcTextureUploads);
+
+            Interlocked.Add(
+                ref _directBcTextureUploadBytes,
+                prepared.TotalBytes);
+
+            return new RuntimeGpuTexture(
+                texture,
+                view,
+                prepared.TotalBytes);
+        }
+        catch (Exception exception)
+            when (
+                exception is
+                    ArgumentException or
+                    NotSupportedException or
+                    OverflowException ||
+                exception.GetType()
+                    .Namespace?
+                    .StartsWith(
+                        "SharpGen",
+                        StringComparison.Ordinal) ==
+                    true)
+        {
+            return null;
+        }
+        finally
+        {
+            foreach (var handle in
+                     handles)
+            {
+                if (handle.IsAllocated)
+                {
+                    handle.Free();
+                }
+            }
+        }
     }
 
     private RuntimeGpuTexture? TryCreateBcTexture(
