@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 
@@ -64,6 +65,23 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         OmsiTextBox(string.Empty);
     private readonly ListBox _routeMessages =
         OmsiListBox();
+    private readonly ListBox _shiftEvents =
+        OmsiListBox();
+    private readonly ListBox _incidentMessages =
+        OmsiListBox();
+    private readonly Label _shiftState =
+        new()
+        {
+            AutoSize = false,
+            Text = "TURNO ENCERRADO",
+            ForeColor = OmsiText,
+            Font =
+                new Font(
+                    "Segoe UI",
+                    9.0f,
+                    FontStyle.Bold)
+        };
+    private readonly Button _shiftToggleButton;
     private readonly ListBox _commsMessages =
         OmsiListBox();
     private readonly TextBox _commsInput =
@@ -89,6 +107,10 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
     private DriverPassProfile _profile;
     private bool _badgeInserted;
+    private bool _shiftActive;
+    private DateTimeOffset? _shiftStartedAt;
+    private bool? _lastElectricalState;
+    private bool? _lastEngineState;
 
     private static readonly Color OmsiPanel =
         Color.FromArgb(214, 218, 224);
@@ -250,6 +272,8 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         AddModuleButton(navigation, "ASSISTLINK", ShowAssistLink);
         AddModuleButton(navigation, "CONTROLHUB", ShowControlHub);
         AddModuleButton(navigation, "ROUTECORE", ShowRouteCore);
+        AddModuleButton(navigation, "SHIFTFLOW", ShowShiftFlow);
+        AddModuleButton(navigation, "INCIDENTLOG", ShowIncidentLog);
 
         Controls.Add(_contentHost);
         Controls.Add(navigation);
@@ -286,6 +310,15 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 154,
                 (_, _) =>
                     ToggleBadge());
+
+        _shiftToggleButton =
+            OmsiButton(
+                "INICIAR TURNO",
+                160,
+                (_, _) =>
+                    ToggleShift());
+
+        LoadIncidentHistory();
 
         ShowDriverPass();
         RefreshDriverPassStatus();
@@ -424,6 +457,29 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 break;
         }
 
+        if (message.Module.Equals(
+                "ASSISTLINK",
+                StringComparison.OrdinalIgnoreCase) &&
+            message.Kind.Equals(
+                "SUPPORT",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            RecordIncident(
+                "SUPORTE",
+                $"{sender}: {message.Text}");
+        }
+        else if (message.Module.Equals(
+                     "CONTROLHUB",
+                     StringComparison.OrdinalIgnoreCase) &&
+                 message.Kind.Equals(
+                     "DISPATCH",
+                     StringComparison.OrdinalIgnoreCase))
+        {
+            RecordIncident(
+                "CCO",
+                $"{sender}: {message.Text}");
+        }
+
         if (message.Kind.Equals(
                 "ERROR",
                 StringComparison.OrdinalIgnoreCase))
@@ -452,6 +508,84 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     {
         _vehicleState.Text =
             $"ELÉTRICA {(electrical ? "ON" : "OFF")} | MOTOR {(engine ? "ON" : "OFF")} | {Math.Abs(speedMetersPerSecond) * 3.6f:0} km/h";
+
+        if (_shiftActive &&
+            _shiftStartedAt is
+                { } started)
+        {
+            var elapsed =
+                DateTimeOffset.Now -
+                started;
+
+            _shiftState.Text =
+                $"TURNO ATIVO · {elapsed:hh\:mm\:ss} · {Math.Abs(speedMetersPerSecond) * 3.6f:0} km/h";
+        }
+
+        if (_lastElectricalState.HasValue &&
+            _lastElectricalState.Value !=
+            electrical)
+        {
+            AppendShiftEvent(
+                electrical
+                    ? "Elétrica ligada."
+                    : "Elétrica desligada.");
+        }
+
+        if (_lastEngineState.HasValue &&
+            _lastEngineState.Value !=
+            engine)
+        {
+            AppendShiftEvent(
+                engine
+                    ? "Motor ligado."
+                    : "Motor desligado.");
+        }
+
+        _lastElectricalState =
+            electrical;
+        _lastEngineState =
+            engine;
+    }
+
+    public void RecordIncident(
+        string kind,
+        string detail)
+    {
+        var safeKind =
+            string.IsNullOrWhiteSpace(
+                kind)
+                ? "EVENTO"
+                : kind.Trim();
+
+        var safeDetail =
+            string.IsNullOrWhiteSpace(
+                detail)
+                ? "Sem detalhes."
+                : detail.Trim();
+
+        var line =
+            $"[{DateTime.Now:dd/MM HH:mm:ss}] {safeKind} · {safeDetail}";
+
+        AppendMessage(
+            _incidentMessages,
+            line);
+
+        try
+        {
+            var path =
+                IncidentLogPath();
+
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(path)!);
+
+            File.AppendAllText(
+                path,
+                line +
+                Environment.NewLine);
+        }
+        catch
+        {
+        }
     }
 
     private void AddModuleButton(
@@ -909,6 +1043,181 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         _contentHost.Controls.Add(root);
     }
 
+    private void ShowShiftFlow()
+    {
+        _contentHost.Controls.Clear();
+
+        var root =
+            ModuleRoot(
+                "SHIFTFLOW",
+                "Jornada do motorista · início, operação e encerramento");
+
+        _shiftState.SetBounds(
+            8,
+            76,
+            520,
+            28);
+
+        _shiftToggleButton.SetBounds(
+            8,
+            112,
+            160,
+            32);
+
+        _shiftEvents.SetBounds(
+            8,
+            158,
+            520,
+            158);
+
+        root.Controls.Add(
+            _shiftState);
+        root.Controls.Add(
+            _shiftToggleButton);
+        root.Controls.Add(
+            _shiftEvents);
+
+        _contentHost.Controls.Add(
+            root);
+
+        RefreshShiftState();
+    }
+
+    private void ToggleShift()
+    {
+        if (!_shiftActive)
+        {
+            if (!_badgeInserted &&
+                _profile.RequireForStart)
+            {
+                _status.Text =
+                    "SHIFTFLOW: insira o DriverPass antes de iniciar o turno.";
+                _status.ForeColor =
+                    Color.FromArgb(135, 35, 35);
+                ShowDriverPass();
+                return;
+            }
+
+            _shiftActive =
+                true;
+            _shiftStartedAt =
+                DateTimeOffset.Now;
+
+            AppendShiftEvent(
+                $"Turno iniciado · {_profile.CompanyName} · {_profile.EmployeeNumber} · {_profile.DriverName}");
+
+            RequestMessage(
+                "FLEETLINK",
+                "SHIFT",
+                "Motorista iniciou o turno.",
+                string.Empty);
+        }
+        else
+        {
+            var elapsed =
+                _shiftStartedAt.HasValue
+                    ? DateTimeOffset.Now -
+                      _shiftStartedAt.Value
+                    : TimeSpan.Zero;
+
+            AppendShiftEvent(
+                $"Turno encerrado · duração {elapsed:hh\:mm\:ss}");
+
+            RequestMessage(
+                "FLEETLINK",
+                "SHIFT",
+                $"Motorista encerrou o turno após {elapsed:hh\:mm\:ss}.",
+                string.Empty);
+
+            _shiftActive =
+                false;
+            _shiftStartedAt =
+                null;
+        }
+
+        RefreshShiftState();
+    }
+
+    private void RefreshShiftState()
+    {
+        _shiftToggleButton.Text =
+            _shiftActive
+                ? "ENCERRAR TURNO"
+                : "INICIAR TURNO";
+
+        if (_shiftActive &&
+            _shiftStartedAt is
+                { } started)
+        {
+            var elapsed =
+                DateTimeOffset.Now -
+                started;
+
+            _shiftState.Text =
+                $"TURNO ATIVO · início {started:HH:mm} · duração {elapsed:hh\:mm\:ss}";
+            _shiftState.ForeColor =
+                Color.FromArgb(30, 105, 45);
+        }
+        else
+        {
+            _shiftState.Text =
+                "TURNO ENCERRADO";
+            _shiftState.ForeColor =
+                Color.FromArgb(110, 45, 45);
+        }
+    }
+
+    private void AppendShiftEvent(
+        string text)
+    {
+        if (!_shiftActive &&
+            !_shiftStartedAt.HasValue)
+        {
+            return;
+        }
+
+        AppendMessage(
+            _shiftEvents,
+            $"[{DateTime.Now:HH:mm:ss}] {text}");
+    }
+
+    private void ShowIncidentLog()
+    {
+        _contentHost.Controls.Clear();
+
+        var root =
+            ModuleRoot(
+                "INCIDENTLOG",
+                "Registro operacional · colisões, suporte e eventos do CCO");
+
+        _incidentMessages.SetBounds(
+            8,
+            72,
+            520,
+            232);
+
+        var clear =
+            OmsiButton(
+                "LIMPAR TELA",
+                132,
+                (_, _) =>
+                    _incidentMessages.Items.Clear());
+
+        clear.SetBounds(
+            8,
+            314,
+            132,
+            32);
+
+        root.Controls.Add(
+            _incidentMessages);
+        root.Controls.Add(
+            clear);
+
+        _contentHost.Controls.Add(
+            root);
+    }
+
     private bool RequestMessage(
         string module,
         string kind,
@@ -955,6 +1264,19 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
         AppendLocalMessage(
             request);
+
+        if (request.Module.Equals(
+                "ASSISTLINK",
+                StringComparison.OrdinalIgnoreCase) &&
+            request.Kind.Equals(
+                "SUPPORT",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            RecordIncident(
+                "SUPORTE",
+                request.Text);
+        }
+
         MessageRequested?.Invoke(
             request);
 
@@ -1103,6 +1425,11 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         _badgeInserted =
             !_badgeInserted;
         RefreshDriverPassStatus();
+
+        AppendShiftEvent(
+            _badgeInserted
+                ? "DriverPass inserido."
+                : "DriverPass retirado.");
 
         RequestMessage(
             "DRIVERPASS",
@@ -1355,6 +1682,39 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         {
         }
     }
+
+    private void LoadIncidentHistory()
+    {
+        try
+        {
+            var path =
+                IncidentLogPath();
+
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            foreach (var line in
+                     File.ReadLines(path)
+                         .TakeLast(100))
+            {
+                AppendMessage(
+                    _incidentMessages,
+                    line);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static string IncidentLogPath() =>
+        Path.Combine(
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData),
+            "OMSI Compatible Runtime",
+            "incidentlog.log");
 
     private static string ProfilePath() =>
         Path.Combine(

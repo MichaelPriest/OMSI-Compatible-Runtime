@@ -16156,6 +16156,10 @@ public sealed class D3D11RenderWindow : Form
                 _trafficCollisionResponse?.Invoke(
                     agent.AgentIndex,
                     relativeImpactSpeedKph);
+
+                _driveOpsPanel?.RecordIncident(
+                    "COLISÃO",
+                    $"Veículo IA #{agent.AgentIndex} · impacto relativo {relativeImpactSpeedKph:0.0} km/h");
             }
             else
             {
