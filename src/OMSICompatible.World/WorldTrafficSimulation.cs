@@ -87,6 +87,9 @@ public sealed class WorldTrafficSimulation
         _trafficSignalSegments =
             [];
     private readonly List<Agent> _agents;
+    private readonly Dictionary<int, Agent>
+        _agentsByIndex =
+            [];
     private readonly Dictionary<int, List<Agent>>
         _activeAgentsBySegment =
             [];
@@ -784,7 +787,7 @@ public sealed class WorldTrafficSimulation
                           0.75)
                     : 0.0;
 
-            _agents.Add(
+            var agent =
                 new Agent(
                     index,
                     segment.Index,
@@ -796,7 +799,14 @@ public sealed class WorldTrafficSimulation
                     groupIndex,
                     defaultDensityClassIndex,
                     vehicle.GroupName,
-                    activationTimeSeconds));
+                    activationTimeSeconds);
+
+            _agents.Add(
+                agent);
+
+            _agentsByIndex[
+                agent.AgentIndex] =
+                agent;
         }
     }
 
@@ -889,13 +899,10 @@ public sealed class WorldTrafficSimulation
         int agentIndex,
         double relativeImpactSpeedKph)
     {
-        var agent =
-            _agents.FirstOrDefault(
-                candidate =>
-                    candidate.AgentIndex ==
-                    agentIndex);
-
-        if (agent is null ||
+        if (!_agentsByIndex.TryGetValue(
+                agentIndex,
+                out var agent) ||
+            agent is null ||
             agent.PendingRespawn ||
             agent.ActivationTimeSeconds >
                 _simulationElapsedSeconds)
