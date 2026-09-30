@@ -726,6 +726,12 @@ public sealed class D3D11RenderWindow : Form
         _objectBatchVisibilityIndices =
             new(
                 ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
+        bool>
+        _dynamicSceneryVisibilityFrameCache =
+            new(
+                ReferenceEqualityComparer.Instance);
     private byte[] _mainSceneryBatchVisibility =
         Array.Empty<byte>();
     private bool _mainSceneryBatchVisibilityPrepared;
@@ -6193,6 +6199,7 @@ public sealed class D3D11RenderWindow : Form
     private void RenderFrame()
     {
         _renderFrameSequence++;
+        _dynamicSceneryVisibilityFrameCache.Clear();
         ReleaseRetiredStreamingVertexBuffers();
 
         if (_deviceContext is null ||
@@ -8115,36 +8122,54 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
-        if (!_railSignalRuntimeByObjectId.TryGetValue(
+        if (_dynamicSceneryVisibilityFrameCache.TryGetValue(
+                batch,
+                out var cachedVisible))
+        {
+            return cachedVisible;
+        }
+
+        var visible =
+            true;
+
+        if (_railSignalRuntimeByObjectId.TryGetValue(
                 batch.ObjectId,
                 out var runtime))
         {
-            return true;
+            foreach (var condition in
+                     conditions)
+            {
+                if (!runtime.HasLocalVariable(
+                        condition.VariableName))
+                {
+                    visible =
+                        false;
+                    break;
+                }
+
+                var value =
+                    runtime.GetLocal(
+                        condition.VariableName);
+
+                if (Math.Abs(
+                        value -
+                        condition.Value) <=
+                    0.000001)
+                {
+                    continue;
+                }
+
+                visible =
+                    false;
+                break;
+            }
         }
 
-        foreach (var condition in
-                 conditions)
-        {
-            if (!runtime.HasLocalVariable(
-                    condition.VariableName))
-            {
-                return false;
-            }
+        _dynamicSceneryVisibilityFrameCache[
+            batch] =
+            visible;
 
-            var value =
-                runtime.GetLocal(
-                    condition.VariableName);
-
-            if (Math.Abs(
-                    value -
-                    condition.Value) >
-                0.000001)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return visible;
     }
 
     private bool UseExteriorVehicleView() =>
@@ -23044,6 +23069,7 @@ public sealed class D3D11RenderWindow : Form
             _streamingTextureDroppedMipLevels.Clear();
             _streamingTextureMipReductionCandidates.Clear();
             _objectBatchVisibilityIndices.Clear();
+            _dynamicSceneryVisibilityFrameCache.Clear();
             _mainSceneryBatchVisibility =
                 Array.Empty<byte>();
             _mainSceneryBatchVisibilityPrepared =
