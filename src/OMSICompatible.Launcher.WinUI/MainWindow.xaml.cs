@@ -101,7 +101,7 @@ public sealed partial class MainWindow :
     private const nint WsChild = 0x40000000;
     private const nint WsCaption = 0x00C00000;
     private const nint WsThickFrame = 0x00040000;
-    private const nint WsPopup = unchecked((nint)0x80000000);
+    private static readonly nint WsPopup = unchecked((nint)0x80000000);
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
     private const uint SwpShowWindow = 0x0040;
