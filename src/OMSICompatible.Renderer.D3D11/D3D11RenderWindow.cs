@@ -9612,6 +9612,75 @@ public sealed class D3D11RenderWindow : Form
         return true;
     }
 
+    private bool TryUploadTrafficLightInstances(
+        int count,
+        out ID3D11Buffer? instanceBuffer)
+    {
+        instanceBuffer =
+            null;
+
+        if (_device is null ||
+            _deviceContext is null ||
+            count <=
+                0)
+        {
+            return false;
+        }
+
+        if (_trafficLightInstanceBuffer is null ||
+            _trafficLightInstanceBufferCapacity <
+                count)
+        {
+            var capacity =
+                Math.Max(
+                    64,
+                    _trafficLightInstanceBufferCapacity);
+
+            while (capacity <
+                   count)
+            {
+                capacity *=
+                    2;
+            }
+
+            _trafficLightInstanceBuffer?.Dispose();
+
+            _trafficLightInstanceBuffer =
+                _device.CreateBuffer(
+                    new BufferDescription(
+                        (uint)(
+                            capacity *
+                            RuntimeTrafficLightInstanceData.SizeInBytes),
+                        BindFlags.VertexBuffer,
+                        ResourceUsage.Default,
+                        CpuAccessFlags.None));
+
+            _trafficLightInstanceBufferCapacity =
+                capacity;
+        }
+
+        _deviceContext.UpdateSubresource(
+            _trafficLightInstanceScratch.AsSpan(
+                0,
+                count),
+            _trafficLightInstanceBuffer,
+            region:
+                new Box(
+                    0,
+                    0,
+                    0,
+                    checked(
+                        count *
+                        (int)RuntimeTrafficLightInstanceData.SizeInBytes),
+                    1,
+                    1));
+
+        instanceBuffer =
+            _trafficLightInstanceBuffer;
+
+        return true;
+    }
+
     private void DrawTrafficVehicleLights()
     {
         if (_trafficVisibleDrawItems.Count ==
@@ -9621,12 +9690,9 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext is null ||
             CurrentRenderTargetView is null ||
             CurrentDepthStencilView is null ||
-            _vehicleModelBuffer is null ||
-            _vehicleMaterialBuffer is null ||
-            _vehicleSkinBuffer is null ||
-            _vehicleVertexShader is null ||
-            _vehicleLightPixelShader is null ||
-            _vehicleInputLayout is null ||
+            _trafficLightInstancedVertexShader is null ||
+            _trafficLightInstancedPixelShader is null ||
+            _trafficLightInstancedInputLayout is null ||
             _terrainCameraBuffer is null ||
             _terrainAdditiveBlendState is null ||
             _vehicleDepthReadState is null)
@@ -9634,77 +9700,10 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        Span<RuntimeModelConstants> model =
-            stackalloc RuntimeModelConstants[1];
-
-        Span<RuntimeVehicleMaterialConstants> material =
-            stackalloc RuntimeVehicleMaterialConstants[1];
-
-        Span<RuntimeVehicleSkinConstants> lightSkin =
-            stackalloc RuntimeVehicleSkinConstants[1];
-
-        lightSkin[0] =
-            new RuntimeVehicleSkinConstants
-            {
-                Bone0 = Matrix4x4.Identity,
-                Bone1 = Matrix4x4.Identity,
-                Bone2 = Matrix4x4.Identity,
-                Bone3 = Matrix4x4.Identity
-            };
-
-        _vehicleSkinBuffer.SetData(
-            _deviceContext,
-            lightSkin,
-            MapMode.WriteDiscard);
-
-        _deviceContext.OMSetRenderTargets(
-            CurrentRenderTargetView,
-            CurrentDepthStencilView);
-
-        _deviceContext.IASetPrimitiveTopology(
-            PrimitiveTopology.TriangleList);
-
-        _deviceContext.IASetInputLayout(
-            _vehicleInputLayout);
-
-        _deviceContext.IASetVertexBuffer(
-            0,
-            _vehicleLightVertexBuffer,
-            RuntimeObjectVertex.SizeInBytes);
-
-        _deviceContext.VSSetShader(
-            _vehicleVertexShader);
-
-        _deviceContext.VSSetConstantBuffer(
-            0,
-            _terrainCameraBuffer);
-
-        _deviceContext.VSSetConstantBuffer(
-            1,
-            _vehicleModelBuffer);
-
-        _deviceContext.VSSetConstantBuffer(
-            3,
-            _vehicleSkinBuffer);
-
-        _deviceContext.PSSetShader(
-            _vehicleLightPixelShader);
-
-        _deviceContext.PSSetConstantBuffer(
-            2,
-            _vehicleMaterialBuffer);
-
-        _deviceContext.OMSetBlendState(
-            _terrainAdditiveBlendState);
-
-        _deviceContext.OMSetDepthStencilState(
-            _vehicleDepthReadState);
-
-        _deviceContext.RSSetState(
-            _terrainRasterizerState);
-
         var cameraPosition =
             CurrentSceneCameraPosition;
+        var instanceCount =
+            0;
 
         foreach (var drawItem in
                  _trafficVisibleDrawItems)
@@ -9764,8 +9763,10 @@ public sealed class D3D11RenderWindow : Form
                     var toCamera =
                         cameraPosition -
                         center;
+                    var distanceSquared =
+                        toCamera.LengthSquared();
 
-                    if (toCamera.LengthSquared() <
+                    if (distanceSquared <
                         0.000001f)
                     {
                         continue;
@@ -9797,8 +9798,35 @@ public sealed class D3D11RenderWindow : Form
                             0.005,
                             20.0);
 
-                    model[0] =
-                        new RuntimeModelConstants
+                    if (_trafficLightInstanceScratch.Length <=
+                        instanceCount)
+                    {
+                        var capacity =
+                            Math.Max(
+                                64,
+                                _trafficLightInstanceScratch.Length);
+
+                        while (capacity <=
+                               instanceCount)
+                        {
+                            capacity *=
+                                2;
+                        }
+
+                        Array.Resize(
+                            ref _trafficLightInstanceScratch,
+                            capacity);
+                    }
+
+                    var normalizedBrightness =
+                        (float)Math.Clamp(
+                            brightness,
+                            0.0,
+                            16.0);
+
+                    _trafficLightInstanceScratch[
+                        instanceCount++] =
+                        new RuntimeTrafficLightInstanceData
                         {
                             World =
                                 Matrix4x4.CreateScale(
@@ -9807,25 +9835,8 @@ public sealed class D3D11RenderWindow : Form
                                     center,
                                     cameraPosition,
                                     Vector3.UnitY,
-                                    Vector3.UnitZ)
-                        };
-
-                    _vehicleModelBuffer.SetData(
-                        _deviceContext,
-                        model,
-                        MapMode.WriteDiscard);
-
-                    var normalizedBrightness =
-                        (float)Math.Clamp(
-                            brightness,
-                            0.0,
-                            16.0);
-
-                    material[0] =
-                        new RuntimeVehicleMaterialConstants
-                        {
-                            AlphaScale = 1.0f,
-                            MaterialChangeDiffuse =
+                                    Vector3.UnitZ),
+                            Color =
                                 new Vector4(
                                     light.Red / 255.0f *
                                         normalizedBrightness,
@@ -9835,18 +9846,64 @@ public sealed class D3D11RenderWindow : Form
                                         normalizedBrightness,
                                     1.0f)
                         };
-
-                    _vehicleMaterialBuffer.SetData(
-                        _deviceContext,
-                        material,
-                        MapMode.WriteDiscard);
-
-                    _deviceContext.Draw(
-                        6,
-                        0);
                 }
             }
         }
+
+        if (instanceCount ==
+                0 ||
+            !TryUploadTrafficLightInstances(
+                instanceCount,
+                out var instanceBuffer) ||
+            instanceBuffer is null)
+        {
+            return;
+        }
+
+        _deviceContext.OMSetRenderTargets(
+            CurrentRenderTargetView,
+            CurrentDepthStencilView);
+
+        _deviceContext.IASetPrimitiveTopology(
+            PrimitiveTopology.TriangleList);
+
+        _deviceContext.IASetInputLayout(
+            _trafficLightInstancedInputLayout);
+
+        _deviceContext.IASetVertexBuffer(
+            0,
+            _vehicleLightVertexBuffer,
+            RuntimeObjectVertex.SizeInBytes);
+
+        _deviceContext.IASetVertexBuffer(
+            1,
+            instanceBuffer,
+            RuntimeTrafficLightInstanceData.SizeInBytes);
+
+        _deviceContext.VSSetShader(
+            _trafficLightInstancedVertexShader);
+
+        _deviceContext.VSSetConstantBuffer(
+            0,
+            _terrainCameraBuffer);
+
+        _deviceContext.PSSetShader(
+            _trafficLightInstancedPixelShader);
+
+        _deviceContext.OMSetBlendState(
+            _terrainAdditiveBlendState);
+
+        _deviceContext.OMSetDepthStencilState(
+            _vehicleDepthReadState);
+
+        _deviceContext.RSSetState(
+            _terrainRasterizerState);
+
+        _deviceContext.DrawInstanced(
+            6,
+            (uint)instanceCount,
+            0,
+            0);
 
         _deviceContext.OMSetBlendState(
             null);
