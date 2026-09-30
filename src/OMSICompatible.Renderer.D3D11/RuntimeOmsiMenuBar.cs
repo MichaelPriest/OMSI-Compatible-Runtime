@@ -23,6 +23,7 @@ internal enum RuntimeOmsiMenuCommand
     Refuel,
     DirectionSigns,
     LiveBoard,
+    PerformanceCenter,
     Pause,
     DriverView,
     PassengerView,
@@ -216,6 +217,13 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             RuntimeOmsiMenuCommand.LiveBoard,
             "\uE9D2",
             "LiveBoard — HUD operacional compacto",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.PerformanceCenter,
+            "\uE9D9",
+            "Performance Center — FPS, CPU, GPU, draw calls e streaming",
             true);
 
         AddButton(

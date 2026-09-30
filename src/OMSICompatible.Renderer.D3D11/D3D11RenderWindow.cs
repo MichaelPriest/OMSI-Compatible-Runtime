@@ -644,6 +644,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeNavPulsePanel? _navPulsePanel;
     private readonly RuntimeVehiclePanel? _vehiclePanel;
     private readonly RuntimeLiveBoardPanel? _liveBoardPanel;
+    private readonly RuntimePerformanceCenterPanel? _performanceCenterPanel;
     private int _captionFrame;
     private int? _streamingTileX;
     private int? _streamingTileY;
@@ -1042,6 +1043,10 @@ public sealed class D3D11RenderWindow : Form
     private double _profileWorstFrameMilliseconds;
     private double _fpsSampleStartSeconds;
     private double _fpsPreviousFrameSeconds;
+    private double _lastMeasuredFps;
+    private double _lastOnePercentLowFps;
+    private double _lastMeasuredFrameMilliseconds;
+    private double _lastMeasuredWorstFrameMilliseconds;
     private double _previousRenderTickSeconds;
     private double _lastObservedFrameMilliseconds;
     private readonly double _targetFrameMilliseconds;
@@ -1052,6 +1057,12 @@ public sealed class D3D11RenderWindow : Form
         new();
     private const int MaximumFrameTimeSamples =
         240;
+
+    private bool ProfileCaptureEnabled =>
+        _profileEnabled ||
+        _performanceCenterPanel?.Visible ==
+            true;
+
     private readonly float _masterVolume;
     private readonly int _maximumSoundCount;
     private readonly bool _aiVehicleSoundsEnabled;
@@ -1632,6 +1643,18 @@ public sealed class D3D11RenderWindow : Form
             Controls.Add(
                 _liveBoardPanel);
             LayoutLiveBoardPanel();
+        }
+
+        _performanceCenterPanel =
+            _vehiclePreviewMode
+                ? null
+                : new RuntimePerformanceCenterPanel();
+
+        if (_performanceCenterPanel is not null)
+        {
+            Controls.Add(
+                _performanceCenterPanel);
+            LayoutPerformanceCenterPanel();
         }
 
         _renderTimer = new System.Windows.Forms.Timer
@@ -6054,6 +6077,16 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (!_vehiclePreviewMode &&
+            _performanceCenterPanel?.Visible ==
+                true &&
+            (keyData & Keys.KeyCode) ==
+            Keys.Escape)
+        {
+            _performanceCenterPanel.HidePanel();
+            return true;
+        }
+
+        if (!_vehiclePreviewMode &&
             _busSelectorPanel?.Visible ==
                 true &&
             (keyData & Keys.KeyCode) ==
@@ -6247,6 +6280,40 @@ public sealed class D3D11RenderWindow : Form
             $"[vehiclepanel] keyboard bindings reloaded: {_omsiKeyboardBindings.Count}");
     }
 
+    private void LayoutPerformanceCenterPanel()
+    {
+        if (_performanceCenterPanel is null)
+        {
+            return;
+        }
+
+        _performanceCenterPanel.Width =
+            Math.Min(
+                720,
+                Math.Max(
+                    620,
+                    ClientSize.Width - 48));
+        _performanceCenterPanel.Height =
+            Math.Min(
+                470,
+                Math.Max(
+                    420,
+                    ClientSize.Height - 48));
+
+        _performanceCenterPanel.Left =
+            Math.Max(
+                12,
+                (ClientSize.Width -
+                 _performanceCenterPanel.Width) /
+                2);
+        _performanceCenterPanel.Top =
+            Math.Max(
+                12,
+                (ClientSize.Height -
+                 _performanceCenterPanel.Height) /
+                2);
+    }
+
     private void LayoutRuntimeBusSelector()
     {
         if (_busSelectorPanel is null)
@@ -6364,6 +6431,17 @@ public sealed class D3D11RenderWindow : Form
                 {
                     LayoutLiveBoardPanel();
                     _liveBoardPanel.TogglePanel();
+                }
+
+                break;
+
+            case RuntimeOmsiMenuCommand.PerformanceCenter:
+                _omsiMenuBar?.HideMenu();
+
+                if (_performanceCenterPanel is not null)
+                {
+                    LayoutPerformanceCenterPanel();
+                    _performanceCenterPanel.TogglePanel();
                 }
 
                 break;
@@ -6511,6 +6589,7 @@ public sealed class D3D11RenderWindow : Form
         LayoutDriveOpsPanel();
         LayoutNavPulsePanel();
         LayoutVehiclePanel();
+        LayoutPerformanceCenterPanel();
         LayoutLiveBoardPanel();
 
         if (_swapChain is null ||
@@ -6592,7 +6671,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var simulationStarted =
-            _profileEnabled
+            ProfileCaptureEnabled
                 ? Stopwatch.GetTimestamp()
                 : 0L;
 
@@ -6602,7 +6681,7 @@ public sealed class D3D11RenderWindow : Form
             CheckStreamingCenter();
         }
 
-        if (_profileEnabled)
+        if (ProfileCaptureEnabled)
         {
             _profileSimulationMilliseconds +=
                 Stopwatch.GetElapsedTime(
@@ -6611,13 +6690,13 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var textureUploadStarted =
-            _profileEnabled
+            ProfileCaptureEnabled
                 ? Stopwatch.GetTimestamp()
                 : 0L;
 
         ProcessStreamingTextureLoadQueue();
 
-        if (_profileEnabled)
+        if (ProfileCaptureEnabled)
         {
             _profileTextureUploadMilliseconds +=
                 Stopwatch.GetElapsedTime(
@@ -6626,13 +6705,13 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var renderStarted =
-            _profileEnabled
+            ProfileCaptureEnabled
                 ? Stopwatch.GetTimestamp()
                 : 0L;
 
         RenderFrame();
 
-        if (_profileEnabled)
+        if (ProfileCaptureEnabled)
         {
             _profileRenderMilliseconds +=
                 Stopwatch.GetElapsedTime(
@@ -7019,13 +7098,13 @@ public sealed class D3D11RenderWindow : Form
         if (_reflectionRenderingEnabled)
         {
             var mirrorStarted =
-                _profileEnabled
+                ProfileCaptureEnabled
                     ? Stopwatch.GetTimestamp()
                     : 0L;
 
             RenderReflectionTargets();
 
-            if (_profileEnabled)
+            if (ProfileCaptureEnabled)
             {
                 _profileMirrorMilliseconds +=
                     Stopwatch.GetElapsedTime(
@@ -7163,7 +7242,7 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
-        if (_profileEnabled)
+        if (ProfileCaptureEnabled)
         {
             _profileVisibleReflectionTargets +=
                 _visibleReflectionTargets.Count;
@@ -7393,7 +7472,7 @@ public sealed class D3D11RenderWindow : Form
 
                 renderedUpdates++;
 
-                if (_profileEnabled)
+                if (ProfileCaptureEnabled)
                 {
                     _profileReflectionUpdates++;
                 }
@@ -14337,7 +14416,7 @@ public sealed class D3D11RenderWindow : Form
                     0.0;
 
                 var trafficStarted =
-                    _profileEnabled
+                    ProfileCaptureEnabled
                         ? Stopwatch.GetTimestamp()
                         : 0L;
 
@@ -14346,7 +14425,7 @@ public sealed class D3D11RenderWindow : Form
                         trafficDeltaSeconds) ??
                     Array.Empty<RuntimeTrafficAgentInfo>();
 
-                if (_profileEnabled)
+                if (ProfileCaptureEnabled)
                 {
                     _profileTrafficMilliseconds +=
                         Stopwatch.GetElapsedTime(
@@ -23900,7 +23979,7 @@ public sealed class D3D11RenderWindow : Form
     private void RecordProfileDraw(
         ref long category)
     {
-        if (!_profileEnabled)
+        if (!ProfileCaptureEnabled)
         {
             return;
         }
@@ -23916,7 +23995,7 @@ public sealed class D3D11RenderWindow : Form
     private void WriteProfileSnapshotIfNeeded(
         double nowSeconds)
     {
-        if (!_profileEnabled)
+        if (!ProfileCaptureEnabled)
         {
             return;
         }
@@ -23925,8 +24004,14 @@ public sealed class D3D11RenderWindow : Form
             nowSeconds -
             _profileWindowStartSeconds;
 
+        var snapshotIntervalSeconds =
+            _performanceCenterPanel?.Visible ==
+                    true
+                ? 1.0
+                : 10.0;
+
         if (elapsedSeconds <
-            10.0)
+            snapshotIntervalSeconds)
         {
             return;
         }
@@ -23974,11 +24059,60 @@ public sealed class D3D11RenderWindow : Form
                 forceFullCollection:
                     false);
 
-        Console.WriteLine(
-            $"[profile] frames={_profileFrameCount:N0}; over50ms={_profileFramesOver50Milliseconds:N0}; sim={averageSimulationMilliseconds:0.00}ms; traffic={averageTrafficMilliseconds:0.00}ms; texUpload={averageTextureUploadMilliseconds:0.00}ms; mirrors={averageMirrorMilliseconds:0.00}ms; mirrorUpdates/frame={_profileReflectionUpdates / (double)frames:0.00}; mirrorsVisible/frame={_profileVisibleReflectionTargets / (double)frames:0.00}; renderMain={averageMainRenderMilliseconds:0.00}ms; worst={_profileWorstFrameMilliseconds:0.0}ms; agents={_trafficAgents.Count:N0}; sceneryBatches={_objectGeometry.Batches.Count:N0}; draws/frame=scenery:{_profileSceneryDrawCalls / (double)frames:0.0},spline:{_profileSplineDrawCalls / (double)frames:0.0},terrain:{_profileTerrainDrawCalls / (double)frames:0.0},traffic:{_profileTrafficDrawCalls / (double)frames:0.0},vehicle:{_profileVehicleDrawCalls / (double)frames:0.0},lights:{_profileLightDrawCalls / (double)frames:0.0},reflection:{_profileReflectionDrawCalls / (double)frames:0.0}; gpuTextures={gpuTextureBytes / (1024.0 * 1024.0):0.0}MB; managed={managedBytes / (1024.0 * 1024.0):0.0}MB");
+        _performanceCenterPanel?.UpdateSnapshot(
+            new RuntimePerformanceSnapshot(
+                _lastMeasuredFps,
+                _lastOnePercentLowFps,
+                _lastMeasuredFrameMilliseconds,
+                Math.Max(
+                    _lastMeasuredWorstFrameMilliseconds,
+                    _profileWorstFrameMilliseconds),
+                averageSimulationMilliseconds,
+                averageTrafficMilliseconds,
+                averageTextureUploadMilliseconds,
+                averageMainRenderMilliseconds,
+                averageMirrorMilliseconds,
+                _profileReflectionUpdates /
+                    (double)frames,
+                _profileVisibleReflectionTargets /
+                    (double)frames,
+                _profileSceneryDrawCalls /
+                    (double)frames,
+                _profileSplineDrawCalls /
+                    (double)frames,
+                _profileTerrainDrawCalls /
+                    (double)frames,
+                _profileTrafficDrawCalls /
+                    (double)frames,
+                _profileVehicleDrawCalls /
+                    (double)frames,
+                _profileLightDrawCalls /
+                    (double)frames,
+                _profileReflectionDrawCalls /
+                    (double)frames,
+                _trafficAgents.Count,
+                _objectGeometry.Batches.Count,
+                gpuTextureBytes /
+                    (1024.0 * 1024.0),
+                managedBytes /
+                    (1024.0 * 1024.0),
+                _pendingStreamingTextureLoads.Count,
+                _currentStreamingTextureUploadLimit,
+                _currentStreamingTextureUploadBudgetMilliseconds,
+                _lastStreamingPrepareMilliseconds,
+                _lastStreamingGpuPrepareMilliseconds,
+                _lastStreamingSwapMilliseconds,
+                _activeMsaaSamples,
+                _sharpenStrength));
 
-        Console.WriteLine(
-            $"[profile-textures] {RuntimeGpuTextureLoader.GetFileCacheDiagnostics()}");
+        if (_profileEnabled)
+        {
+            Console.WriteLine(
+                $"[profile] frames={_profileFrameCount:N0}; over50ms={_profileFramesOver50Milliseconds:N0}; sim={averageSimulationMilliseconds:0.00}ms; traffic={averageTrafficMilliseconds:0.00}ms; texUpload={averageTextureUploadMilliseconds:0.00}ms; mirrors={averageMirrorMilliseconds:0.00}ms; mirrorUpdates/frame={_profileReflectionUpdates / (double)frames:0.00}; mirrorsVisible/frame={_profileVisibleReflectionTargets / (double)frames:0.00}; renderMain={averageMainRenderMilliseconds:0.00}ms; worst={_profileWorstFrameMilliseconds:0.0}ms; agents={_trafficAgents.Count:N0}; sceneryBatches={_objectGeometry.Batches.Count:N0}; draws/frame=scenery:{_profileSceneryDrawCalls / (double)frames:0.0},spline:{_profileSplineDrawCalls / (double)frames:0.0},terrain:{_profileTerrainDrawCalls / (double)frames:0.0},traffic:{_profileTrafficDrawCalls / (double)frames:0.0},vehicle:{_profileVehicleDrawCalls / (double)frames:0.0},lights:{_profileLightDrawCalls / (double)frames:0.0},reflection:{_profileReflectionDrawCalls / (double)frames:0.0}; gpuTextures={gpuTextureBytes / (1024.0 * 1024.0):0.0}MB; managed={managedBytes / (1024.0 * 1024.0):0.0}MB");
+
+            Console.WriteLine(
+                $"[profile-textures] {RuntimeGpuTextureLoader.GetFileCacheDiagnostics()}");
+        }
 
         _profileWindowStartSeconds =
             nowSeconds;
@@ -24020,8 +24154,9 @@ public sealed class D3D11RenderWindow : Form
 
     private void UpdateFpsOverlay()
     {
-        if (!_showFps ||
-            _fpsLabel is null)
+        if (!_showFps &&
+            _performanceCenterPanel?.Visible !=
+                true)
         {
             return;
         }
@@ -24140,8 +24275,20 @@ public sealed class D3D11RenderWindow : Form
                 ? $"\nCPU {_lastStreamingPrepareMilliseconds:0.0} · GPU {_lastStreamingGpuPrepareMilliseconds:0.0} · Swap {_lastStreamingSwapMilliseconds:0.0} ms"
                 : string.Empty;
 
-        _fpsLabel.Text =
-            $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n1% {onePercentLowFps:0.0} FPS · max {worstFrameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}{streamingMode}{streamingTiming}";
+        _lastMeasuredFps =
+            fps;
+        _lastOnePercentLowFps =
+            onePercentLowFps;
+        _lastMeasuredFrameMilliseconds =
+            frameMilliseconds;
+        _lastMeasuredWorstFrameMilliseconds =
+            worstFrameMilliseconds;
+
+        if (_fpsLabel is not null)
+        {
+            _fpsLabel.Text =
+                $"FPS {fps:0.0}  |  {frameMilliseconds:0.0} ms\n1% {onePercentLowFps:0.0} FPS · max {worstFrameMilliseconds:0.0} ms\n{graphicsMode} · {sharpenMode}{streamingMode}{streamingTiming}";
+        }
 
         _fpsFrameCount =
             0;
