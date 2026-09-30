@@ -962,6 +962,13 @@ public sealed class D3D11RenderWindow : Form
     private double _profileTextureUploadMilliseconds;
     private double _profileRenderMilliseconds;
     private double _profileMirrorMilliseconds;
+    private long _profileSceneryDrawCalls;
+    private long _profileSplineDrawCalls;
+    private long _profileTerrainDrawCalls;
+    private long _profileTrafficDrawCalls;
+    private long _profileVehicleDrawCalls;
+    private long _profileLightDrawCalls;
+    private long _profileReflectionDrawCalls;
     private double _profileWorstFrameMilliseconds;
     private double _fpsSampleStartSeconds;
     private double _fpsPreviousFrameSeconds;
@@ -7310,6 +7317,9 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.Draw(
                 batch.VertexCount,
                 batch.StartVertex);
+
+            RecordProfileDraw(
+                ref _profileTerrainDrawCalls);
         }
 
         _deviceContext.OMSetBlendState(
@@ -8314,6 +8324,17 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.Draw(
                 batch.VertexCount,
                 batch.StartVertex);
+
+            if (sceneryRenderPass.HasValue)
+            {
+                RecordProfileDraw(
+                    ref _profileSceneryDrawCalls);
+            }
+            else
+            {
+                RecordProfileDraw(
+                    ref _profileSplineDrawCalls);
+            }
         }
 
         _deviceContext.OMSetBlendState(null);
@@ -9429,6 +9450,9 @@ public sealed class D3D11RenderWindow : Form
                         (uint)pair.Value.Count,
                         batch.StartVertex,
                         0);
+
+                    RecordProfileDraw(
+                        ref _profileTrafficDrawCalls);
                 }
 
                 staticInstanced =
@@ -9493,6 +9517,9 @@ public sealed class D3D11RenderWindow : Form
                         batch.StartVertex,
                         0);
 
+                    RecordProfileDraw(
+                        ref _profileTrafficDrawCalls);
+
                     animatedInstanced =
                         true;
                 }
@@ -9551,6 +9578,9 @@ public sealed class D3D11RenderWindow : Form
                     _deviceContext.Draw(
                         batch.VertexCount,
                         batch.StartVertex);
+
+                    RecordProfileDraw(
+                        ref _profileTrafficDrawCalls);
                 }
             }
         }
@@ -9657,6 +9687,9 @@ public sealed class D3D11RenderWindow : Form
                 _deviceContext.Draw(
                     batch.VertexCount,
                     batch.StartVertex);
+
+                RecordProfileDraw(
+                    ref _profileTrafficDrawCalls);
             }
         }
 
@@ -10215,6 +10248,9 @@ public sealed class D3D11RenderWindow : Form
             (uint)instanceCount,
             0,
             0);
+
+        RecordProfileDraw(
+            ref _profileLightDrawCalls);
 
         _deviceContext.OMSetBlendState(
             null);
@@ -10893,6 +10929,9 @@ public sealed class D3D11RenderWindow : Form
             _deviceContext.Draw(
                 batch.VertexCount,
                 batch.StartVertex);
+
+            RecordProfileDraw(
+                ref _profileVehicleDrawCalls);
         }
 
         _deviceContext.OMSetBlendState(null);
@@ -11354,6 +11393,9 @@ public sealed class D3D11RenderWindow : Form
             (uint)instanceCount,
             0,
             0);
+
+        RecordProfileDraw(
+            ref _profileLightDrawCalls);
 
         _deviceContext.OMSetBlendState(
             null);
@@ -23048,6 +23090,22 @@ public sealed class D3D11RenderWindow : Form
             0);
     }
 
+    private void RecordProfileDraw(
+        ref long category)
+    {
+        if (!_profileEnabled)
+        {
+            return;
+        }
+
+        category++;
+
+        if (_viewProjectionOverride.HasValue)
+        {
+            _profileReflectionDrawCalls++;
+        }
+    }
+
     private void WriteProfileSnapshotIfNeeded(
         double nowSeconds)
     {
@@ -23110,7 +23168,7 @@ public sealed class D3D11RenderWindow : Form
                     false);
 
         Console.WriteLine(
-            $"[profile] frames={_profileFrameCount:N0}; over50ms={_profileFramesOver50Milliseconds:N0}; sim={averageSimulationMilliseconds:0.00}ms; traffic={averageTrafficMilliseconds:0.00}ms; texUpload={averageTextureUploadMilliseconds:0.00}ms; mirrors={averageMirrorMilliseconds:0.00}ms; renderMain={averageMainRenderMilliseconds:0.00}ms; worst={_profileWorstFrameMilliseconds:0.0}ms; agents={_trafficAgents.Count:N0}; sceneryBatches={_objectGeometry.Batches.Count:N0}; gpuTextures={gpuTextureBytes / (1024.0 * 1024.0):0.0}MB; managed={managedBytes / (1024.0 * 1024.0):0.0}MB");
+            $"[profile] frames={_profileFrameCount:N0}; over50ms={_profileFramesOver50Milliseconds:N0}; sim={averageSimulationMilliseconds:0.00}ms; traffic={averageTrafficMilliseconds:0.00}ms; texUpload={averageTextureUploadMilliseconds:0.00}ms; mirrors={averageMirrorMilliseconds:0.00}ms; renderMain={averageMainRenderMilliseconds:0.00}ms; worst={_profileWorstFrameMilliseconds:0.0}ms; agents={_trafficAgents.Count:N0}; sceneryBatches={_objectGeometry.Batches.Count:N0}; draws/frame=scenery:{_profileSceneryDrawCalls / (double)frames:0.0},spline:{_profileSplineDrawCalls / (double)frames:0.0},terrain:{_profileTerrainDrawCalls / (double)frames:0.0},traffic:{_profileTrafficDrawCalls / (double)frames:0.0},vehicle:{_profileVehicleDrawCalls / (double)frames:0.0},lights:{_profileLightDrawCalls / (double)frames:0.0},reflection:{_profileReflectionDrawCalls / (double)frames:0.0}; gpuTextures={gpuTextureBytes / (1024.0 * 1024.0):0.0}MB; managed={managedBytes / (1024.0 * 1024.0):0.0}MB");
 
         Console.WriteLine(
             $"[profile-textures] {RuntimeGpuTextureLoader.GetFileCacheDiagnostics()}");
@@ -23131,6 +23189,20 @@ public sealed class D3D11RenderWindow : Form
             0.0;
         _profileMirrorMilliseconds =
             0.0;
+        _profileSceneryDrawCalls =
+            0;
+        _profileSplineDrawCalls =
+            0;
+        _profileTerrainDrawCalls =
+            0;
+        _profileTrafficDrawCalls =
+            0;
+        _profileVehicleDrawCalls =
+            0;
+        _profileLightDrawCalls =
+            0;
+        _profileReflectionDrawCalls =
+            0;
         _profileWorstFrameMilliseconds =
             0.0;
     }
