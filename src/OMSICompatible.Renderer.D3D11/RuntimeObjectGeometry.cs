@@ -114,7 +114,9 @@ public static class RuntimeObjectGeometryBuilder
         long ObjectId = -1,
         string? RenderType = null,
         bool RequiresExternalTransMap = false,
-        bool Surface = false);
+        bool Surface = false,
+        int StaticGroupTileX = int.MinValue,
+        int StaticGroupTileY = int.MinValue);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
@@ -302,6 +304,11 @@ public static class RuntimeObjectGeometryBuilder
                             asset.Surface &&
                                 !asset.NoCollision,
                             forceMaterialAlphaOpaque,
+                            allowStaticSceneryGrouping:
+                                useNativeOmsiModelSpace &&
+                                isolatedObjectIds is not null,
+                            instance.TileX,
+                            instance.TileY,
                             batches,
                             batchOrder,
                             ref totalVertices);
@@ -510,6 +517,9 @@ public static class RuntimeObjectGeometryBuilder
         string? renderType,
         bool surface,
         bool forceMaterialAlphaOpaque,
+        bool allowStaticSceneryGrouping,
+        int tileX,
+        int tileY,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
         ref int totalVertices)
@@ -564,6 +574,40 @@ public static class RuntimeObjectGeometryBuilder
                     material,
                     forceMaterialAlphaOpaque);
 
+            var canGroupStaticScenery =
+                allowStaticSceneryGrouping &&
+                objectId <
+                    0 &&
+                material?.AlphaMode !=
+                    2 &&
+                !(material?.NoZWrite ??
+                  false) &&
+                !(material?.NoZCheck ??
+                  false) &&
+                (mesh.VisibilityConditions is null ||
+                 mesh.VisibilityConditions.Count ==
+                     0) &&
+                (mesh.Animations is null ||
+                 mesh.Animations.Count ==
+                     0) &&
+                string.IsNullOrWhiteSpace(
+                    mesh.AnimationParent) &&
+                string.IsNullOrWhiteSpace(
+                    mesh.MouseEventTrigger) &&
+                string.IsNullOrWhiteSpace(
+                    material?.AlphaScaleVariable) &&
+                string.IsNullOrWhiteSpace(
+                    material?.LightMapVariable) &&
+                string.IsNullOrWhiteSpace(
+                    material?.MaterialChangeVariable) &&
+                material?.MaterialChangeSets is not
+                    { Count: > 0 } &&
+                material?.FreeTextures is not
+                    { Count: > 0 } &&
+                material?.TextTextureIndex is null &&
+                mesh.SkinBoneMeshOrdinals is not
+                    { Count: > 0 };
+
             var key =
                 new BatchKey(
                     material?.TexturePath,
@@ -572,10 +616,18 @@ public static class RuntimeObjectGeometryBuilder
                     material?.TransMapTexturePath,
                     material?.NoZWrite ?? false,
                     material?.NoZCheck ?? false,
-                    mesh.VisibilityConditions,
-                    mesh.Animations,
-                    mesh.SourceTransform,
-                    worldTransform,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.VisibilityConditions,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.Animations,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.SourceTransform,
+                    canGroupStaticScenery
+                        ? null
+                        : worldTransform,
                     material?.AlphaScaleVariable,
                     material?.LightMapTexturePath,
                     material?.LightMapVariable,
@@ -592,17 +644,37 @@ public static class RuntimeObjectGeometryBuilder
                     material?.TextTextureIndex,
                     material?.MaterialChangeSets,
                     material?.HasTransMapDirective ?? false,
-                    mesh.MeshIdentifier,
-                    mesh.AnimationParent,
-                    mesh.SectionIndex,
-                    mesh.ModelOrdinal,
-                    mesh.SkinBoneMeshOrdinals,
-                    mesh.MouseEventTrigger,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.MeshIdentifier,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.AnimationParent,
+                    canGroupStaticScenery
+                        ? 0
+                        : mesh.SectionIndex,
+                    canGroupStaticScenery
+                        ? -1
+                        : mesh.ModelOrdinal,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.SkinBoneMeshOrdinals,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.MouseEventTrigger,
                     material?.MaterialChangeIsNightMap ?? false,
-                    objectId,
+                    canGroupStaticScenery
+                        ? -1
+                        : objectId,
                     renderType,
                     material?.RequiresExternalTransMap ?? false,
-                    surface);
+                    surface,
+                    canGroupStaticScenery
+                        ? tileX
+                        : int.MinValue,
+                    canGroupStaticScenery
+                        ? tileY
+                        : int.MinValue);
 
             var output =
                 GetBatch(
