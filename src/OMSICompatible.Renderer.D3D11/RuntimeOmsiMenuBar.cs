@@ -24,6 +24,7 @@ internal enum RuntimeOmsiMenuCommand
     DirectionSigns,
     LiveBoard,
     PerformanceCenter,
+    ReplayOps,
     Pause,
     DriverView,
     PassengerView,
@@ -224,6 +225,13 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             RuntimeOmsiMenuCommand.PerformanceCenter,
             "\uE9D9",
             "Performance Center — FPS, CPU, GPU, draw calls e streaming",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.ReplayOps,
+            "\uE81C",
+            "ReplayOps — rever os últimos minutos e ocorrências",
             true);
 
         AddButton(

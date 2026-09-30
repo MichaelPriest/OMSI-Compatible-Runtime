@@ -645,6 +645,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeVehiclePanel? _vehiclePanel;
     private readonly RuntimeLiveBoardPanel? _liveBoardPanel;
     private readonly RuntimePerformanceCenterPanel? _performanceCenterPanel;
+    private readonly RuntimeReplayOpsPanel? _replayOpsPanel;
     private int _captionFrame;
     private int? _streamingTileX;
     private int? _streamingTileY;
@@ -1657,6 +1658,18 @@ public sealed class D3D11RenderWindow : Form
             LayoutPerformanceCenterPanel();
         }
 
+        _replayOpsPanel =
+            _vehiclePreviewMode
+                ? null
+                : new RuntimeReplayOpsPanel();
+
+        if (_replayOpsPanel is not null)
+        {
+            Controls.Add(
+                _replayOpsPanel);
+            LayoutReplayOpsPanel();
+        }
+
         _renderTimer = new System.Windows.Forms.Timer
         {
             Interval =
@@ -1704,6 +1717,18 @@ public sealed class D3D11RenderWindow : Form
     private void OnDriveOpsMessageRequested(
         RuntimeDriveOpsMessageRequest request)
     {
+        if (request.Module.Equals(
+                "ASSISTLINK",
+                StringComparison.OrdinalIgnoreCase) ||
+            request.Module.Equals(
+                "INCIDENTLOG",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            _replayOpsPanel?.AddMarker(
+                $"{request.Kind}: {request.Text}",
+                _frameClock.Elapsed.TotalSeconds);
+        }
+
         DriveOpsMessageRequested?.Invoke(
             request);
     }
@@ -6087,6 +6112,16 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (!_vehiclePreviewMode &&
+            _replayOpsPanel?.Visible ==
+                true &&
+            (keyData & Keys.KeyCode) ==
+            Keys.Escape)
+        {
+            _replayOpsPanel.HidePanel();
+            return true;
+        }
+
+        if (!_vehiclePreviewMode &&
             _busSelectorPanel?.Visible ==
                 true &&
             (keyData & Keys.KeyCode) ==
@@ -6314,6 +6349,40 @@ public sealed class D3D11RenderWindow : Form
                 2);
     }
 
+    private void LayoutReplayOpsPanel()
+    {
+        if (_replayOpsPanel is null)
+        {
+            return;
+        }
+
+        _replayOpsPanel.Width =
+            Math.Min(
+                780,
+                Math.Max(
+                    650,
+                    ClientSize.Width - 48));
+        _replayOpsPanel.Height =
+            Math.Min(
+                520,
+                Math.Max(
+                    450,
+                    ClientSize.Height - 48));
+
+        _replayOpsPanel.Left =
+            Math.Max(
+                12,
+                (ClientSize.Width -
+                 _replayOpsPanel.Width) /
+                2);
+        _replayOpsPanel.Top =
+            Math.Max(
+                12,
+                (ClientSize.Height -
+                 _replayOpsPanel.Height) /
+                2);
+    }
+
     private void LayoutRuntimeBusSelector()
     {
         if (_busSelectorPanel is null)
@@ -6442,6 +6511,17 @@ public sealed class D3D11RenderWindow : Form
                 {
                     LayoutPerformanceCenterPanel();
                     _performanceCenterPanel.TogglePanel();
+                }
+
+                break;
+
+            case RuntimeOmsiMenuCommand.ReplayOps:
+                _omsiMenuBar?.HideMenu();
+
+                if (_replayOpsPanel is not null)
+                {
+                    LayoutReplayOpsPanel();
+                    _replayOpsPanel.TogglePanel();
                 }
 
                 break;
@@ -6590,6 +6670,7 @@ public sealed class D3D11RenderWindow : Form
         LayoutNavPulsePanel();
         LayoutVehiclePanel();
         LayoutPerformanceCenterPanel();
+        LayoutReplayOpsPanel();
         LayoutLiveBoardPanel();
 
         if (_swapChain is null ||
@@ -6679,6 +6760,15 @@ public sealed class D3D11RenderWindow : Form
         {
             UpdateSimulation();
             CheckStreamingCenter();
+        }
+
+        if (!_vehicleRemoved &&
+            _windowInfo.Vehicle is not null)
+        {
+            _replayOpsPanel?.Record(
+                tickNowSeconds,
+                LocalVehicleState,
+                _trafficCollisionCount);
         }
 
         if (ProfileCaptureEnabled)
