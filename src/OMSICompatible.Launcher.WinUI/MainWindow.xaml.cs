@@ -2867,6 +2867,12 @@ public sealed partial class MainWindow :
             _runtimeOptions.ThrottlePedalResponse.ToString("0.00", culture);
         SettingsBrakePedalResponseBox.Text =
             _runtimeOptions.BrakePedalResponse.ToString("0.00", culture);
+        SettingsWheelRangeBox.Text =
+            _runtimeOptions.WheelRangeDegrees.ToString("0", culture);
+        SettingsWheelLockBox.Text =
+            _runtimeOptions.WheelLockDegrees.ToString("0", culture);
+        SettingsFieldOfViewBox.Text =
+            _runtimeOptions.FieldOfViewDegrees.ToString("0", culture);
         SettingsAutomaticSteeringCenterCheck.IsChecked =
             _runtimeOptions.AutomaticSteeringCenter;
         SettingsAutomaticClutchCheck.IsChecked =
@@ -3162,6 +3168,37 @@ public sealed partial class MainWindow :
                 0.25,
                 4.0,
                 _runtimeOptions.BrakePedalResponse);
+        _runtimeOptions.WheelRangeDegrees =
+            ToDouble(
+                ParseNumber(SettingsWheelRangeBox.Text),
+                90.0,
+                2880.0,
+                _runtimeOptions.WheelRangeDegrees);
+
+        var requestedWheelLock =
+            ToDouble(
+                ParseNumber(SettingsWheelLockBox.Text),
+                0.0,
+                2880.0,
+                _runtimeOptions.WheelLockDegrees);
+
+        _runtimeOptions.WheelLockDegrees =
+            requestedWheelLock < 45.0
+                ? 0.0
+                : requestedWheelLock;
+
+        var requestedFov =
+            ToDouble(
+                ParseNumber(SettingsFieldOfViewBox.Text),
+                0.0,
+                120.0,
+                _runtimeOptions.FieldOfViewDegrees);
+
+        _runtimeOptions.FieldOfViewDegrees =
+            requestedFov < 20.0
+                ? 0.0
+                : requestedFov;
+
         _runtimeOptions.AutomaticSteeringCenter =
             SettingsAutomaticSteeringCenterCheck.IsChecked == true;
         _runtimeOptions.AutomaticClutch =

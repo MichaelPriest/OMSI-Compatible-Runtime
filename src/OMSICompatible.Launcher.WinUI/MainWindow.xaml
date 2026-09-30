@@ -758,6 +758,12 @@
                                              Header="Curva do acelerador (0,25 a 4,00)"/>
                                     <TextBox x:Name="SettingsBrakePedalResponseBox"
                                              Header="Curva do freio (0,25 a 4,00)"/>
+                                    <TextBox x:Name="SettingsWheelRangeBox"
+                                             Header="Rotação física do volante (graus)"/>
+                                    <TextBox x:Name="SettingsWheelLockBox"
+                                             Header="Curso para esterço total (graus; 0 = OMSI)"/>
+                                    <TextBox x:Name="SettingsFieldOfViewBox"
+                                             Header="Campo de visão / FOV (20 a 120; 0 = câmera do ônibus)"/>
                                     <CheckBox x:Name="SettingsAutomaticSteeringCenterCheck" Content="Centralização automática da direção"/>
                                     <CheckBox x:Name="SettingsAutomaticClutchCheck" Content="Embreagem automática"/>
                                     <CheckBox x:Name="SettingsReducedSteeringSpeedCheck" Content="Velocidade de direção reduzida"/>

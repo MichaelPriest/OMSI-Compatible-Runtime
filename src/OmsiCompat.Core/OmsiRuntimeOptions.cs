@@ -32,6 +32,9 @@ public sealed class OmsiRuntimeOptions
     public double MouseSteeringSensitivity { get; set; } = 1.0;
     public double ThrottlePedalResponse { get; set; } = 1.0;
     public double BrakePedalResponse { get; set; } = 1.0;
+    public double WheelRangeDegrees { get; set; } = 900.0;
+    public double WheelLockDegrees { get; set; }
+    public double FieldOfViewDegrees { get; set; }
 
     public bool ReducedMultithreading { get; set; }
     public bool LoadWholeMapAtStart { get; set; }

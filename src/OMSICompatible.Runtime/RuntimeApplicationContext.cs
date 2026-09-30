@@ -605,6 +605,12 @@ internal sealed class RuntimeApplicationContext :
                         _options.ThrottlePedalResponse,
                     brakePedalResponse:
                         _options.BrakePedalResponse,
+                    wheelRangeDegrees:
+                        _options.WheelRangeDegrees,
+                    wheelLockDegrees:
+                        _options.WheelLockDegrees,
+                    fieldOfViewDegrees:
+                        _options.FieldOfViewDegrees,
                     sectionScriptRuntimes:
                         sectionScriptRuntimes,
                     masterVolumePercent:
