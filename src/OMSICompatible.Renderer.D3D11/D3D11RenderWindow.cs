@@ -724,6 +724,10 @@ public sealed class D3D11RenderWindow : Form
     private readonly List<TrafficVehicleDrawItem>
         _trafficVisibleDrawItems =
             [];
+    private TrafficVehicleDrawItem?[] _trafficCullScratch =
+        Array.Empty<TrafficVehicleDrawItem?>();
+    private const int ParallelTrafficCullThreshold =
+        128;
 
     private readonly record struct TrafficVehicleDrawItem(
         RuntimeTrafficAgentInfo Agent,
@@ -7436,6 +7440,56 @@ public sealed class D3D11RenderWindow : Form
             nextHeading;
     }
 
+    private bool TryBuildTrafficVehicleDrawItem(
+        RuntimeTrafficAgentInfo agent,
+        Vector3 cameraPosition,
+        Matrix4x4 viewProjection,
+        out TrafficVehicleDrawItem drawItem)
+    {
+        drawItem =
+            default;
+
+        if (!IsTrafficAgentVisible(
+                agent,
+                cameraPosition,
+                viewProjection) ||
+            !_trafficVehicleGeometries.ContainsKey(
+                agent.VehiclePath) ||
+            !_trafficVehicleVertexBuffers.ContainsKey(
+                agent.VehiclePath) ||
+            _windowInfo.TrafficVehicleAssets is null ||
+            !_windowInfo.TrafficVehicleAssets.TryGetValue(
+                agent.VehiclePath,
+                out var vehicleInfo))
+        {
+            return false;
+        }
+
+        var heightOffset =
+            (float)(
+                vehicleInfo.Physics.AiDeltaHeightMeters ??
+                0.0);
+
+        ResolveTrafficRenderPose(
+            agent,
+            out var renderX,
+            out var renderZ,
+            out var renderHeading);
+
+        drawItem =
+            new TrafficVehicleDrawItem(
+                agent,
+                Matrix4x4.CreateRotationY(
+                    renderHeading) *
+                Matrix4x4.CreateTranslation(
+                    renderX,
+                    (float)agent.Y +
+                        heightOffset,
+                    renderZ));
+
+        return true;
+    }
+
     private bool TryUploadTrafficInstances(
         IReadOnlyList<TrafficVehicleDrawItem> drawItems,
         RuntimeObjectBatch? animationBatch = null,
@@ -7586,45 +7640,93 @@ public sealed class D3D11RenderWindow : Form
         var viewProjection =
             CurrentSceneViewProjection;
 
-        foreach (var agent in
-                 _trafficAgents)
+        var trafficAgentCount =
+            _trafficAgents.Count;
+
+        if (_trafficCullScratch.Length <
+            trafficAgentCount)
         {
-            if (!IsTrafficAgentVisible(
-                    agent,
-                    cameraPosition,
-                    viewProjection) ||
-                !_trafficVehicleGeometries.ContainsKey(
-                    agent.VehiclePath) ||
-                !_trafficVehicleVertexBuffers.ContainsKey(
-                    agent.VehiclePath) ||
-                !_windowInfo.TrafficVehicleAssets.TryGetValue(
-                    agent.VehiclePath,
-                    out var vehicleInfo))
+            var capacity =
+                Math.Max(
+                    ParallelTrafficCullThreshold,
+                    _trafficCullScratch.Length);
+
+            while (capacity <
+                   trafficAgentCount)
+            {
+                capacity *=
+                    2;
+            }
+
+            Array.Resize(
+                ref _trafficCullScratch,
+                capacity);
+        }
+
+        if (trafficAgentCount >=
+            ParallelTrafficCullThreshold)
+        {
+            System.Threading.Tasks.Parallel.For(
+                0,
+                trafficAgentCount,
+                index =>
+                {
+                    var agent =
+                        _trafficAgents[
+                            index];
+
+                    _trafficCullScratch[
+                        index] =
+                        TryBuildTrafficVehicleDrawItem(
+                            agent,
+                            cameraPosition,
+                            viewProjection,
+                            out var drawItem)
+                            ? drawItem
+                            : null;
+                });
+        }
+        else
+        {
+            for (var index = 0;
+                 index <
+                 trafficAgentCount;
+                 index++)
+            {
+                var agent =
+                    _trafficAgents[
+                        index];
+
+                _trafficCullScratch[
+                    index] =
+                    TryBuildTrafficVehicleDrawItem(
+                        agent,
+                        cameraPosition,
+                        viewProjection,
+                        out var drawItem)
+                        ? drawItem
+                        : null;
+            }
+        }
+
+        for (var index = 0;
+             index <
+             trafficAgentCount;
+             index++)
+        {
+            var candidate =
+                _trafficCullScratch[
+                    index];
+
+            if (!candidate.HasValue)
             {
                 continue;
             }
 
-            var heightOffset =
-                (float)(
-                    vehicleInfo.Physics.AiDeltaHeightMeters ??
-                    0.0);
-
-            ResolveTrafficRenderPose(
-                agent,
-                out var renderX,
-                out var renderZ,
-                out var renderHeading);
-
             var drawItem =
-                new TrafficVehicleDrawItem(
-                    agent,
-                    Matrix4x4.CreateRotationY(
-                        renderHeading) *
-                    Matrix4x4.CreateTranslation(
-                        renderX,
-                        (float)agent.Y +
-                            heightOffset,
-                        renderZ));
+                candidate.Value;
+            var agent =
+                drawItem.Agent;
 
             _trafficVisibleDrawItems.Add(
                 drawItem);
