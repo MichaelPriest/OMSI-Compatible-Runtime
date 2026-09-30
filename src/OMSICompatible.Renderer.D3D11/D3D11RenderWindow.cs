@@ -640,6 +640,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeOmsiMenuBar? _omsiMenuBar;
     private readonly RuntimeBusSelectorPanel? _busSelectorPanel;
     private readonly RuntimeDriveOpsPanel? _driveOpsPanel;
+    private readonly RuntimeNavPulsePanel? _navPulsePanel;
     private int _captionFrame;
     private int? _streamingTileX;
     private int? _streamingTileY;
@@ -1584,6 +1585,19 @@ public sealed class D3D11RenderWindow : Form
             Controls.Add(
                 _driveOpsPanel);
             LayoutDriveOpsPanel();
+        }
+
+        _navPulsePanel =
+            _vehiclePreviewMode
+                ? null
+                : new RuntimeNavPulsePanel(
+                    _windowInfo.Splines);
+
+        if (_navPulsePanel is not null)
+        {
+            Controls.Add(
+                _navPulsePanel);
+            LayoutNavPulsePanel();
         }
 
         _renderTimer = new System.Windows.Forms.Timer
@@ -6062,6 +6076,32 @@ public sealed class D3D11RenderWindow : Form
                     12));
     }
 
+    private void LayoutNavPulsePanel()
+    {
+        if (_navPulsePanel is null)
+        {
+            return;
+        }
+
+        _navPulsePanel.Width =
+            Math.Min(
+                300,
+                Math.Max(
+                    235,
+                    ClientSize.Width / 4));
+        _navPulsePanel.Height =
+            _navPulsePanel.Width;
+
+        _navPulsePanel.Left =
+            Math.Max(
+                12,
+                ClientSize.Width -
+                _navPulsePanel.Width -
+                14);
+        _navPulsePanel.Top =
+            14;
+    }
+
     private void LayoutDriveOpsPanel()
     {
         if (_driveOpsPanel is null)
@@ -6199,6 +6239,15 @@ public sealed class D3D11RenderWindow : Form
                     RuntimeOmsiHostInputAction.ScheduleView);
                 break;
 
+            case RuntimeOmsiMenuCommand.DirectionSigns:
+                if (_navPulsePanel is not null)
+                {
+                    LayoutNavPulsePanel();
+                    _navPulsePanel.TogglePanel();
+                }
+
+                break;
+
             case RuntimeOmsiMenuCommand.Pause:
                 _simulationPaused =
                     !_simulationPaused;
@@ -6329,6 +6378,7 @@ public sealed class D3D11RenderWindow : Form
         LayoutOmsiMenuBar();
         LayoutRuntimeBusSelector();
         LayoutDriveOpsPanel();
+        LayoutNavPulsePanel();
 
         if (_swapChain is null ||
             ClientSize.Width <= 0 ||
@@ -6502,7 +6552,105 @@ public sealed class D3D11RenderWindow : Form
                 _vehicle.ElectricalSystemEnabled,
                 _vehicle.EngineRunning,
                 _vehicle.SpeedMetersPerSecond);
+
+            _navPulsePanel?.UpdateState(
+                _vehicle.Position,
+                _vehicle.HeadingRadians,
+                _trafficAgents,
+                ResolveFuelTrackState());
         }
+    }
+
+    private RuntimeFuelTrackState ResolveFuelTrackState()
+    {
+        if (_scriptRuntime is null)
+        {
+            return RuntimeFuelTrackState.Unknown;
+        }
+
+        double? percent =
+            null;
+        double? content =
+            null;
+        var kind =
+            "COMBUSTÍVEL";
+
+        if (_scriptRuntime.HasLocalVariable(
+                "tank_percent"))
+        {
+            var raw =
+                _scriptRuntime.GetLocal(
+                    "tank_percent");
+
+            if (double.IsFinite(raw))
+            {
+                percent =
+                    Math.Clamp(
+                        raw <= 1.5
+                            ? raw * 100.0
+                            : raw,
+                        0.0,
+                        100.0);
+            }
+        }
+
+        if (_scriptRuntime.HasLocalVariable(
+                "engine_tank_content"))
+        {
+            var raw =
+                _scriptRuntime.GetLocal(
+                    "engine_tank_content");
+
+            if (double.IsFinite(raw) &&
+                raw >= 0.0)
+            {
+                content =
+                    raw;
+            }
+        }
+
+        foreach (var variable in
+                 new[]
+                 {
+                     "battery_soc",
+                     "akku_soc",
+                     "soc",
+                     "battery_percent"
+                 })
+        {
+            if (!_scriptRuntime.HasLocalVariable(
+                    variable))
+            {
+                continue;
+            }
+
+            var raw =
+                _scriptRuntime.GetLocal(
+                    variable);
+
+            if (!double.IsFinite(raw))
+            {
+                continue;
+            }
+
+            percent =
+                Math.Clamp(
+                    raw <= 1.5
+                        ? raw * 100.0
+                        : raw,
+                    0.0,
+                    100.0);
+            kind =
+                "ENERGIA";
+            break;
+        }
+
+        return new RuntimeFuelTrackState(
+            percent,
+            content,
+            kind,
+            percent.HasValue &&
+            percent.Value <= 15.0);
     }
 
     private void CheckStreamingCenter()

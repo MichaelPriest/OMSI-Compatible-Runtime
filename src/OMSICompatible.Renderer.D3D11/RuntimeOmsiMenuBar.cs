@@ -206,8 +206,8 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             flow,
             RuntimeOmsiMenuCommand.DirectionSigns,
             "\uE72A",
-            "Setas / ajuda de rota",
-            false);
+            "NavPulse — GPS/minimapa e FuelTrack",
+            true);
 
         AddButton(
             flow,
