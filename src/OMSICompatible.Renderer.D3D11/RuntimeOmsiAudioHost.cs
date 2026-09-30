@@ -482,16 +482,17 @@ internal sealed class RuntimeOmsiAudioHost :
     }
 
     private sealed class OwnedSampleProvider :
-        ISampleProvider
+        ISampleProvider,
+        IDisposable
     {
         private readonly ISampleProvider _source;
         private IDisposable? _owner;
-        private Action? _completed;
+        private Action<OwnedSampleProvider>? _completed;
 
         public OwnedSampleProvider(
             ISampleProvider source,
             IDisposable owner,
-            Action? completed = null)
+            Action<OwnedSampleProvider>? completed = null)
         {
             _source =
                 source;
@@ -517,19 +518,28 @@ internal sealed class RuntimeOmsiAudioHost :
 
             if (read == 0)
             {
-                _owner?.Dispose();
-                _owner =
-                    null;
-
-                var completed =
-                    Interlocked.Exchange(
-                        ref _completed,
-                        null);
-
-                completed?.Invoke();
+                Dispose();
             }
 
             return read;
+        }
+
+        public void Dispose()
+        {
+            var owner =
+                Interlocked.Exchange(
+                    ref _owner,
+                    null);
+
+            owner?.Dispose();
+
+            var completed =
+                Interlocked.Exchange(
+                    ref _completed,
+                    null);
+
+            completed?.Invoke(
+                this);
         }
     }
 
@@ -557,6 +567,11 @@ internal sealed class RuntimeOmsiAudioHost :
     private readonly WaveOutEvent _output;
     private readonly int _maximumVoiceCount;
     private int _activeOneShotVoiceCount;
+    private readonly object _oneShotVoiceGate =
+        new();
+    private readonly HashSet<OwnedSampleProvider>
+        _oneShotVoices =
+            [];
     private readonly Dictionary<int, LoopVoice>
         _loopVoices =
             [];
@@ -1252,6 +1267,30 @@ internal sealed class RuntimeOmsiAudioHost :
 
         _loopVoices.Clear();
 
+        OwnedSampleProvider[] oneShots;
+
+        lock (_oneShotVoiceGate)
+        {
+            oneShots =
+                _oneShotVoices.ToArray();
+            _oneShotVoices.Clear();
+        }
+
+        foreach (var oneShot in
+                 oneShots)
+        {
+            try
+            {
+                _mixer.RemoveMixerInput(
+                    oneShot);
+            }
+            catch
+            {
+            }
+
+            oneShot.Dispose();
+        }
+
         try
         {
             _output.Stop();
@@ -1619,13 +1658,25 @@ internal sealed class RuntimeOmsiAudioHost :
             voiceCountIncremented =
                 true;
 
-            _mixer.AddMixerInput(
+            var ownedVoice =
                 new OwnedSampleProvider(
                     volumeProvider,
                     reader,
-                    () =>
-                        Interlocked.Decrement(
-                            ref _activeOneShotVoiceCount)));
+                    OnOneShotCompleted);
+
+            lock (_oneShotVoiceGate)
+            {
+                _oneShotVoices.Add(
+                    ownedVoice);
+            }
+
+            _mixer.AddMixerInput(
+                ownedVoice);
+
+            // The provider owns the count from this point and decrements it
+            // exactly once when playback ends or the host is disposed.
+            voiceCountIncremented =
+                false;
         }
         catch (Exception ex)
         {
@@ -1639,6 +1690,19 @@ internal sealed class RuntimeOmsiAudioHost :
                 sound.FilePath,
                 ex.Message);
         }
+    }
+
+    private void OnOneShotCompleted(
+        OwnedSampleProvider voice)
+    {
+        lock (_oneShotVoiceGate)
+        {
+            _oneShotVoices.Remove(
+                voice);
+        }
+
+        Interlocked.Decrement(
+            ref _activeOneShotVoiceCount);
     }
 
     private bool CanCreateVoice() =>
