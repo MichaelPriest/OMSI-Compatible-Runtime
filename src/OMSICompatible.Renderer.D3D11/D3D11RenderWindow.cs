@@ -7287,15 +7287,6 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
-        var framePressure =
-            _lastObservedFrameMilliseconds >
-                    0.0
-                ? _lastObservedFrameMilliseconds /
-                    Math.Max(
-                        _targetFrameMilliseconds,
-                        1.0)
-                : 1.0;
-
         if (distanceSquared >
                 180.0f *
                 180.0f &&
