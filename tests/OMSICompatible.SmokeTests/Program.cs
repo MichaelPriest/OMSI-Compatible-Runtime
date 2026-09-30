@@ -7336,6 +7336,39 @@ try
             ushort.MaxValue),
         "openOMSI LAN binary STATE round-trip/sequence wrap failed.");
 
+    var opsMessage =
+        new OpenOmsiLanOperationalMessage(
+            2,
+            "Smoke Driver",
+            "Empresa Teste",
+            "0042",
+            "FLEETLINK",
+            "CHAT",
+            "Central, iniciando viagem.",
+            string.Empty,
+            DateTimeOffset.UtcNow
+                .ToUnixTimeMilliseconds());
+
+    var encodedOps =
+        OpenOmsiLanOperationalCodec.Encode(
+            opsMessage);
+
+    Require(
+        OpenOmsiLanOperationalCodec.TryDecode(
+            encodedOps,
+            out var decodedOps) &&
+        decodedOps.SenderId ==
+            opsMessage.SenderId &&
+        decodedOps.CompanyName ==
+            opsMessage.CompanyName &&
+        decodedOps.Module ==
+            "FLEETLINK" &&
+        decodedOps.Kind ==
+            "CHAT" &&
+        decodedOps.Text ==
+            opsMessage.Text,
+        "Runtime operational LAN extension round-trip failed.");
+
     var lanWorld =
         new OpenOmsiLanWorld(
             "maps/SyntheticMap/global.cfg",
@@ -7435,6 +7468,93 @@ try
                     peer.Pose.VehiclePath ==
                         hostPose.VehiclePath),
         "openOMSI LAN protocol-5 host/client loopback handshake, INFO or STATE relay failed.");
+
+    OpenOmsiLanOperationalMessage?
+        hostReceivedOps =
+            null;
+    OpenOmsiLanOperationalMessage?
+        clientReceivedOps =
+            null;
+
+    lanHost.OperationalMessageReceived +=
+        message =>
+            hostReceivedOps =
+                message;
+    lanClient.OperationalMessageReceived +=
+        message =>
+            clientReceivedOps =
+                message;
+
+    Require(
+        lanClient.SendOperationalMessage(
+            opsMessage),
+        "Runtime operational LAN client send was rejected.");
+
+    for (var opsStep = 0;
+         opsStep <
+             100 &&
+         hostReceivedOps is null;
+         opsStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        hostReceivedOps is not null &&
+        hostReceivedOps.SenderId ==
+            lanClient.PlayerId &&
+        hostReceivedOps.Module ==
+            "FLEETLINK" &&
+        hostReceivedOps.Text ==
+            opsMessage.Text,
+        "Runtime operational LAN client-to-host relay failed.");
+
+    Require(
+        lanHost.SendOperationalMessage(
+            new OpenOmsiLanOperationalMessage(
+                0,
+                string.Empty,
+                "Empresa Teste",
+                "CCO",
+                "CONTROLHUB",
+                "DISPATCH",
+                "Retorne à garagem após a viagem.",
+                string.Empty,
+                0)),
+        "Runtime operational LAN host send was rejected.");
+
+    for (var opsStep = 0;
+         opsStep <
+             100 &&
+         clientReceivedOps is null;
+         opsStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        clientReceivedOps is not null &&
+        clientReceivedOps.SenderId ==
+            lanHost.PlayerId &&
+        clientReceivedOps.Module ==
+            "CONTROLHUB" &&
+        clientReceivedOps.Kind ==
+            "DISPATCH",
+        "Runtime operational LAN host-to-client relay failed.");
 
     Console.WriteLine("OMSI Compatible Runtime smoke test passed.");
     Console.WriteLine(

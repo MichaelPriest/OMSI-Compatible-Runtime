@@ -118,6 +118,9 @@ public sealed class OpenOmsiLanSession :
         OpenOmsiLanProtocol.SessionHex(
             SessionId);
 
+    public event Action<OpenOmsiLanOperationalMessage>?
+        OperationalMessageReceived;
+
     public static OpenOmsiLanSession Host(
         int port,
         string playerName,
@@ -376,6 +379,60 @@ public sealed class OpenOmsiLanSession :
     {
         World =
             world;
+    }
+
+    public bool SendOperationalMessage(
+        OpenOmsiLanOperationalMessage message)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected)
+        {
+            return false;
+        }
+
+        var outbound =
+            message with
+            {
+                SenderId =
+                    PlayerId,
+                SenderName =
+                    PlayerName,
+                TimestampUnixMilliseconds =
+                    message.TimestampUnixMilliseconds >
+                        0
+                        ? message.TimestampUnixMilliseconds
+                        : DateTimeOffset.UtcNow
+                            .ToUnixTimeMilliseconds()
+            };
+
+        var text =
+            OpenOmsiLanOperationalCodec.Encode(
+                outbound);
+
+        if (Role == OpenOmsiLanRole.Host)
+        {
+            BroadcastText(
+                text,
+                except:
+                    null);
+
+            OperationalMessageReceived?.Invoke(
+                outbound);
+
+            return true;
+        }
+
+        if (_host is null)
+        {
+            return false;
+        }
+
+        SendText(
+            text,
+            _host);
+
+        return true;
     }
 
     public void Tick(
@@ -823,12 +880,67 @@ public sealed class OpenOmsiLanSession :
                     endpoint);
                 break;
 
+            case OpenOmsiLanOperationalCodec.Prefix:
+                HandleOperationalMessage(
+                    text,
+                    endpoint);
+                break;
+
             case "BYE":
                 HandleBye(
                     fields,
                     endpoint);
                 break;
         }
+    }
+
+    private void HandleOperationalMessage(
+        string text,
+        IPEndPoint endpoint)
+    {
+        if (!OpenOmsiLanOperationalCodec.TryDecode(
+                text,
+                out var message) ||
+            message.SenderId ==
+                PlayerId)
+        {
+            return;
+        }
+
+        if (Role == OpenOmsiLanRole.Host)
+        {
+            if (!_peers.TryGetValue(
+                    message.SenderId,
+                    out var peer) ||
+                !peer.Endpoint.Equals(
+                    endpoint))
+            {
+                return;
+            }
+
+            peer.LastSeen =
+                DateTimeOffset.UtcNow;
+
+            BroadcastText(
+                text,
+                except:
+                    endpoint);
+
+            OperationalMessageReceived?.Invoke(
+                message);
+
+            return;
+        }
+
+        if (_host is null ||
+            !endpoint.Equals(
+                _host))
+        {
+            return;
+        }
+
+        OperationalMessageReceived?.Invoke(
+            message);
     }
 
     private void HandleHello(
