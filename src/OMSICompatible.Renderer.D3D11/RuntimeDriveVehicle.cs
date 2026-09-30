@@ -11,6 +11,12 @@ internal enum RuntimeDriveGear
     Drive = 1
 }
 
+internal readonly record struct RuntimeReflectionView(
+    Matrix4x4 ViewProjection,
+    Vector3 Position,
+    Vector3 Forward,
+    Vector3 Up);
+
 internal sealed class RuntimeDriveVehicle :
     IDisposable
 {
@@ -2763,27 +2769,200 @@ internal sealed class RuntimeDriveVehicle :
         return view * projection;
     }
 
-    public Matrix4x4 CreateReflectionViewProjection(
+    public RuntimeReflectionView CreateReflectionView(
         RuntimeReflectionCameraInfo camera,
         float aspect,
-        RuntimeTerrainGeometry terrainGeometry)
+        RuntimeTerrainGeometry terrainGeometry,
+        Vector3 viewerEye,
+        double maximumRenderDistanceMeters)
     {
-        // OMSI [add_camera_reflexion_2]'s final value controls when
-        // the mirror feed is active relative to the user's view. It is not a
-        // world-space far clipping plane. Values such as 0.15 or 0.5 are
-        // common and using them as the projection far plane clips almost the
-        // entire reflected scene.
-        return CreateDriverViewProjection(
-            new RuntimeDriverCameraInfo(
-                camera.X,
-                camera.Y,
-                camera.Z,
-                camera.EyeDistance,
-                camera.FieldOfViewDegrees,
-                camera.HeadingDegrees,
-                camera.PitchDegrees),
-            aspect,
-            terrainGeometry);
+        var vehicleRotation =
+            CreateBodyRotationMatrix();
+
+        var mirrorPoint =
+            Vector3.Transform(
+                new Vector3(
+                    (float)camera.X,
+                    (float)camera.Y,
+                    (float)camera.Z),
+                vehicleRotation) +
+            Position;
+
+        Matrix4x4.Invert(
+            vehicleRotation,
+            out var inverseVehicleRotation);
+
+        var towardMirror =
+            mirrorPoint -
+            viewerEye;
+
+        Vector3 incomingLocal;
+
+        if (towardMirror.LengthSquared() >
+            0.000001f)
+        {
+            incomingLocal =
+                Vector3.Normalize(
+                    Vector3.TransformNormal(
+                        Vector3.Normalize(
+                            towardMirror),
+                        inverseVehicleRotation));
+        }
+        else
+        {
+            incomingLocal =
+                Vector3.UnitZ;
+        }
+
+        // OMSI/openOMSI do not treat a reflection camera's yaw/pitch as
+        // the direction the rendered camera looks. They describe the
+        // mirror face normal. Reflect the viewer-to-mirror ray in that
+        // normal to obtain the actual view direction.
+        var faceHeading =
+            DegreesToRadians(
+                camera.HeadingDegrees);
+
+        var facePitch =
+            Math.Clamp(
+                DegreesToRadians(
+                    camera.PitchDegrees),
+                -1.5533f,
+                1.5533f);
+
+        var mirrorNormal =
+            Vector3.Normalize(
+                new Vector3(
+                    MathF.Sin(
+                        faceHeading) *
+                    MathF.Cos(
+                        facePitch),
+                    MathF.Sin(
+                        facePitch),
+                    MathF.Cos(
+                        faceHeading) *
+                    MathF.Cos(
+                        facePitch)));
+
+        var reflectedLocal =
+            incomingLocal -
+            mirrorNormal *
+            (
+                2.0f *
+                Vector3.Dot(
+                    incomingLocal,
+                    mirrorNormal)
+            );
+
+        if (reflectedLocal.LengthSquared() <
+            0.000001f)
+        {
+            reflectedLocal =
+                -mirrorNormal;
+        }
+        else
+        {
+            reflectedLocal =
+                Vector3.Normalize(
+                    reflectedLocal);
+        }
+
+        var reflectedHeading =
+            MathF.Atan2(
+                reflectedLocal.X,
+                reflectedLocal.Z);
+
+        var reflectedRight =
+            new Vector3(
+                MathF.Cos(
+                    reflectedHeading),
+                0.0f,
+                -MathF.Sin(
+                    reflectedHeading));
+
+        var reflectedUpLocal =
+            Vector3.Cross(
+                reflectedLocal,
+                reflectedRight);
+
+        if (reflectedUpLocal.LengthSquared() <
+            0.000001f)
+        {
+            reflectedUpLocal =
+                Vector3.UnitY;
+        }
+        else
+        {
+            reflectedUpLocal =
+                Vector3.Normalize(
+                    reflectedUpLocal);
+        }
+
+        var forward =
+            Vector3.Normalize(
+                Vector3.TransformNormal(
+                    reflectedLocal,
+                    vehicleRotation));
+
+        var up =
+            Vector3.Normalize(
+                Vector3.TransformNormal(
+                    reflectedUpLocal,
+                    vehicleRotation));
+
+        // [add_camera_reflexion]'s dist is the distance from the declared
+        // point back to the eye along the reflected view. It is not the
+        // look-at distance.
+        var eye =
+            mirrorPoint -
+            forward *
+            MathF.Max(
+                (float)camera.EyeDistance,
+                0.0f);
+
+        var view =
+            Matrix4x4.CreateLookAt(
+                eye,
+                eye +
+                forward *
+                    2.0f,
+                up);
+
+        var fovDegrees =
+            camera.FieldOfViewDegrees >
+                1.0
+                ? Math.Clamp(
+                    camera.FieldOfViewDegrees,
+                    1.0,
+                    120.0)
+                : 50.0;
+
+        var farPlane =
+            maximumRenderDistanceMeters >
+                    0.0 &&
+                double.IsFinite(
+                    maximumRenderDistanceMeters)
+                ? Math.Clamp(
+                    (float)maximumRenderDistanceMeters,
+                    450.0f,
+                    6_000.0f)
+                : 3_000.0f;
+
+        var projection =
+            Matrix4x4.CreatePerspectiveFieldOfView(
+                DegreesToRadians(
+                    fovDegrees),
+                MathF.Max(
+                    aspect,
+                    0.1f),
+                0.10f,
+                farPlane);
+
+        return new RuntimeReflectionView(
+            view *
+            projection,
+            eye,
+            forward,
+            up);
     }
 
     public Matrix4x4 CreatePassengerViewProjection(

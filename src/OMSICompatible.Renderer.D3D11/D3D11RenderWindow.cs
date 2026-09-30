@@ -6875,44 +6875,56 @@ public sealed class D3D11RenderWindow : Form
                     target.RenderTargetView;
                 _activeDepthStencilView =
                     _reflectionDepthStencilView;
-                _viewProjectionOverride =
-                    _vehicle.CreateReflectionViewProjection(
-                        target.Camera,
-                        1.0f,
-                        _terrainGeometry);
 
+                var reflection =
+                    _vehicle.CreateReflectionView(
+                        target.Camera,
+                        1.6f,
+                        _terrainGeometry,
+                        ResolveActiveCameraPosition(),
+                        _maximumObjectVisibilityMeters);
+
+                _viewProjectionOverride =
+                    reflection.ViewProjection;
                 _cameraPositionOverride =
-                    _vehicle.GetDriverCameraPosition(
-                        new RuntimeDriverCameraInfo(
-                            target.Camera.X,
-                            target.Camera.Y,
-                            target.Camera.Z,
-                            target.Camera.EyeDistance,
-                            target.Camera.FieldOfViewDegrees,
-                            target.Camera.HeadingDegrees,
-                            target.Camera.PitchDegrees));
+                    reflection.Position;
 
                 BeginSceneCameraCache();
                 PrepareReflectionSceneryBatchVisibility();
 
+                var reflectionFovDegrees =
+                    target.Camera.FieldOfViewDegrees >
+                        1.0
+                        ? Math.Clamp(
+                            target.Camera.FieldOfViewDegrees,
+                            1.0,
+                            120.0)
+                        : 50.0;
+
                 var reflectionFovRadians =
                     DegreesToRadians(
+                        reflectionFovDegrees);
+
+                var reflectionPitch =
+                    MathF.Asin(
                         Math.Clamp(
-                            target.Camera.FieldOfViewDegrees,
-                            18.0,
-                            120.0));
+                            reflection.Forward.Y,
+                            -1.0f,
+                            1.0f));
+
+                var reflectionYaw =
+                    MathF.Atan2(
+                        reflection.Forward.X,
+                        reflection.Forward.Z);
 
                 _skyViewParametersOverride =
                     new Vector4(
-                        _vehicle.HeadingRadians +
-                        DegreesToRadians(
-                            target.Camera.HeadingDegrees),
-                        DegreesToRadians(
-                            target.Camera.PitchDegrees),
+                        reflectionYaw,
+                        reflectionPitch,
                         MathF.Tan(
                             reflectionFovRadians *
                             0.5f),
-                        1.0f);
+                        1.6f);
 
                 _deviceContext.OMSetRenderTargets(
                     target.RenderTargetView,
