@@ -65,6 +65,12 @@ internal sealed class RuntimeApplicationContext :
     private readonly List<RuntimeTrafficAgentInfo>
         _runtimeTrafficAgentBuffer =
             [];
+    private readonly List<WorldTrafficSignalState>
+        _worldTrafficSignalStateBuffer =
+            [];
+    private readonly List<RuntimeTrafficSignalStateInfo>
+        _runtimeTrafficSignalStateBuffer =
+            [];
     private readonly HashSet<int>
         _activeTrafficScriptAgentIds =
             [];
@@ -2544,15 +2550,30 @@ internal sealed class RuntimeApplicationContext :
                 RuntimeTrafficSignalStateInfo>();
         }
 
-        return roadSimulation
-            .SnapshotTrafficSignals()
-            .Select(
-                static state =>
-                    new RuntimeTrafficSignalStateInfo(
-                        state.SegmentIndex,
-                        state.Phase,
-                        state.PositionSeconds))
-            .ToArray();
+        _worldTrafficSignalStateBuffer.Clear();
+        roadSimulation.AppendTrafficSignalSnapshotTo(
+            _worldTrafficSignalStateBuffer);
+
+        _runtimeTrafficSignalStateBuffer.Clear();
+
+        if (_runtimeTrafficSignalStateBuffer.Capacity <
+            _worldTrafficSignalStateBuffer.Count)
+        {
+            _runtimeTrafficSignalStateBuffer.Capacity =
+                _worldTrafficSignalStateBuffer.Count;
+        }
+
+        foreach (var state in
+                 _worldTrafficSignalStateBuffer)
+        {
+            _runtimeTrafficSignalStateBuffer.Add(
+                new RuntimeTrafficSignalStateInfo(
+                    state.SegmentIndex,
+                    state.Phase,
+                    state.PositionSeconds));
+        }
+
+        return _runtimeTrafficSignalStateBuffer;
     }
 
     private IReadOnlyList<RuntimeTrafficAgentInfo>

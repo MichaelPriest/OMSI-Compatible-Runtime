@@ -69,6 +69,9 @@ public sealed class WorldTrafficSimulation
     private readonly Dictionary<long, int[]>
         _crossingCandidateSegmentsBySceneryObjectId;
     private readonly Dictionary<long, TrafficSignalGroupState> _trafficSignalGroups;
+    private readonly WorldTrafficPathSegment[]
+        _trafficSignalSegments =
+            [];
     private readonly List<Agent> _agents;
     private readonly Dictionary<int, List<Agent>>
         _activeAgentsBySegment =
@@ -226,6 +229,17 @@ public sealed class WorldTrafficSimulation
                             signal.Stops ??
                                 Array.Empty<WorldTrafficLightStop>());
                     });
+
+        _trafficSignalSegments =
+            network.Segments
+                .Where(
+                    static segment =>
+                        segment.TrafficSignal is
+                            not null)
+                .OrderBy(
+                    static segment =>
+                        segment.Index)
+                .ToArray();
 
         var groupDefinitions =
             (aiCatalog.UnscheduledVehicleGroups ??
@@ -787,33 +801,44 @@ public sealed class WorldTrafficSimulation
         }
     }
 
-    public IReadOnlyList<WorldTrafficSignalState> SnapshotTrafficSignals() =>
-        _segmentsByIndex.Values
-            .Where(
-                static segment =>
-                    segment.TrafficSignal is not null)
-            .OrderBy(
-                static segment =>
-                    segment.Index)
-            .Select(
-                segment =>
-                {
-                    var positionSeconds =
-                        segment.SceneryObjectId.HasValue &&
-                        _trafficSignalGroups.TryGetValue(
-                            segment.SceneryObjectId.Value,
-                            out var group)
-                            ? group.PositionSeconds
-                            : _simulationElapsedSeconds;
+    public IReadOnlyList<WorldTrafficSignalState> SnapshotTrafficSignals()
+    {
+        var snapshot =
+            new List<WorldTrafficSignalState>(
+                _trafficSignalSegments.Length);
 
-                    return new WorldTrafficSignalState(
-                        segment.Index,
-                        ResolveTrafficSignalPhase(
-                            segment.TrafficSignal,
-                            positionSeconds),
-                        positionSeconds);
-                })
-            .ToArray();
+        AppendTrafficSignalSnapshotTo(
+            snapshot);
+
+        return snapshot.ToArray();
+    }
+
+    public void AppendTrafficSignalSnapshotTo(
+        List<WorldTrafficSignalState> destination)
+    {
+        ArgumentNullException.ThrowIfNull(
+            destination);
+
+        foreach (var segment in
+                 _trafficSignalSegments)
+        {
+            var positionSeconds =
+                segment.SceneryObjectId.HasValue &&
+                _trafficSignalGroups.TryGetValue(
+                    segment.SceneryObjectId.Value,
+                    out var group)
+                    ? group.PositionSeconds
+                    : _simulationElapsedSeconds;
+
+            destination.Add(
+                new WorldTrafficSignalState(
+                    segment.Index,
+                    ResolveTrafficSignalPhase(
+                        segment.TrafficSignal,
+                        positionSeconds),
+                    positionSeconds));
+        }
+    }
 
     public void SetExternalObstacle(
         WorldTrafficObstacleState? obstacle)
