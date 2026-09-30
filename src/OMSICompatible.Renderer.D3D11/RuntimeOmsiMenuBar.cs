@@ -150,8 +150,8 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             flow,
             RuntimeOmsiMenuCommand.Personnel,
             "\uE77B",
-            "Arquivo do motorista",
-            false);
+            "DriveOps — DriverPass, FleetLink, AssistLink, ControlHub e RouteCore",
+            true);
 
         AddButton(
             flow,

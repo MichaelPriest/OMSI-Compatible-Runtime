@@ -639,6 +639,7 @@ public sealed class D3D11RenderWindow : Form
     private int _specialPreviousPassengerCameraIndex;
     private readonly RuntimeOmsiMenuBar? _omsiMenuBar;
     private readonly RuntimeBusSelectorPanel? _busSelectorPanel;
+    private readonly RuntimeDriveOpsPanel? _driveOpsPanel;
     private int _captionFrame;
     private int? _streamingTileX;
     private int? _streamingTileY;
@@ -1565,6 +1566,18 @@ public sealed class D3D11RenderWindow : Form
                 _busSelectorPanel);
 
             LayoutRuntimeBusSelector();
+        }
+
+        _driveOpsPanel =
+            _vehiclePreviewMode
+                ? null
+                : new RuntimeDriveOpsPanel();
+
+        if (_driveOpsPanel is not null)
+        {
+            Controls.Add(
+                _driveOpsPanel);
+            LayoutDriveOpsPanel();
         }
 
         _renderTimer = new System.Windows.Forms.Timer
@@ -5934,6 +5947,16 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (!_vehiclePreviewMode &&
+            _driveOpsPanel?.Visible ==
+                true &&
+            (keyData & Keys.KeyCode) ==
+            Keys.Escape)
+        {
+            _driveOpsPanel.HidePanel();
+            return true;
+        }
+
+        if (!_vehiclePreviewMode &&
             _busSelectorPanel?.Visible ==
                 true &&
             (keyData & Keys.KeyCode) ==
@@ -6004,6 +6027,40 @@ public sealed class D3D11RenderWindow : Form
                     ClientSize.Height -
                     _omsiMenuBar.Height -
                     12));
+    }
+
+    private void LayoutDriveOpsPanel()
+    {
+        if (_driveOpsPanel is null)
+        {
+            return;
+        }
+
+        _driveOpsPanel.Width =
+            Math.Min(
+                760,
+                Math.Max(
+                    620,
+                    ClientSize.Width - 48));
+        _driveOpsPanel.Height =
+            Math.Min(
+                470,
+                Math.Max(
+                    390,
+                    ClientSize.Height - 48));
+
+        _driveOpsPanel.Left =
+            Math.Max(
+                12,
+                (ClientSize.Width -
+                 _driveOpsPanel.Width) /
+                2);
+        _driveOpsPanel.Top =
+            Math.Max(
+                12,
+                (ClientSize.Height -
+                 _driveOpsPanel.Height) /
+                2);
     }
 
     private void LayoutRuntimeBusSelector()
@@ -6091,6 +6148,17 @@ public sealed class D3D11RenderWindow : Form
 
             case RuntimeOmsiMenuCommand.RemoveBus:
                 RemoveCurrentVehicle();
+                break;
+
+            case RuntimeOmsiMenuCommand.Personnel:
+                _omsiMenuBar?.HideMenu();
+
+                if (_driveOpsPanel is not null)
+                {
+                    LayoutDriveOpsPanel();
+                    _driveOpsPanel.TogglePanel();
+                }
+
                 break;
 
             case RuntimeOmsiMenuCommand.Schedule:
@@ -6227,6 +6295,7 @@ public sealed class D3D11RenderWindow : Form
     {
         LayoutOmsiMenuBar();
         LayoutRuntimeBusSelector();
+        LayoutDriveOpsPanel();
 
         if (_swapChain is null ||
             ClientSize.Width <= 0 ||
@@ -6395,6 +6464,11 @@ public sealed class D3D11RenderWindow : Form
         {
             _captionFrame = 0;
             UpdateCaption();
+
+            _driveOpsPanel?.UpdateVehicleState(
+                _vehicle.ElectricalSystemEnabled,
+                _vehicle.EngineRunning,
+                _vehicle.SpeedMetersPerSecond);
         }
     }
 
@@ -20218,6 +20292,12 @@ public sealed class D3D11RenderWindow : Form
         object? sender,
         KeyEventArgs e)
     {
+        if (_driveOpsPanel?.Visible == true &&
+            _driveOpsPanel.ContainsFocus)
+        {
+            return;
+        }
+
         var firstPress =
             _pressedKeys.Add(
                 e.KeyCode);
@@ -20970,6 +21050,14 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (IsDriverPassBlockingTrigger(
+                trigger))
+        {
+            NotifyDriverPassBlocked(
+                trigger);
+            return;
+        }
+
         var traceStartup =
             IsVehicleStartupTraceTrigger(
                 trigger);
@@ -21089,6 +21177,14 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (IsDriverPassBlockingTrigger(
+                trigger))
+        {
+            NotifyDriverPassBlocked(
+                trigger);
+            return;
+        }
+
         var traceStartup =
             IsVehicleStartupTraceTrigger(
                 trigger);
@@ -21123,6 +21219,77 @@ public sealed class D3D11RenderWindow : Form
 
         TriggerOmsiAudio(
             trigger);
+    }
+
+    private bool IsDriverPassBlockingTrigger(
+        string trigger)
+    {
+        if (_driveOpsPanel?.StartAuthorized !=
+            false)
+        {
+            return false;
+        }
+
+        var normalized =
+            trigger.Trim();
+
+        if (!_vehicle.ElectricalSystemEnabled &&
+            normalized.Contains(
+                "batterietrennschalter",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return !_vehicle.EngineRunning &&
+               (
+                   normalized.Contains(
+                       "enginestart",
+                       StringComparison.OrdinalIgnoreCase) ||
+                   normalized.Contains(
+                       "engine_start",
+                       StringComparison.OrdinalIgnoreCase)
+               );
+    }
+
+    private bool IsDriverPassBlockingHostAction(
+        RuntimeOmsiHostInputAction action)
+    {
+        if (_driveOpsPanel?.StartAuthorized !=
+            false)
+        {
+            return false;
+        }
+
+        return action switch
+        {
+            RuntimeOmsiHostInputAction.ElectricalToggle =>
+                !_vehicle.ElectricalSystemEnabled,
+            RuntimeOmsiHostInputAction.EngineToggle =>
+                !_vehicle.EngineRunning,
+            RuntimeOmsiHostInputAction.EngineStart =>
+                !_vehicle.EngineRunning,
+            _ =>
+                false
+        };
+    }
+
+    private void NotifyDriverPassBlocked(
+        string action)
+    {
+        Console.WriteLine(
+            $"[driverpass] blocked start action: {action}");
+
+        if (_driveOpsPanel is null)
+        {
+            return;
+        }
+
+        LayoutDriveOpsPanel();
+        _driveOpsPanel.NotifyStartBlocked(
+            action);
+        _driveOpsPanel.ShowPanel();
+        _driveOpsPanel.BringToFront();
     }
 
     private static bool IsVehicleStartupTraceTrigger(
@@ -21560,6 +21727,14 @@ public sealed class D3D11RenderWindow : Form
     private void ApplyOmsiHostActionPress(
         RuntimeOmsiHostInputAction action)
     {
+        if (IsDriverPassBlockingHostAction(
+                action))
+        {
+            NotifyDriverPassBlocked(
+                action.ToString());
+            return;
+        }
+
         switch (action)
         {
             case RuntimeOmsiHostInputAction.Accelerate:
