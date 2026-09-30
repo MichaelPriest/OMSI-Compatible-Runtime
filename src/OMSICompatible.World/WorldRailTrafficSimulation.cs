@@ -44,6 +44,9 @@ public sealed class WorldRailTrafficSimulation
             new(
                 StringComparer.OrdinalIgnoreCase);
     private readonly List<Agent> _agents;
+    private readonly Dictionary<int, Agent>
+        _agentsByIndex =
+            [];
 
     public WorldRailTrafficSimulation(
         WorldTrafficPathNetwork network,
@@ -252,7 +255,7 @@ public sealed class WorldRailTrafficSimulation
                     ? 0.0
                     : length;
 
-            _agents.Add(
+            var agent =
                 new Agent(
                     index,
                     segment.Index,
@@ -263,16 +266,44 @@ public sealed class WorldRailTrafficSimulation
                     consist.ResolvedPath!,
                     groupIndex,
                     defaultDensityClassIndex,
-                    consist.GroupName));
+                    consist.GroupName);
+
+            _agents.Add(
+                agent);
+
+            _agentsByIndex[
+                agent.AgentIndex] =
+                agent;
         }
     }
 
     public IReadOnlyList<WorldRailTrafficAgentState>
-        Snapshot() =>
-        _agents
-            .Select(
-                CreateState)
-            .ToArray();
+        Snapshot()
+    {
+        var snapshot =
+            new List<WorldRailTrafficAgentState>(
+                _agents.Count);
+
+        AppendSnapshotTo(
+            snapshot);
+
+        return snapshot.ToArray();
+    }
+
+    public void AppendSnapshotTo(
+        List<WorldRailTrafficAgentState> destination)
+    {
+        ArgumentNullException.ThrowIfNull(
+            destination);
+
+        foreach (var agent in
+                 _agents)
+        {
+            destination.Add(
+                CreateState(
+                    agent));
+        }
+    }
 
     public IReadOnlyList<WorldRailSignalRouteState>
         SignalRouteSnapshot() =>
@@ -358,13 +389,10 @@ public sealed class WorldRailTrafficSimulation
             return false;
         }
 
-        var agent =
-            _agents.FirstOrDefault(
-                candidate =>
-                    candidate.AgentIndex ==
-                    agentIndex);
-
-        if (agent is null ||
+        if (!_agentsByIndex.TryGetValue(
+                agentIndex,
+                out var agent) ||
+            agent is null ||
             !_segmentsByIndex.TryGetValue(
                 agent.SegmentIndex,
                 out var segment))
