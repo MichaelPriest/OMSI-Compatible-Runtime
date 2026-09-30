@@ -95,6 +95,9 @@ public sealed class WorldTrafficSimulation
     private readonly HashSet<int>
         _routeDistanceVisitedSegments =
             [];
+    private readonly HashSet<int>
+        _routeHeadingVisitedSegments =
+            [];
     private readonly WorldTrafficPathSegment[] _roadSegments = [];
     private readonly Dictionary<(int X, int Z), int[]>
         _roadSegmentsByGridCell =
@@ -5025,11 +5028,9 @@ public sealed class WorldTrafficSimulation
         var remaining =
             lookAheadMeters;
 
-        var visited =
-            new HashSet<int>
-            {
-                current.Index
-            };
+        _routeHeadingVisitedSegments.Clear();
+        _routeHeadingVisitedSegments.Add(
+            current.Index);
 
         for (var hop = 0;
              hop <
@@ -5097,7 +5098,7 @@ public sealed class WorldTrafficSimulation
                     current);
 
             if (!nextIndex.HasValue ||
-                !visited.Add(
+                !_routeHeadingVisitedSegments.Add(
                     nextIndex.Value) ||
                 !_segmentsByIndex.TryGetValue(
                     nextIndex.Value,
