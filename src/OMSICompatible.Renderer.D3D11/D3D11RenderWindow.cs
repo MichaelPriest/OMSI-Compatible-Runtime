@@ -506,6 +506,18 @@ public sealed class D3D11RenderWindow : Form
         _vehicleSkinFrameStates =
             new(
                 ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
+        bool>
+        _vehicleBatchVisibilityFrameStates =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectMeshInfo,
+        bool>
+        _vehicleLightMeshVisibilityFrameStates =
+            new(
+                ReferenceEqualityComparer.Instance);
     private readonly HashSet<string>
         _vehicleAnimationVisitedScratch =
             new(
@@ -6456,6 +6468,8 @@ public sealed class D3D11RenderWindow : Form
         _vehicleDynamicMaterialFrameStates.Clear();
         _vehicleAnimationMatrixFrameStates.Clear();
         _vehicleSkinFrameStates.Clear();
+        _vehicleBatchVisibilityFrameStates.Clear();
+        _vehicleLightMeshVisibilityFrameStates.Clear();
         ReleaseRetiredStreamingVertexBuffers();
 
         if (_deviceContext is null ||
@@ -11201,9 +11215,8 @@ public sealed class D3D11RenderWindow : Form
                 continue;
             }
 
-            if (!AreVehicleVisibilityConditionsMet(
-                    mesh.VisibilityConditions,
-                    mesh.SectionIndex))
+            if (!IsVehicleLightMeshVisible(
+                    mesh))
             {
                 continue;
             }
@@ -12085,10 +12098,48 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool IsVehicleBatchVisible(
-        RuntimeObjectBatch batch) =>
-        AreVehicleVisibilityConditionsMet(
-            batch.VisibilityConditions,
-            batch.SectionIndex);
+        RuntimeObjectBatch batch)
+    {
+        if (_vehicleBatchVisibilityFrameStates.TryGetValue(
+                batch,
+                out var visible))
+        {
+            return visible;
+        }
+
+        visible =
+            AreVehicleVisibilityConditionsMet(
+                batch.VisibilityConditions,
+                batch.SectionIndex);
+
+        _vehicleBatchVisibilityFrameStates[
+            batch] =
+            visible;
+
+        return visible;
+    }
+
+    private bool IsVehicleLightMeshVisible(
+        RuntimeObjectMeshInfo mesh)
+    {
+        if (_vehicleLightMeshVisibilityFrameStates.TryGetValue(
+                mesh,
+                out var visible))
+        {
+            return visible;
+        }
+
+        visible =
+            AreVehicleVisibilityConditionsMet(
+                mesh.VisibilityConditions,
+                mesh.SectionIndex);
+
+        _vehicleLightMeshVisibilityFrameStates[
+            mesh] =
+            visible;
+
+        return visible;
+    }
 
     private Matrix4x4 CreateTrafficVehicleAnimationMatrix(
         RuntimeObjectBatch batch,
@@ -23642,6 +23693,8 @@ public sealed class D3D11RenderWindow : Form
             _vehicleDynamicMaterialFrameStates.Clear();
             _vehicleAnimationMatrixFrameStates.Clear();
             _vehicleSkinFrameStates.Clear();
+            _vehicleBatchVisibilityFrameStates.Clear();
+            _vehicleLightMeshVisibilityFrameStates.Clear();
             _vehicleAnimationVisitedScratch.Clear();
             _vehicleOrderedMaterialChangeSets.Clear();
             _vehicleMaterialChangeItems.Clear();
