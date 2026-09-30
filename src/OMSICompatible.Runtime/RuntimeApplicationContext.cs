@@ -48,6 +48,12 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<uint, double>
         _multiplayerTravelMeters =
             [];
+    private readonly Dictionary<uint, MultiplayerRemoteRenderState>
+        _multiplayerRemoteStates =
+            [];
+    private readonly HashSet<uint>
+        _multiplayerActivePeerIds =
+            [];
     private readonly Dictionary<string, OmsiTrainConsist>
         _railTrainConsists =
             new(
@@ -118,6 +124,15 @@ internal sealed class RuntimeApplicationContext :
     private readonly List<HostedPluginSession>
         _pluginSessions =
             [];
+
+    private sealed class MultiplayerRemoteRenderState
+    {
+        public bool Initialized { get; set; }
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Z { get; set; }
+        public double HeadingDegrees { get; set; }
+    }
 
     private sealed class HostedPluginSession(
         OmsiPluginDefinition definition,
@@ -2932,6 +2947,8 @@ internal sealed class RuntimeApplicationContext :
 
         session.Dispose();
         _multiplayerTravelMeters.Clear();
+        _multiplayerRemoteStates.Clear();
+        _multiplayerActivePeerIds.Clear();
     }
 
     private OpenOmsiLanPose CreateLocalMultiplayerPose()
@@ -2965,12 +2982,14 @@ internal sealed class RuntimeApplicationContext :
         var state =
             window.LocalVehicleState;
 
+        // openOMSI's wire pose uses X/Y as the ground plane and Z as
+        // elevation. The D3D11 runtime uses X/Z as ground and Y as up.
         pose.X =
             -state.Position.X;
         pose.Y =
-            state.Position.Y;
-        pose.Z =
             state.Position.Z;
+        pose.Z =
+            state.Position.Y;
         pose.HeadingDegrees =
             -state.HeadingRadians *
             180.0f /
@@ -3072,9 +3091,16 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
+        var peers =
+            session.SnapshotPeers();
+
+        _multiplayerActivePeerIds.Clear();
+
         foreach (var peer in
-                 session.SnapshotPeers())
+                 peers)
         {
+            _multiplayerActivePeerIds.Add(
+                peer.Id);
             if (!peer.HasState ||
                 !peer.Pose.HasVehicle)
             {
@@ -3101,6 +3127,127 @@ internal sealed class RuntimeApplicationContext :
             var speedMetersPerSecond =
                 peer.Pose.SpeedKph /
                 3.6;
+
+            if (!_multiplayerRemoteStates.TryGetValue(
+                    peer.Id,
+                    out var smoothed))
+            {
+                smoothed =
+                    new MultiplayerRemoteRenderState();
+
+                _multiplayerRemoteStates[
+                    peer.Id] =
+                    smoothed;
+            }
+
+            var ageSeconds =
+                Math.Clamp(
+                    (
+                        DateTimeOffset.UtcNow -
+                        peer.LastSeen
+                    ).TotalSeconds +
+                    0.04,
+                    0.0,
+                    0.4);
+
+            var networkHeadingRadians =
+                peer.Pose.HeadingDegrees *
+                Math.PI /
+                180.0;
+
+            // Same fallback used by openOMSI for peers without enough sample
+            // history: carry the latest state forward briefly by its speed,
+            // then glide at roughly the network's 20 Hz cadence.
+            var targetX =
+                peer.Pose.X +
+                Math.Sin(
+                    networkHeadingRadians) *
+                speedMetersPerSecond *
+                ageSeconds;
+
+            var targetY =
+                peer.Pose.Y +
+                Math.Cos(
+                    networkHeadingRadians) *
+                speedMetersPerSecond *
+                ageSeconds;
+
+            var targetZ =
+                peer.Pose.Z;
+
+            var smoothing =
+                Math.Clamp(
+                    Math.Max(
+                        0.0,
+                        deltaSeconds) *
+                    20.0,
+                    0.0,
+                    1.0);
+
+            var deltaX =
+                targetX -
+                smoothed.X;
+            var deltaY =
+                targetY -
+                smoothed.Y;
+            var deltaZ =
+                targetZ -
+                smoothed.Z;
+
+            var distanceSquared =
+                deltaX *
+                    deltaX +
+                deltaY *
+                    deltaY +
+                deltaZ *
+                    deltaZ;
+
+            if (!smoothed.Initialized ||
+                distanceSquared >
+                    25.0 *
+                    25.0)
+            {
+                smoothed.X =
+                    targetX;
+                smoothed.Y =
+                    targetY;
+                smoothed.Z =
+                    targetZ;
+                smoothed.HeadingDegrees =
+                    peer.Pose.HeadingDegrees;
+                smoothed.Initialized =
+                    true;
+            }
+            else
+            {
+                smoothed.X +=
+                    deltaX *
+                    smoothing;
+                smoothed.Y +=
+                    deltaY *
+                    smoothing;
+                smoothed.Z +=
+                    deltaZ *
+                    smoothing;
+
+                var headingDelta =
+                    (
+                        peer.Pose.HeadingDegrees -
+                        smoothed.HeadingDegrees +
+                        540.0
+                    ) %
+                    360.0 -
+                    180.0;
+
+                smoothed.HeadingDegrees =
+                    (
+                        smoothed.HeadingDegrees +
+                        headingDelta *
+                        smoothing +
+                        360.0
+                    ) %
+                    360.0;
+            }
 
             _multiplayerTravelMeters.TryGetValue(
                 peer.Id,
@@ -3132,11 +3279,11 @@ internal sealed class RuntimeApplicationContext :
                     speedMetersPerSecond,
                     vehiclePath,
                     RuntimeWorldXFromSource(
-                        peer.Pose.X),
-                    peer.Pose.Y,
-                    peer.Pose.Z,
+                        smoothed.X),
+                    smoothed.Z,
+                    smoothed.Y,
                     RuntimeHeadingRadiansFromSource(
-                        peer.Pose.HeadingDegrees *
+                        smoothed.HeadingDegrees *
                         Math.PI /
                         180.0),
                     peer.Pose.Brake >
@@ -3150,6 +3297,24 @@ internal sealed class RuntimeApplicationContext :
                     0.0,
                     ScriptRuntime:
                         null));
+        }
+
+        if (_multiplayerRemoteStates.Count >
+            _multiplayerActivePeerIds.Count)
+        {
+            foreach (var staleId in
+                     _multiplayerRemoteStates.Keys
+                         .Where(
+                             id =>
+                                 !_multiplayerActivePeerIds.Contains(
+                                     id))
+                         .ToArray())
+            {
+                _multiplayerRemoteStates.Remove(
+                    staleId);
+                _multiplayerTravelMeters.Remove(
+                    staleId);
+            }
         }
     }
 
