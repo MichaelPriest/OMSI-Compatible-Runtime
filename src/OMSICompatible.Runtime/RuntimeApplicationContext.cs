@@ -62,6 +62,9 @@ internal sealed class RuntimeApplicationContext :
     private readonly List<WorldTrafficAgentState>
         _trafficAgentStateBuffer =
             [];
+    private readonly List<WorldRailTrafficAgentState>
+        _railTrafficAgentStateBuffer =
+            [];
     private readonly List<RuntimeTrafficAgentInfo>
         _runtimeTrafficAgentBuffer =
             [];
@@ -2630,8 +2633,12 @@ internal sealed class RuntimeApplicationContext :
                     deltaSeconds);
             }
 
+            _railTrafficAgentStateBuffer.Clear();
+            railSimulation.AppendSnapshotTo(
+                _railTrafficAgentStateBuffer);
+
             foreach (var train in
-                     railSimulation.Snapshot())
+                     _railTrafficAgentStateBuffer)
             {
                 if (!_railRuntimeConsists.TryGetValue(
                         train.TrainConsistPath,
