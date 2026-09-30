@@ -4958,6 +4958,12 @@ public sealed class WorldTrafficSimulation
     private static double EstimateTrafficFollowingTimeHeadwaySeconds(
         string? vehiclePath)
     {
+        if (string.IsNullOrWhiteSpace(
+                vehiclePath))
+        {
+            return FollowingTimeHeadwaySeconds;
+        }
+
         var extension =
             Path.GetExtension(
                 vehiclePath);
