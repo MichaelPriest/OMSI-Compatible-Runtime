@@ -1616,10 +1616,14 @@ internal sealed class RuntimeOmsiAudioHost :
 
         var voiceCountIncremented =
             false;
+        AudioFileReader? reader =
+            null;
+        OwnedSampleProvider? ownedVoice =
+            null;
 
         try
         {
-            var reader =
+            reader =
                 new AudioFileReader(
                     sound.FilePath);
 
@@ -1630,6 +1634,8 @@ internal sealed class RuntimeOmsiAudioHost :
             if (normalized is null)
             {
                 reader.Dispose();
+                reader =
+                    null;
                 ReportFailure(
                     sound.FilePath,
                     "unsupported channel layout");
@@ -1658,11 +1664,15 @@ internal sealed class RuntimeOmsiAudioHost :
             voiceCountIncremented =
                 true;
 
-            var ownedVoice =
+            ownedVoice =
                 new OwnedSampleProvider(
                     volumeProvider,
                     reader,
                     OnOneShotCompleted);
+
+            // Ownership moved to the provider.
+            reader =
+                null;
 
             lock (_oneShotVoiceGate)
             {
@@ -1680,6 +1690,24 @@ internal sealed class RuntimeOmsiAudioHost :
         }
         catch (Exception ex)
         {
+            reader?.Dispose();
+
+            if (ownedVoice is not null)
+            {
+                try
+                {
+                    _mixer.RemoveMixerInput(
+                        ownedVoice);
+                }
+                catch
+                {
+                }
+
+                ownedVoice.Dispose();
+                voiceCountIncremented =
+                    false;
+            }
+
             if (voiceCountIncremented)
             {
                 Interlocked.Decrement(
