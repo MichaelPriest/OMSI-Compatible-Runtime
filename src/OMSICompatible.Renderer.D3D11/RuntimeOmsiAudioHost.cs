@@ -533,10 +533,22 @@ internal sealed class RuntimeOmsiAudioHost :
         }
     }
 
+    private sealed record CachedSoundConfiguration(
+        IReadOnlyList<RuntimeOmsiSoundDefinition> Sounds,
+        long Length,
+        DateTime LastWriteUtc);
+
     private static readonly WaveFormat OutputFormat =
         WaveFormat.CreateIeeeFloatWaveFormat(
             44100,
             2);
+
+    private static readonly object SoundConfigurationCacheGate =
+        new();
+    private static readonly Dictionary<string, CachedSoundConfiguration>
+        SoundConfigurationCache =
+            new(
+                StringComparer.OrdinalIgnoreCase);
 
     private readonly IReadOnlyList<RuntimeOmsiSoundDefinition>
         _sounds;
@@ -732,9 +744,13 @@ internal sealed class RuntimeOmsiAudioHost :
 
         try
         {
-            var sounds =
-                Parse(
+            var fullSoundConfigPath =
+                Path.GetFullPath(
                     soundConfigPath);
+
+            var sounds =
+                GetParsedSoundConfiguration(
+                    fullSoundConfigPath);
 
             if (sounds.Count == 0)
             {
@@ -778,8 +794,7 @@ internal sealed class RuntimeOmsiAudioHost :
                 new RuntimeOmsiAudioHost(
                     sounds,
                     Path.GetDirectoryName(
-                        Path.GetFullPath(
-                            soundConfigPath)) ??
+                        fullSoundConfigPath) ??
                         AppContext.BaseDirectory,
                     mixer,
                     output,
@@ -2090,6 +2105,47 @@ internal sealed class RuntimeOmsiAudioHost :
 
         Console.WriteLine(
             $"[audio] {Path.GetFileName(path)}: {message}");
+    }
+
+    private static IReadOnlyList<RuntimeOmsiSoundDefinition>
+        GetParsedSoundConfiguration(
+            string configPath)
+    {
+        var info =
+            new FileInfo(
+                configPath);
+
+        lock (SoundConfigurationCacheGate)
+        {
+            if (SoundConfigurationCache.TryGetValue(
+                    configPath,
+                    out var cached) &&
+                cached.Length ==
+                    info.Length &&
+                cached.LastWriteUtc ==
+                    info.LastWriteTimeUtc)
+            {
+                return cached.Sounds;
+            }
+        }
+
+        var sounds =
+            Parse(
+                configPath);
+
+        info.Refresh();
+
+        lock (SoundConfigurationCacheGate)
+        {
+            SoundConfigurationCache[
+                configPath] =
+                new CachedSoundConfiguration(
+                    sounds,
+                    info.Length,
+                    info.LastWriteTimeUtc);
+        }
+
+        return sounds;
     }
 
     private static IReadOnlyList<RuntimeOmsiSoundDefinition>
