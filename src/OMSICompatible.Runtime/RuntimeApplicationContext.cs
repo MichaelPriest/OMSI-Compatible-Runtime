@@ -37,6 +37,7 @@ internal sealed class RuntimeApplicationContext :
 
     private D3D11RenderWindow? _runtimeWindow;
     private OmsiVehicleAsset? _vehicleAsset;
+    private OmsiScriptRuntime? _playerScriptRuntime;
     private WorldTrafficSimulation? _trafficSimulation;
     private WorldRailTrafficSimulation? _railTrafficSimulation;
     private WorldDefinition? _currentWorld;
@@ -50,6 +51,12 @@ internal sealed class RuntimeApplicationContext :
             [];
     private readonly Dictionary<uint, MultiplayerRemoteRenderState>
         _multiplayerRemoteStates =
+            [];
+    private readonly Dictionary<uint, OmsiScriptRuntime>
+        _multiplayerScriptRuntimes =
+            [];
+    private readonly Dictionary<uint, string>
+        _multiplayerScriptPaths =
             [];
     private readonly HashSet<uint>
         _multiplayerActivePeerIds =
@@ -450,10 +457,31 @@ internal sealed class RuntimeApplicationContext :
             if (vehicle is not null &&
                 _bus is not null)
             {
-                _trafficVehicleAssets[
+                var playerVehiclePath =
                     Path.GetFullPath(
-                        _bus.FilePath)] =
+                        _bus.FilePath);
+
+                _trafficVehicleAssets[
+                    playerVehiclePath] =
                     vehicle;
+
+                if (_bus.ScriptManifest.RegisteredFileCount >
+                    0)
+                {
+                    try
+                    {
+                        _trafficScriptCatalogs[
+                            playerVehiclePath] =
+                            OmsiScriptCatalogLoader.Load(
+                                _contentRoot,
+                                _bus.ScriptManifest);
+                    }
+                    catch (Exception exception)
+                    {
+                        Console.Error.WriteLine(
+                            $"[multiplayer] player bus AI script catalog unavailable: {exception.Message}");
+                    }
+                }
             }
 
             var simulationBuildStarted =
@@ -562,6 +590,9 @@ internal sealed class RuntimeApplicationContext :
                         _bus,
                         _map.FolderName));
             }
+
+            _playerScriptRuntime =
+                scriptRuntime;
 
             var sectionScriptRuntimes =
                 new Dictionary<int, OmsiScriptRuntime>();
@@ -2948,6 +2979,8 @@ internal sealed class RuntimeApplicationContext :
         session.Dispose();
         _multiplayerTravelMeters.Clear();
         _multiplayerRemoteStates.Clear();
+        _multiplayerScriptRuntimes.Clear();
+        _multiplayerScriptPaths.Clear();
         _multiplayerActivePeerIds.Clear();
     }
 
@@ -3051,6 +3084,94 @@ internal sealed class RuntimeApplicationContext :
         pose.Flags =
             flags;
 
+        pose.Rpm =
+            (float)ReadFirstPlayerLocal(
+                "engine_n",
+                "n_engine",
+                "engine_rpm");
+
+        var parkingLights =
+            ReadFirstPlayerLocal(
+                "lights_stand",
+                "lights_standlicht",
+                "lights_parking") >
+            0.5;
+
+        var dippedLights =
+            ReadFirstPlayerLocal(
+                "lights_abbl",
+                "lights_abblend",
+                "lights_lowbeam",
+                "ai_light") >
+            0.5;
+
+        var highLights =
+            ReadFirstPlayerLocal(
+                "lights_fern",
+                "lights_fernlicht",
+                "lights_highbeam") >
+            0.5;
+
+        pose.HeadLights =
+            highLights
+                ? (byte)3
+                : dippedLights
+                    ? (byte)2
+                    : parkingLights
+                        ? (byte)1
+                        : (byte)0;
+
+        pose.InteriorLights =
+            ReadFirstPlayerLocal(
+                "lights_innen",
+                "lights_interior",
+                "cockpit_light") >
+            0.5
+                ? (byte)1
+                : (byte)0;
+
+        var leftBlinker =
+            ReadFirstPlayerLocal(
+                "lights_blinker_l",
+                "blinker_l",
+                "indicator_left") >
+            0.5;
+
+        var rightBlinker =
+            ReadFirstPlayerLocal(
+                "lights_blinker_r",
+                "blinker_r",
+                "indicator_right") >
+            0.5;
+
+        pose.Blinker =
+            leftBlinker &&
+            rightBlinker
+                ? (byte)3
+                : leftBlinker
+                    ? (byte)1
+                    : rightBlinker
+                        ? (byte)2
+                        : (byte)0;
+
+        pose.Doors.Clear();
+
+        for (var doorIndex = 0;
+             doorIndex <
+                 OpenOmsiLanProtocol.MaximumDoors;
+             doorIndex++)
+        {
+            pose.Doors.Add(
+                (float)Math.Clamp(
+                    ReadFirstPlayerLocal(
+                        $"door_{doorIndex}",
+                        $"door{doorIndex}",
+                        $"door_{doorIndex}_pos",
+                        $"door_pos_{doorIndex}"),
+                    0.0,
+                    1.0));
+        }
+
         if (window.PlayerTrafficObstacle is
             { } obstacle)
         {
@@ -3065,6 +3186,38 @@ internal sealed class RuntimeApplicationContext :
         }
 
         return pose;
+    }
+
+    private double ReadFirstPlayerLocal(
+        params string[] names)
+    {
+        var runtime =
+            _playerScriptRuntime;
+
+        if (runtime is null)
+        {
+            return 0.0;
+        }
+
+        foreach (var name in
+                 names)
+        {
+            if (runtime.HasLocalVariable(
+                    name))
+            {
+                var value =
+                    runtime.GetLocal(
+                        name);
+
+                if (double.IsFinite(
+                        value))
+                {
+                    return value;
+                }
+            }
+        }
+
+        return 0.0;
     }
 
     private void AppendMultiplayerTrafficAgents(
@@ -3267,6 +3420,12 @@ internal sealed class RuntimeApplicationContext :
             var blinker =
                 peer.Pose.Blinker;
 
+            var remoteScriptRuntime =
+                ResolveMultiplayerScriptRuntime(
+                    peer,
+                    vehiclePath,
+                    deltaSeconds);
+
             _runtimeTrafficAgentBuffer.Add(
                 new RuntimeTrafficAgentInfo(
                     unchecked(
@@ -3296,7 +3455,7 @@ internal sealed class RuntimeApplicationContext :
                     traveled,
                     0.0,
                     ScriptRuntime:
-                        null));
+                        remoteScriptRuntime));
         }
 
         if (_multiplayerRemoteStates.Count >
@@ -3314,7 +3473,219 @@ internal sealed class RuntimeApplicationContext :
                     staleId);
                 _multiplayerTravelMeters.Remove(
                     staleId);
+                _multiplayerScriptRuntimes.Remove(
+                    staleId);
+                _multiplayerScriptPaths.Remove(
+                    staleId);
             }
+        }
+    }
+
+    private OmsiScriptRuntime? ResolveMultiplayerScriptRuntime(
+        OpenOmsiLanPeerSnapshot peer,
+        string vehiclePath,
+        double deltaSeconds)
+    {
+        if (!_trafficScriptCatalogs.TryGetValue(
+                vehiclePath,
+                out var catalog))
+        {
+            return null;
+        }
+
+        if (!_multiplayerScriptRuntimes.TryGetValue(
+                peer.Id,
+                out var runtime) ||
+            !_multiplayerScriptPaths.TryGetValue(
+                peer.Id,
+                out var previousPath) ||
+            !previousPath.Equals(
+                vehiclePath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            runtime =
+                new OmsiScriptRuntime(
+                    catalog);
+
+            if (_trafficVehicleAssets.TryGetValue(
+                    vehiclePath,
+                    out var asset))
+            {
+                ApplyHofToScriptRuntime(
+                    runtime,
+                    ResolveMapHofForBus(
+                        asset.Bus,
+                        _map.FolderName),
+                    writeDiagnostic:
+                        false);
+            }
+
+            runtime.ExecuteInit();
+
+            _multiplayerScriptRuntimes[
+                peer.Id] =
+                runtime;
+            _multiplayerScriptPaths[
+                peer.Id] =
+                vehiclePath;
+        }
+
+        SeedMultiplayerScriptRuntime(
+            runtime,
+            peer.Pose,
+            deltaSeconds);
+
+        runtime.ExecuteFrameAi();
+
+        // Pin the network-driven values again after frame_ai so a bus whose
+        // AI script computes defaults cannot erase the remote driver's state.
+        SeedMultiplayerScriptRuntime(
+            runtime,
+            peer.Pose,
+            0.0);
+
+        return runtime;
+    }
+
+    private static void SeedMultiplayerScriptRuntime(
+        OmsiScriptRuntime runtime,
+        OpenOmsiLanPose pose,
+        double deltaSeconds)
+    {
+        var speed =
+            pose.SpeedKph;
+
+        runtime.SetLocal(
+            "Velocity",
+            speed);
+        runtime.SetLocal(
+            "Velocity_Ground",
+            speed);
+        runtime.SetSystem(
+            "Timegap",
+            Math.Max(
+                0.0,
+                deltaSeconds));
+
+        var engine =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagEngine) !=
+            0;
+
+        var electrics =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagElectrics) !=
+            0;
+
+        var engineValue =
+            engine
+                ? 1.0
+                : 0.0;
+
+        runtime.SetLocal(
+            "engine_on",
+            engineValue);
+        runtime.SetLocal(
+            "engine_injection_on",
+            engineValue);
+        runtime.SetLocal(
+            "engine_n",
+            pose.Rpm);
+        runtime.SetLocal(
+            "n_engine",
+            pose.Rpm);
+
+        runtime.SetLocal(
+            "throttle",
+            pose.Throttle);
+        runtime.SetLocal(
+            "gas",
+            pose.Throttle);
+        runtime.SetLocal(
+            "brake",
+            pose.Brake);
+        runtime.SetLocal(
+            "bremse",
+            pose.Brake);
+
+        runtime.SetLocal(
+            "ai_engine",
+            engine
+                ? 1.0
+                : electrics
+                    ? 0.0
+                    : -1.0);
+
+        var aiLight =
+            pose.HeadLights switch
+            {
+                1 => 0.5,
+                2 => 1.0,
+                >= 3 => 2.0,
+                _ => 0.0
+            };
+
+        runtime.SetLocal(
+            "ai_light",
+            aiLight);
+        runtime.SetLocal(
+            "ai_interiorlight",
+            pose.InteriorLights >
+                0
+                ? 1.0
+                : 0.0);
+
+        var left =
+            pose.Blinker is
+                1 or 3
+                ? 1.0
+                : 0.0;
+
+        var right =
+            pose.Blinker is
+                2 or 3
+                ? 1.0
+                : 0.0;
+
+        runtime.SetLocal(
+            "ai_blinker_l",
+            left);
+        runtime.SetLocal(
+            "ai_blinker_r",
+            right);
+        runtime.SetLocal(
+            "lights_blinker_l",
+            left);
+        runtime.SetLocal(
+            "lights_blinker_r",
+            right);
+
+        for (var doorIndex = 0;
+             doorIndex <
+                 Math.Min(
+                     pose.Doors.Count,
+                     OpenOmsiLanProtocol.MaximumDoors);
+             doorIndex++)
+        {
+            var door =
+                Math.Clamp(
+                    pose.Doors[
+                        doorIndex],
+                    0.0f,
+                    1.0f);
+
+            runtime.SetLocal(
+                $"door_{doorIndex}",
+                door);
+            runtime.SetLocal(
+                $"door{doorIndex}",
+                door);
+            runtime.SetLocal(
+                $"door_{doorIndex}_pos",
+                door);
+            runtime.SetLocal(
+                $"door_pos_{doorIndex}",
+                door);
         }
     }
 
@@ -3399,7 +3770,8 @@ internal sealed class RuntimeApplicationContext :
                             var result =
                                 new List<(
                                     string Path,
-                                    OmsiVehicleAsset Asset)>();
+                                    OmsiVehicleAsset Asset,
+                                    OmsiScriptCatalog? Catalog)>();
 
                             foreach (var path in
                                      requested)
@@ -3419,10 +3791,31 @@ internal sealed class RuntimeApplicationContext :
                                     if (asset.RenderableMeshCount >
                                         0)
                                     {
+                                        OmsiScriptCatalog? catalog =
+                                            null;
+
+                                        if (asset.Bus.ScriptManifest.RegisteredFileCount >
+                                            0)
+                                        {
+                                            try
+                                            {
+                                                catalog =
+                                                    OmsiScriptCatalogLoader.Load(
+                                                        _contentRoot,
+                                                        asset.Bus.ScriptManifest);
+                                            }
+                                            catch (Exception exception)
+                                            {
+                                                Console.Error.WriteLine(
+                                                    $"[multiplayer] remote script catalog unavailable for {Path.GetFileName(path)}: {exception.Message}");
+                                            }
+                                        }
+
                                         result.Add(
                                             (
                                                 path,
-                                                asset));
+                                                asset,
+                                                catalog));
                                     }
                                 }
                                 catch (Exception exception)
@@ -3441,6 +3834,14 @@ internal sealed class RuntimeApplicationContext :
                     _trafficVehicleAssets[
                         item.Path] =
                         item.Asset;
+
+                    if (item.Catalog is not
+                        null)
+                    {
+                        _trafficScriptCatalogs[
+                            item.Path] =
+                            item.Catalog;
+                    }
 
                     Console.WriteLine(
                         $"[multiplayer] remote vehicle cached: {Path.GetFileName(item.Path)}");
