@@ -745,15 +745,38 @@ public sealed class WorldTrafficSimulation
         }
     }
 
-    public IReadOnlyList<WorldTrafficAgentState> Snapshot() =>
-        _agents
-            .Where(
-                agent =>
-                    agent.ActivationTimeSeconds <=
-                    _simulationElapsedSeconds)
-            .Select(
-                CreateState)
-            .ToArray();
+    public IReadOnlyList<WorldTrafficAgentState> Snapshot()
+    {
+        var snapshot =
+            new List<WorldTrafficAgentState>(
+                _agents.Count);
+
+        AppendSnapshotTo(
+            snapshot);
+
+        return snapshot.ToArray();
+    }
+
+    public void AppendSnapshotTo(
+        List<WorldTrafficAgentState> destination)
+    {
+        ArgumentNullException.ThrowIfNull(
+            destination);
+
+        foreach (var agent in
+                 _agents)
+        {
+            if (agent.ActivationTimeSeconds >
+                _simulationElapsedSeconds)
+            {
+                continue;
+            }
+
+            destination.Add(
+                CreateState(
+                    agent));
+        }
+    }
 
     public IReadOnlyList<WorldTrafficSignalState> SnapshotTrafficSignals() =>
         _segmentsByIndex.Values

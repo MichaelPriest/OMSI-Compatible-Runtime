@@ -2593,8 +2593,8 @@ internal sealed class RuntimeApplicationContext :
                     deltaSeconds);
             }
 
-            agents.AddRange(
-                roadSimulation.Snapshot());
+            roadSimulation.AppendSnapshotTo(
+                agents);
         }
 
         if (_railTrafficSimulation is
