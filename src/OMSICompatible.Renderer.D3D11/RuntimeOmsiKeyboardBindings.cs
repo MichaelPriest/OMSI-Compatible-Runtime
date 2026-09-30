@@ -48,6 +48,13 @@ internal sealed record RuntimeOmsiKeyboardBinding(
     bool Control,
     RuntimeOmsiHostInputAction? HostAction);
 
+internal sealed record RuntimeOmsiEditableKeyboardEntry(
+    string Trigger,
+    Keys? Key,
+    bool Continuous,
+    bool Shift,
+    bool Control);
+
 internal static class RuntimeOmsiKeyboardBindings
 {
     private sealed record ParsedBinding(
@@ -139,6 +146,311 @@ internal static class RuntimeOmsiKeyboardBindings
             bindings);
 
         return bindings;
+    }
+
+    public static IReadOnlyList<
+        RuntimeOmsiEditableKeyboardEntry>
+        LoadEditable(
+            string contentRoot,
+            string? preferredLanguage)
+    {
+        var inputs =
+            Path.Combine(
+                contentRoot,
+                "Inputs");
+        var keyboardPath =
+            Path.Combine(
+                inputs,
+                "keyboard.cfg");
+
+        if (!File.Exists(
+                keyboardPath))
+        {
+            return Array.Empty<
+                RuntimeOmsiEditableKeyboardEntry>();
+        }
+
+        var keyTable =
+            LoadKeyTable(
+                inputs,
+                preferredLanguage,
+                out _);
+
+        string[] lines;
+
+        try
+        {
+            lines =
+                File.ReadAllLines(
+                    keyboardPath);
+        }
+        catch
+        {
+            return Array.Empty<
+                RuntimeOmsiEditableKeyboardEntry>();
+        }
+
+        var result =
+            new List<
+                RuntimeOmsiEditableKeyboardEntry>();
+
+        for (var index = 0;
+             index < lines.Length;
+             index++)
+        {
+            if (!string.Equals(
+                    lines[index].Trim(),
+                    "[entry]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                NextMeaningful(
+                    lines,
+                    index + 1,
+                    3);
+
+            if (values.Count < 3)
+            {
+                continue;
+            }
+
+            var trigger =
+                lines[values[0]]
+                    .Trim()
+                    .Trim('"');
+
+            if (trigger.Length == 0 ||
+                !int.TryParse(
+                    lines[values[1]]
+                        .Trim(),
+                    out var keyIndex) ||
+                !int.TryParse(
+                    lines[values[2]]
+                        .Trim(),
+                    out var flags))
+            {
+                continue;
+            }
+
+            Keys? key =
+                null;
+
+            if (keyIndex != 0 &&
+                keyTable.TryGetValue(
+                    keyIndex,
+                    out var mappedKey))
+            {
+                key =
+                    mappedKey;
+            }
+
+            result.Add(
+                new RuntimeOmsiEditableKeyboardEntry(
+                    trigger,
+                    key,
+                    Continuous:
+                        (flags & 1) != 0,
+                    Shift:
+                        (flags & 2) != 0,
+                    Control:
+                        (flags & 4) != 0));
+        }
+
+        return result;
+    }
+
+    public static bool TryAssign(
+        string contentRoot,
+        string? preferredLanguage,
+        string trigger,
+        Keys key,
+        bool continuous,
+        bool shift,
+        bool control,
+        out string message)
+    {
+        message =
+            string.Empty;
+
+        var inputs =
+            Path.Combine(
+                contentRoot,
+                "Inputs");
+        var keyboardPath =
+            Path.Combine(
+                inputs,
+                "keyboard.cfg");
+
+        if (!File.Exists(
+                keyboardPath))
+        {
+            message =
+                "Inputs\\keyboard.cfg não foi encontrado.";
+            return false;
+        }
+
+        var keyTable =
+            LoadKeyTable(
+                inputs,
+                preferredLanguage,
+                out var keyTablePath);
+
+        var keyIndex =
+            0;
+
+        if (key !=
+            Keys.None)
+        {
+            var matches =
+                keyTable
+                    .Where(
+                        pair =>
+                            pair.Value ==
+                            key)
+                    .Select(
+                        pair =>
+                            pair.Key)
+                    .OrderBy(
+                        static value =>
+                            value)
+                    .ToArray();
+
+            if (matches.Length == 0)
+            {
+                message =
+                    $"A tecla {key} não existe na tabela OMSI {Path.GetFileName(keyTablePath) ?? "<sem .kyb>"}.";
+                return false;
+            }
+
+            keyIndex =
+                matches[0];
+        }
+
+        string[] lines;
+
+        try
+        {
+            lines =
+                File.ReadAllLines(
+                    keyboardPath);
+        }
+        catch (Exception exception)
+        {
+            message =
+                $"Falha ao ler keyboard.cfg: {exception.Message}";
+            return false;
+        }
+
+        var found =
+            false;
+
+        for (var index = 0;
+             index < lines.Length;
+             index++)
+        {
+            if (!string.Equals(
+                    lines[index].Trim(),
+                    "[entry]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                NextMeaningful(
+                    lines,
+                    index + 1,
+                    3);
+
+            if (values.Count < 3)
+            {
+                continue;
+            }
+
+            var entryTrigger =
+                lines[values[0]]
+                    .Trim()
+                    .Trim('"');
+
+            if (!entryTrigger.Equals(
+                    trigger,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var flags =
+                (continuous ? 1 : 0) |
+                (shift ? 2 : 0) |
+                (control ? 4 : 0);
+
+            lines[values[1]] =
+                keyIndex.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+            lines[values[2]] =
+                flags.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+
+            found =
+                true;
+            break;
+        }
+
+        if (!found)
+        {
+            message =
+                $"Comando OMSI não encontrado em keyboard.cfg: {trigger}";
+            return false;
+        }
+
+        try
+        {
+            var backupPath =
+                keyboardPath +
+                ".vehiclepanel.bak";
+
+            if (!File.Exists(
+                    backupPath))
+            {
+                File.Copy(
+                    keyboardPath,
+                    backupPath,
+                    overwrite:
+                        false);
+            }
+
+            var tempPath =
+                keyboardPath +
+                ".vehiclepanel.tmp";
+
+            File.WriteAllLines(
+                tempPath,
+                lines);
+
+            File.Copy(
+                tempPath,
+                keyboardPath,
+                overwrite:
+                    true);
+
+            File.Delete(
+                tempPath);
+
+            message =
+                key == Keys.None
+                    ? $"{trigger}: tecla removida."
+                    : $"{trigger}: {(control ? "Ctrl+" : string.Empty)}{(shift ? "Shift+" : string.Empty)}{key}.";
+            return true;
+        }
+        catch (Exception exception)
+        {
+            message =
+                $"Falha ao gravar keyboard.cfg: {exception.Message}";
+            return false;
+        }
     }
 
     public static IReadOnlyDictionary<

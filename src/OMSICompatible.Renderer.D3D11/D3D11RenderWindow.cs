@@ -399,8 +399,9 @@ public sealed class D3D11RenderWindow : Form
         new(
             StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Keys> _pressedKeys = [];
-    private readonly IReadOnlyList<RuntimeOmsiKeyboardBinding>
+    private IReadOnlyList<RuntimeOmsiKeyboardBinding>
         _omsiKeyboardBindings;
+    private readonly string? _inputLanguage;
     private readonly IReadOnlyDictionary<
         string,
         RuntimeOmsiHostInputAction>
@@ -641,6 +642,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeBusSelectorPanel? _busSelectorPanel;
     private readonly RuntimeDriveOpsPanel? _driveOpsPanel;
     private readonly RuntimeNavPulsePanel? _navPulsePanel;
+    private readonly RuntimeVehiclePanel? _vehiclePanel;
     private readonly RuntimeLiveBoardPanel? _liveBoardPanel;
     private int _captionFrame;
     private int? _streamingTileX;
@@ -1359,6 +1361,8 @@ public sealed class D3D11RenderWindow : Form
                 : 0.0f;
         _automaticSteeringCenter =
             automaticSteeringCenter;
+        _inputLanguage =
+            inputLanguage;
         _omsiKeyboardBindings =
             _vehiclePreviewMode
                 ? Array.Empty<
@@ -1599,6 +1603,23 @@ public sealed class D3D11RenderWindow : Form
             Controls.Add(
                 _navPulsePanel);
             LayoutNavPulsePanel();
+        }
+
+        _vehiclePanel =
+            _vehiclePreviewMode
+                ? null
+                : new RuntimeVehiclePanel(
+                    windowInfo.ContentRoot,
+                    inputLanguage);
+
+        if (_vehiclePanel is not null)
+        {
+            _vehiclePanel.BindingsChanged +=
+                ReloadOmsiKeyboardBindings;
+
+            Controls.Add(
+                _vehiclePanel);
+            LayoutVehiclePanel();
         }
 
         _liveBoardPanel =
@@ -6023,6 +6044,16 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (!_vehiclePreviewMode &&
+            _vehiclePanel?.Visible ==
+                true &&
+            (keyData & Keys.KeyCode) ==
+            Keys.Escape)
+        {
+            _vehiclePanel.HidePanel();
+            return true;
+        }
+
+        if (!_vehiclePreviewMode &&
             _busSelectorPanel?.Visible ==
                 true &&
             (keyData & Keys.KeyCode) ==
@@ -6178,6 +6209,42 @@ public sealed class D3D11RenderWindow : Form
                 (ClientSize.Height -
                  _driveOpsPanel.Height) /
                 2);
+    }
+
+    private void LayoutVehiclePanel()
+    {
+        if (_vehiclePanel is null)
+        {
+            return;
+        }
+
+        _vehiclePanel.Left =
+            Math.Max(
+                12,
+                (ClientSize.Width -
+                 _vehiclePanel.Width) /
+                2);
+
+        _vehiclePanel.Top =
+            Math.Max(
+                12,
+                (ClientSize.Height -
+                 _vehiclePanel.Height) /
+                2);
+    }
+
+    private void ReloadOmsiKeyboardBindings()
+    {
+        _activeOmsiPressedBindings.Clear();
+        _activeOmsiContinuousBindings.Clear();
+
+        _omsiKeyboardBindings =
+            RuntimeOmsiKeyboardBindings.Load(
+                _windowInfo.ContentRoot,
+                _inputLanguage);
+
+        Console.WriteLine(
+            $"[vehiclepanel] keyboard bindings reloaded: {_omsiKeyboardBindings.Count}");
     }
 
     private void LayoutRuntimeBusSelector()
@@ -6340,6 +6407,17 @@ public sealed class D3D11RenderWindow : Form
                     RuntimeOmsiHostInputAction.ControllerToggle);
                 break;
 
+            case RuntimeOmsiMenuCommand.VehiclePanel:
+                _omsiMenuBar?.HideMenu();
+
+                if (_vehiclePanel is not null)
+                {
+                    LayoutVehiclePanel();
+                    _vehiclePanel.TogglePanel();
+                }
+
+                break;
+
             case RuntimeOmsiMenuCommand.ResetVehicle:
                 if (!_vehicleRemoved &&
                     _terrainGeometry.Vertices.Length >
@@ -6432,6 +6510,7 @@ public sealed class D3D11RenderWindow : Form
         LayoutRuntimeBusSelector();
         LayoutDriveOpsPanel();
         LayoutNavPulsePanel();
+        LayoutVehiclePanel();
         LayoutLiveBoardPanel();
 
         if (_swapChain is null ||
@@ -20554,6 +20633,26 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (_vehiclePanel?.TryCaptureKey(
+                e.KeyCode,
+                e.Shift,
+                e.Control) ==
+            true)
+        {
+            e.SuppressKeyPress =
+                true;
+            e.Handled =
+                true;
+            return;
+        }
+
+        if (_vehiclePanel?.Visible ==
+                true &&
+            _vehiclePanel.ContainsFocus)
+        {
+            return;
+        }
+
         var firstPress =
             _pressedKeys.Add(
                 e.KeyCode);
@@ -24205,6 +24304,12 @@ public sealed class D3D11RenderWindow : Form
             {
                 _busSelectorPanel.SelectionConfirmed -=
                     OnRuntimeBusSelectionConfirmed;
+            }
+
+            if (_vehiclePanel is not null)
+            {
+                _vehiclePanel.BindingsChanged -=
+                    ReloadOmsiKeyboardBindings;
             }
 
             if (_driveOpsPanel is not null)

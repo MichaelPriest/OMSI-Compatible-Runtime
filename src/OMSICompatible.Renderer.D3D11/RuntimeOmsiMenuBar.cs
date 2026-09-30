@@ -30,6 +30,7 @@ internal enum RuntimeOmsiMenuCommand
     FreeMapCamera,
     MouseSteering,
     GameController,
+    VehiclePanel,
     ResetVehicle
 }
 
@@ -264,6 +265,13 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             RuntimeOmsiMenuCommand.GameController,
             "\uE7FC",
             "Volante / game controller (K)",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.VehiclePanel,
+            "\uE713",
+            "VehiclePanel — configurar teclado e comandos do ônibus",
             true);
 
         AddButton(
