@@ -97,6 +97,10 @@ public sealed class D3D11RenderWindow : Form
         Vector3 Pivot,
         Vector3 Axis);
 
+    private readonly record struct CompiledTrafficLightEffect(
+        Matrix4x4 StaticTransform,
+        RuntimeVehicleLightEffectInfo Light);
+
     private readonly record struct TrafficVehicleAnimationPhysics(
         double? WheelBaseMeters,
         double? TrackWidthMeters,
@@ -817,8 +821,8 @@ public sealed class D3D11RenderWindow : Form
         _trafficVehicleAnimationPhysics =
             new(
                 ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<string, RuntimeObjectMeshInfo[]>
-        _trafficVehicleLightMeshes =
+    private readonly Dictionary<string, CompiledTrafficLightEffect[]>
+        _compiledTrafficVehicleLightEffects =
             new(
                 StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<TrafficVehicleDrawItem>>
@@ -8170,12 +8174,12 @@ public sealed class D3D11RenderWindow : Form
                         : 0)
             .ToArray();
 
-    private RuntimeObjectMeshInfo[]
-        ResolveTrafficVehicleLightMeshes(
+    private CompiledTrafficLightEffect[]
+        ResolveTrafficVehicleLightEffects(
             string vehiclePath,
             RuntimeVehicleInfo vehicleInfo)
     {
-        if (_trafficVehicleLightMeshes.TryGetValue(
+        if (_compiledTrafficVehicleLightEffects.TryGetValue(
                 vehiclePath,
                 out var cached))
         {
@@ -8190,26 +8194,50 @@ public sealed class D3D11RenderWindow : Form
                             { Count: > 0 })
                 .ToArray();
 
-        var viewpointMeshes =
-            allLightMeshes
-                .Where(
-                    static mesh =>
-                        IsVehicleMeshVisibleFromViewpoint(
-                            mesh.ViewpointFlag,
-                            4))
-                .ToArray();
+        var hasExteriorViewpointLights =
+            allLightMeshes.Any(
+                static mesh =>
+                    IsVehicleMeshVisibleFromViewpoint(
+                        mesh.ViewpointFlag,
+                        4));
 
-        var selected =
-            viewpointMeshes.Length >
-                0
-                ? viewpointMeshes
-                : allLightMeshes;
+        var compiled =
+            new List<CompiledTrafficLightEffect>();
 
-        _trafficVehicleLightMeshes[
+        foreach (var mesh in
+                 allLightMeshes)
+        {
+            if (hasExteriorViewpointLights &&
+                !IsVehicleMeshVisibleFromViewpoint(
+                    mesh.ViewpointFlag,
+                    4))
+            {
+                continue;
+            }
+
+            var staticTransform =
+                RuntimeObjectGeometryBuilder
+                    .CreateMeshTransform(
+                        mesh.Transform);
+
+            foreach (var light in
+                     mesh.LightEffects!)
+            {
+                compiled.Add(
+                    new CompiledTrafficLightEffect(
+                        staticTransform,
+                        light));
+            }
+        }
+
+        var result =
+            compiled.ToArray();
+
+        _compiledTrafficVehicleLightEffects[
             vehiclePath] =
-            selected;
+            result;
 
-        return selected;
+        return result;
     }
 
     private bool IsTrafficAgentVisible(
@@ -9721,30 +9749,24 @@ public sealed class D3D11RenderWindow : Form
             var vehicleWorld =
                 drawItem.VehicleWorld;
 
-            var lightMeshes =
-                ResolveTrafficVehicleLightMeshes(
+            var lightEffects =
+                ResolveTrafficVehicleLightEffects(
                     agent.VehiclePath,
                     vehicleInfo);
 
-            foreach (var mesh in
-                     lightMeshes)
+            foreach (var compiledLight in
+                     lightEffects)
             {
-                var staticTransform =
-                    RuntimeObjectGeometryBuilder
-                        .CreateMeshTransform(
-                            mesh.Transform);
-
                 var parentTransform =
-                    staticTransform *
+                    compiledLight.StaticTransform *
                     vehicleWorld;
+                var light =
+                    compiledLight.Light;
 
-                foreach (var light in
-                         mesh.LightEffects!)
-                {
-                    var brightness =
-                        ResolveTrafficVehicleLightValue(
-                            agent,
-                            light);
+                var brightness =
+                    ResolveTrafficVehicleLightValue(
+                        agent,
+                        light);
 
                     if (brightness <=
                         0.0001)
@@ -9846,7 +9868,6 @@ public sealed class D3D11RenderWindow : Form
                                         normalizedBrightness,
                                     1.0f)
                         };
-                }
             }
         }
 
@@ -23125,7 +23146,7 @@ public sealed class D3D11RenderWindow : Form
             _trafficAnimationBindings.Clear();
             _compiledTrafficAnimations.Clear();
             _trafficVehicleAnimationPhysics.Clear();
-            _trafficVehicleLightMeshes.Clear();
+            _compiledTrafficVehicleLightEffects.Clear();
             _trafficVisibleDrawItemsByVehiclePath.Clear();
             _trafficVisibleDrawItems.Clear();
 
