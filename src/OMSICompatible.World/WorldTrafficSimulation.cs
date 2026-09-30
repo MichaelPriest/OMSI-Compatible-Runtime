@@ -87,6 +87,11 @@ public sealed class WorldTrafficSimulation
     private readonly List<WeightedSegmentCandidate>
         _nextSegmentCandidates =
             [];
+    private readonly Dictionary<
+        (int AgentIndex, int SegmentIndex, bool TravelForward),
+        int?>
+        _nextSegmentByAgentSegment =
+            [];
     private readonly List<RankedSegmentCandidate>
         _recycleSegmentCandidates =
             [];
@@ -3611,6 +3616,22 @@ public sealed class WorldTrafficSimulation
         Agent agent,
         WorldTrafficPathSegment segment)
     {
+        var cacheKey =
+            (
+                AgentIndex:
+                    agent.AgentIndex,
+                SegmentIndex:
+                    segment.Index,
+                TravelForward:
+                    agent.TravelForward);
+
+        if (_nextSegmentByAgentSegment.TryGetValue(
+                cacheKey,
+                out var cachedNextSegment))
+        {
+            return cachedNextSegment;
+        }
+
         var connections =
             agent.TravelForward
                 ? segment.ForwardConnections
@@ -3658,6 +3679,10 @@ public sealed class WorldTrafficSimulation
         if (_nextSegmentCandidates.Count ==
             0)
         {
+            _nextSegmentByAgentSegment[
+                cacheKey] =
+                null;
+
             return null;
         }
 
@@ -3681,6 +3706,10 @@ public sealed class WorldTrafficSimulation
             totalWeight <=
                 0.0)
         {
+            _nextSegmentByAgentSegment[
+                cacheKey] =
+                null;
+
             return null;
         }
 
@@ -3703,15 +3732,29 @@ public sealed class WorldTrafficSimulation
             if (selector <=
                 0.0)
             {
-                return candidate
-                    .Segment
-                    .Index;
+                var selected =
+                    candidate
+                        .Segment
+                        .Index;
+
+                _nextSegmentByAgentSegment[
+                    cacheKey] =
+                    selected;
+
+                return selected;
             }
         }
 
-        return _nextSegmentCandidates[^1]
-            .Segment
-            .Index;
+        var fallback =
+            _nextSegmentCandidates[^1]
+                .Segment
+                .Index;
+
+        _nextSegmentByAgentSegment[
+            cacheKey] =
+            fallback;
+
+        return fallback;
     }
 
     private Dictionary<int, List<Agent>> BuildActiveAgentBuckets()
