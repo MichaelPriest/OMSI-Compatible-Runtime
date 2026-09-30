@@ -667,7 +667,12 @@ internal sealed class RuntimeGpuTextureLoader
                 StringComparison.OrdinalIgnoreCase))
         {
             var dds =
-                TryLoadDds(path);
+                TryLoadDds(
+                    path,
+                    topMipLevelsToDrop:
+                        0,
+                    minimumSide:
+                        1);
 
             if (dds is not null)
             {
@@ -705,9 +710,35 @@ internal sealed class RuntimeGpuTextureLoader
         return null;
     }
 
-    private RuntimeGpuTexture? TryLoadDds(
+    public RuntimeGpuTexture? TryLoadReducedDds(
+        string path,
+        int topMipLevelsToDrop,
+        int minimumSide =
+            64)
+    {
+        if (topMipLevelsToDrop <=
+                0 ||
+            !string.Equals(
+                Path.GetExtension(
+                    path),
+                ".dds",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
 
-        string path)
+        return TryLoadDds(
+            path,
+            topMipLevelsToDrop,
+            Math.Max(
+                1,
+                minimumSide));
+    }
+
+    private RuntimeGpuTexture? TryLoadDds(
+        string path,
+        int topMipLevelsToDrop,
+        int minimumSide)
     {
         try
         {
@@ -858,23 +889,125 @@ internal sealed class RuntimeGpuTextureLoader
 
             if (bcFormat.HasValue)
             {
+                var uploadWidth =
+                    width;
+                var uploadHeight =
+                    height;
+                var uploadMipCount =
+                    mipMapCount;
+                var droppedMipLevels =
+                    0;
+
+                if (topMipLevelsToDrop >
+                    0)
+                {
+                    var blockBytes =
+                        bcFormat.Value ==
+                            BcFormat.Bc1
+                            ? 8
+                            : 16;
+
+                    while (droppedMipLevels <
+                               topMipLevelsToDrop &&
+                           uploadMipCount >
+                               1)
+                    {
+                        var nextWidth =
+                            Math.Max(
+                                1,
+                                uploadWidth /
+                                    2);
+                        var nextHeight =
+                            Math.Max(
+                                1,
+                                uploadHeight /
+                                    2);
+
+                        if (Math.Min(
+                                nextWidth,
+                                nextHeight) <
+                            minimumSide)
+                        {
+                            break;
+                        }
+
+                        var blocksX =
+                            Math.Max(
+                                1,
+                                (uploadWidth +
+                                 3) /
+                                    4);
+                        var blocksY =
+                            Math.Max(
+                                1,
+                                (uploadHeight +
+                                 3) /
+                                    4);
+
+                        var bytesToSkip =
+                            checked(
+                                blocksX *
+                                blocksY *
+                                blockBytes);
+
+                        if (stream.Length -
+                                stream.Position <
+                            bytesToSkip)
+                        {
+                            return null;
+                        }
+
+                        stream.Seek(
+                            bytesToSkip,
+                            SeekOrigin.Current);
+
+                        uploadWidth =
+                            nextWidth;
+                        uploadHeight =
+                            nextHeight;
+                        uploadMipCount--;
+                        droppedMipLevels++;
+                    }
+
+                    if (droppedMipLevels ==
+                        0)
+                    {
+                        return null;
+                    }
+                }
+
                 var compressed =
                     TryCreateBcTexture(
                         stream,
-                        width,
-                        height,
+                        uploadWidth,
+                        uploadHeight,
                         bcFormat.Value,
-                        mipMapCount);
+                        uploadMipCount);
 
                 if (compressed is not null)
                 {
                     return compressed;
                 }
 
+                if (topMipLevelsToDrop >
+                    0)
+                {
+                    // Reduced uploads intentionally support only DDS block
+                    // compression. Falling back to an RGBA decode here would
+                    // recreate the full base level and defeat the memory
+                    // budget.
+                    return null;
+                }
+
                 // Preserve the established RGBA decoder as a compatibility
                 // fallback for drivers/content that reject a compressed upload.
                 stream.Position =
                     dataOffset;
+            }
+            else if (topMipLevelsToDrop >
+                     0)
+            {
+                return null;
             }
 
             byte[]? rgba =
