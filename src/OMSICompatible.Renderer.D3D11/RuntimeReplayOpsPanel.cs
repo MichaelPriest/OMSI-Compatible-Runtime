@@ -209,19 +209,6 @@ internal sealed class RuntimeReplayOpsPanel : Panel
                     TickStyle.None
             };
 
-        _timeline.Scroll +=
-            (_, _) =>
-            {
-                _followLive =
-                    _timeline.Value >=
-                    _timeline.Maximum;
-                _playing =
-                    false;
-                _play.Text =
-                    "PLAY";
-                UpdateSelectedState();
-            };
-
         Controls.Add(
             _timeline);
 
@@ -270,6 +257,19 @@ internal sealed class RuntimeReplayOpsPanel : Panel
             379,
             80,
             30);
+
+        _timeline.Scroll +=
+            (_, _) =>
+            {
+                _followLive =
+                    _timeline.Value >=
+                    _timeline.Maximum;
+                _playing =
+                    false;
+                _play.Text =
+                    "PLAY";
+                UpdateSelectedState();
+            };
 
         var forward =
             OmsiButton(
@@ -555,9 +555,9 @@ internal sealed class RuntimeReplayOpsPanel : Panel
         var gear =
             state.Gear switch
             {
-                > 1 =>
+                > 0 =>
                     "D",
-                < 1 =>
+                < 0 =>
                     "R",
                 _ =>
                     "N"
