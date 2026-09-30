@@ -377,6 +377,11 @@ public sealed class D3D11RenderWindow : Form
         RuntimeVehicleTextTextureInfo?>
         _vehicleTextTextureDefinitions =
             [];
+    private readonly Dictionary<
+        (int TextTextureIndex, int SectionIndex),
+        ID3D11ShaderResourceView?>
+        _vehicleTextTextureViewFrameStates =
+            [];
     private readonly HashSet<string> _reportedMissingTransMaps =
         new(
             StringComparer.OrdinalIgnoreCase);
@@ -6482,6 +6487,7 @@ public sealed class D3D11RenderWindow : Form
         _vehicleSkinFrameStates.Clear();
         _vehicleMaterialConstantsFrameStates.Clear();
         _vehicleDiffuseTexturePathFrameStates.Clear();
+        _vehicleTextTextureViewFrameStates.Clear();
         _vehicleBatchVisibilityFrameStates.Clear();
         _vehicleLightMeshVisibilityFrameStates.Clear();
         ReleaseRetiredStreamingVertexBuffers();
@@ -13169,6 +13175,23 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
+        var key =
+            (
+                TextTextureIndex:
+                    textTextureIndex.Value,
+                SectionIndex:
+                    sectionIndex);
+
+        if (_vehicleTextTextureViewFrameStates.TryGetValue(
+                key,
+                out var cachedView))
+        {
+            view =
+                cachedView;
+            return cachedView is not
+                null;
+        }
+
         if (!_vehicleTextTextureDefinitions.TryGetValue(
                 textTextureIndex.Value,
                 out var definition))
@@ -13187,6 +13210,10 @@ public sealed class D3D11RenderWindow : Form
 
         if (definition is null)
         {
+            _vehicleTextTextureViewFrameStates[
+                key] =
+                null;
+
             return false;
         }
 
@@ -13203,6 +13230,10 @@ public sealed class D3D11RenderWindow : Form
 
         if (texture is null)
         {
+            _vehicleTextTextureViewFrameStates[
+                key] =
+                null;
+
             if (_reportedMissingVehicleFonts.Add(
                     definition.FontName))
             {
@@ -13215,6 +13246,10 @@ public sealed class D3D11RenderWindow : Form
 
         view =
             texture.View;
+
+        _vehicleTextTextureViewFrameStates[
+            key] =
+            view;
 
         return true;
     }
@@ -23846,6 +23881,7 @@ public sealed class D3D11RenderWindow : Form
             _trafficVisibleDrawItems.Clear();
             _resolvedVehicleDynamicTexturePaths.Clear();
             _vehicleTextTextureDefinitions.Clear();
+            _vehicleTextTextureViewFrameStates.Clear();
 
             _tileInputLayout?.Dispose();
             _tilePixelShader?.Dispose();
