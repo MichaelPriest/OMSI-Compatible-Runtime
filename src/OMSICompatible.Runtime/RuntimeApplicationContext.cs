@@ -74,6 +74,15 @@ internal sealed class RuntimeApplicationContext :
     private readonly List<RuntimeTrafficSignalStateInfo>
         _runtimeTrafficSignalStateBuffer =
             [];
+    private readonly List<WorldRailSignalRouteState>
+        _worldRailSignalRouteStateBuffer =
+            [];
+    private readonly List<RuntimeRailSignalRouteStateInfo>
+        _runtimeRailSignalRouteStateBuffer =
+            [];
+    private readonly Dictionary<long, WorldRailSignalRouteState>
+        _railSignalBestStateByObjectId =
+            [];
     private readonly HashSet<int>
         _activeTrafficScriptAgentIds =
             [];
@@ -2355,31 +2364,38 @@ internal sealed class RuntimeApplicationContext :
                 RuntimeRailSignalRouteStateInfo>();
         }
 
-        var states =
-            simulation
-                .SignalRouteSnapshot()
-                .Where(
-                    static state =>
-                        state.Signal is not null)
-                .ToArray();
+        _worldRailSignalRouteStateBuffer.Clear();
+        simulation.AppendSignalRouteSnapshotTo(
+            _worldRailSignalRouteStateBuffer);
 
-        var stateByObjectId =
-            states
-                .GroupBy(
-                    static state =>
-                        state.Signal!.ObjectId)
-                .ToDictionary(
-                    static group =>
-                        group.Key,
-                    static group =>
-                        group
-                            .OrderByDescending(
-                                static state =>
-                                    state.Reserved)
-                            .ThenBy(
-                                static state =>
-                                    state.RouteIndex)
-                            .First());
+        _railSignalBestStateByObjectId.Clear();
+
+        foreach (var state in
+                 _worldRailSignalRouteStateBuffer)
+        {
+            if (state.Signal is null)
+            {
+                continue;
+            }
+
+            var objectId =
+                state.Signal.ObjectId;
+
+            if (!_railSignalBestStateByObjectId.TryGetValue(
+                    objectId,
+                    out var current) ||
+                state.Reserved &&
+                !current.Reserved ||
+                state.Reserved ==
+                    current.Reserved &&
+                state.RouteIndex <
+                    current.RouteIndex)
+            {
+                _railSignalBestStateByObjectId[
+                    objectId] =
+                    state;
+            }
+        }
 
         foreach (var pair in
                  _railSignalScriptRuntimes)
@@ -2388,7 +2404,7 @@ internal sealed class RuntimeApplicationContext :
                 pair.Value;
 
             var signalState =
-                stateByObjectId.TryGetValue(
+                _railSignalBestStateByObjectId.TryGetValue(
                     pair.Key,
                     out var state) &&
                 state.Reserved
@@ -2406,21 +2422,38 @@ internal sealed class RuntimeApplicationContext :
             runtime.ExecuteFrame();
         }
 
-        return states
-            .Select(
-                state =>
-                    new RuntimeRailSignalRouteStateInfo(
-                        state.RouteIndex,
-                        state.Signal!.ObjectId,
-                        state.Signal.SignalState,
-                        state.Reserved,
-                        state.ReservedAgentIndex,
-                        _railSignalScriptRuntimes.TryGetValue(
-                            state.Signal.ObjectId,
-                            out var runtime)
-                            ? runtime
-                            : null))
-            .ToArray();
+        _runtimeRailSignalRouteStateBuffer.Clear();
+
+        if (_runtimeRailSignalRouteStateBuffer.Capacity <
+            _worldRailSignalRouteStateBuffer.Count)
+        {
+            _runtimeRailSignalRouteStateBuffer.Capacity =
+                _worldRailSignalRouteStateBuffer.Count;
+        }
+
+        foreach (var state in
+                 _worldRailSignalRouteStateBuffer)
+        {
+            if (state.Signal is null)
+            {
+                continue;
+            }
+
+            _runtimeRailSignalRouteStateBuffer.Add(
+                new RuntimeRailSignalRouteStateInfo(
+                    state.RouteIndex,
+                    state.Signal.ObjectId,
+                    state.Signal.SignalState,
+                    state.Reserved,
+                    state.ReservedAgentIndex,
+                    _railSignalScriptRuntimes.TryGetValue(
+                        state.Signal.ObjectId,
+                        out var runtime)
+                        ? runtime
+                        : null));
+        }
+
+        return _runtimeRailSignalRouteStateBuffer;
     }
 
     private void RebuildRailSignalScriptRuntimes(
