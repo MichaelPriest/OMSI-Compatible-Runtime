@@ -5005,13 +5005,18 @@ public sealed class WorldTrafficSimulation
                 : Path.GetExtension(
                     vehiclePath);
 
+        var groupIdentity =
+            (groupName ??
+             string.Empty)
+                .Trim()
+                .ToLowerInvariant();
+
         var identity =
             (
                 (vehiclePath ??
                  string.Empty) +
                 "|" +
-                (groupName ??
-                 string.Empty)
+                groupIdentity
             )
             .ToLowerInvariant();
 
@@ -5021,9 +5026,21 @@ public sealed class WorldTrafficSimulation
              3) *
             0.015;
 
+        var explicitlyRoadCarGroup =
+            groupIdentity.Contains(
+                "normalcar",
+                StringComparison.Ordinal) ||
+            groupIdentity.Equals(
+                "cars",
+                StringComparison.Ordinal) ||
+            groupIdentity.Contains(
+                "taxi",
+                StringComparison.Ordinal);
+
         if (extension.Equals(
                 ".bus",
-                StringComparison.OrdinalIgnoreCase))
+                StringComparison.OrdinalIgnoreCase) &&
+            !explicitlyRoadCarGroup)
         {
             // Urban buses need gentler longitudinal and lateral dynamics,
             // longer headway and a slightly lower desired cruising speed.
@@ -5103,32 +5120,36 @@ public sealed class WorldTrafficSimulation
         return new TrafficBehaviorProfile(
             AccelerationMetersPerSecondSquared:
                 taxi
-                    ? 1.90
-                    : 1.65,
+                    ? 1.80
+                    : 1.50,
             BrakingMetersPerSecondSquared:
-                3.20,
+                taxi
+                    ? 3.60
+                    : 4.00,
             MaximumLateralAccelerationMetersPerSecondSquared:
-                2.20,
+                taxi
+                    ? 2.20
+                    : 2.00,
             FollowingTimeHeadwaySeconds:
                 Math.Clamp(
                     (taxi
                         ? 1.20
-                        : 1.35) +
+                        : 1.30) +
                         variation,
                     1.10,
-                    1.60),
+                    1.55),
             MinimumFollowingGapMeters:
                 2.00,
             StopLineBufferMeters:
                 0.75,
             CruiseSpeedFactor:
-                Math.Clamp(
-                    (taxi
-                        ? 1.00
-                        : 0.97) +
-                        variation,
-                    0.90,
-                    1.05));
+                taxi
+                    ? Math.Clamp(
+                        1.00 +
+                            variation,
+                        0.96,
+                        1.04)
+                    : 1.00);
     }
 
     private static double EstimateTrafficVehicleHalfWidth(
