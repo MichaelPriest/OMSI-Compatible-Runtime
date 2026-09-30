@@ -76,6 +76,18 @@ struct VertexOutput
     float3 WorldPosition : TEXCOORD2;
 };
 
+struct LightVertexInputInstanced
+{
+    float3 Position : POSITION;
+    float2 Uv : TEXCOORD;
+
+    float4 InstanceWorld0 : INSTANCEWORLD0;
+    float4 InstanceWorld1 : INSTANCEWORLD1;
+    float4 InstanceWorld2 : INSTANCEWORLD2;
+    float4 InstanceWorld3 : INSTANCEWORLD3;
+    float4 InstanceColor : INSTANCECOLOR;
+};
+
 VertexOutput VSMain(VertexInput input)
 {
     VertexOutput output;
@@ -264,6 +276,45 @@ VertexOutput VSMainInstanced(
                 skinnedNormal,
                 (float3x3)instanceWorld));
 
+    output.WorldPosition =
+        worldPosition.xyz;
+
+    return output;
+}
+
+VertexOutput VSMainLightInstanced(
+    LightVertexInputInstanced input)
+{
+    VertexOutput output;
+
+    row_major float4x4 instanceWorld =
+        float4x4(
+            input.InstanceWorld0,
+            input.InstanceWorld1,
+            input.InstanceWorld2,
+            input.InstanceWorld3);
+
+    float4 worldPosition =
+        mul(
+            float4(
+                input.Position,
+                1.0f),
+            instanceWorld);
+
+    output.Position =
+        mul(
+            worldPosition,
+            ViewProjection);
+
+    output.Color =
+        input.InstanceColor;
+    output.Uv =
+        input.Uv;
+    output.WorldNormal =
+        float3(
+            0.0f,
+            0.0f,
+            1.0f);
     output.WorldPosition =
         worldPosition.xyz;
 
@@ -647,6 +698,36 @@ float4 PSLightEffect(
         falloff);
 }
 
+
+float4 PSLightEffectInstanced(
+    VertexOutput input) : SV_TARGET
+{
+    float2 centered =
+        input.Uv * 2.0f - 1.0f;
+
+    float radiusSquared =
+        dot(
+            centered,
+            centered);
+
+    clip(
+        1.0f -
+        radiusSquared);
+
+    float falloff =
+        saturate(
+            1.0f -
+            radiusSquared);
+
+    falloff *=
+        falloff;
+
+    return float4(
+        input.Color.rgb *
+            falloff,
+        input.Color.a *
+            falloff);
+}
 
 float4 PSAlphaCutout(
     VertexOutput input) : SV_TARGET
