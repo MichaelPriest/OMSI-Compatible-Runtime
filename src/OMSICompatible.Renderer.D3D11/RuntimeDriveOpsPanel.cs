@@ -331,6 +331,15 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         !_profile.RequireForStart ||
         _badgeInserted;
 
+    public bool ShiftActive =>
+        _shiftActive;
+
+    public string CurrentLine =>
+        _routeLine.Text.Trim();
+
+    public string CurrentDestination =>
+        _routeDestination.Text.Trim();
+
     public void TogglePanel()
     {
         if (Visible)

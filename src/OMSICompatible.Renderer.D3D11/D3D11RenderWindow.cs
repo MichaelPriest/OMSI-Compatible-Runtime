@@ -641,6 +641,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeBusSelectorPanel? _busSelectorPanel;
     private readonly RuntimeDriveOpsPanel? _driveOpsPanel;
     private readonly RuntimeNavPulsePanel? _navPulsePanel;
+    private readonly RuntimeLiveBoardPanel? _liveBoardPanel;
     private int _captionFrame;
     private int? _streamingTileX;
     private int? _streamingTileY;
@@ -1600,6 +1601,18 @@ public sealed class D3D11RenderWindow : Form
             LayoutNavPulsePanel();
         }
 
+        _liveBoardPanel =
+            _vehiclePreviewMode
+                ? null
+                : new RuntimeLiveBoardPanel();
+
+        if (_liveBoardPanel is not null)
+        {
+            Controls.Add(
+                _liveBoardPanel);
+            LayoutLiveBoardPanel();
+        }
+
         _renderTimer = new System.Windows.Forms.Timer
         {
             Interval =
@@ -1625,6 +1638,12 @@ public sealed class D3D11RenderWindow : Form
         string session)
     {
         _driveOpsPanel?.SetNetworkState(
+            role,
+            connected,
+            peerCount,
+            session);
+
+        _liveBoardPanel?.SetNetworkState(
             role,
             connected,
             peerCount,
@@ -6102,6 +6121,31 @@ public sealed class D3D11RenderWindow : Form
             14;
     }
 
+    private void LayoutLiveBoardPanel()
+    {
+        if (_liveBoardPanel is null)
+        {
+            return;
+        }
+
+        _liveBoardPanel.Width =
+            Math.Min(
+                470,
+                Math.Max(
+                    350,
+                    ClientSize.Width /
+                    3));
+        _liveBoardPanel.Height =
+            112;
+
+        _liveBoardPanel.Left =
+            14;
+        _liveBoardPanel.Top =
+            _showFps
+                ? 108
+                : 14;
+    }
+
     private void LayoutDriveOpsPanel()
     {
         if (_driveOpsPanel is null)
@@ -6248,6 +6292,15 @@ public sealed class D3D11RenderWindow : Form
 
                 break;
 
+            case RuntimeOmsiMenuCommand.LiveBoard:
+                if (_liveBoardPanel is not null)
+                {
+                    LayoutLiveBoardPanel();
+                    _liveBoardPanel.TogglePanel();
+                }
+
+                break;
+
             case RuntimeOmsiMenuCommand.Pause:
                 _simulationPaused =
                     !_simulationPaused;
@@ -6379,6 +6432,7 @@ public sealed class D3D11RenderWindow : Form
         LayoutRuntimeBusSelector();
         LayoutDriveOpsPanel();
         LayoutNavPulsePanel();
+        LayoutLiveBoardPanel();
 
         if (_swapChain is null ||
             ClientSize.Width <= 0 ||
@@ -6548,6 +6602,9 @@ public sealed class D3D11RenderWindow : Form
             _captionFrame = 0;
             UpdateCaption();
 
+            var fuelState =
+                ResolveFuelTrackState();
+
             _driveOpsPanel?.UpdateVehicleState(
                 _vehicle.ElectricalSystemEnabled,
                 _vehicle.EngineRunning,
@@ -6557,7 +6614,21 @@ public sealed class D3D11RenderWindow : Form
                 _vehicle.Position,
                 _vehicle.HeadingRadians,
                 _trafficAgents,
-                ResolveFuelTrackState());
+                fuelState);
+
+            _liveBoardPanel?.UpdateState(
+                _vehicle.ElectricalSystemEnabled,
+                _vehicle.EngineRunning,
+                _vehicle.SpeedMetersPerSecond,
+                fuelState,
+                _driveOpsPanel?.StartAuthorized ??
+                    true,
+                _driveOpsPanel?.ShiftActive ??
+                    false,
+                _driveOpsPanel?.CurrentLine ??
+                    string.Empty,
+                _driveOpsPanel?.CurrentDestination ??
+                    string.Empty);
         }
     }
 

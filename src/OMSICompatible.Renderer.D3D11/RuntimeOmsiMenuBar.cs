@@ -22,6 +22,7 @@ internal enum RuntimeOmsiMenuCommand
     Wash,
     Refuel,
     DirectionSigns,
+    LiveBoard,
     Pause,
     DriverView,
     PassengerView,
@@ -207,6 +208,13 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             RuntimeOmsiMenuCommand.DirectionSigns,
             "\uE72A",
             "NavPulse — GPS/minimapa e FuelTrack",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.LiveBoard,
+            "\uE9D2",
+            "LiveBoard — HUD operacional compacto",
             true);
 
         AddButton(
