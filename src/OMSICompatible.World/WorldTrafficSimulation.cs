@@ -2086,8 +2086,7 @@ public sealed class WorldTrafficSimulation
                 Math.Min(
                     exitLength,
                     4.0 +
-                    EstimateTrafficVehicleHalfLength(
-                        agent.VehiclePath) +
+                    agent.HalfLengthMeters +
                     obstacle.HalfLengthMeters);
 
             var entryDistance =
@@ -2144,8 +2143,7 @@ public sealed class WorldTrafficSimulation
 
             var clearanceWidth =
                 obstacle.HalfWidthMeters +
-                EstimateTrafficVehicleHalfWidth(
-                    agent.VehiclePath) +
+                agent.HalfWidthMeters +
                 0.15;
 
             if (SegmentDistanceSquared(
@@ -4103,10 +4101,8 @@ public sealed class WorldTrafficSimulation
 
                 var bumperClearance =
                     distance.Value -
-                    EstimateTrafficVehicleHalfLength(
-                        agent.VehiclePath) -
-                    EstimateTrafficVehicleHalfLength(
-                        candidate.VehiclePath);
+                    agent.HalfLengthMeters -
+                    candidate.HalfLengthMeters;
 
                 if (bumperClearance >
                         0.0001 &&
@@ -4388,8 +4384,7 @@ public sealed class WorldTrafficSimulation
                     Math.Max(
                         obstacleLongitudinalExtent,
                         2.0) -
-                    EstimateTrafficVehicleHalfLength(
-                        agent.VehiclePath),
+                    agent.HalfLengthMeters,
                 0.0),
             projectedObstacleSpeed);
     }
