@@ -709,6 +709,9 @@ public sealed class D3D11RenderWindow : Form
     private byte[] _mainSceneryBatchVisibility =
         Array.Empty<byte>();
     private bool _mainSceneryBatchVisibilityPrepared;
+    private byte[] _reflectionSceneryBatchVisibility =
+        Array.Empty<byte>();
+    private bool _reflectionSceneryBatchVisibilityPrepared;
     private const byte SceneryVisibilityUnknown =
         0;
     private const byte SceneryVisibilityHidden =
@@ -6275,6 +6278,7 @@ public sealed class D3D11RenderWindow : Form
                             target.Camera.PitchDegrees));
 
                 BeginSceneCameraCache();
+                PrepareReflectionSceneryBatchVisibility();
 
                 var reflectionFovRadians =
                     DegreesToRadians(
@@ -6370,6 +6374,8 @@ public sealed class D3D11RenderWindow : Form
             _viewProjectionOverride = null;
             _cameraPositionOverride = null;
             _skyViewParametersOverride = null;
+            _reflectionSceneryBatchVisibilityPrepared =
+                false;
             EndSceneCameraCache();
         }
     }
@@ -6959,7 +6965,17 @@ public sealed class D3D11RenderWindow : Form
                     _objectGeometry.Batches.Count];
         }
 
+        if (_reflectionSceneryBatchVisibility.Length <
+            _objectGeometry.Batches.Count)
+        {
+            _reflectionSceneryBatchVisibility =
+                new byte[
+                    _objectGeometry.Batches.Count];
+        }
+
         _mainSceneryBatchVisibilityPrepared =
+            false;
+        _reflectionSceneryBatchVisibilityPrepared =
             false;
 
         foreach (RuntimeSceneryRenderPass renderPass in
@@ -7173,6 +7189,86 @@ public sealed class D3D11RenderWindow : Form
         };
     }
 
+    private void PrepareReflectionSceneryBatchVisibility()
+    {
+        var batches =
+            _objectGeometry.Batches;
+
+        if (batches.Count ==
+            0)
+        {
+            _reflectionSceneryBatchVisibilityPrepared =
+                true;
+            return;
+        }
+
+        if (_reflectionSceneryBatchVisibility.Length <
+            batches.Count)
+        {
+            Array.Resize(
+                ref _reflectionSceneryBatchVisibility,
+                batches.Count);
+        }
+
+        var cameraPosition =
+            CurrentSceneCameraPosition;
+        var viewProjection =
+            CurrentSceneViewProjection;
+        var framePressure =
+            ResolveSceneryFramePressure();
+        var viewportPixels =
+            (int)Math.Max(
+                _reflectionTextureSize,
+                1u);
+
+        if (batches.Count >=
+            ParallelSceneryCullThreshold)
+        {
+            System.Threading.Tasks.Parallel.For(
+                0,
+                batches.Count,
+                index =>
+                {
+                    _reflectionSceneryBatchVisibility[
+                        index] =
+                        EvaluateSceneryBatchVisibility(
+                            batches[
+                                index],
+                            cameraPosition,
+                            viewProjection,
+                            framePressure,
+                            viewportPixels,
+                            SceneryVisibilityUnknown)
+                            ? SceneryVisibilityVisible
+                            : SceneryVisibilityHidden;
+                });
+        }
+        else
+        {
+            for (var index = 0;
+                 index <
+                 batches.Count;
+                 index++)
+            {
+                _reflectionSceneryBatchVisibility[
+                    index] =
+                    EvaluateSceneryBatchVisibility(
+                        batches[
+                            index],
+                        cameraPosition,
+                        viewProjection,
+                        framePressure,
+                        viewportPixels,
+                        SceneryVisibilityUnknown)
+                        ? SceneryVisibilityVisible
+                        : SceneryVisibilityHidden;
+            }
+        }
+
+        _reflectionSceneryBatchVisibilityPrepared =
+            true;
+    }
+
     private void PrepareMainSceneryBatchVisibility()
     {
         var batches =
@@ -7277,6 +7373,21 @@ public sealed class D3D11RenderWindow : Form
         Vector3 cameraPosition,
         Matrix4x4 viewProjection)
     {
+        if (_viewProjectionOverride.HasValue &&
+            _reflectionSceneryBatchVisibilityPrepared &&
+            _objectBatchVisibilityIndices.TryGetValue(
+                batch,
+                out var reflectionVisibilityIndex) &&
+            reflectionVisibilityIndex >=
+                0 &&
+            reflectionVisibilityIndex <
+                _reflectionSceneryBatchVisibility.Length)
+        {
+            return _reflectionSceneryBatchVisibility[
+                       reflectionVisibilityIndex] ==
+                   SceneryVisibilityVisible;
+        }
+
         if (!_viewProjectionOverride.HasValue &&
             _mainSceneryBatchVisibilityPrepared &&
             _objectBatchVisibilityIndices.TryGetValue(
@@ -22715,6 +22826,10 @@ public sealed class D3D11RenderWindow : Form
             _mainSceneryBatchVisibility =
                 Array.Empty<byte>();
             _mainSceneryBatchVisibilityPrepared =
+                false;
+            _reflectionSceneryBatchVisibility =
+                Array.Empty<byte>();
+            _reflectionSceneryBatchVisibilityPrepared =
                 false;
 
             _vehicleTextTextureRenderer?.Dispose();
