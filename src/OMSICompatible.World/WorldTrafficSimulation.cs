@@ -36,6 +36,10 @@ public sealed class WorldTrafficSimulation
         double DistanceMeters,
         double SpeedMetersPerSecond);
 
+    private readonly record struct WeightedSegmentCandidate(
+        WorldTrafficPathSegment Segment,
+        double Weight);
+
     private const double MinimumTrafficSeparationMeters =
         2.0;
     private const double FollowingTimeHeadwaySeconds =
@@ -68,6 +72,9 @@ public sealed class WorldTrafficSimulation
     private readonly List<Agent> _agents;
     private readonly Dictionary<int, List<Agent>>
         _activeAgentsBySegment =
+            [];
+    private readonly List<WeightedSegmentCandidate>
+        _nextSegmentCandidates =
             [];
     private readonly WorldTrafficPathSegment[] _roadSegments = [];
     private readonly Dictionary<(int X, int Z), int[]>
@@ -3523,64 +3530,65 @@ public sealed class WorldTrafficSimulation
                 ? segment.ForwardConnections
                 : segment.ReverseConnections;
 
-        var candidates =
-            connections
-                .Select(
-                    candidateIndex =>
-                        _segmentsByIndex.TryGetValue(
-                            candidateIndex,
-                            out var candidate)
-                            ? candidate
-                            : null)
-                .Where(
-                    candidate =>
-                        candidate is not null &&
-                        IsTrafficGroupAllowed(
-                            candidate,
-                            agent.GroupIndex,
-                            agent.DefaultDensityClassIndex) &&
-                        (agent.TravelForward
-                            ? candidate.AllowsForward
-                            : candidate.AllowsReverse))
-                .Select(
-                    candidate =>
-                        new
-                        {
-                            Segment =
-                                candidate!,
-                            Weight =
-                                ResolveTrafficDensityWeight(
-                                    candidate!,
-                                    agent.GroupIndex,
-                                    agent.DefaultDensityClassIndex)
-                        })
-                .Where(
-                    static candidate =>
-                        candidate.Weight >
-                            0.0)
-                .OrderBy(
-                    static candidate =>
-                        candidate.Segment.Index)
-                .ToArray();
-
-        if (candidates.Length ==
-            0)
-        {
-            return null;
-        }
+        _nextSegmentCandidates.Clear();
 
         var totalWeight =
-            candidates.Sum(
-                static candidate =>
-                    candidate.Weight);
+            0.0;
 
-        if (!double.IsFinite(
+        foreach (var candidateIndex in
+                 connections)
+        {
+            if (!_segmentsByIndex.TryGetValue(
+                    candidateIndex,
+                    out var candidate) ||
+                !IsTrafficGroupAllowed(
+                    candidate,
+                    agent.GroupIndex,
+                    agent.DefaultDensityClassIndex) ||
+                !(agent.TravelForward
+                    ? candidate.AllowsForward
+                    : candidate.AllowsReverse))
+            {
+                continue;
+            }
+
+            var weight =
+                ResolveTrafficDensityWeight(
+                    candidate,
+                    agent.GroupIndex,
+                    agent.DefaultDensityClassIndex);
+
+            if (!double.IsFinite(
+                    weight) ||
+                weight <=
+                    0.0)
+            {
+                continue;
+            }
+
+            _nextSegmentCandidates.Add(
+                new WeightedSegmentCandidate(
+                    candidate,
+                    weight));
+
+            totalWeight +=
+                weight;
+        }
+
+        if (_nextSegmentCandidates.Count ==
+                0 ||
+            !double.IsFinite(
                 totalWeight) ||
             totalWeight <=
                 0.0)
         {
             return null;
         }
+
+        _nextSegmentCandidates.Sort(
+            static (left, right) =>
+                left.Segment.Index.CompareTo(
+                    right.Segment.Index));
 
         var selector =
             (((agent.AgentIndex +
@@ -3593,7 +3601,7 @@ public sealed class WorldTrafficSimulation
             totalWeight;
 
         foreach (var candidate in
-                 candidates)
+                 _nextSegmentCandidates)
         {
             selector -=
                 candidate.Weight;
@@ -3607,7 +3615,7 @@ public sealed class WorldTrafficSimulation
             }
         }
 
-        return candidates[^1]
+        return _nextSegmentCandidates[^1]
             .Segment
             .Index;
     }
