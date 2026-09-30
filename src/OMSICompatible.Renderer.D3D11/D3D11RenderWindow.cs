@@ -2806,10 +2806,15 @@ public sealed class D3D11RenderWindow : Form
     private void ProcessStreamingTextureLoadQueue()
     {
         if (_device is null ||
-            _objectTextureLoader is null ||
-            _pendingStreamingTextureLoads.Count ==
-                0)
+            _objectTextureLoader is null)
         {
+            return;
+        }
+
+        if (_pendingStreamingTextureLoads.Count ==
+            0)
+        {
+            ApplyStreamingDdsTextureBudget();
             return;
         }
 
