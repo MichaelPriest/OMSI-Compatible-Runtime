@@ -26,6 +26,43 @@ internal sealed class RuntimeProcessHost :
             HasExited: false
         };
 
+    public bool TryGetPreviewWindowHandle(
+        out nint handle)
+    {
+        handle =
+            nint.Zero;
+
+        var process =
+            _previewProcess;
+
+        if (process is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (process.HasExited)
+            {
+                return false;
+            }
+
+            process.Refresh();
+
+            handle =
+                process.MainWindowHandle;
+
+            return handle !=
+                nint.Zero;
+        }
+        catch
+        {
+            handle =
+                nint.Zero;
+            return false;
+        }
+    }
+
     public string ResolveRuntimePath()
     {
         var baseDirectory =
@@ -337,12 +374,31 @@ internal sealed class RuntimeProcessHost :
         process.Exited +=
             (_, _) =>
             {
+                int? exitCode =
+                    null;
+
+                try
+                {
+                    exitCode =
+                        process.ExitCode;
+                }
+                catch
+                {
+                }
+
                 HandleLine(
                     logPath,
-                    $"[preview-exit] code={process.ExitCode}",
-                    process.ExitCode != 0);
+                    $"[preview-exit] code={(exitCode.HasValue ? exitCode.Value.ToString() : "<stopped>")}",
+                    exitCode is
+                        not (null or 0));
 
-                process.Dispose();
+                try
+                {
+                    process.Dispose();
+                }
+                catch
+                {
+                }
 
                 if (ReferenceEquals(
                         _previewProcess,
@@ -373,10 +429,66 @@ internal sealed class RuntimeProcessHost :
         return true;
     }
 
+    public void StopVehiclePreview()
+    {
+        var process =
+            _previewProcess;
+
+        _previewProcess =
+            null;
+
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.CloseMainWindow();
+
+                if (!process.WaitForExit(
+                        750))
+                {
+                    process.Kill(
+                        entireProcessTree:
+                            true);
+                    process.WaitForExit(
+                        1500);
+                }
+            }
+        }
+        catch
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(
+                        entireProcessTree:
+                            true);
+                }
+            }
+            catch
+            {
+            }
+        }
+        finally
+        {
+            try
+            {
+                process.Dispose();
+            }
+            catch
+            {
+            }
+        }
+    }
+
     public void Dispose()
     {
-        _previewProcess?.Dispose();
-        _previewProcess = null;
+        StopVehiclePreview();
 
         _process?.Dispose();
         _process = null;

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Diagnostics;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -92,6 +93,51 @@ public sealed partial class MainWindow :
     private int _entryPointLoadVersion;
     private bool _refreshing;
     private bool _restartRuntimeAfterInGameBusSelection;
+    private CancellationTokenSource? _embeddedPreviewCancellation;
+    private nint _embeddedPreviewWindow;
+    private string? _embeddedPreviewKey;
+
+    private const int GwlStyle = -16;
+    private const nint WsChild = 0x40000000;
+    private const nint WsCaption = 0x00C00000;
+    private const nint WsThickFrame = 0x00040000;
+    private const nint WsPopup = unchecked((nint)0x80000000);
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpFrameChanged = 0x0020;
+    private const uint SwpShowWindow = 0x0040;
+    private const int SwHide = 0;
+    private const int SwShowNa = 8;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint SetParent(
+        nint childWindow,
+        nint newParentWindow);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern nint GetWindowLongPtr(
+        nint window,
+        int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern nint SetWindowLongPtr(
+        nint window,
+        int index,
+        nint newValue);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        nint window,
+        nint insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(
+        nint window,
+        int command);
 
     public MainWindow(
         bool xamlSmokeOnly = false)
@@ -119,7 +165,10 @@ public sealed partial class MainWindow :
 
         Closed +=
             (_, _) =>
+            {
+                StopEmbeddedVehiclePreview();
                 _runtime.Dispose();
+            };
 
         Activated +=
             OnFirstActivated;
@@ -274,6 +323,17 @@ public sealed partial class MainWindow :
 
         SetNavigationSelection(
             selectedButton);
+
+        if (ReferenceEquals(
+                visibleView,
+                SessionView))
+        {
+            QueueEmbeddedVehiclePreview();
+        }
+        else
+        {
+            StopEmbeddedVehiclePreview();
+        }
     }
 
     private void SetNavigationSelection(
@@ -1048,6 +1108,7 @@ public sealed partial class MainWindow :
             BusPreviewEmptyPanel.Visibility =
                 Visibility.Visible;
 
+            StopEmbeddedVehiclePreview();
             UpdateHomeSummary();
             return;
         }
@@ -1092,7 +1153,309 @@ public sealed partial class MainWindow :
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
+        QueueEmbeddedVehiclePreview();
         UpdateHomeSummary();
+    }
+
+    private void QueueEmbeddedVehiclePreview(
+        bool force = false)
+    {
+        _embeddedPreviewCancellation?.Cancel();
+
+        var bus =
+            SelectedBus();
+
+        var repaint =
+            SelectedRepaint();
+
+        var contentPath =
+            ContentPathBox.Text?.Trim();
+
+        if (SessionView.Visibility !=
+                Visibility.Visible ||
+            NoBusCheckBox.IsChecked ==
+                true ||
+            bus is null ||
+            string.IsNullOrWhiteSpace(
+                contentPath) ||
+            !_runtimeOptions.ShowVehiclePreview)
+        {
+            return;
+        }
+
+        var key =
+            string.Join(
+                "|",
+                contentPath,
+                bus.RelativePath,
+                repaint?.Name ??
+                    string.Empty,
+                repaint?.RelativeCtiPath ??
+                    string.Empty);
+
+        if (!force &&
+            string.Equals(
+                key,
+                _embeddedPreviewKey,
+                StringComparison.OrdinalIgnoreCase) &&
+            _embeddedPreviewWindow !=
+                nint.Zero)
+        {
+            LayoutEmbeddedPreview();
+            return;
+        }
+
+        var cancellation =
+            new CancellationTokenSource();
+
+        _embeddedPreviewCancellation =
+            cancellation;
+
+        _ =
+            RefreshEmbeddedVehiclePreviewAsync(
+                key,
+                contentPath,
+                bus,
+                repaint,
+                cancellation.Token);
+    }
+
+    private async Task RefreshEmbeddedVehiclePreviewAsync(
+        string key,
+        string contentPath,
+        OmsiBusInfo bus,
+        OmsiVehicleRepaint? repaint,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(
+                250,
+                cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            _runtime.StopVehiclePreview();
+            _embeddedPreviewWindow =
+                nint.Zero;
+            _embeddedPreviewKey =
+                null;
+
+            BusPreviewImage.Visibility =
+                Visibility.Visible;
+
+            if (!_runtime.StartVehiclePreview(
+                    contentPath,
+                    bus.RelativePath,
+                    repaint?.Name,
+                    repaint?.RelativeCtiPath))
+            {
+                return;
+            }
+
+            for (var attempt = 0;
+                 attempt <
+                     200;
+                 attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (_runtime.TryGetPreviewWindowHandle(
+                        out var previewWindow) &&
+                    previewWindow !=
+                        nint.Zero)
+                {
+                    AttachEmbeddedPreview(
+                        previewWindow,
+                        key);
+
+                    SetStatus(
+                        $"Prévia 3D embutida: {bus.SelectionLabel}");
+                    return;
+                }
+
+                await Task.Delay(
+                    50,
+                    cancellationToken);
+            }
+
+            SetStatus(
+                $"A prévia 3D de {bus.SelectionLabel} iniciou, mas a janela D3D11 não ficou disponível para embutir.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            SetStatus(
+                $"Falha na prévia 3D embutida: {ex.Message}");
+        }
+    }
+
+    private void AttachEmbeddedPreview(
+        nint previewWindow,
+        string key)
+    {
+        var parentWindow =
+            WindowNative.GetWindowHandle(
+                this);
+
+        if (parentWindow ==
+                nint.Zero ||
+            previewWindow ==
+                nint.Zero)
+        {
+            return;
+        }
+
+        var style =
+            GetWindowLongPtr(
+                previewWindow,
+                GwlStyle);
+
+        style &=
+            ~(WsCaption |
+              WsThickFrame |
+              WsPopup);
+
+        style |=
+            WsChild;
+
+        SetWindowLongPtr(
+            previewWindow,
+            GwlStyle,
+            style);
+
+        SetParent(
+            previewWindow,
+            parentWindow);
+
+        _embeddedPreviewWindow =
+            previewWindow;
+        _embeddedPreviewKey =
+            key;
+
+        BusPreviewImage.Visibility =
+            Visibility.Collapsed;
+        BusPreviewEmptyPanel.Visibility =
+            Visibility.Collapsed;
+
+        LayoutEmbeddedPreview();
+    }
+
+    private void EmbeddedPreviewHost_SizeChanged(
+        object sender,
+        SizeChangedEventArgs e)
+    {
+        LayoutEmbeddedPreview();
+    }
+
+    private void LayoutEmbeddedPreview()
+    {
+        if (_embeddedPreviewWindow ==
+                nint.Zero ||
+            SessionView.Visibility !=
+                Visibility.Visible ||
+            EmbeddedPreviewHost.ActualWidth <=
+                1.0 ||
+            EmbeddedPreviewHost.ActualHeight <=
+                1.0)
+        {
+            if (_embeddedPreviewWindow !=
+                nint.Zero)
+            {
+                ShowWindow(
+                    _embeddedPreviewWindow,
+                    SwHide);
+            }
+
+            return;
+        }
+
+        try
+        {
+            var origin =
+                EmbeddedPreviewHost
+                    .TransformToVisual(
+                        null)
+                    .TransformPoint(
+                        new Windows.Foundation.Point(
+                            0,
+                            0));
+
+            var scale =
+                EmbeddedPreviewHost.XamlRoot
+                    ?.RasterizationScale ??
+                1.0;
+
+            var x =
+                (int)Math.Round(
+                    origin.X *
+                    scale);
+            var y =
+                (int)Math.Round(
+                    origin.Y *
+                    scale);
+            var width =
+                Math.Max(
+                    1,
+                    (int)Math.Round(
+                        EmbeddedPreviewHost.ActualWidth *
+                        scale));
+            var height =
+                Math.Max(
+                    1,
+                    (int)Math.Round(
+                        EmbeddedPreviewHost.ActualHeight *
+                        scale));
+
+            SetWindowPos(
+                _embeddedPreviewWindow,
+                nint.Zero,
+                x,
+                y,
+                width,
+                height,
+                SwpNoActivate |
+                SwpFrameChanged |
+                SwpShowWindow);
+
+            ShowWindow(
+                _embeddedPreviewWindow,
+                SwShowNa);
+        }
+        catch
+        {
+            ShowWindow(
+                _embeddedPreviewWindow,
+                SwHide);
+        }
+    }
+
+    private void StopEmbeddedVehiclePreview()
+    {
+        _embeddedPreviewCancellation?.Cancel();
+        _embeddedPreviewCancellation?.Dispose();
+        _embeddedPreviewCancellation =
+            null;
+
+        if (_embeddedPreviewWindow !=
+            nint.Zero)
+        {
+            ShowWindow(
+                _embeddedPreviewWindow,
+                SwHide);
+        }
+
+        _embeddedPreviewWindow =
+            nint.Zero;
+        _embeddedPreviewKey =
+            null;
+
+        _runtime.StopVehiclePreview();
+
+        BusPreviewImage.Visibility =
+            Visibility.Visible;
     }
 
     private async Task LoadEntryPointsAsync(
@@ -1150,59 +1513,19 @@ public sealed partial class MainWindow :
         object sender,
         RoutedEventArgs e)
     {
-        if (_runtime.IsPreviewRunning)
-        {
-            SetStatus(
-                "A prévia 3D já está aberta.");
-            return;
-        }
-
         var bus =
             SelectedBus();
-
-        var repaint =
-            SelectedRepaint();
 
         if (bus is null)
         {
             SetStatus(
-                "Selecione um ônibus para abrir a prévia 3D.");
+                "Selecione um ônibus para a prévia 3D.");
             return;
         }
 
-        if (!OmsiContentRoot.TryCreate(
-                ContentPathBox.Text,
-                out _,
-                out var error))
-        {
-            SetStatus(
-                error);
-            return;
-        }
-
-        try
-        {
-            if (!_runtime.StartVehiclePreview(
-                    ContentPathBox.Text,
-                    bus.RelativePath,
-                    repaint?.Name,
-                    repaint?.RelativeCtiPath))
-            {
-                SetStatus(
-                    "A prévia 3D já está em execução.");
-                return;
-            }
-
-            SetStatus(
-                $"Prévia 3D aberta: {bus.SelectionLabel}");
-        }
-        catch (Exception ex)
-        {
-            SetStatus(
-                $"Falha ao abrir prévia 3D: {ex.Message}");
-        }
-
-        UpdatePlayAvailability();
+        QueueEmbeddedVehiclePreview(
+            force:
+                true);
     }
 
     private void PlayButton_Click(
@@ -1245,6 +1568,7 @@ public sealed partial class MainWindow :
 
         try
         {
+            StopEmbeddedVehiclePreview();
             SaveSettings();
 
             ShowLoading(

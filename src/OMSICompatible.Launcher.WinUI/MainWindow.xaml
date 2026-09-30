@@ -369,12 +369,14 @@
 
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="300"/>
+                                <ColumnDefinition Width="420"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Border Background="#111E2D"
-                                    Height="190"
-                                    CornerRadius="10">
+                            <Border x:Name="EmbeddedPreviewHost"
+                                    Background="#111E2D"
+                                    Height="260"
+                                    CornerRadius="10"
+                                    SizeChanged="EmbeddedPreviewHost_SizeChanged">
                                 <Grid>
                                     <Image x:Name="BusPreviewImage"
                                            Stretch="Uniform"/>
