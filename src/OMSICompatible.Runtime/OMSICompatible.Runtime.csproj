@@ -15,5 +15,6 @@
     <ProjectReference Include="../OMSICompatible.World/OMSICompatible.World.csproj" />
     <ProjectReference Include="../OMSICompatible.Renderer.D3D11/OMSICompatible.Renderer.D3D11.csproj" />
     <ProjectReference Include="../OMSICompatible.Renderer.D3D12/OMSICompatible.Renderer.D3D12.csproj" />
+    <ProjectReference Include="../OMSICompatible.Multiplayer/OMSICompatible.Multiplayer.csproj" />
   </ItemGroup>
 </Project>

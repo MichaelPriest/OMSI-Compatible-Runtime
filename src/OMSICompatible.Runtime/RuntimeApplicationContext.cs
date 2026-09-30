@@ -8,6 +8,7 @@ using OmsiCompat.Vehicles;
 using OMSICompatible.Renderer.Common;
 using OMSICompatible.Renderer.D3D11;
 using OMSICompatible.Renderer.D3D12;
+using OMSICompatible.Multiplayer;
 using OMSICompatible.World;
 
 namespace OMSICompatible.Runtime;
@@ -29,6 +30,8 @@ internal sealed class RuntimeApplicationContext :
         new(1, 1);
     private readonly SemaphoreSlim _prefetchGate =
         new(1, 1);
+    private readonly SemaphoreSlim _multiplayerAssetGate =
+        new(1, 1);
     private (int X, int Y)? _pendingPrefetchCenter;
     private (int X, int Y)? _lastPrefetchedCenter;
 
@@ -36,6 +39,15 @@ internal sealed class RuntimeApplicationContext :
     private OmsiVehicleAsset? _vehicleAsset;
     private WorldTrafficSimulation? _trafficSimulation;
     private WorldRailTrafficSimulation? _railTrafficSimulation;
+    private WorldDefinition? _currentWorld;
+    private OpenOmsiLanSession? _multiplayerSession;
+    private readonly HashSet<string>
+        _pendingMultiplayerVehiclePaths =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<uint, double>
+        _multiplayerTravelMeters =
+            [];
     private readonly Dictionary<string, OmsiTrainConsist>
         _railTrainConsists =
             new(
@@ -417,6 +429,17 @@ internal sealed class RuntimeApplicationContext :
 
             _vehicleAsset =
                 vehicle;
+            _currentWorld =
+                world;
+
+            if (vehicle is not null &&
+                _bus is not null)
+            {
+                _trafficVehicleAssets[
+                    Path.GetFullPath(
+                        _bus.FilePath)] =
+                    vehicle;
+            }
 
             var simulationBuildStarted =
                 Stopwatch.GetTimestamp();
@@ -652,6 +675,8 @@ internal sealed class RuntimeApplicationContext :
                     reflectionMode:
                         _options.RealTimeReflections);
 
+            StartMultiplayerSession();
+
             if (_options.RuntimeBorderlessFullscreen)
             {
                 _runtimeWindow.FormBorderStyle =
@@ -689,6 +714,7 @@ internal sealed class RuntimeApplicationContext :
                     _runtimeWindow.Dispose();
                     _runtimeWindow = null;
 
+                    DisposeMultiplayerSession();
                     DisposePluginClients();
 
                     if (!_loading.IsDisposed)
@@ -718,6 +744,7 @@ internal sealed class RuntimeApplicationContext :
         }
         catch (Exception ex)
         {
+            DisposeMultiplayerSession();
             DisposePluginClients();
 
             Console.Error.WriteLine(ex);
@@ -1480,6 +1507,9 @@ internal sealed class RuntimeApplicationContext :
                 {
                     return;
                 }
+
+                _currentWorld =
+                    streamedWorld;
 
                 var simulationBuildStarted =
                     Stopwatch.GetTimestamp();
@@ -2769,13 +2799,13 @@ internal sealed class RuntimeApplicationContext :
             0)
         {
             _trafficScriptRuntimes.Clear();
-            return Array.Empty<
-                RuntimeTrafficAgentInfo>();
         }
-
-        UpdateTrafficScriptRuntimes(
-            agents,
-            deltaSeconds);
+        else
+        {
+            UpdateTrafficScriptRuntimes(
+                agents,
+                deltaSeconds);
+        }
 
         _runtimeTrafficAgentBuffer.Clear();
 
@@ -2811,7 +2841,472 @@ internal sealed class RuntimeApplicationContext :
                         agent)));
         }
 
+        AppendMultiplayerTrafficAgents(
+            deltaSeconds);
+
         return _runtimeTrafficAgentBuffer;
+    }
+
+    private void StartMultiplayerSession()
+    {
+        DisposeMultiplayerSession();
+
+        var mode =
+            (_options.MultiplayerMode ??
+             "off")
+                .Trim()
+                .ToLowerInvariant();
+
+        if (mode is not ("host" or "join"))
+        {
+            return;
+        }
+
+        var now =
+            DateTime.Now;
+
+        var world =
+            new OpenOmsiLanWorld(
+                _map.FolderName,
+                now.ToString(
+                    "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture),
+                now.TimeOfDay.TotalSeconds,
+                string.Empty,
+                string.Empty);
+
+        try
+        {
+            _multiplayerSession =
+                mode == "host"
+                    ? OpenOmsiLanSession.Host(
+                        Math.Clamp(
+                            _options.MultiplayerPort,
+                            1,
+                            ushort.MaxValue),
+                        _options.MultiplayerPlayerName,
+                        world,
+                        tryNextPorts:
+                            true)
+                    : OpenOmsiLanSession.Join(
+                        _options.MultiplayerTarget,
+                        _options.MultiplayerPlayerName,
+                        world);
+
+            Console.WriteLine(
+                mode == "host"
+                    ? $"[multiplayer] host protocol={OpenOmsiLanProtocol.ProtocolVersion}; port={_multiplayerSession.LocalPort}; session={_multiplayerSession.SessionHex}"
+                    : $"[multiplayer] join protocol={OpenOmsiLanProtocol.ProtocolVersion}; target={_options.MultiplayerTarget}; localPort={_multiplayerSession.LocalPort}");
+        }
+        catch (Exception exception)
+        {
+            _multiplayerSession?.Dispose();
+            _multiplayerSession =
+                null;
+
+            Console.Error.WriteLine(
+                $"[multiplayer] startup failed: {exception.Message}");
+        }
+    }
+
+    private void DisposeMultiplayerSession()
+    {
+        var session =
+            _multiplayerSession;
+
+        _multiplayerSession =
+            null;
+
+        if (session is null)
+        {
+            return;
+        }
+
+        try
+        {
+            session.Leave();
+        }
+        catch
+        {
+        }
+
+        session.Dispose();
+        _multiplayerTravelMeters.Clear();
+    }
+
+    private OpenOmsiLanPose CreateLocalMultiplayerPose()
+    {
+        var pose =
+            new OpenOmsiLanPose
+            {
+                Id =
+                    _multiplayerSession?.PlayerId ??
+                    0,
+                Name =
+                    _options.MultiplayerPlayerName,
+                VehiclePath =
+                    _bus?.RelativePath
+                        .Replace(
+                            '\\',
+                            '/') ??
+                    string.Empty,
+                Paint =
+                    _repaintName ??
+                    string.Empty
+            };
+
+        if (_runtimeWindow is not
+            { IsDisposed: false } window ||
+            _bus is null)
+        {
+            return pose;
+        }
+
+        var state =
+            window.LocalVehicleState;
+
+        pose.X =
+            -state.Position.X;
+        pose.Y =
+            state.Position.Y;
+        pose.Z =
+            state.Position.Z;
+        pose.HeadingDegrees =
+            -state.HeadingRadians *
+            180.0f /
+            MathF.PI;
+        pose.SpeedKph =
+            state.SpeedMetersPerSecond *
+            3.6f;
+        pose.SteeringDegrees =
+            state.SteeringAngleRadians *
+            180.0f /
+            MathF.PI;
+        pose.Throttle =
+            Math.Clamp(
+                state.AcceleratorLevel,
+                0.0f,
+                1.0f);
+        pose.Brake =
+            Math.Clamp(
+                state.BrakeLevel,
+                0.0f,
+                1.0f);
+
+        var flags =
+            OpenOmsiLanProtocol.FlagVehicle;
+
+        if (state.EngineRunning)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagEngine;
+        }
+
+        if (state.ElectricalSystemEnabled)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagElectrics;
+        }
+
+        if (state.BrakeLevel >
+            0.05f)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagBrake;
+        }
+
+        if (state.Gear <
+            0)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagReverse;
+        }
+
+        if (state.StopBrakeEngaged ||
+            state.ParkingBrakeEngaged)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagStopBrake;
+        }
+
+        pose.Flags =
+            flags;
+
+        if (window.PlayerTrafficObstacle is
+            { } obstacle)
+        {
+            pose.LengthMeters =
+                (float)(
+                    obstacle.HalfLengthMeters *
+                    2.0);
+            pose.WidthMeters =
+                (float)(
+                    obstacle.HalfWidthMeters *
+                    2.0);
+        }
+
+        return pose;
+    }
+
+    private void AppendMultiplayerTrafficAgents(
+        double deltaSeconds)
+    {
+        var session =
+            _multiplayerSession;
+
+        if (session is null)
+        {
+            return;
+        }
+
+        try
+        {
+            session.Tick(
+                deltaSeconds,
+                CreateLocalMultiplayerPose());
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"[multiplayer] tick failed: {exception.Message}");
+            return;
+        }
+
+        foreach (var peer in
+                 session.SnapshotPeers())
+        {
+            if (!peer.HasState ||
+                !peer.Pose.HasVehicle)
+            {
+                continue;
+            }
+
+            var vehiclePath =
+                ResolveMultiplayerVehiclePath(
+                    peer.Pose.VehiclePath);
+
+            if (vehiclePath is null)
+            {
+                continue;
+            }
+
+            if (!_trafficVehicleAssets.ContainsKey(
+                    vehiclePath))
+            {
+                QueueMultiplayerVehicleAsset(
+                    vehiclePath);
+                continue;
+            }
+
+            var speedMetersPerSecond =
+                peer.Pose.SpeedKph /
+                3.6;
+
+            _multiplayerTravelMeters.TryGetValue(
+                peer.Id,
+                out var traveled);
+
+            traveled +=
+                Math.Abs(
+                    speedMetersPerSecond) *
+                Math.Max(
+                    0.0,
+                    deltaSeconds);
+
+            _multiplayerTravelMeters[
+                peer.Id] =
+                traveled;
+
+            var blinker =
+                peer.Pose.Blinker;
+
+            _runtimeTrafficAgentBuffer.Add(
+                new RuntimeTrafficAgentInfo(
+                    unchecked(
+                        (int)(
+                            0x60000000u |
+                            (peer.Id &
+                             0x1FFFFFFFu))),
+                    -1,
+                    0.0,
+                    speedMetersPerSecond,
+                    vehiclePath,
+                    RuntimeWorldXFromSource(
+                        peer.Pose.X),
+                    peer.Pose.Y,
+                    peer.Pose.Z,
+                    RuntimeHeadingRadiansFromSource(
+                        peer.Pose.HeadingDegrees *
+                        Math.PI /
+                        180.0),
+                    peer.Pose.Brake >
+                        0.05f ||
+                    (peer.Pose.Flags &
+                     OpenOmsiLanProtocol.FlagBrake) !=
+                        0,
+                    blinker is 1 or 3,
+                    blinker is 2 or 3,
+                    traveled,
+                    0.0,
+                    ScriptRuntime:
+                        null));
+        }
+    }
+
+    private string? ResolveMultiplayerVehiclePath(
+        string networkPath)
+    {
+        var normalized =
+            OpenOmsiLanProtocol.NormalizeVehiclePath(
+                networkPath);
+
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        var candidate =
+            Path.GetFullPath(
+                Path.Combine(
+                    _contentRoot.RootPath,
+                    normalized.Replace(
+                        '/',
+                        Path.DirectorySeparatorChar)));
+
+        var vehiclesRoot =
+            Path.GetFullPath(
+                Path.Combine(
+                    _contentRoot.RootPath,
+                    "Vehicles")) +
+            Path.DirectorySeparatorChar;
+
+        if (!candidate.StartsWith(
+                vehiclesRoot,
+                StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(
+                candidate))
+        {
+            return null;
+        }
+
+        return candidate;
+    }
+
+    private void QueueMultiplayerVehicleAsset(
+        string vehiclePath)
+    {
+        if (_trafficVehicleAssets.ContainsKey(
+                vehiclePath) ||
+            !_pendingMultiplayerVehiclePaths.Add(
+                vehiclePath))
+        {
+            return;
+        }
+
+        _ =
+            ProcessMultiplayerVehicleAssetsAsync();
+    }
+
+    private async Task ProcessMultiplayerVehicleAssetsAsync()
+    {
+        if (!await _multiplayerAssetGate.WaitAsync(
+                0))
+        {
+            return;
+        }
+
+        try
+        {
+            while (!_closing &&
+                   _pendingMultiplayerVehiclePaths.Count >
+                       0)
+            {
+                var requested =
+                    _pendingMultiplayerVehiclePaths
+                        .ToArray();
+
+                _pendingMultiplayerVehiclePaths.Clear();
+
+                var loaded =
+                    await Task.Run(
+                        () =>
+                        {
+                            var result =
+                                new List<(
+                                    string Path,
+                                    OmsiVehicleAsset Asset)>();
+
+                            foreach (var path in
+                                     requested)
+                            {
+                                try
+                                {
+                                    var bus =
+                                        OmsiBusReader.ReadFile(
+                                            _contentRoot.RootPath,
+                                            path);
+
+                                    var asset =
+                                        OmsiArticulatedVehicleAssetLoader.Load(
+                                            _contentRoot,
+                                            bus);
+
+                                    if (asset.RenderableMeshCount >
+                                        0)
+                                    {
+                                        result.Add(
+                                            (
+                                                path,
+                                                asset));
+                                    }
+                                }
+                                catch (Exception exception)
+                                {
+                                    Console.Error.WriteLine(
+                                        $"[multiplayer] remote vehicle load failed for {path}: {exception.Message}");
+                                }
+                            }
+
+                            return result;
+                        });
+
+                foreach (var item in
+                         loaded)
+                {
+                    _trafficVehicleAssets[
+                        item.Path] =
+                        item.Asset;
+
+                    Console.WriteLine(
+                        $"[multiplayer] remote vehicle cached: {Path.GetFileName(item.Path)}");
+                }
+
+                if (loaded.Count >
+                        0 &&
+                    _currentWorld is
+                        { } currentWorld &&
+                    _runtimeWindow is
+                        { IsDisposed: false } window)
+                {
+                    var runtimeInfo =
+                        await Task.Run(
+                            () =>
+                                BuildRuntimeInfo(
+                                    currentWorld,
+                                    _vehicleAsset,
+                                    _entryPoint,
+                                    _contentRoot.RootPath,
+                                    _trafficVehicleAssets));
+
+                    await window.ApplyStreamedWorldAsync(
+                        runtimeInfo);
+                }
+            }
+        }
+        finally
+        {
+            _multiplayerAssetGate.Release();
+        }
     }
 
     private void UpdateTrafficScriptRuntimes(

@@ -15,6 +15,19 @@ using static Vortice.DXGI.DXGI;
 
 namespace OMSICompatible.Renderer.D3D11;
 
+public readonly record struct RuntimeLocalVehicleState(
+    Vector3 Position,
+    float HeadingRadians,
+    float SpeedMetersPerSecond,
+    float SteeringAngleRadians,
+    float BrakeLevel,
+    float AcceleratorLevel,
+    bool ElectricalSystemEnabled,
+    bool EngineRunning,
+    bool ParkingBrakeEngaged,
+    bool StopBrakeEngaged,
+    int Gear);
+
 public sealed class D3D11RenderWindow : Form
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -1584,6 +1597,21 @@ public sealed class D3D11RenderWindow : Form
 
     public static string GetTextureFileCacheDiagnostics() =>
         RuntimeGpuTextureLoader.GetFileCacheDiagnostics();
+
+    public RuntimeLocalVehicleState
+        LocalVehicleState =>
+        new(
+            _vehicle.Position,
+            _vehicle.HeadingRadians,
+            _vehicle.SpeedMetersPerSecond,
+            _vehicle.SteeringAngleRadians,
+            _vehicle.BrakeLevel,
+            _vehicle.AcceleratorLevel,
+            _vehicle.ElectricalSystemEnabled,
+            _vehicle.EngineRunning,
+            _vehicle.ParkingBrakeEngaged,
+            _vehicle.StopBrakeEngaged,
+            (int)_vehicle.Gear);
 
     public RuntimeTrafficObstacleInfo?
         PlayerTrafficObstacle
