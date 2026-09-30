@@ -12099,24 +12099,23 @@ public sealed class D3D11RenderWindow : Form
             return false;
         }
 
-        var loaded =
-            _objectTextureLoader.TryLoad(
-                texturePath);
-
-        if (loaded is null)
+        // Late material/vehicle textures must not perform file I/O, decode
+        // and GPU creation from the draw path. The ordinary streaming queue
+        // is processed before rendering and already adapts its upload budget
+        // to frame pressure. Player vehicle textures are pinned/preloaded
+        // during resource creation, so this path is for genuinely late
+        // references only.
+        if (_pendingStreamingTexturePaths.Add(
+                texturePath))
         {
-            _failedObjectTexturePaths.Add(
-                texturePath);
-            return false;
+            _pendingStreamingTextureLoads.Enqueue(
+                (
+                    texturePath,
+                    AlphaMask:
+                        false));
         }
 
-        _objectTextureCache[
-            texturePath] =
-            loaded;
-
-        view =
-            loaded.View;
-        return true;
+        return false;
     }
 
     private Vector3 ResolveActiveCameraPosition()
