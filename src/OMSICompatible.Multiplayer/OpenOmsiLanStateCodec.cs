@@ -177,9 +177,9 @@ public static class OpenOmsiLanStateCodec
             return true;
         }
 
-        if (!reader.TryGetFixed(0.01, 32, out pose.X) ||
-            !reader.TryGetFixed(0.01, 32, out pose.Y) ||
-            !reader.TryGetFixed(0.01, 24, out pose.Z) ||
+        if (!reader.TryGetFixed(0.01, 32, out var x) ||
+            !reader.TryGetFixed(0.01, 32, out var y) ||
+            !reader.TryGetFixed(0.01, 24, out var z) ||
             !reader.TryGet(16, out var heading) ||
             !reader.TryGetFixedFloat(0.01, 12, out var pitch) ||
             !reader.TryGetFixedFloat(0.01, 12, out var bank) ||
@@ -195,6 +195,10 @@ public static class OpenOmsiLanStateCodec
         {
             return false;
         }
+
+        pose.X = x;
+        pose.Y = y;
+        pose.Z = z;
 
         pose.HeadingDegrees =
             (float)(
