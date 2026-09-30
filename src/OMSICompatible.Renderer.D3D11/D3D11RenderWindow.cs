@@ -657,13 +657,13 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11VertexShader? _vehicleVertexShader;
     private ID3D11VertexShader? _trafficInstancedVertexShader;
     private ID3D11InputLayout? _trafficInstancedInputLayout;
-    private ID3D11Buffer? _trafficInstanceBuffer;
-    private int _trafficInstanceBufferCapacity;
     private RuntimeTrafficInstanceData[] _trafficInstanceScratch =
         Array.Empty<RuntimeTrafficInstanceData>();
-    private RuntimeTrafficInstanceData[] _trafficLastUploadedInstances =
-        Array.Empty<RuntimeTrafficInstanceData>();
-    private int _trafficLastUploadedInstanceCount;
+    private readonly Dictionary<
+        TrafficInstanceBufferKey,
+        TrafficInstanceBufferState>
+        _trafficInstanceBuffers =
+            [];
     private ID3D11PixelShader? _vehicleColorPixelShader;
     private ID3D11PixelShader? _vehicleLightPixelShader;
     private ID3D11PixelShader? _vehicleTexturedPixelShader;
@@ -735,6 +735,32 @@ public sealed class D3D11RenderWindow : Form
     private readonly record struct TrafficVehicleDrawItem(
         RuntimeTrafficAgentInfo Agent,
         Matrix4x4 VehicleWorld);
+
+    private readonly record struct TrafficInstanceBufferKey(
+        string VehiclePath,
+        uint BatchStartVertex);
+
+    private sealed class TrafficInstanceBufferState : IDisposable
+    {
+        public ID3D11Buffer? Buffer;
+        public int Capacity;
+        public RuntimeTrafficInstanceData[] UploadedInstances =
+            Array.Empty<RuntimeTrafficInstanceData>();
+        public int UploadedCount;
+
+        public void Dispose()
+        {
+            Buffer?.Dispose();
+            Buffer =
+                null;
+            Capacity =
+                0;
+            UploadedInstances =
+                Array.Empty<RuntimeTrafficInstanceData>();
+            UploadedCount =
+                0;
+        }
+    }
 
     private readonly record struct TrafficVehicleRenderBatchSummary(
         bool HasStaticOpaque,
@@ -7494,10 +7520,16 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private bool TryUploadTrafficInstances(
+        string vehiclePath,
+        uint batchStartVertex,
         IReadOnlyList<TrafficVehicleDrawItem> drawItems,
+        out ID3D11Buffer? instanceBuffer,
         RuntimeObjectBatch? animationBatch = null,
         RuntimeVehicleInfo? vehicleInfo = null)
     {
+        instanceBuffer =
+            null;
+
         if (_device is null ||
             _deviceContext is null ||
             drawItems.Count ==
@@ -7560,17 +7592,33 @@ public sealed class D3D11RenderWindow : Form
                 };
         }
 
+        var key =
+            new TrafficInstanceBufferKey(
+                vehiclePath,
+                batchStartVertex);
+
+        if (!_trafficInstanceBuffers.TryGetValue(
+                key,
+                out var state))
+        {
+            state =
+                new TrafficInstanceBufferState();
+            _trafficInstanceBuffers[
+                key] =
+                state;
+        }
+
         var bufferRecreated =
             false;
 
-        if (_trafficInstanceBuffer is null ||
-            _trafficInstanceBufferCapacity <
+        if (state.Buffer is null ||
+            state.Capacity <
                 requiredCount)
         {
             var capacity =
                 Math.Max(
                     64,
-                    _trafficInstanceBufferCapacity);
+                    state.Capacity);
 
             while (capacity <
                    requiredCount)
@@ -7579,59 +7627,33 @@ public sealed class D3D11RenderWindow : Form
                     2;
             }
 
-            _trafficInstanceBuffer?.Dispose();
+            state.Buffer?.Dispose();
 
-            _trafficInstanceBuffer =
+            state.Buffer =
                 _device.CreateBuffer(
                     new BufferDescription(
                         (uint)(
                             capacity *
                             RuntimeTrafficInstanceData.SizeInBytes),
                         BindFlags.VertexBuffer,
-                        ResourceUsage.Dynamic,
-                        CpuAccessFlags.Write));
+                        ResourceUsage.Default,
+                        CpuAccessFlags.None));
 
-            _trafficInstanceBufferCapacity =
+            state.Capacity =
                 capacity;
-            _trafficLastUploadedInstanceCount =
+            state.UploadedCount =
                 0;
             bufferRecreated =
                 true;
         }
 
-        var currentInstances =
-            _trafficInstanceScratch.AsSpan(
-                0,
-                requiredCount);
-
-        if (!bufferRecreated &&
-            _trafficLastUploadedInstanceCount ==
-                requiredCount &&
-            _trafficLastUploadedInstances.Length >=
-                requiredCount &&
-            MemoryMarshal.AsBytes(
-                    currentInstances)
-                .SequenceEqual(
-                    MemoryMarshal.AsBytes(
-                        _trafficLastUploadedInstances.AsSpan(
-                            0,
-                            requiredCount))))
-        {
-            return true;
-        }
-
-        _trafficInstanceBuffer.SetData(
-            _deviceContext,
-            currentInstances,
-            MapMode.WriteDiscard);
-
-        if (_trafficLastUploadedInstances.Length <
+        if (state.UploadedInstances.Length <
             requiredCount)
         {
             var cacheCapacity =
                 Math.Max(
                     64,
-                    _trafficLastUploadedInstances.Length);
+                    state.UploadedInstances.Length);
 
             while (cacheCapacity <
                    requiredCount)
@@ -7641,16 +7663,163 @@ public sealed class D3D11RenderWindow : Form
             }
 
             Array.Resize(
-                ref _trafficLastUploadedInstances,
+                ref state.UploadedInstances,
                 cacheCapacity);
         }
 
-        currentInstances.CopyTo(
-            _trafficLastUploadedInstances);
-        _trafficLastUploadedInstanceCount =
-            requiredCount;
+        var currentInstances =
+            _trafficInstanceScratch.AsSpan(
+                0,
+                requiredCount);
 
-        return true;
+        if (bufferRecreated)
+        {
+            UploadTrafficInstanceRange(
+                state.Buffer,
+                currentInstances,
+                0,
+                requiredCount);
+
+            currentInstances.CopyTo(
+                state.UploadedInstances);
+        }
+        else
+        {
+            var comparableCount =
+                Math.Min(
+                    requiredCount,
+                    state.UploadedCount);
+            var index =
+                0;
+
+            while (index <
+                   comparableCount)
+            {
+                while (index <
+                           comparableCount &&
+                       currentInstances[
+                               index]
+                           .World.Equals(
+                               state.UploadedInstances[
+                                       index]
+                                   .World))
+                {
+                    index++;
+                }
+
+                if (index >=
+                    comparableCount)
+                {
+                    break;
+                }
+
+                var changedStart =
+                    index;
+
+                while (index <
+                           comparableCount &&
+                       !currentInstances[
+                                index]
+                            .World.Equals(
+                                state.UploadedInstances[
+                                        index]
+                                    .World))
+                {
+                    index++;
+                }
+
+                var changedCount =
+                    index -
+                    changedStart;
+
+                UploadTrafficInstanceRange(
+                    state.Buffer,
+                    currentInstances,
+                    changedStart,
+                    changedCount);
+
+                currentInstances
+                    .Slice(
+                        changedStart,
+                        changedCount)
+                    .CopyTo(
+                        state.UploadedInstances.AsSpan(
+                            changedStart,
+                            changedCount));
+            }
+
+            if (requiredCount >
+                state.UploadedCount)
+            {
+                var appendedStart =
+                    state.UploadedCount;
+                var appendedCount =
+                    requiredCount -
+                    appendedStart;
+
+                UploadTrafficInstanceRange(
+                    state.Buffer,
+                    currentInstances,
+                    appendedStart,
+                    appendedCount);
+
+                currentInstances
+                    .Slice(
+                        appendedStart,
+                        appendedCount)
+                    .CopyTo(
+                        state.UploadedInstances.AsSpan(
+                            appendedStart,
+                            appendedCount));
+            }
+        }
+
+        state.UploadedCount =
+            requiredCount;
+        instanceBuffer =
+            state.Buffer;
+
+        return instanceBuffer is not null;
+    }
+
+    private void UploadTrafficInstanceRange(
+        ID3D11Buffer buffer,
+        Span<RuntimeTrafficInstanceData> instances,
+        int start,
+        int count)
+    {
+        if (_deviceContext is null ||
+            count <=
+                0)
+        {
+            return;
+        }
+
+        var left =
+            checked(
+                start *
+                (int)RuntimeTrafficInstanceData.SizeInBytes);
+        var right =
+            checked(
+                (
+                    start +
+                    count
+                ) *
+                (int)RuntimeTrafficInstanceData.SizeInBytes);
+
+        _deviceContext.UpdateSubresource(
+            instances.Slice(
+                start,
+                count),
+            buffer,
+            region:
+                new Box(
+                    left,
+                    0,
+                    0,
+                    right,
+                    1,
+                    1));
     }
 
     private void DrawTrafficVehicles()
@@ -7980,8 +8149,11 @@ public sealed class D3D11RenderWindow : Form
             if (canInstance &&
                 hasStaticOpaqueBatches &&
                 TryUploadTrafficInstances(
-                    pair.Value) &&
-                _trafficInstanceBuffer is not null)
+                    pair.Key,
+                    uint.MaxValue,
+                    pair.Value,
+                    out var staticInstanceBuffer) &&
+                staticInstanceBuffer is not null)
             {
                 _deviceContext.IASetInputLayout(
                     _trafficInstancedInputLayout);
@@ -7996,7 +8168,7 @@ public sealed class D3D11RenderWindow : Form
 
                 _deviceContext.IASetVertexBuffer(
                     1,
-                    _trafficInstanceBuffer,
+                    staticInstanceBuffer,
                     RuntimeTrafficInstanceData.SizeInBytes);
 
                 foreach (var batch in
@@ -8052,17 +8224,20 @@ public sealed class D3D11RenderWindow : Form
                     }
 
                     if (!TryUploadTrafficInstances(
+                            pair.Key,
+                            batch.StartVertex,
                             pair.Value,
+                            out var animatedInstanceBuffer,
                             batch,
                             vehicleInfo) ||
-                        _trafficInstanceBuffer is null)
+                        animatedInstanceBuffer is null)
                     {
                         continue;
                     }
 
                     _deviceContext.IASetVertexBuffer(
                         1,
-                        _trafficInstanceBuffer,
+                        animatedInstanceBuffer,
                         RuntimeTrafficInstanceData.SizeInBytes);
 
                     if (!TryPrepareTrafficVehicleBatch(
@@ -21877,11 +22052,14 @@ public sealed class D3D11RenderWindow : Form
             _vehicleInputLayout?.Dispose();
             _trafficInstancedInputLayout?.Dispose();
             _trafficInstancedVertexShader?.Dispose();
-            _trafficInstanceBuffer?.Dispose();
-            _trafficInstanceBuffer =
-                null;
-            _trafficInstanceBufferCapacity =
-                0;
+
+            foreach (var instanceBuffer in
+                     _trafficInstanceBuffers.Values)
+            {
+                instanceBuffer.Dispose();
+            }
+
+            _trafficInstanceBuffers.Clear();
             _trafficInstanceScratch =
                 Array.Empty<RuntimeTrafficInstanceData>();
             _vehicleAlphaBlendTransMapPixelShader?.Dispose();
