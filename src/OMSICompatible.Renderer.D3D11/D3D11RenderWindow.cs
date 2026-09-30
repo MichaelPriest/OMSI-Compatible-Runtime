@@ -628,8 +628,8 @@ public sealed class D3D11RenderWindow : Form
         768L * 1024L * 1024L;
     private const long DefaultMaximumStreamingTextureCacheBytes =
         1536L * 1024L * 1024L;
-    private readonly long _maximumStreamingTextureCacheBytes;
-    private readonly long _maximumInactiveStreamingTextureCacheBytes;
+    private long _maximumStreamingTextureCacheBytes;
+    private long _maximumInactiveStreamingTextureCacheBytes;
     private long _currentStreamingTextureCacheBytes;
     private const int MaximumStreamingTextureUploadsPerFrame =
         4;
@@ -1022,12 +1022,8 @@ public sealed class D3D11RenderWindow : Form
             ResolveStreamingTextureBudgetBytes();
 
         _maximumInactiveStreamingTextureCacheBytes =
-            Math.Min(
-                DefaultMaximumInactiveStreamingTextureCacheBytes,
-                Math.Max(
-                    256L * 1024L * 1024L,
-                    _maximumStreamingTextureCacheBytes /
-                        2L));
+            ResolveInactiveStreamingTextureBudgetBytes(
+                _maximumStreamingTextureCacheBytes);
 
         _vehiclePreviewMode =
             vehiclePreviewMode;
@@ -2911,6 +2907,9 @@ public sealed class D3D11RenderWindow : Form
         _factory = CreateDXGIFactory1<IDXGIFactory2>();
 
         using var adapter = GetHardwareAdapter(_factory);
+
+        ClampStreamingTextureBudgetToAdapter(
+            adapter.Description1);
 
         var result = D3D11CreateDevice(
             adapter,
@@ -6557,31 +6556,53 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
-    private static long ResolveStreamingTextureBudgetBytes()
+    private static bool TryResolveConfiguredStreamingTextureBudgetBytes(
+        out long bytes)
     {
         const long megabyte =
             1024L *
             1024L;
 
+        bytes =
+            0L;
+
         var environmentValue =
             Environment.GetEnvironmentVariable(
                 "OMSI_TEXTURE_MEMORY");
 
-        if (long.TryParse(
+        if (!long.TryParse(
                 environmentValue,
                 System.Globalization.NumberStyles.Integer,
                 System.Globalization.CultureInfo.InvariantCulture,
-                out var configuredMegabytes) &&
-            configuredMegabytes >
+                out var configuredMegabytes) ||
+            configuredMegabytes <=
                 0)
         {
-            return Math.Clamp(
+            return false;
+        }
+
+        bytes =
+            Math.Clamp(
                 configuredMegabytes *
                     megabyte,
                 256L *
                     megabyte,
                 16_384L *
                     megabyte);
+
+        return true;
+    }
+
+    private static long ResolveStreamingTextureBudgetBytes()
+    {
+        const long megabyte =
+            1024L *
+            1024L;
+
+        if (TryResolveConfiguredStreamingTextureBudgetBytes(
+                out var configuredBytes))
+        {
+            return configuredBytes;
         }
 
         var availableMemory =
@@ -6594,9 +6615,9 @@ public sealed class D3D11RenderWindow : Form
             return DefaultMaximumStreamingTextureCacheBytes;
         }
 
-        // Mirror openOMSI's automatic policy: texture memory gets a
-        // conservative fraction of system memory, with a sane cap when
-        // adapter-specific memory is unavailable.
+        // Mirror openOMSI's automatic policy: start with an eighth of
+        // system memory. InitializeGraphics applies the selected adapter's
+        // dedicated-VRAM ceiling after DXGI chooses the hardware device.
         return Math.Clamp(
             availableMemory /
                 8L,
@@ -6604,6 +6625,84 @@ public sealed class D3D11RenderWindow : Form
                 megabyte,
             1600L *
                 megabyte);
+    }
+
+    private static long ResolveInactiveStreamingTextureBudgetBytes(
+        long totalBudgetBytes) =>
+        Math.Min(
+            DefaultMaximumInactiveStreamingTextureCacheBytes,
+            Math.Max(
+                256L * 1024L * 1024L,
+                totalBudgetBytes /
+                    2L));
+
+    private void ClampStreamingTextureBudgetToAdapter(
+        AdapterDescription1 adapterDescription)
+    {
+        if (TryResolveConfiguredStreamingTextureBudgetBytes(
+                out _))
+        {
+            // An explicit OMSI_TEXTURE_MEMORY value is authoritative,
+            // matching openOMSI's test/override behavior.
+            return;
+        }
+
+        const ulong megabyte =
+            1024UL *
+            1024UL;
+
+        var dedicatedBytes =
+            (ulong)adapterDescription.DedicatedVideoMemory;
+
+        if (dedicatedBytes <
+            512UL *
+                megabyte)
+        {
+            // Integrated/unknown adapters generally report little or no
+            // dedicated memory; keep the conservative system-memory budget.
+            return;
+        }
+
+        var dedicatedMegabytes =
+            dedicatedBytes /
+            megabyte;
+
+        // openOMSI keeps only a conservative share of discrete VRAM for
+        // textures: 35% on <=2.5 GB cards, otherwise half, capped at 1.6 GB.
+        var adapterBudgetMegabytes =
+            dedicatedMegabytes <=
+                    2560UL
+                ? dedicatedMegabytes *
+                    35UL /
+                    100UL
+                : Math.Min(
+                    dedicatedMegabytes /
+                        2UL,
+                    1600UL);
+
+        if (adapterBudgetMegabytes ==
+            0UL)
+        {
+            return;
+        }
+
+        var adapterBudgetBytes =
+            checked(
+                (long)(
+                    adapterBudgetMegabytes *
+                    megabyte));
+
+        _maximumStreamingTextureCacheBytes =
+            Math.Min(
+                _maximumStreamingTextureCacheBytes,
+                adapterBudgetBytes);
+
+        _maximumInactiveStreamingTextureCacheBytes =
+            ResolveInactiveStreamingTextureBudgetBytes(
+                _maximumStreamingTextureCacheBytes);
+
+        Console.WriteLine(
+            $"[streaming-textures] adapter={adapterDescription.Description}; dedicatedMB={dedicatedMegabytes:N0}; automaticBudgetMB={_maximumStreamingTextureCacheBytes / (1024.0 * 1024.0):0}");
     }
 
     private static bool MatchesSceneryRenderPass(
