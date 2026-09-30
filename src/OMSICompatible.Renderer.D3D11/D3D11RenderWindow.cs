@@ -13124,24 +13124,39 @@ public sealed class D3D11RenderWindow : Form
                 forceVehicleSpatial:
                     true);
 
-            var activeLoops =
-                state.Audio
-                    .BuildActiveLoopDiagnostics();
+            var diagnosticNowSeconds =
+                _frameClock.Elapsed.TotalSeconds;
 
-            var diagnosticSignature =
-                $"engineRunning={engineRunning};activeLoops={(activeLoops.Count == 0 ? "<none>" : string.Join(",", activeLoops))}";
-
-            if (!string.Equals(
-                    state.LastDiagnosticSignature,
-                    diagnosticSignature,
-                    StringComparison.Ordinal))
+            if (state.LastEngineRunning !=
+                    engineRunning ||
+                diagnosticNowSeconds >=
+                    state.NextDiagnosticSeconds)
             {
-                state.LastDiagnosticSignature =
-                    diagnosticSignature;
+                state.LastEngineRunning =
+                    engineRunning;
+                state.NextDiagnosticSeconds =
+                    diagnosticNowSeconds +
+                    0.5;
 
-                WriteTrafficAudioDiagnostics(
-                    agent,
-                    diagnosticSignature);
+                var activeLoops =
+                    state.Audio
+                        .BuildActiveLoopDiagnostics();
+
+                var diagnosticSignature =
+                    $"engineRunning={engineRunning};activeLoops={(activeLoops.Count == 0 ? "<none>" : string.Join(",", activeLoops))}";
+
+                if (!string.Equals(
+                        state.LastDiagnosticSignature,
+                        diagnosticSignature,
+                        StringComparison.Ordinal))
+                {
+                    state.LastDiagnosticSignature =
+                        diagnosticSignature;
+
+                    WriteTrafficAudioDiagnostics(
+                        agent,
+                        diagnosticSignature);
+                }
             }
         }
     }
@@ -22289,6 +22304,18 @@ public sealed class D3D11RenderWindow : Form
         RuntimeOmsiAudioHost Audio)
     {
         public string? LastDiagnosticSignature
+        {
+            get;
+            set;
+        }
+
+        public bool? LastEngineRunning
+        {
+            get;
+            set;
+        }
+
+        public double NextDiagnosticSeconds
         {
             get;
             set;
