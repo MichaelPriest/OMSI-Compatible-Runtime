@@ -4783,16 +4783,26 @@ public sealed class WorldTrafficSimulation
                     heading);
         }
 
-        ResolveTurnIndicators(
-            agent,
-            segment,
-            out var blinkerLeft,
-            out var blinkerRight);
-
+        var blinkerLeft =
+            false;
+        var blinkerRight =
+            false;
         var pathCurvaturePerMeter =
-            ResolvePathCurvaturePerMeter(
+            0.0;
+
+        if (!agent.UsesDistantPlanning)
+        {
+            ResolveTurnIndicators(
                 agent,
-                segment);
+                segment,
+                out blinkerLeft,
+                out blinkerRight);
+
+            pathCurvaturePerMeter =
+                ResolvePathCurvaturePerMeter(
+                    agent,
+                    segment);
+        }
 
         return new WorldTrafficAgentState(
             agent.AgentIndex,
