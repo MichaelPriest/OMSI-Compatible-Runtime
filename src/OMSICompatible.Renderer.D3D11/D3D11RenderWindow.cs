@@ -687,6 +687,9 @@ public sealed class D3D11RenderWindow : Form
         _pendingStreamingTexturePaths =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string>
+        _preparedVehicleTextureUpgradePaths =
+            new();
     private readonly Dictionary<string, double>
         _streamingTextureNearestDistanceMeters =
             new(
@@ -2975,7 +2978,8 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (_pendingStreamingTextureLoads.Count ==
-            0)
+                0 &&
+            _preparedVehicleTextureUpgradePaths.IsEmpty)
         {
             ApplyStreamingDdsTextureBudget();
             return;
@@ -3081,6 +3085,67 @@ public sealed class D3D11RenderWindow : Form
             if (processed >
                     0 &&
                 _frameClock.Elapsed.TotalMilliseconds -
+                    startMilliseconds >=
+                _currentStreamingTextureUploadBudgetMilliseconds)
+            {
+                break;
+            }
+        }
+
+        while (processed <
+                   _currentStreamingTextureUploadLimit &&
+               _preparedVehicleTextureUpgradePaths.TryDequeue(
+                   out var upgradePath))
+        {
+            if (!_objectTextureCache.TryGetValue(
+                    upgradePath,
+                    out var currentTexture) ||
+                _reflectionTargets.ContainsKey(
+                    upgradePath))
+            {
+                continue;
+            }
+
+            var replacement =
+                _objectTextureLoader.TryCreatePreparedBcUpgrade(
+                    upgradePath);
+
+            if (replacement is null)
+            {
+                continue;
+            }
+
+            if (replacement.ApproximateBytes >=
+                currentTexture.ApproximateBytes)
+            {
+                replacement.Dispose();
+                continue;
+            }
+
+            _objectTextureCache[
+                upgradePath] =
+                replacement;
+
+            if (_objectTextureLastUsedGeneration.ContainsKey(
+                    upgradePath))
+            {
+                _currentStreamingTextureCacheBytes =
+                    Math.Max(
+                        0L,
+                        _currentStreamingTextureCacheBytes -
+                        currentTexture.ApproximateBytes +
+                        replacement.ApproximateBytes);
+            }
+
+            RetireStreamingTexture(
+                currentTexture);
+
+            _failedObjectTexturePaths.Remove(
+                upgradePath);
+
+            processed++;
+
+            if (_frameClock.Elapsed.TotalMilliseconds -
                     startMilliseconds >=
                 _currentStreamingTextureUploadBudgetMilliseconds)
             {
@@ -5051,6 +5116,63 @@ public sealed class D3D11RenderWindow : Form
 
         AppendVehicleTextureDiagnostics(
             vehicleTexturePaths);
+
+        if (!_vehiclePreviewMode &&
+            vehicleTexturePaths.Length >
+                0)
+        {
+            var bcUpgradeCandidates =
+                vehicleTexturePaths
+                    .Where(
+                        static path =>
+                        {
+                            var extension =
+                                Path.GetExtension(
+                                    path);
+
+                            return
+                                string.Equals(
+                                    extension,
+                                    ".png",
+                                    StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(
+                                    extension,
+                                    ".bmp",
+                                    StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(
+                                    extension,
+                                    ".jpg",
+                                    StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(
+                                    extension,
+                                    ".jpeg",
+                                    StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(
+                                    extension,
+                                    ".tga",
+                                    StringComparison.OrdinalIgnoreCase);
+                        })
+                    .ToArray();
+
+            if (bcUpgradeCandidates.Length >
+                0)
+            {
+                _ =
+                    Task.Run(
+                        () =>
+                        {
+                            RuntimeGpuTextureLoader.WarmDecodedCache(
+                                bcUpgradeCandidates);
+
+                            foreach (var path in
+                                     bcUpgradeCandidates)
+                            {
+                                _preparedVehicleTextureUpgradePaths.Enqueue(
+                                    path);
+                            }
+                        });
+            }
+        }
 
         if (!_vehiclePreviewMode)
         {
@@ -23315,6 +23437,12 @@ public sealed class D3D11RenderWindow : Form
             _failedObjectTexturePaths.Clear();
             _pendingStreamingTextureLoads.Clear();
             _pendingStreamingTexturePaths.Clear();
+
+            while (_preparedVehicleTextureUpgradePaths.TryDequeue(
+                       out _))
+            {
+            }
+
             _streamingTextureNearestDistanceMeters.Clear();
             _streamingReducibleTexturePaths.Clear();
             _streamingTextureDroppedMipLevels.Clear();
