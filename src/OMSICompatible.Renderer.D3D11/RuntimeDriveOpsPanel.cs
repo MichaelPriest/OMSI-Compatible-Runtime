@@ -518,7 +518,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 started;
 
             _shiftState.Text =
-                $"TURNO ATIVO · {elapsed:hh\:mm\:ss} · {Math.Abs(speedMetersPerSecond) * 3.6f:0} km/h";
+                $"TURNO ATIVO · {elapsed:hh\\:mm\\:ss} · {Math.Abs(speedMetersPerSecond) * 3.6f:0} km/h";
         }
 
         if (_lastElectricalState.HasValue &&
@@ -1121,12 +1121,12 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                     : TimeSpan.Zero;
 
             AppendShiftEvent(
-                $"Turno encerrado · duração {elapsed:hh\:mm\:ss}");
+                $"Turno encerrado · duração {elapsed:hh\\:mm\\:ss}");
 
             RequestMessage(
                 "FLEETLINK",
                 "SHIFT",
-                $"Motorista encerrou o turno após {elapsed:hh\:mm\:ss}.",
+                $"Motorista encerrou o turno após {elapsed:hh\\:mm\\:ss}.",
                 string.Empty);
 
             _shiftActive =
@@ -1154,7 +1154,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 started;
 
             _shiftState.Text =
-                $"TURNO ATIVO · início {started:HH:mm} · duração {elapsed:hh\:mm\:ss}";
+                $"TURNO ATIVO · início {started:HH:mm} · duração {elapsed:hh\\:mm\\:ss}";
             _shiftState.ForeColor =
                 Color.FromArgb(30, 105, 45);
         }
