@@ -1371,6 +1371,9 @@ public sealed class D3D11RenderWindow : Form
         PreparedStreamedGeometry prepared;
         PreparedStreamedGpuResources? preparedGpu =
             null;
+        Task<(int FileEntries, int DecodedEntries)>?
+            textureWarmTask =
+                null;
 
         var missingTrafficVehicleAssets =
             windowInfo.TrafficVehicleAssets?
@@ -1508,6 +1511,30 @@ public sealed class D3D11RenderWindow : Form
             var dependents =
                 await dependentSamplersTask.ConfigureAwait(false);
 
+            var textureWarmPaths =
+                dependents.TexturePaths.RegularTexturePaths
+                    .Concat(
+                        dependents.TexturePaths.MaskTexturePaths)
+                    .Where(
+                        static path =>
+                            !string.IsNullOrWhiteSpace(
+                                path))
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            textureWarmTask =
+                Task.Run(
+                    () =>
+                        (
+                            FileEntries:
+                                RuntimeGpuTextureLoader.WarmFileCache(
+                                    textureWarmPaths),
+                            DecodedEntries:
+                                RuntimeGpuTextureLoader.WarmDecodedCache(
+                                    textureWarmPaths)
+                        ));
+
             prepared =
                 new PreparedStreamedGeometry(
                     await tileVerticesTask.ConfigureAwait(false),
@@ -1602,6 +1629,31 @@ public sealed class D3D11RenderWindow : Form
         {
             preparedGpu.Dispose();
             return;
+        }
+
+        if (textureWarmTask is not null)
+        {
+            try
+            {
+                var warmed =
+                    await textureWarmTask.ConfigureAwait(false);
+
+                if (warmed.FileEntries >
+                        0 ||
+                    warmed.DecodedEntries >
+                        0)
+                {
+                    Console.WriteLine(
+                        $"[streaming-textures] worker warm file={warmed.FileEntries:N0}; decoded={warmed.DecodedEntries:N0}; {RuntimeGpuTextureLoader.GetFileCacheDiagnostics()}");
+                }
+            }
+            catch (Exception exception)
+            {
+                // Cache warming is an optimization only. A failed warm must
+                // not make otherwise valid OMSI content fail to stream.
+                Console.Error.WriteLine(
+                    $"[streaming-textures] worker warm failed: {exception.Message}");
+            }
         }
 
         var gpuPrepareElapsed =
