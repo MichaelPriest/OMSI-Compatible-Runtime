@@ -670,6 +670,17 @@ public sealed class D3D11RenderWindow : Form
         RuntimeObjectBatch[]>
         _objectBatchesByRenderPass =
             [];
+    private readonly Dictionary<
+        RuntimeObjectBatch,
+        int>
+        _objectBatchVisibilityIndices =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private bool[] _mainSceneryBatchVisibility =
+        Array.Empty<bool>();
+    private bool _mainSceneryBatchVisibilityPrepared;
+    private const int ParallelSceneryCullThreshold =
+        128;
     private uint _objectVertexCount;
 
     private ID3D11Buffer? _vehicleExteriorVertexBuffer;
@@ -6017,6 +6028,7 @@ public sealed class D3D11RenderWindow : Form
         }
 
         BeginSceneCameraCache();
+        PrepareMainSceneryBatchVisibility();
 
         DrawSky();
 
@@ -6478,15 +6490,6 @@ public sealed class D3D11RenderWindow : Form
                 2,
                 12);
 
-        var framePressure =
-            _lastObservedFrameMilliseconds >
-                    0.0
-                ? _lastObservedFrameMilliseconds /
-                    Math.Max(
-                        _targetFrameMilliseconds,
-                        1.0)
-                : 1.0;
-
         if (framePressure >=
             1.50)
         {
@@ -6860,6 +6863,29 @@ public sealed class D3D11RenderWindow : Form
     private void RebuildObjectRenderPassBatches()
     {
         _objectBatchesByRenderPass.Clear();
+        _objectBatchVisibilityIndices.Clear();
+
+        for (var index = 0;
+             index <
+             _objectGeometry.Batches.Count;
+             index++)
+        {
+            _objectBatchVisibilityIndices[
+                _objectGeometry.Batches[
+                    index]] =
+                index;
+        }
+
+        if (_mainSceneryBatchVisibility.Length <
+            _objectGeometry.Batches.Count)
+        {
+            _mainSceneryBatchVisibility =
+                new bool[
+                    _objectGeometry.Batches.Count];
+        }
+
+        _mainSceneryBatchVisibilityPrepared =
+            false;
 
         foreach (RuntimeSceneryRenderPass renderPass in
                  Enum.GetValues<
@@ -7072,10 +7098,135 @@ public sealed class D3D11RenderWindow : Form
         };
     }
 
+    private void PrepareMainSceneryBatchVisibility()
+    {
+        var batches =
+            _objectGeometry.Batches;
+
+        if (batches.Count ==
+            0)
+        {
+            _mainSceneryBatchVisibilityPrepared =
+                true;
+            return;
+        }
+
+        if (_mainSceneryBatchVisibility.Length <
+            batches.Count)
+        {
+            Array.Resize(
+                ref _mainSceneryBatchVisibility,
+                batches.Count);
+        }
+
+        var cameraPosition =
+            CurrentSceneCameraPosition;
+        var viewProjection =
+            CurrentSceneViewProjection;
+        var framePressure =
+            ResolveSceneryFramePressure();
+        var viewportPixels =
+            Math.Max(
+                1,
+                Math.Min(
+                    ClientSize.Width,
+                    ClientSize.Height));
+
+        if (batches.Count >=
+            ParallelSceneryCullThreshold)
+        {
+            System.Threading.Tasks.Parallel.For(
+                0,
+                batches.Count,
+                index =>
+                {
+                    _mainSceneryBatchVisibility[
+                        index] =
+                        EvaluateSceneryBatchVisibility(
+                            batches[
+                                index],
+                            cameraPosition,
+                            viewProjection,
+                            framePressure,
+                            viewportPixels);
+                });
+        }
+        else
+        {
+            for (var index = 0;
+                 index <
+                 batches.Count;
+                 index++)
+            {
+                _mainSceneryBatchVisibility[
+                    index] =
+                    EvaluateSceneryBatchVisibility(
+                        batches[
+                            index],
+                        cameraPosition,
+                        viewProjection,
+                        framePressure,
+                        viewportPixels);
+            }
+        }
+
+        _mainSceneryBatchVisibilityPrepared =
+            true;
+    }
+
+    private double ResolveSceneryFramePressure() =>
+        _lastObservedFrameMilliseconds >
+                0.0
+            ? _lastObservedFrameMilliseconds /
+                Math.Max(
+                    _targetFrameMilliseconds,
+                    1.0)
+            : 1.0;
+
     private bool IsSceneryBatchVisible(
         RuntimeObjectBatch batch,
         Vector3 cameraPosition,
         Matrix4x4 viewProjection)
+    {
+        if (!_viewProjectionOverride.HasValue &&
+            _mainSceneryBatchVisibilityPrepared &&
+            _objectBatchVisibilityIndices.TryGetValue(
+                batch,
+                out var visibilityIndex) &&
+            visibilityIndex >=
+                0 &&
+            visibilityIndex <
+                _mainSceneryBatchVisibility.Length)
+        {
+            return _mainSceneryBatchVisibility[
+                visibilityIndex];
+        }
+
+        var viewportPixels =
+            _viewProjectionOverride.HasValue
+                ? (int)Math.Max(
+                    _reflectionTextureSize,
+                    1u)
+                : Math.Max(
+                    1,
+                    Math.Min(
+                        ClientSize.Width,
+                        ClientSize.Height));
+
+        return EvaluateSceneryBatchVisibility(
+            batch,
+            cameraPosition,
+            viewProjection,
+            ResolveSceneryFramePressure(),
+            viewportPixels);
+    }
+
+    private bool EvaluateSceneryBatchVisibility(
+        RuntimeObjectBatch batch,
+        Vector3 cameraPosition,
+        Matrix4x4 viewProjection,
+        double framePressure,
+        int viewportPixels)
     {
         if (!batch.BoundsCenter.HasValue)
         {
@@ -7163,17 +7314,6 @@ public sealed class D3D11RenderWindow : Form
                 projectionScale /
                 MathF.Abs(
                     clip.W);
-
-            var viewportPixels =
-                _viewProjectionOverride.HasValue
-                    ? (int)Math.Max(
-                        _reflectionTextureSize,
-                        1u)
-                    : Math.Max(
-                        1,
-                        Math.Min(
-                            ClientSize.Width,
-                            ClientSize.Height));
 
             var projectedDiameterPixels =
                 projectedRadiusNdc *
@@ -22492,6 +22632,11 @@ public sealed class D3D11RenderWindow : Form
             _streamingTextureNearestDistanceMeters.Clear();
             _streamingReducibleTexturePaths.Clear();
             _streamingTextureDroppedMipLevels.Clear();
+            _objectBatchVisibilityIndices.Clear();
+            _mainSceneryBatchVisibility =
+                Array.Empty<bool>();
+            _mainSceneryBatchVisibilityPrepared =
+                false;
 
             _vehicleTextTextureRenderer?.Dispose();
             _vehicleTextTextureRenderer = null;
