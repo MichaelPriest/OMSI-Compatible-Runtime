@@ -2588,6 +2588,92 @@ try
     var maps = MapDiscovery.Discover(contentRoot);
     Require(maps.Count == 1, $"Expected 1 map, found {maps.Count}.");
 
+    var timetableDirectory =
+        Path.Combine(
+            maps[0].DirectoryPath,
+            "TTData");
+
+    Directory.CreateDirectory(
+        timetableDirectory);
+
+    File.WriteAllText(
+        Path.Combine(
+            timetableDirectory,
+            "Busstops.cfg"),
+        Lines(
+            "[busstop]",
+            "Terminal Central",
+            "0",
+            "42"));
+
+    File.WriteAllText(
+        Path.Combine(
+            timetableDirectory,
+            "Linha100.ttp"),
+        Lines(
+            "[trip]",
+            "Track100",
+            "Centro",
+            "100",
+            "[station_typ2]",
+            "42",
+            "0",
+            "[station]",
+            "43",
+            "75.5",
+            "Avenida Brasil",
+            "0"));
+
+    File.WriteAllText(
+        Path.Combine(
+            timetableDirectory,
+            "Track100.ttr"),
+        Lines(
+            "[track_entry]",
+            "3001",
+            "0",
+            "0",
+            "0",
+            "32.5",
+            "0",
+            "[track_entry]",
+            "3002",
+            "1",
+            "0",
+            "0",
+            "20",
+            "0"));
+
+    var timetableCatalog =
+        OmsiTimetableCatalogReader.Read(
+            maps[0]);
+
+    Require(
+        timetableCatalog.Trips.Count ==
+            1 &&
+        timetableCatalog.Trips[0].TrackName ==
+            "Track100" &&
+        timetableCatalog.Trips[0].Line ==
+            "100" &&
+        timetableCatalog.Trips[0].Destination ==
+            "Centro" &&
+        timetableCatalog.Trips[0].Stops.Count ==
+            2 &&
+        timetableCatalog.Trips[0].Stops[0].Name ==
+            "Terminal Central" &&
+        timetableCatalog.Trips[0].Stops[1].Name ==
+            "Avenida Brasil" &&
+        timetableCatalog.Tracks.TryGetValue(
+            "Track100",
+            out var syntheticTimetableTrack) &&
+        syntheticTimetableTrack.Entries.Count ==
+            2 &&
+        syntheticTimetableTrack.Entries[0].ObjectId ==
+            3001 &&
+        syntheticTimetableTrack.Entries[1].PathId ==
+            1,
+        "OMSI TTData parser did not preserve real trip, stop and track-entry data.");
+
     var buses = BusDiscovery.Discover(contentRoot);
     Require(
         buses.Count == 1 &&
