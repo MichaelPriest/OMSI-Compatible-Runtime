@@ -52,6 +52,8 @@ public sealed class WorldTrafficSimulation
         0.75;
     private const int MaximumTrafficLookAheadSegments =
         32;
+    private const double TrafficLaneGridCellMeters =
+        50.0;
 
     private readonly WorldTrafficPathNetwork _network;
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
@@ -65,10 +67,22 @@ public sealed class WorldTrafficSimulation
     private readonly Dictionary<long, TrafficSignalGroupState> _trafficSignalGroups;
     private readonly List<Agent> _agents;
     private readonly WorldTrafficPathSegment[] _roadSegments = [];
+    private readonly Dictionary<(int X, int Z), int[]>
+        _roadSegmentsByGridCell =
+            [];
+    private readonly HashSet<int> _roadSegmentGridQuerySeen =
+        [];
+    private readonly List<int> _roadSegmentGridQueryCandidates =
+        [];
     private readonly bool _runtimeRecyclingEnabled;
     private readonly double _spawnIntervalSeconds = 2.0;
     private readonly double _spawnExclusionRadiusMeters = 40.0;
     private WorldTrafficObstacleState? _externalObstacle;
+    private bool _externalObstaclePathCacheValid;
+    private bool _externalObstaclePathCacheResolved;
+    private WorldTrafficPathSegment? _externalObstaclePathCacheSegment;
+    private bool _externalObstaclePathCacheTravelForward;
+    private double _externalObstaclePathCacheDistanceAlongSegment;
     private double _simulationElapsedSeconds;
 
     public WorldTrafficSimulation(
@@ -245,6 +259,9 @@ public sealed class WorldTrafficSimulation
 
         _roadSegments =
             roadSegments;
+        _roadSegmentsByGridCell =
+            BuildRoadSegmentGrid(
+                roadSegments);
 
         if (vehicles.Length == 0 ||
             maximumAgents <= 0 ||
@@ -761,6 +778,12 @@ public sealed class WorldTrafficSimulation
     {
         _externalObstacle =
             obstacle;
+        _externalObstaclePathCacheValid =
+            false;
+        _externalObstaclePathCacheResolved =
+            false;
+        _externalObstaclePathCacheSegment =
+            null;
     }
 
     public void ApplyCollisionResponse(
@@ -2769,12 +2792,213 @@ public sealed class WorldTrafficSimulation
         return false;
     }
 
+    private static Dictionary<(int X, int Z), int[]>
+        BuildRoadSegmentGrid(
+            IReadOnlyList<WorldTrafficPathSegment> segments)
+    {
+        var cells =
+            new Dictionary<
+                (int X, int Z),
+                List<int>>();
+
+        foreach (var segment in
+                 segments)
+        {
+            if (segment.Points.Count <
+                2)
+            {
+                continue;
+            }
+
+            var touchedCells =
+                new HashSet<(int X, int Z)>();
+
+            for (var index = 1;
+                 index <
+                     segment.Points.Count;
+                 index++)
+            {
+                var a =
+                    segment.Points[
+                        index - 1];
+                var b =
+                    segment.Points[
+                        index];
+
+                var dx =
+                    b.X -
+                    a.X;
+                var dz =
+                    b.Z -
+                    a.Z;
+                var length =
+                    Math.Sqrt(
+                        dx *
+                            dx +
+                        dz *
+                            dz);
+
+                var samples =
+                    Math.Max(
+                        1,
+                        (int)Math.Ceiling(
+                            length /
+                            (
+                                TrafficLaneGridCellMeters *
+                                0.5
+                            )));
+
+                for (var sample = 0;
+                     sample <=
+                         samples;
+                     sample++)
+                {
+                    var t =
+                        (double)sample /
+                        samples;
+                    var x =
+                        a.X +
+                        dx *
+                            t;
+                    var z =
+                        a.Z +
+                        dz *
+                            t;
+
+                    touchedCells.Add(
+                        (
+                            (int)Math.Floor(
+                                x /
+                                TrafficLaneGridCellMeters),
+                            (int)Math.Floor(
+                                z /
+                                TrafficLaneGridCellMeters)
+                        ));
+                }
+            }
+
+            foreach (var cell in
+                     touchedCells)
+            {
+                if (!cells.TryGetValue(
+                        cell,
+                        out var cellSegments))
+                {
+                    cellSegments =
+                        [];
+                    cells[
+                        cell] =
+                        cellSegments;
+                }
+
+                cellSegments.Add(
+                    segment.Index);
+            }
+        }
+
+        return cells.ToDictionary(
+            static pair =>
+                pair.Key,
+            static pair =>
+                pair.Value
+                    .Distinct()
+                    .OrderBy(
+                        static index =>
+                            index)
+                    .ToArray());
+    }
+
+    private IReadOnlyList<int> CollectNearbyRoadSegmentIndices(
+        WorldVector3 position)
+    {
+        _roadSegmentGridQuerySeen.Clear();
+        _roadSegmentGridQueryCandidates.Clear();
+
+        if (_roadSegmentsByGridCell.Count ==
+            0)
+        {
+            return _roadSegmentGridQueryCandidates;
+        }
+
+        var cellX =
+            (int)Math.Floor(
+                position.X /
+                TrafficLaneGridCellMeters);
+        var cellZ =
+            (int)Math.Floor(
+                position.Z /
+                TrafficLaneGridCellMeters);
+
+        for (var offsetX = -1;
+             offsetX <=
+                 1;
+             offsetX++)
+        {
+            for (var offsetZ = -1;
+                 offsetZ <=
+                     1;
+                 offsetZ++)
+            {
+                if (!_roadSegmentsByGridCell.TryGetValue(
+                        (
+                            cellX +
+                                offsetX,
+                            cellZ +
+                                offsetZ
+                        ),
+                        out var candidates))
+                {
+                    continue;
+                }
+
+                foreach (var candidateIndex in
+                         candidates)
+                {
+                    if (_roadSegmentGridQuerySeen.Add(
+                            candidateIndex))
+                    {
+                        _roadSegmentGridQueryCandidates.Add(
+                            candidateIndex);
+                    }
+                }
+            }
+        }
+
+        _roadSegmentGridQueryCandidates.Sort();
+
+        return _roadSegmentGridQueryCandidates;
+    }
+
     private bool TryResolveExternalObstaclePath(
         WorldTrafficObstacleState obstacle,
         out WorldTrafficPathSegment segment,
         out bool travelForward,
         out double distanceAlongSegment)
     {
+        if (_externalObstaclePathCacheValid)
+        {
+            if (_externalObstaclePathCacheResolved &&
+                _externalObstaclePathCacheSegment is
+                    { } cachedSegment)
+            {
+                segment =
+                    cachedSegment;
+                travelForward =
+                    _externalObstaclePathCacheTravelForward;
+                distanceAlongSegment =
+                    _externalObstaclePathCacheDistanceAlongSegment;
+                return true;
+            }
+
+            segment =
+                default!;
+            travelForward =
+                true;
+            distanceAlongSegment =
+                0.0;
+            return false;
+        }
+
         segment =
             default!;
         travelForward =
@@ -2793,13 +3017,13 @@ public sealed class WorldTrafficSimulation
             Math.Cos(
                 obstacle.HeadingRadians);
 
-        foreach (var candidate in
-                 _roadSegments)
+        void ConsiderCandidate(
+            WorldTrafficPathSegment candidate)
         {
             if (candidate.Points.Count <
                 2)
             {
-                continue;
+                return;
             }
 
             var accumulated =
@@ -2927,13 +3151,13 @@ public sealed class WorldTrafficSimulation
                     obstacle.Position.Z -
                     closestZ;
 
-                var distanceSquared =
+                var candidateDistanceSquared =
                     offsetX *
                         offsetX +
                     offsetZ *
                         offsetZ;
 
-                if (distanceSquared >=
+                if (candidateDistanceSquared >=
                     bestDistanceSquared)
                 {
                     accumulated +=
@@ -2942,7 +3166,7 @@ public sealed class WorldTrafficSimulation
                 }
 
                 bestDistanceSquared =
-                    distanceSquared;
+                    candidateDistanceSquared;
 
                 segment =
                     candidate;
@@ -2960,11 +3184,58 @@ public sealed class WorldTrafficSimulation
             }
         }
 
+        var nearbySegments =
+            CollectNearbyRoadSegmentIndices(
+                obstacle.Position);
+
+        if (nearbySegments.Count >
+            0)
+        {
+            foreach (var candidateIndex in
+                     nearbySegments)
+            {
+                if (_segmentsByIndex.TryGetValue(
+                        candidateIndex,
+                        out var candidate))
+                {
+                    ConsiderCandidate(
+                        candidate);
+                }
+            }
+        }
+        else
+        {
+            // Keep compatibility for malformed or unusual maps whose path
+            // samples could not be represented in the spatial grid.
+            foreach (var candidate in
+                     _roadSegments)
+            {
+                ConsiderCandidate(
+                    candidate);
+            }
+        }
+
         // Match the renderer's existing 8 m path-proximity ceiling.
-        return !double.IsPositiveInfinity(
-                   bestDistanceSquared) &&
-               bestDistanceSquared <=
-                   64.0;
+        var resolved =
+            !double.IsPositiveInfinity(
+                bestDistanceSquared) &&
+            bestDistanceSquared <=
+                64.0;
+
+        _externalObstaclePathCacheValid =
+            true;
+        _externalObstaclePathCacheResolved =
+            resolved;
+        _externalObstaclePathCacheSegment =
+            resolved
+                ? segment
+                : null;
+        _externalObstaclePathCacheTravelForward =
+            travelForward;
+        _externalObstaclePathCacheDistanceAlongSegment =
+            distanceAlongSegment;
+
+        return resolved;
     }
 
     private double DistanceAheadToSegment(
