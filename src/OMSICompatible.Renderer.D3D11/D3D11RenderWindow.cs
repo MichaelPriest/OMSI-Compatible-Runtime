@@ -99,6 +99,10 @@ public sealed class D3D11RenderWindow : Form
         string Path,
         RuntimeObjectGeometry Geometry);
 
+    private readonly record struct StreamingTextureMipReductionCandidate(
+        string Path,
+        double DistanceMeters);
+
     private sealed record PreparedStreamedTileWork(
         int X,
         int Y,
@@ -667,6 +671,9 @@ public sealed class D3D11RenderWindow : Form
         _streamingTextureDroppedMipLevels =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly List<StreamingTextureMipReductionCandidate>
+        _streamingTextureMipReductionCandidates =
+            [];
     private double _nextStreamingTextureBudgetCheckSeconds;
     private const double StreamingTileSizeMeters =
         300.0;
@@ -3042,47 +3049,81 @@ public sealed class D3D11RenderWindow : Form
             nowSeconds +
             1.0;
 
-        var candidates =
-            _objectTextureCache
-                .Where(
-                    pair =>
-                        _streamingReducibleTexturePaths.Contains(
-                            pair.Key) &&
-                        string.Equals(
-                            Path.GetExtension(
-                                pair.Key),
-                            ".dds",
-                            StringComparison.OrdinalIgnoreCase) &&
-                        _streamingTextureNearestDistanceMeters.TryGetValue(
-                            pair.Key,
-                            out var distanceMeters) &&
-                        distanceMeters >=
-                            StreamingTextureFullResolutionDistanceMeters)
-                .OrderByDescending(
-                    pair =>
-                        _streamingTextureNearestDistanceMeters[
-                            pair.Key])
-                .Select(
-                    static pair =>
-                        pair.Key)
-                .ToArray();
+        _streamingTextureMipReductionCandidates.Clear();
+
+        foreach (var pair in
+                 _objectTextureCache)
+        {
+            if (!_streamingReducibleTexturePaths.Contains(
+                    pair.Key) ||
+                !string.Equals(
+                    Path.GetExtension(
+                        pair.Key),
+                    ".dds",
+                    StringComparison.OrdinalIgnoreCase) ||
+                !_streamingTextureNearestDistanceMeters.TryGetValue(
+                    pair.Key,
+                    out var distanceMeters) ||
+                distanceMeters <
+                    StreamingTextureFullResolutionDistanceMeters)
+            {
+                continue;
+            }
+
+            _streamingTextureMipReductionCandidates.Add(
+                new StreamingTextureMipReductionCandidate(
+                    pair.Key,
+                    distanceMeters));
+        }
+
+        _streamingTextureMipReductionCandidates.Sort(
+            static (left, right) =>
+            {
+                var distanceComparison =
+                    right.DistanceMeters.CompareTo(
+                        left.DistanceMeters);
+
+                return distanceComparison !=
+                           0
+                    ? distanceComparison
+                    : StringComparer.OrdinalIgnoreCase.Compare(
+                        left.Path,
+                        right.Path);
+            });
+
+        var framePressure =
+            ResolveSceneryFramePressure();
+
+        var maximumReductionsThisCheck =
+            framePressure >=
+                    1.15
+                ? 1
+                : framePressure <=
+                        0.85
+                    ? MaximumStreamingTextureMipReductionsPerCheck
+                    : Math.Min(
+                        2,
+                        MaximumStreamingTextureMipReductionsPerCheck);
 
         var reducedCount =
             0;
 
-        foreach (var path in
-                 candidates)
+        foreach (var candidate in
+                 _streamingTextureMipReductionCandidates)
         {
             if (_currentStreamingTextureCacheBytes <=
                     _maximumStreamingTextureCacheBytes ||
                 reducedCount >=
-                    MaximumStreamingTextureMipReductionsPerCheck ||
+                    maximumReductionsThisCheck ||
                 !_objectTextureCache.TryGetValue(
-                    path,
+                    candidate.Path,
                     out var currentTexture))
             {
                 break;
             }
+
+            var path =
+                candidate.Path;
 
             var currentDrop =
                 _streamingTextureDroppedMipLevels.TryGetValue(
@@ -22822,6 +22863,7 @@ public sealed class D3D11RenderWindow : Form
             _streamingTextureNearestDistanceMeters.Clear();
             _streamingReducibleTexturePaths.Clear();
             _streamingTextureDroppedMipLevels.Clear();
+            _streamingTextureMipReductionCandidates.Clear();
             _objectBatchVisibilityIndices.Clear();
             _mainSceneryBatchVisibility =
                 Array.Empty<byte>();
