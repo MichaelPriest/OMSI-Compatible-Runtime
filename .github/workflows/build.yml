@@ -38,13 +38,40 @@ jobs:
 
           if ("$env:GITHUB_EVENT_NAME" -eq "pull_request" -and
               "$env:PR_NUMBER" -eq "2") {
+            $prefix = "v$baseVersion-test."
             $next = 1
             $releaseTags = @(
               gh release list --repo "$env:GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName'
             )
 
             foreach ($releaseTag in $releaseTags) {
-              if ($releaseTag -match '^v0\.1\.0-alpha\.1-test\.(\d+)
+              if (-not $releaseTag.StartsWith(
+                    $prefix,
+                    [StringComparison]::OrdinalIgnoreCase)) {
+                continue
+              }
+
+              $suffix = $releaseTag.Substring(
+                $prefix.Length)
+              $existing = 0
+
+              if ([int]::TryParse(
+                      $suffix,
+                      [ref]$existing) -and
+                  $existing -ge $next) {
+                $next = $existing + 1
+              }
+            }
+
+            $version = "$baseVersion-test.$next"
+            $versionTag = "v$version"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "version_tag=$versionTag" >> $env:GITHUB_OUTPUT
+          Write-Host "Resolved runtime version: $version ($versionTag)"
+
+      - name: Build ODE x64 single precision
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -492,7 +519,7 @@ jobs:
           o Runtime x64, PluginHost x86 para compatibilidade OMSI e dependências ODE.
 
           Numeração adotada a partir desta build:
-          `v0.1.0-alpha.1-test.N`
+          v0.1.0-alpha.1-test.N
           EOF
 
           gh release create "$numbered_tag" "$numbered_archive"             --title "OMSI Compatible Runtime $VERSION"             --notes-file numbered-release-notes.md             --prerelease
@@ -511,7 +538,7 @@ jobs:
           - Plataforma: Windows x64
 
           Para histórico e identificação exata de builds, use sempre a versão
-          numerada `v0.1.0-alpha.1-test.N`.
+          numerada v0.1.0-alpha.1-test.N.
           EOF
 
           if gh release view "$stable_tag" >/dev/null 2>&1; then
