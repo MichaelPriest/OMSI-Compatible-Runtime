@@ -2401,109 +2401,183 @@ public sealed partial class MainWindow :
 
     private void LoadRuntimeOptionsIntoUi()
     {
+        var culture =
+            System.Globalization.CultureInfo.InvariantCulture;
+
         SettingsLanguageBox.Text =
             _runtimeOptions.Language;
-
-        SettingsTargetFpsBox.Text =
-            _runtimeOptions.TargetFps.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
-        SettingsNeighborTilesBox.Text =
-            _runtimeOptions.NeighborTiles.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
+        SettingsTicketSalesModeBox.Text =
+            _runtimeOptions.TicketSalesMode.ToString(culture);
+        SettingsInternetRadioBox.Text =
+            _runtimeOptions.InternetRadioUrl;
+        SettingsTypewriterFontBox.Text =
+            _runtimeOptions.TypewriterFont;
         SettingsAutoSaveCheck.IsChecked =
             _runtimeOptions.AutoSave;
-
         SettingsCurrentTimeCheck.IsChecked =
             _runtimeOptions.UseCurrentTime;
-
         SettingsCurrentDateCheck.IsChecked =
             _runtimeOptions.UseCurrentDate;
+        SettingsCurrentYearCheck.IsChecked =
+            _runtimeOptions.UseCurrentYear;
+        SettingsShowVehiclePreviewCheck.IsChecked =
+            _runtimeOptions.ShowVehiclePreview;
+        SettingsShowErrorMessagesCheck.IsChecked =
+            _runtimeOptions.ShowErrorMessages;
+        SettingsScheduleAnalysisCheck.IsChecked =
+            _runtimeOptions.ScheduleAnalysisPopup;
+        SettingsSeeOwnDriverCheck.IsChecked =
+            _runtimeOptions.SeeOwnDriver;
+        SettingsShowTicketPassengerInfoCheck.IsChecked =
+            _runtimeOptions.ShowTicketPassengerInfo;
+        SettingsWearLifespanBox.Text =
+            _runtimeOptions.WearLifespan.ToString(culture);
 
-        SettingsObjectDistanceBox.Text =
-            _runtimeOptions.MaximumObjectVisibilityMeters.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
-        SettingsTextureMemoryBox.Text =
-            _runtimeOptions.HighResolutionTextureMemoryMb.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
+        SettingsTargetFpsBox.Text =
+            _runtimeOptions.TargetFps.ToString(culture);
+        SettingsVsyncCheck.IsChecked =
+            _runtimeOptions.RuntimeVSync;
+        SettingsBorderlessCheck.IsChecked =
+            _runtimeOptions.RuntimeBorderlessFullscreen;
+        SettingsHardwareGpuCheck.IsChecked =
+            _runtimeOptions.RuntimePreferHardwareGpu;
+        SettingsMsaaSamplesBox.Text =
+            _runtimeOptions.RuntimeMsaaSamples.ToString(culture);
+        SettingsSharpenStrengthBox.Text =
+            _runtimeOptions.RuntimeSharpenStrength.ToString("0.00", culture);
         SettingsAnisotropicBox.Text =
-            _runtimeOptions.AnisotropicFiltering.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
-        SettingsReflectionModeBox.Text =
-            _runtimeOptions.RealTimeReflections;
-
-        SettingsReflectionSizeBox.Text =
-            _runtimeOptions.RealTimeReflectionTextureSize.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
+            _runtimeOptions.AnisotropicFiltering.ToString(culture);
+        SettingsTextureFilterModeBox.Text =
+            _runtimeOptions.TextureFilterMode.ToString(culture);
+        SettingsObjectDistanceBox.Text =
+            _runtimeOptions.MaximumObjectVisibilityMeters.ToString(culture);
+        SettingsMinimumObjectSizeBox.Text =
+            _runtimeOptions.MinimumObjectSize.ToString(culture);
+        SettingsNeighborTilesBox.Text =
+            _runtimeOptions.NeighborTiles.ToString(culture);
+        SettingsStreamingRadiusBox.Text =
+            _runtimeOptions.RuntimeStreamingRadius.ToString(culture);
         SettingsShadowsCheck.IsChecked =
             _runtimeOptions.Shadows;
+        SettingsStencilEffectsCheck.IsChecked =
+            _runtimeOptions.StencilBufferEffects;
+        SettingsSunGlowCheck.IsChecked =
+            _runtimeOptions.SunGlow;
+        SettingsRainReflectionsCheck.IsChecked =
+            _runtimeOptions.RainReflections;
+        SettingsHumansRainReflectionsCheck.IsChecked =
+            _runtimeOptions.HumansInRainReflections;
+        SettingsMaximumObjectComplexityBox.Text =
+            _runtimeOptions.MaximumObjectComplexity.ToString(culture);
+        SettingsMaximumMapComplexityBox.Text =
+            _runtimeOptions.MaximumMapComplexity.ToString(culture);
 
+        SettingsTextureMemoryBox.Text =
+            _runtimeOptions.HighResolutionTextureMemoryMb.ToString(culture);
+        SettingsOnlyLowTexturesCheck.IsChecked =
+            _runtimeOptions.OnlyLowResolutionTextures;
+        SettingsLimitTextures256Check.IsChecked =
+            _runtimeOptions.LimitTexturesTo256;
+        SettingsLowTexturesAtDistanceCheck.IsChecked =
+            _runtimeOptions.LowResolutionTexturesAtDistance;
         SettingsNightMapCheck.IsChecked =
             _runtimeOptions.MaterialNightMap;
-
         SettingsLightMapCheck.IsChecked =
             _runtimeOptions.MaterialLightMap;
+        SettingsTerrainLightMapCheck.IsChecked =
+            _runtimeOptions.MaterialTerrainLightMap;
+        SettingsReflectionMapCheck.IsChecked =
+            _runtimeOptions.MaterialReflectionMap;
+        SettingsBumpMapCheck.IsChecked =
+            _runtimeOptions.MaterialBumpMap;
+        SettingsReflectionModeBox.Text =
+            _runtimeOptions.RealTimeReflections;
+        SettingsReflectionSizeBox.Text =
+            _runtimeOptions.RealTimeReflectionTextureSize.ToString(culture);
+        SettingsMinimumObjectSizeReflectionBox.Text =
+            _runtimeOptions.MinimumObjectSizeReflections.ToString(culture);
+        SettingsReflectionEconomyFpsBox.Text =
+            _runtimeOptions.ReflectionEconomyBelowFps.ToString(culture);
+        SettingsReflectionFullFpsBox.Text =
+            _runtimeOptions.ReflectionFullAboveFps.ToString(culture);
 
         SettingsMasterVolumeBox.Text =
-            _runtimeOptions.MasterVolumePercent.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
-        SettingsRoadTrafficBox.Text =
-            _runtimeOptions.RoadTrafficFactorPercent.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
-        SettingsPassengerFactorBox.Text =
-            _runtimeOptions.PassengerFactorPercent.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
+            _runtimeOptions.MasterVolumePercent.ToString(culture);
+        SettingsMaximumSoundCountBox.Text =
+            _runtimeOptions.MaximumSoundCount.ToString(culture);
+        SettingsStereoEffectBox.Text =
+            _runtimeOptions.StereoEffect.ToString(culture);
+        SettingsDopplerCheck.IsChecked =
+            _runtimeOptions.DopplerEffect;
+        SettingsReverbCheck.IsChecked =
+            _runtimeOptions.ReverbEffects;
         SettingsAiSoundsCheck.IsChecked =
             _runtimeOptions.AiVehicleSounds;
-
         SettingsScenerySoundsCheck.IsChecked =
             _runtimeOptions.ScenerySounds;
 
+        SettingsMaximumUnscheduledTrafficBox.Text =
+            _runtimeOptions.MaximumUnscheduledTraffic.ToString(culture);
+        SettingsRoadTrafficBox.Text =
+            _runtimeOptions.RoadTrafficFactorPercent.ToString(culture);
+        SettingsParkedCarsBox.Text =
+            _runtimeOptions.ParkedCarsPercent.ToString(culture);
+        SettingsMaximumPeopleBox.Text =
+            _runtimeOptions.MaximumPeople.ToString(culture);
+        SettingsPassengerFactorBox.Text =
+            _runtimeOptions.PassengerFactorPercent.ToString(culture);
+        SettingsMaximumScheduledTrafficBox.Text =
+            _runtimeOptions.MaximumScheduledTraffic.ToString(culture);
+        SettingsScheduledTrafficPriorityBox.Text =
+            _runtimeOptions.ScheduledTrafficPriority.ToString(culture);
+        SettingsReducedAiListCheck.IsChecked =
+            _runtimeOptions.UseReducedAiList;
+
         SettingsGameControllerCheck.IsChecked =
             _runtimeOptions.GameControllerEnabled;
-
+        SettingsAutomaticSteeringCenterCheck.IsChecked =
+            _runtimeOptions.AutomaticSteeringCenter;
+        SettingsAutomaticClutchCheck.IsChecked =
+            _runtimeOptions.AutomaticClutch;
+        SettingsReducedSteeringSpeedCheck.IsChecked =
+            _runtimeOptions.ReducedSteeringSpeed;
+        SettingsSmoothDriverViewCheck.IsChecked =
+            _runtimeOptions.SmoothDriverViewTransitions;
+        SettingsDriverHeadMovementCheck.IsChecked =
+            _runtimeOptions.DriverHeadMovement;
+        SettingsAlternativeViewCheck.IsChecked =
+            _runtimeOptions.AlternativeView;
         SettingsLandscapeCollisionsCheck.IsChecked =
             _runtimeOptions.VehicleLandscapeCollisions;
-
         SettingsTerrainCollisionsCheck.IsChecked =
             _runtimeOptions.TerrainCollisions;
-
         SettingsVehicleCollisionsCheck.IsChecked =
             _runtimeOptions.VehicleToVehicleCollisions;
+        SettingsPedestrianCollisionsCheck.IsChecked =
+            _runtimeOptions.UserVehiclePedestrianCollisions;
 
-        SettingsStreamingRadiusBox.Text =
-            _runtimeOptions.RuntimeStreamingRadius.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
-        SettingsVsyncCheck.IsChecked =
-            _runtimeOptions.RuntimeVSync;
-
-        SettingsBorderlessCheck.IsChecked =
-            _runtimeOptions.RuntimeBorderlessFullscreen;
-
-        SettingsHardwareGpuCheck.IsChecked =
-            _runtimeOptions.RuntimePreferHardwareGpu;
-
-        SettingsMsaaSamplesBox.Text =
-            _runtimeOptions.RuntimeMsaaSamples.ToString(
-                System.Globalization.CultureInfo.InvariantCulture);
-
-        SettingsSharpenStrengthBox.Text =
-            _runtimeOptions.RuntimeSharpenStrength.ToString(
-                "0.00",
-                System.Globalization.CultureInfo.InvariantCulture);
-
+        SettingsReducedMultithreadingCheck.IsChecked =
+            _runtimeOptions.ReducedMultithreading;
+        SettingsLoadWholeMapCheck.IsChecked =
+            _runtimeOptions.LoadWholeMapAtStart;
+        SettingsParticleSystemsCheck.IsChecked =
+            _runtimeOptions.ParticleSystems;
+        SettingsMaximumParticlesBox.Text =
+            _runtimeOptions.MaximumParticlesPerEmitter.ToString(culture);
+        SettingsParticleOwnVehicleCheck.IsChecked =
+            _runtimeOptions.ParticleOnlyOwnVehicle;
+        SettingsParticleReflectionsCheck.IsChecked =
+            _runtimeOptions.ParticleSystemsInReflections;
+        SettingsReduceTilesBelowFpsBox.Text =
+            _runtimeOptions.ReduceTilesBelowFps.ToString(culture);
+        SettingsIncreaseTilesAboveFpsBox.Text =
+            _runtimeOptions.IncreaseTilesAboveFps.ToString(culture);
+        SettingsManualAspectCheck.IsChecked =
+            _runtimeOptions.ManualAspectRatioEnabled;
+        SettingsManualAspectRatioBox.Text =
+            _runtimeOptions.ManualAspectRatio.ToString("0.###", culture);
         SettingsShowFpsCheck.IsChecked =
             _runtimeOptions.RuntimeShowFps;
-
         SettingsDiagnosticsCheck.IsChecked =
             _runtimeOptions.RuntimeDiagnostics;
     }
@@ -2576,202 +2650,222 @@ public sealed partial class MainWindow :
     private void ApplyRuntimeOptionsFromUi()
     {
         var language =
-            SettingsLanguageBox.Text
-                ?.Trim();
+            SettingsLanguageBox.Text?.Trim();
 
-        if (!string.IsNullOrWhiteSpace(
-                language))
+        if (!string.IsNullOrWhiteSpace(language))
         {
             _runtimeOptions.Language =
                 language;
         }
 
-        _runtimeOptions.TargetFps =
-            ToInt(
-                ParseNumber(
-                SettingsTargetFpsBox.Text),
-                15,
-                240,
-                _runtimeOptions.TargetFps);
-
-        _runtimeOptions.NeighborTiles =
-            ToInt(
-                ParseNumber(
-                SettingsNeighborTilesBox.Text),
-                0,
-                8,
-                _runtimeOptions.NeighborTiles);
-
+        _runtimeOptions.TicketSalesMode =
+            ToInt(ParseNumber(SettingsTicketSalesModeBox.Text), 0, 10, _runtimeOptions.TicketSalesMode);
+        _runtimeOptions.InternetRadioUrl =
+            SettingsInternetRadioBox.Text?.Trim() ?? string.Empty;
+        _runtimeOptions.TypewriterFont =
+            string.IsNullOrWhiteSpace(SettingsTypewriterFontBox.Text)
+                ? _runtimeOptions.TypewriterFont
+                : SettingsTypewriterFontBox.Text.Trim();
         _runtimeOptions.AutoSave =
-            SettingsAutoSaveCheck.IsChecked ==
-            true;
-
+            SettingsAutoSaveCheck.IsChecked == true;
         _runtimeOptions.UseCurrentTime =
-            SettingsCurrentTimeCheck.IsChecked ==
-            true;
-
+            SettingsCurrentTimeCheck.IsChecked == true;
         _runtimeOptions.UseCurrentDate =
-            SettingsCurrentDateCheck.IsChecked ==
-            true;
+            SettingsCurrentDateCheck.IsChecked == true;
+        _runtimeOptions.UseCurrentYear =
+            SettingsCurrentYearCheck.IsChecked == true;
+        _runtimeOptions.ShowVehiclePreview =
+            SettingsShowVehiclePreviewCheck.IsChecked == true;
+        _runtimeOptions.ShowErrorMessages =
+            SettingsShowErrorMessagesCheck.IsChecked == true;
+        _runtimeOptions.ScheduleAnalysisPopup =
+            SettingsScheduleAnalysisCheck.IsChecked == true;
+        _runtimeOptions.SeeOwnDriver =
+            SettingsSeeOwnDriverCheck.IsChecked == true;
+        _runtimeOptions.ShowTicketPassengerInfo =
+            SettingsShowTicketPassengerInfoCheck.IsChecked == true;
+        _runtimeOptions.WearLifespan =
+            ToInt(ParseNumber(SettingsWearLifespanBox.Text), 0, 100, _runtimeOptions.WearLifespan);
 
+        _runtimeOptions.TargetFps =
+            ToInt(ParseNumber(SettingsTargetFpsBox.Text), 15, 240, _runtimeOptions.TargetFps);
+        _runtimeOptions.RuntimeVSync =
+            SettingsVsyncCheck.IsChecked == true;
+        _runtimeOptions.RuntimeBorderlessFullscreen =
+            SettingsBorderlessCheck.IsChecked == true;
+        _runtimeOptions.RuntimePreferHardwareGpu =
+            SettingsHardwareGpuCheck.IsChecked == true;
+
+        var requestedMsaa =
+            ToInt(ParseNumber(SettingsMsaaSamplesBox.Text), 0, 4, _runtimeOptions.RuntimeMsaaSamples);
+
+        _runtimeOptions.RuntimeMsaaSamples =
+            requestedMsaa >= 4
+                ? 4
+                : requestedMsaa >= 2
+                    ? 2
+                    : 0;
+
+        _runtimeOptions.RuntimeSharpenStrength =
+            ToDouble(ParseNumber(SettingsSharpenStrengthBox.Text), 0.0, 1.0, _runtimeOptions.RuntimeSharpenStrength);
+        _runtimeOptions.AnisotropicFiltering =
+            ToInt(ParseNumber(SettingsAnisotropicBox.Text), 1, 16, _runtimeOptions.AnisotropicFiltering);
+        _runtimeOptions.TextureFilterMode =
+            ToInt(ParseNumber(SettingsTextureFilterModeBox.Text), 0, 8, _runtimeOptions.TextureFilterMode);
         _runtimeOptions.MaximumObjectVisibilityMeters =
-            ToDouble(
-                ParseNumber(
-                SettingsObjectDistanceBox.Text),
-                100,
-                10000,
-                _runtimeOptions.MaximumObjectVisibilityMeters);
+            ToDouble(ParseNumber(SettingsObjectDistanceBox.Text), 100, 10000, _runtimeOptions.MaximumObjectVisibilityMeters);
+        _runtimeOptions.MinimumObjectSize =
+            ToDouble(ParseNumber(SettingsMinimumObjectSizeBox.Text), 0.0001, 10.0, _runtimeOptions.MinimumObjectSize);
+        _runtimeOptions.NeighborTiles =
+            ToInt(ParseNumber(SettingsNeighborTilesBox.Text), 0, 8, _runtimeOptions.NeighborTiles);
+        _runtimeOptions.RuntimeStreamingRadius =
+            ToInt(ParseNumber(SettingsStreamingRadiusBox.Text), 1, 8, _runtimeOptions.RuntimeStreamingRadius);
+        _runtimeOptions.Shadows =
+            SettingsShadowsCheck.IsChecked == true;
+        _runtimeOptions.StencilBufferEffects =
+            SettingsStencilEffectsCheck.IsChecked == true;
+        _runtimeOptions.SunGlow =
+            SettingsSunGlowCheck.IsChecked == true;
+        _runtimeOptions.RainReflections =
+            SettingsRainReflectionsCheck.IsChecked == true;
+        _runtimeOptions.HumansInRainReflections =
+            SettingsHumansRainReflectionsCheck.IsChecked == true;
+        _runtimeOptions.MaximumObjectComplexity =
+            ToInt(ParseNumber(SettingsMaximumObjectComplexityBox.Text), 0, 10, _runtimeOptions.MaximumObjectComplexity);
+        _runtimeOptions.MaximumMapComplexity =
+            ToInt(ParseNumber(SettingsMaximumMapComplexityBox.Text), 0, 10, _runtimeOptions.MaximumMapComplexity);
 
         _runtimeOptions.HighResolutionTextureMemoryMb =
-            ToDouble(
-                ParseNumber(
-                SettingsTextureMemoryBox.Text),
-                128,
-                32768,
-                _runtimeOptions.HighResolutionTextureMemoryMb);
-
-        _runtimeOptions.AnisotropicFiltering =
-            ToInt(
-                ParseNumber(
-                SettingsAnisotropicBox.Text),
-                1,
-                16,
-                _runtimeOptions.AnisotropicFiltering);
+            ToDouble(ParseNumber(SettingsTextureMemoryBox.Text), 128, 32768, _runtimeOptions.HighResolutionTextureMemoryMb);
+        _runtimeOptions.OnlyLowResolutionTextures =
+            SettingsOnlyLowTexturesCheck.IsChecked == true;
+        _runtimeOptions.LimitTexturesTo256 =
+            SettingsLimitTextures256Check.IsChecked == true;
+        _runtimeOptions.LowResolutionTexturesAtDistance =
+            SettingsLowTexturesAtDistanceCheck.IsChecked == true;
+        _runtimeOptions.MaterialNightMap =
+            SettingsNightMapCheck.IsChecked == true;
+        _runtimeOptions.MaterialLightMap =
+            SettingsLightMapCheck.IsChecked == true;
+        _runtimeOptions.MaterialTerrainLightMap =
+            SettingsTerrainLightMapCheck.IsChecked == true;
+        _runtimeOptions.MaterialReflectionMap =
+            SettingsReflectionMapCheck.IsChecked == true;
+        _runtimeOptions.MaterialBumpMap =
+            SettingsBumpMapCheck.IsChecked == true;
 
         var reflectionMode =
-            SettingsReflectionModeBox.Text
-                ?.Trim()
-                .ToLowerInvariant();
+            SettingsReflectionModeBox.Text?.Trim().ToLowerInvariant();
 
-        if (reflectionMode is
-            "economy" or
-            "full" or
-            "off")
+        if (reflectionMode is "economy" or "full" or "off")
         {
             _runtimeOptions.RealTimeReflections =
                 reflectionMode;
         }
 
         _runtimeOptions.RealTimeReflectionTextureSize =
-            ToInt(
-                ParseNumber(
-                    SettingsReflectionSizeBox.Text),
-                64,
-                4096,
-                _runtimeOptions.RealTimeReflectionTextureSize);
-
-        _runtimeOptions.Shadows =
-            SettingsShadowsCheck.IsChecked ==
-            true;
-
-        _runtimeOptions.MaterialNightMap =
-            SettingsNightMapCheck.IsChecked ==
-            true;
-
-        _runtimeOptions.MaterialLightMap =
-            SettingsLightMapCheck.IsChecked ==
-            true;
+            ToInt(ParseNumber(SettingsReflectionSizeBox.Text), 64, 4096, _runtimeOptions.RealTimeReflectionTextureSize);
+        _runtimeOptions.MinimumObjectSizeReflections =
+            ToDouble(ParseNumber(SettingsMinimumObjectSizeReflectionBox.Text), 0.0001, 10.0, _runtimeOptions.MinimumObjectSizeReflections);
+        _runtimeOptions.ReflectionEconomyBelowFps =
+            ToDouble(ParseNumber(SettingsReflectionEconomyFpsBox.Text), 1, 240, _runtimeOptions.ReflectionEconomyBelowFps);
+        _runtimeOptions.ReflectionFullAboveFps =
+            ToDouble(ParseNumber(SettingsReflectionFullFpsBox.Text), 1, 240, _runtimeOptions.ReflectionFullAboveFps);
 
         _runtimeOptions.MasterVolumePercent =
-            ToInt(
-                ParseNumber(
-                SettingsMasterVolumeBox.Text),
-                0,
-                100,
-                _runtimeOptions.MasterVolumePercent);
-
-        _runtimeOptions.RoadTrafficFactorPercent =
-            ToInt(
-                ParseNumber(
-                SettingsRoadTrafficBox.Text),
-                0,
-                500,
-                _runtimeOptions.RoadTrafficFactorPercent);
-
-        _runtimeOptions.PassengerFactorPercent =
-            ToInt(
-                ParseNumber(
-                SettingsPassengerFactorBox.Text),
-                0,
-                500,
-                _runtimeOptions.PassengerFactorPercent);
-
+            ToInt(ParseNumber(SettingsMasterVolumeBox.Text), 0, 100, _runtimeOptions.MasterVolumePercent);
+        _runtimeOptions.MaximumSoundCount =
+            ToInt(ParseNumber(SettingsMaximumSoundCountBox.Text), 1, 4096, _runtimeOptions.MaximumSoundCount);
+        _runtimeOptions.StereoEffect =
+            ToInt(ParseNumber(SettingsStereoEffectBox.Text), 0, 100, _runtimeOptions.StereoEffect);
+        _runtimeOptions.DopplerEffect =
+            SettingsDopplerCheck.IsChecked == true;
+        _runtimeOptions.ReverbEffects =
+            SettingsReverbCheck.IsChecked == true;
         _runtimeOptions.AiVehicleSounds =
-            SettingsAiSoundsCheck.IsChecked ==
-            true;
-
+            SettingsAiSoundsCheck.IsChecked == true;
         _runtimeOptions.ScenerySounds =
-            SettingsScenerySoundsCheck.IsChecked ==
-            true;
+            SettingsScenerySoundsCheck.IsChecked == true;
+
+        _runtimeOptions.MaximumUnscheduledTraffic =
+            ToInt(ParseNumber(SettingsMaximumUnscheduledTrafficBox.Text), 0, 10000, _runtimeOptions.MaximumUnscheduledTraffic);
+        _runtimeOptions.RoadTrafficFactorPercent =
+            ToInt(ParseNumber(SettingsRoadTrafficBox.Text), 0, 500, _runtimeOptions.RoadTrafficFactorPercent);
+        _runtimeOptions.ParkedCarsPercent =
+            ToInt(ParseNumber(SettingsParkedCarsBox.Text), 0, 500, _runtimeOptions.ParkedCarsPercent);
+        _runtimeOptions.MaximumPeople =
+            ToInt(ParseNumber(SettingsMaximumPeopleBox.Text), 0, 10000, _runtimeOptions.MaximumPeople);
+        _runtimeOptions.PassengerFactorPercent =
+            ToInt(ParseNumber(SettingsPassengerFactorBox.Text), 0, 500, _runtimeOptions.PassengerFactorPercent);
+        _runtimeOptions.MaximumScheduledTraffic =
+            ToInt(ParseNumber(SettingsMaximumScheduledTrafficBox.Text), 0, 10000, _runtimeOptions.MaximumScheduledTraffic);
+        _runtimeOptions.ScheduledTrafficPriority =
+            ToInt(ParseNumber(SettingsScheduledTrafficPriorityBox.Text), 0, 10, _runtimeOptions.ScheduledTrafficPriority);
+        _runtimeOptions.UseReducedAiList =
+            SettingsReducedAiListCheck.IsChecked == true;
 
         _runtimeOptions.GameControllerEnabled =
-            SettingsGameControllerCheck.IsChecked ==
-            true;
-
+            SettingsGameControllerCheck.IsChecked == true;
+        _runtimeOptions.AutomaticSteeringCenter =
+            SettingsAutomaticSteeringCenterCheck.IsChecked == true;
+        _runtimeOptions.AutomaticClutch =
+            SettingsAutomaticClutchCheck.IsChecked == true;
+        _runtimeOptions.ReducedSteeringSpeed =
+            SettingsReducedSteeringSpeedCheck.IsChecked == true;
+        _runtimeOptions.SmoothDriverViewTransitions =
+            SettingsSmoothDriverViewCheck.IsChecked == true;
+        _runtimeOptions.DriverHeadMovement =
+            SettingsDriverHeadMovementCheck.IsChecked == true;
+        _runtimeOptions.AlternativeView =
+            SettingsAlternativeViewCheck.IsChecked == true;
         _runtimeOptions.VehicleLandscapeCollisions =
-            SettingsLandscapeCollisionsCheck.IsChecked ==
-            true;
-
+            SettingsLandscapeCollisionsCheck.IsChecked == true;
         _runtimeOptions.TerrainCollisions =
-            SettingsTerrainCollisionsCheck.IsChecked ==
-            true;
-
+            SettingsTerrainCollisionsCheck.IsChecked == true;
         _runtimeOptions.VehicleToVehicleCollisions =
-            SettingsVehicleCollisionsCheck.IsChecked ==
-            true;
+            SettingsVehicleCollisionsCheck.IsChecked == true;
+        _runtimeOptions.UserVehiclePedestrianCollisions =
+            SettingsPedestrianCollisionsCheck.IsChecked == true;
 
-        _runtimeOptions.RuntimeStreamingRadius =
-            ToInt(
-                ParseNumber(
-                SettingsStreamingRadiusBox.Text),
-                1,
-                8,
-                _runtimeOptions.RuntimeStreamingRadius);
-
-        _runtimeOptions.RuntimeVSync =
-            SettingsVsyncCheck.IsChecked ==
-            true;
-
-        _runtimeOptions.RuntimeBorderlessFullscreen =
-            SettingsBorderlessCheck.IsChecked ==
-            true;
-
-        _runtimeOptions.RuntimePreferHardwareGpu =
-            SettingsHardwareGpuCheck.IsChecked ==
-            true;
-
-        var requestedMsaa =
-            ToInt(
-                ParseNumber(
-                    SettingsMsaaSamplesBox.Text),
-                0,
-                4,
-                _runtimeOptions.RuntimeMsaaSamples);
-
-        _runtimeOptions.RuntimeMsaaSamples =
-            requestedMsaa >=
-                    4
-                ? 4
-                : requestedMsaa >=
-                    2
-                    ? 2
-                    : 0;
-
-        _runtimeOptions.RuntimeSharpenStrength =
-            ToDouble(
-                ParseNumber(
-                    SettingsSharpenStrengthBox.Text),
-                0.0,
-                1.0,
-                _runtimeOptions.RuntimeSharpenStrength);
-
+        _runtimeOptions.ReducedMultithreading =
+            SettingsReducedMultithreadingCheck.IsChecked == true;
+        _runtimeOptions.LoadWholeMapAtStart =
+            SettingsLoadWholeMapCheck.IsChecked == true;
+        _runtimeOptions.ParticleSystems =
+            SettingsParticleSystemsCheck.IsChecked == true;
+        _runtimeOptions.MaximumParticlesPerEmitter =
+            ToInt(ParseNumber(SettingsMaximumParticlesBox.Text), 0, 100000, _runtimeOptions.MaximumParticlesPerEmitter);
+        _runtimeOptions.ParticleOnlyOwnVehicle =
+            SettingsParticleOwnVehicleCheck.IsChecked == true;
+        _runtimeOptions.ParticleSystemsInReflections =
+            SettingsParticleReflectionsCheck.IsChecked == true;
+        _runtimeOptions.ReduceTilesBelowFps =
+            ToDouble(ParseNumber(SettingsReduceTilesBelowFpsBox.Text), 1, 240, _runtimeOptions.ReduceTilesBelowFps);
+        _runtimeOptions.IncreaseTilesAboveFps =
+            ToDouble(ParseNumber(SettingsIncreaseTilesAboveFpsBox.Text), 1, 240, _runtimeOptions.IncreaseTilesAboveFps);
+        _runtimeOptions.ManualAspectRatioEnabled =
+            SettingsManualAspectCheck.IsChecked == true;
+        _runtimeOptions.ManualAspectRatio =
+            ToDouble(ParseNumber(SettingsManualAspectRatioBox.Text), 0.25, 8.0, _runtimeOptions.ManualAspectRatio);
         _runtimeOptions.RuntimeShowFps =
-            SettingsShowFpsCheck.IsChecked ==
-            true;
-
+            SettingsShowFpsCheck.IsChecked == true;
         _runtimeOptions.RuntimeDiagnostics =
-            SettingsDiagnosticsCheck.IsChecked ==
-            true;
+            SettingsDiagnosticsCheck.IsChecked == true;
+    }
+
+    private void ResetRuntimeOptionsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        _runtimeOptions =
+            new OmsiRuntimeOptions();
+
+        _runtimeOptions.Save();
+        LoadRuntimeOptionsIntoUi();
+        UpdateControlsView();
+
+        SetStatus(
+            "Configurações restauradas para os padrões do runtime.");
     }
 
     private static double ParseNumber(

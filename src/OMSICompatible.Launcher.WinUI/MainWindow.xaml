@@ -578,72 +578,214 @@
                   Grid.Column="1"
                   Visibility="Collapsed"
                   Background="#0A1420">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="28"
-                                Spacing="10">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon FontFamily="Segoe MDL2 Assets"
-                                      Glyph="&#xE713;"
-                                      FontSize="28"
-                                      Foreground="#8DB7FF"/>
+                <Grid Margin="28">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  Glyph="&#xE713;"
+                                  FontSize="28"
+                                  Foreground="#8DB7FF"/>
+                        <StackPanel>
                             <TextBlock Text="Configurações"
                                        Foreground="White"
                                        FontSize="32"
-                                       FontWeight="Bold"
-                                       VerticalAlignment="Center"/>
+                                       FontWeight="Bold"/>
+                            <TextBlock Text="Organizado por áreas, seguindo a estrutura funcional do openOMSI e do options.cfg."
+                                       Foreground="#879AAD"
+                                       FontSize="12"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="Importar options.cfg" Click="ImportOmsiOptionsButton_Click"/>
-                            <Button Content="Salvar" Click="SaveRuntimeOptionsButton_Click"/>
-                        </StackPanel>
-
-                        <TextBox x:Name="SettingsLanguageBox" Header="Idioma"/>
-                        <TextBox x:Name="SettingsTargetFpsBox" Header="FPS alvo"/>
-                        <TextBox x:Name="SettingsNeighborTilesBox" Header="Tiles vizinhos"/>
-                        <CheckBox x:Name="SettingsAutoSaveCheck" Content="Auto Save"/>
-                        <CheckBox x:Name="SettingsCurrentTimeCheck" Content="Usar hora atual"/>
-                        <CheckBox x:Name="SettingsCurrentDateCheck" Content="Usar data atual"/>
-                        <TextBox x:Name="SettingsObjectDistanceBox" Header="Distância de objetos (m)"/>
-                        <TextBox x:Name="SettingsTextureMemoryBox" Header="Memória de textura (MB)"/>
-                        <TextBox x:Name="SettingsAnisotropicBox" Header="Filtro anisotrópico"/>
-                        <TextBox x:Name="SettingsReflectionModeBox"
-                                 Header="Modo dos retrovisores (economy / full / off)"
-                                 ToolTipService.ToolTip="Controla a frequência das reflexões em tempo real. economy intercala espelhos não contínuos; full atualiza todos; off desativa os feeds."/>
-                        <TextBox x:Name="SettingsReflectionSizeBox"
-                                 Header="Resolução dos retrovisores"
-                                 ToolTipService.ToolTip="Tamanho da textura quadrada de reflexão em pixels. Valores comuns: 256, 512 ou 1024."/>
-                        <CheckBox x:Name="SettingsShadowsCheck" Content="Sombras"/>
-                        <CheckBox x:Name="SettingsNightMapCheck" Content="Night maps"/>
-                        <CheckBox x:Name="SettingsLightMapCheck" Content="Light maps"/>
-                        <TextBox x:Name="SettingsMasterVolumeBox" Header="Volume mestre (%)"/>
-                        <TextBox x:Name="SettingsRoadTrafficBox" Header="Tráfego rodoviário (%)"/>
-                        <TextBox x:Name="SettingsPassengerFactorBox" Header="Passageiros (%)"/>
-                        <CheckBox x:Name="SettingsAiSoundsCheck" Content="Som dos veículos IA"/>
-                        <CheckBox x:Name="SettingsScenerySoundsCheck" Content="Sons de cenário"/>
-                        <CheckBox x:Name="SettingsGameControllerCheck" Content="Game Controller"/>
-                        <CheckBox x:Name="SettingsLandscapeCollisionsCheck"
-                                  Content="Colisões com cenário / objetos"
-                                  ToolTipService.ToolTip="Equivale ao no_collision do OMSI: desative para ignorar colisões laterais com objetos e cenário."/>
-                        <CheckBox x:Name="SettingsTerrainCollisionsCheck"
-                                  Content="Colisões com terreno"
-                                  ToolTipService.ToolTip="Equivale ao no_collision_terrain do OMSI. Desative somente se quiser ignorar o terreno físico."/>
-                        <CheckBox x:Name="SettingsVehicleCollisionsCheck"
-                                  Content="Colisões entre veículos"
-                                  ToolTipService.ToolTip="Equivale ao no_collision_vehToVeh do OMSI."/>
-                        <TextBox x:Name="SettingsStreamingRadiusBox" Header="Raio de streaming"/>
-                        <CheckBox x:Name="SettingsVsyncCheck" Content="VSync"/>
-                        <CheckBox x:Name="SettingsBorderlessCheck" Content="Fullscreen borderless"/>
-                        <CheckBox x:Name="SettingsHardwareGpuCheck" Content="Preferir GPU dedicada"/>
-                        <TextBox x:Name="SettingsMsaaSamplesBox"
-                                 Header="Anti-aliasing MSAA (0 / 2 / 4)"
-                                 ToolTipService.ToolTip="0 desativa; 2 ou 4 define o número de amostras. O runtime reduz automaticamente se a GPU não suportar o valor escolhido."/>
-                        <TextBox x:Name="SettingsSharpenStrengthBox"
-                                 Header="Nitidez pós-processamento (0,00 a 1,00)"
-                                 ToolTipService.ToolTip="0 desativa. Valores baixos, como 0,10 a 0,25, ajudam a recuperar nitidez após anti-aliasing sem exagerar halos."/>
-                        <CheckBox x:Name="SettingsShowFpsCheck" Content="Mostrar FPS"/>
-                        <CheckBox x:Name="SettingsDiagnosticsCheck" Content="Diagnóstico do runtime"/>
                     </StackPanel>
-                </ScrollViewer>
+
+                    <StackPanel Grid.Row="1"
+                                Margin="0,12,0,12"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Content="Importar options.cfg"
+                                Click="ImportOmsiOptionsButton_Click"/>
+                        <Button Content="Salvar"
+                                Click="SaveRuntimeOptionsButton_Click"/>
+                        <Button Content="Restaurar padrões"
+                                Click="ResetRuntimeOptionsButton_Click"/>
+                    </StackPanel>
+
+                    <TabView Grid.Row="2"
+                             IsAddTabButtonVisible="False"
+                             CanDragTabs="False">
+                        <TabViewItem Header="Geral">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="12" Spacing="10">
+                                    <TextBlock Text="Sessão e compatibilidade OMSI"
+                                               Foreground="White"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"/>
+                                    <TextBox x:Name="SettingsLanguageBox" Header="Idioma"/>
+                                    <TextBox x:Name="SettingsTicketSalesModeBox" Header="Modo de venda de bilhetes"/>
+                                    <TextBox x:Name="SettingsInternetRadioBox" Header="URL de rádio da internet"/>
+                                    <TextBox x:Name="SettingsTypewriterFontBox" Header="Fonte de impressora / bilheteira"/>
+                                    <CheckBox x:Name="SettingsAutoSaveCheck" Content="Auto Save"/>
+                                    <CheckBox x:Name="SettingsCurrentTimeCheck" Content="Usar hora atual"/>
+                                    <CheckBox x:Name="SettingsCurrentDateCheck" Content="Usar data atual"/>
+                                    <CheckBox x:Name="SettingsCurrentYearCheck" Content="Usar ano atual"/>
+                                    <CheckBox x:Name="SettingsShowVehiclePreviewCheck" Content="Mostrar prévia de veículo"/>
+                                    <CheckBox x:Name="SettingsShowErrorMessagesCheck" Content="Mostrar mensagens de erro"/>
+                                    <CheckBox x:Name="SettingsScheduleAnalysisCheck" Content="Mostrar análise de horário"/>
+                                    <CheckBox x:Name="SettingsSeeOwnDriverCheck" Content="Mostrar o próprio motorista"/>
+                                    <CheckBox x:Name="SettingsShowTicketPassengerInfoCheck" Content="Mostrar informações de bilhete/passageiro"/>
+                                    <TextBox x:Name="SettingsWearLifespanBox" Header="Vida útil / manutenção"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabViewItem>
+
+                        <TabViewItem Header="Gráficos">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="12" Spacing="10">
+                                    <TextBlock Text="Renderer e imagem"
+                                               Foreground="White"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"/>
+                                    <TextBox x:Name="SettingsTargetFpsBox" Header="FPS alvo"/>
+                                    <CheckBox x:Name="SettingsVsyncCheck" Content="VSync"/>
+                                    <CheckBox x:Name="SettingsBorderlessCheck" Content="Fullscreen borderless"/>
+                                    <CheckBox x:Name="SettingsHardwareGpuCheck" Content="Preferir GPU dedicada"/>
+                                    <TextBox x:Name="SettingsMsaaSamplesBox"
+                                             Header="Anti-aliasing MSAA (0 / 2 / 4)"/>
+                                    <TextBox x:Name="SettingsSharpenStrengthBox"
+                                             Header="Nitidez pós-processamento (0,00 a 1,00)"/>
+                                    <TextBox x:Name="SettingsAnisotropicBox" Header="Filtro anisotrópico"/>
+                                    <TextBox x:Name="SettingsTextureFilterModeBox" Header="Modo de filtro de textura"/>
+                                    <TextBox x:Name="SettingsObjectDistanceBox" Header="Distância máxima de objetos (m)"/>
+                                    <TextBox x:Name="SettingsMinimumObjectSizeBox" Header="Tamanho mínimo de objeto"/>
+                                    <TextBox x:Name="SettingsNeighborTilesBox" Header="Tiles vizinhos"/>
+                                    <TextBox x:Name="SettingsStreamingRadiusBox" Header="Raio de streaming"/>
+                                    <CheckBox x:Name="SettingsShadowsCheck" Content="Sombras"/>
+                                    <CheckBox x:Name="SettingsStencilEffectsCheck" Content="Efeitos de stencil"/>
+                                    <CheckBox x:Name="SettingsSunGlowCheck" Content="Brilho solar"/>
+                                    <CheckBox x:Name="SettingsRainReflectionsCheck" Content="Reflexos de chuva"/>
+                                    <CheckBox x:Name="SettingsHumansRainReflectionsCheck" Content="Pessoas nos reflexos de chuva"/>
+                                    <TextBox x:Name="SettingsMaximumObjectComplexityBox" Header="Complexidade máxima de objetos"/>
+                                    <TextBox x:Name="SettingsMaximumMapComplexityBox" Header="Complexidade máxima do mapa"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabViewItem>
+
+                        <TabViewItem Header="Texturas e reflexos">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="12" Spacing="10">
+                                    <TextBlock Text="Texturas, materiais e retrovisores"
+                                               Foreground="White"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"/>
+                                    <TextBox x:Name="SettingsTextureMemoryBox" Header="Memória de textura (MB)"/>
+                                    <CheckBox x:Name="SettingsOnlyLowTexturesCheck" Content="Usar somente texturas de baixa resolução"/>
+                                    <CheckBox x:Name="SettingsLimitTextures256Check" Content="Limitar texturas a 256 px"/>
+                                    <CheckBox x:Name="SettingsLowTexturesAtDistanceCheck" Content="Usar baixa resolução à distância"/>
+                                    <CheckBox x:Name="SettingsNightMapCheck" Content="Night maps"/>
+                                    <CheckBox x:Name="SettingsLightMapCheck" Content="Light maps"/>
+                                    <CheckBox x:Name="SettingsTerrainLightMapCheck" Content="Light maps de terreno"/>
+                                    <CheckBox x:Name="SettingsReflectionMapCheck" Content="Reflection maps"/>
+                                    <CheckBox x:Name="SettingsBumpMapCheck" Content="Bump maps"/>
+                                    <TextBox x:Name="SettingsReflectionModeBox"
+                                             Header="Modo dos retrovisores (economy / full / off)"/>
+                                    <TextBox x:Name="SettingsReflectionSizeBox"
+                                             Header="Resolução dos retrovisores"/>
+                                    <TextBox x:Name="SettingsMinimumObjectSizeReflectionBox"
+                                             Header="Tamanho mínimo de objeto nos retrovisores"/>
+                                    <TextBox x:Name="SettingsReflectionEconomyFpsBox"
+                                             Header="Entrar em modo econômico abaixo de FPS"/>
+                                    <TextBox x:Name="SettingsReflectionFullFpsBox"
+                                             Header="Usar reflexos completos acima de FPS"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabViewItem>
+
+                        <TabViewItem Header="Áudio">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="12" Spacing="10">
+                                    <TextBlock Text="Som"
+                                               Foreground="White"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"/>
+                                    <TextBox x:Name="SettingsMasterVolumeBox" Header="Volume mestre (%)"/>
+                                    <TextBox x:Name="SettingsMaximumSoundCountBox" Header="Máximo de sons simultâneos"/>
+                                    <TextBox x:Name="SettingsStereoEffectBox" Header="Efeito estéreo"/>
+                                    <CheckBox x:Name="SettingsDopplerCheck" Content="Efeito Doppler"/>
+                                    <CheckBox x:Name="SettingsReverbCheck" Content="Reverb"/>
+                                    <CheckBox x:Name="SettingsAiSoundsCheck" Content="Som dos veículos IA"/>
+                                    <CheckBox x:Name="SettingsScenerySoundsCheck" Content="Sons de cenário"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabViewItem>
+
+                        <TabViewItem Header="Tráfego e passageiros">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="12" Spacing="10">
+                                    <TextBlock Text="IA e densidade do mundo"
+                                               Foreground="White"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"/>
+                                    <TextBox x:Name="SettingsMaximumUnscheduledTrafficBox" Header="Máximo de tráfego não programado"/>
+                                    <TextBox x:Name="SettingsRoadTrafficBox" Header="Tráfego rodoviário (%)"/>
+                                    <TextBox x:Name="SettingsParkedCarsBox" Header="Carros estacionados (%)"/>
+                                    <TextBox x:Name="SettingsMaximumPeopleBox" Header="Máximo de pessoas"/>
+                                    <TextBox x:Name="SettingsPassengerFactorBox" Header="Passageiros (%)"/>
+                                    <TextBox x:Name="SettingsMaximumScheduledTrafficBox" Header="Máximo de tráfego programado"/>
+                                    <TextBox x:Name="SettingsScheduledTrafficPriorityBox" Header="Prioridade do tráfego programado"/>
+                                    <CheckBox x:Name="SettingsReducedAiListCheck" Content="Usar lista de IA reduzida"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabViewItem>
+
+                        <TabViewItem Header="Condução e colisões">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="12" Spacing="10">
+                                    <TextBlock Text="Controles e comportamento do veículo"
+                                               Foreground="White"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"/>
+                                    <CheckBox x:Name="SettingsGameControllerCheck" Content="Game Controller"/>
+                                    <CheckBox x:Name="SettingsAutomaticSteeringCenterCheck" Content="Centralização automática da direção"/>
+                                    <CheckBox x:Name="SettingsAutomaticClutchCheck" Content="Embreagem automática"/>
+                                    <CheckBox x:Name="SettingsReducedSteeringSpeedCheck" Content="Velocidade de direção reduzida"/>
+                                    <CheckBox x:Name="SettingsSmoothDriverViewCheck" Content="Transição suave da câmera do motorista"/>
+                                    <CheckBox x:Name="SettingsDriverHeadMovementCheck" Content="Movimento de cabeça"/>
+                                    <CheckBox x:Name="SettingsAlternativeViewCheck" Content="Visão alternativa"/>
+                                    <CheckBox x:Name="SettingsLandscapeCollisionsCheck" Content="Colisões com cenário / objetos"/>
+                                    <CheckBox x:Name="SettingsTerrainCollisionsCheck" Content="Colisões com terreno"/>
+                                    <CheckBox x:Name="SettingsVehicleCollisionsCheck" Content="Colisões entre veículos"/>
+                                    <CheckBox x:Name="SettingsPedestrianCollisionsCheck" Content="Colisões com pedestres"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabViewItem>
+
+                        <TabViewItem Header="Avançado">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="12" Spacing="10">
+                                    <TextBlock Text="Desempenho e diagnóstico"
+                                               Foreground="White"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"/>
+                                    <CheckBox x:Name="SettingsReducedMultithreadingCheck" Content="Multithreading reduzido"/>
+                                    <CheckBox x:Name="SettingsLoadWholeMapCheck" Content="Carregar mapa inteiro no início"/>
+                                    <CheckBox x:Name="SettingsParticleSystemsCheck" Content="Sistemas de partículas"/>
+                                    <TextBox x:Name="SettingsMaximumParticlesBox" Header="Máximo de partículas por emissor"/>
+                                    <CheckBox x:Name="SettingsParticleOwnVehicleCheck" Content="Partículas apenas do próprio veículo"/>
+                                    <CheckBox x:Name="SettingsParticleReflectionsCheck" Content="Partículas nos reflexos"/>
+                                    <TextBox x:Name="SettingsReduceTilesBelowFpsBox" Header="Reduzir tiles abaixo de FPS"/>
+                                    <TextBox x:Name="SettingsIncreaseTilesAboveFpsBox" Header="Aumentar tiles acima de FPS"/>
+                                    <CheckBox x:Name="SettingsManualAspectCheck" Content="Usar proporção de tela manual"/>
+                                    <TextBox x:Name="SettingsManualAspectRatioBox" Header="Proporção de tela manual"/>
+                                    <CheckBox x:Name="SettingsShowFpsCheck" Content="Mostrar FPS"/>
+                                    <CheckBox x:Name="SettingsDiagnosticsCheck" Content="Diagnóstico do runtime"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabViewItem>
+                    </TabView>
+                </Grid>
             </Grid>
 
             <Grid x:Name="CompatibilityView"
