@@ -44,6 +44,10 @@ public sealed class WorldTrafficSimulation
         WorldTrafficPathSegment Segment,
         double Rank);
 
+    private sealed record SegmentSampleCache(
+        double[] CumulativeLengths,
+        double TotalLength);
+
     private const double MinimumTrafficSeparationMeters =
         2.0;
     private const double FollowingTimeHeadwaySeconds =
@@ -70,6 +74,8 @@ public sealed class WorldTrafficSimulation
     private readonly WorldTrafficPathNetwork _network;
     private readonly Dictionary<int, WorldTrafficPathSegment> _segmentsByIndex;
     private readonly Dictionary<int, double> _segmentLengthsByIndex;
+    private readonly Dictionary<int, SegmentSampleCache>
+        _segmentSampleCachesByIndex;
     private readonly Dictionary<(int First, int Second), bool>
         _trafficPathConflictCache =
             [];
@@ -147,11 +153,18 @@ public sealed class WorldTrafficSimulation
                 static segment =>
                     segment.Index);
 
-        _segmentLengthsByIndex =
+        _segmentSampleCachesByIndex =
             network.Segments.ToDictionary(
                 static segment =>
                     segment.Index,
-                CalculateSegmentLength);
+                BuildSegmentSampleCache);
+
+        _segmentLengthsByIndex =
+            _segmentSampleCachesByIndex.ToDictionary(
+                static pair =>
+                    pair.Key,
+                static pair =>
+                    pair.Value.TotalLength);
 
         _crossingSceneryObjectIds =
             network.Segments
@@ -2247,7 +2260,7 @@ public sealed class WorldTrafficSimulation
             CalculateSegmentLength(
                 segment);
 
-        SampleSegment(
+        SampleSegmentLinear(
             segment,
             travelForward
                 ? length
@@ -5087,7 +5100,202 @@ public sealed class WorldTrafficSimulation
         return total;
     }
 
-    private static void SampleSegment(
+    private static SegmentSampleCache BuildSegmentSampleCache(
+        WorldTrafficPathSegment segment)
+    {
+        var pointCount =
+            segment.Points.Count;
+
+        var cumulativeLengths =
+            new double[
+                pointCount];
+
+        var total =
+            0.0;
+
+        for (var index = 1;
+             index <
+                 pointCount;
+             index++)
+        {
+            total +=
+                Distance(
+                    segment.Points[
+                        index - 1],
+                    segment.Points[
+                        index]);
+
+            cumulativeLengths[
+                index] =
+                total;
+        }
+
+        return new SegmentSampleCache(
+            cumulativeLengths,
+            total);
+    }
+
+    private void SampleSegment(
+        WorldTrafficPathSegment segment,
+        double distanceMeters,
+        out WorldVector3 position,
+        out double headingRadians)
+    {
+        if (segment.Points.Count ==
+            0)
+        {
+            position =
+                default;
+            headingRadians =
+                0.0;
+            return;
+        }
+
+        if (segment.Points.Count ==
+            1)
+        {
+            position =
+                segment.Points[0];
+            headingRadians =
+                0.0;
+            return;
+        }
+
+        if (!_segmentSampleCachesByIndex.TryGetValue(
+                segment.Index,
+                out var cache) ||
+            cache.CumulativeLengths.Length !=
+                segment.Points.Count ||
+            cache.TotalLength <=
+                0.000001)
+        {
+            SampleSegmentLinear(
+                segment,
+                distanceMeters,
+                out position,
+                out headingRadians);
+            return;
+        }
+
+        var distance =
+            Math.Max(
+                distanceMeters,
+                0.0);
+
+        if (distance >
+            cache.TotalLength)
+        {
+            ResolveSegmentEndSample(
+                segment,
+                out position,
+                out headingRadians);
+            return;
+        }
+
+        var cumulative =
+            cache.CumulativeLengths;
+
+        var low =
+            1;
+        var high =
+            cumulative.Length -
+            1;
+
+        while (low <
+               high)
+        {
+            var middle =
+                low +
+                (
+                    high -
+                    low
+                ) /
+                2;
+
+            if (cumulative[
+                    middle] >=
+                distance)
+            {
+                high =
+                    middle;
+            }
+            else
+            {
+                low =
+                    middle +
+                    1;
+            }
+        }
+
+        var index =
+            low;
+
+        while (index <
+                   cumulative.Length &&
+               cumulative[
+                   index] -
+                   cumulative[
+                       index -
+                       1] <=
+               0.000001)
+        {
+            index++;
+        }
+
+        if (index >=
+            cumulative.Length)
+        {
+            ResolveSegmentEndSample(
+                segment,
+                out position,
+                out headingRadians);
+            return;
+        }
+
+        var segmentStartDistance =
+            cumulative[
+                index -
+                1];
+
+        var segmentLength =
+            cumulative[
+                index] -
+            segmentStartDistance;
+
+        var t =
+            Math.Clamp(
+                (
+                    distance -
+                    segmentStartDistance
+                ) /
+                segmentLength,
+                0.0,
+                1.0);
+
+        var a =
+            segment.Points[
+                index -
+                1];
+
+        var b =
+            segment.Points[
+                index];
+
+        position =
+            Lerp(
+                a,
+                b,
+                t);
+
+        headingRadians =
+            Math.Atan2(
+                b.X -
+                    a.X,
+                b.Z -
+                    a.Z);
+    }
+
+    private static void SampleSegmentLinear(
         WorldTrafficPathSegment segment,
         double distanceMeters,
         out WorldVector3 position,
@@ -5172,6 +5380,17 @@ public sealed class WorldTrafficSimulation
                 length;
         }
 
+        ResolveSegmentEndSample(
+            segment,
+            out position,
+            out headingRadians);
+    }
+
+    private static void ResolveSegmentEndSample(
+        WorldTrafficPathSegment segment,
+        out WorldVector3 position,
+        out double headingRadians)
+    {
         var previous =
             segment.Points[^2];
 
