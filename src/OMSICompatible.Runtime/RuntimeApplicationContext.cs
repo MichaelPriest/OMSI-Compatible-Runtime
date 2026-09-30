@@ -722,6 +722,9 @@ internal sealed class RuntimeApplicationContext :
                     reflectionMode:
                         _options.RealTimeReflections);
 
+            _runtimeWindow.DriveOpsMessageRequested +=
+                OnDriveOpsMessageRequested;
+
             StartMultiplayerSession();
 
             if (_options.RuntimeBorderlessFullscreen)
@@ -757,6 +760,8 @@ internal sealed class RuntimeApplicationContext :
 
                     _runtimeWindow.StreamingCenterChanged -=
                         OnStreamingCenterChanged;
+                    _runtimeWindow.DriveOpsMessageRequested -=
+                        OnDriveOpsMessageRequested;
 
                     _runtimeWindow.Dispose();
                     _runtimeWindow = null;
@@ -2908,6 +2913,11 @@ internal sealed class RuntimeApplicationContext :
 
         if (mode is not ("host" or "join"))
         {
+            _runtimeWindow?.SetDriveOpsNetworkState(
+                "OFFLINE",
+                false,
+                0,
+                string.Empty);
             return;
         }
 
@@ -2942,6 +2952,15 @@ internal sealed class RuntimeApplicationContext :
                         _options.MultiplayerPlayerName,
                         world);
 
+            _multiplayerSession.OperationalMessageReceived +=
+                OnMultiplayerOperationalMessage;
+
+            _runtimeWindow?.SetDriveOpsNetworkState(
+                _multiplayerSession.Role.ToString().ToUpperInvariant(),
+                _multiplayerSession.Connected,
+                0,
+                _multiplayerSession.SessionHex);
+
             Console.WriteLine(
                 mode == "host"
                     ? $"[multiplayer] host protocol={OpenOmsiLanProtocol.ProtocolVersion}; port={_multiplayerSession.LocalPort}; session={_multiplayerSession.SessionHex}"
@@ -2953,9 +2972,101 @@ internal sealed class RuntimeApplicationContext :
             _multiplayerSession =
                 null;
 
+            _runtimeWindow?.SetDriveOpsNetworkState(
+                "ERRO",
+                false,
+                0,
+                string.Empty);
+
             Console.Error.WriteLine(
                 $"[multiplayer] startup failed: {exception.Message}");
         }
+    }
+
+    private void OnDriveOpsMessageRequested(
+        RuntimeDriveOpsMessageRequest request)
+    {
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            !session.Connected)
+        {
+            _runtimeWindow?.ReceiveDriveOpsMessage(
+                new RuntimeDriveOpsInboundMessage(
+                    0,
+                    "SISTEMA",
+                    request.CompanyName,
+                    string.Empty,
+                    request.Module,
+                    "ERROR",
+                    "Sem sessão multiplayer ativa.",
+                    request.Target,
+                    DateTimeOffset.UtcNow
+                        .ToUnixTimeMilliseconds()));
+            return;
+        }
+
+        try
+        {
+            if (!session.SendOperationalMessage(
+                    new OpenOmsiLanOperationalMessage(
+                        0,
+                        request.DriverName,
+                        request.CompanyName,
+                        request.EmployeeNumber,
+                        request.Module,
+                        request.Kind,
+                        request.Text,
+                        request.Target,
+                        DateTimeOffset.UtcNow
+                            .ToUnixTimeMilliseconds())))
+            {
+                _runtimeWindow?.ReceiveDriveOpsMessage(
+                    new RuntimeDriveOpsInboundMessage(
+                        0,
+                        "SISTEMA",
+                        request.CompanyName,
+                        string.Empty,
+                        request.Module,
+                        "ERROR",
+                        "Mensagem operacional não enviada.",
+                        request.Target,
+                        DateTimeOffset.UtcNow
+                            .ToUnixTimeMilliseconds()));
+            }
+        }
+        catch (Exception exception)
+        {
+            _runtimeWindow?.ReceiveDriveOpsMessage(
+                new RuntimeDriveOpsInboundMessage(
+                    0,
+                    "SISTEMA",
+                    request.CompanyName,
+                    string.Empty,
+                    request.Module,
+                    "ERROR",
+                    exception.Message,
+                    request.Target,
+                    DateTimeOffset.UtcNow
+                        .ToUnixTimeMilliseconds()));
+        }
+    }
+
+    private void OnMultiplayerOperationalMessage(
+        OpenOmsiLanOperationalMessage message)
+    {
+        _runtimeWindow?.ReceiveDriveOpsMessage(
+            new RuntimeDriveOpsInboundMessage(
+                message.SenderId,
+                message.SenderName,
+                message.CompanyName,
+                message.EmployeeNumber,
+                message.Module,
+                message.Kind,
+                message.Text,
+                message.Target,
+                message.TimestampUnixMilliseconds));
     }
 
     private void DisposeMultiplayerSession()
@@ -2971,6 +3082,9 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
+        session.OperationalMessageReceived -=
+            OnMultiplayerOperationalMessage;
+
         try
         {
             session.Leave();
@@ -2980,6 +3094,12 @@ internal sealed class RuntimeApplicationContext :
         }
 
         session.Dispose();
+
+        _runtimeWindow?.SetDriveOpsNetworkState(
+            "OFFLINE",
+            false,
+            0,
+            string.Empty);
         _multiplayerTravelMeters.Clear();
         _multiplayerRemoteStates.Clear();
         _multiplayerScriptRuntimes.Clear();
@@ -3276,6 +3396,12 @@ internal sealed class RuntimeApplicationContext :
 
             Console.WriteLine(
                 $"[multiplayer-status]|{session.Role}|{(session.Connected ? 1 : 0)}|{peers.Count}|{session.SessionHex}|{session.LocalPort}|{rejection}");
+
+            _runtimeWindow?.SetDriveOpsNetworkState(
+                session.Role.ToString().ToUpperInvariant(),
+                session.Connected,
+                peers.Count,
+                session.SessionHex);
         }
 
         _multiplayerActivePeerIds.Clear();

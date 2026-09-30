@@ -655,6 +655,9 @@ public sealed class D3D11RenderWindow : Form
     public event Action<int, int>?
         StreamingCenterChanged;
 
+    public event Action<RuntimeDriveOpsMessageRequest>?
+        DriveOpsMessageRequested;
+
     private IDXGIFactory2? _factory;
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _deviceContext;
@@ -1575,6 +1578,9 @@ public sealed class D3D11RenderWindow : Form
 
         if (_driveOpsPanel is not null)
         {
+            _driveOpsPanel.MessageRequested +=
+                OnDriveOpsMessageRequested;
+
             Controls.Add(
                 _driveOpsPanel);
             LayoutDriveOpsPanel();
@@ -1596,6 +1602,33 @@ public sealed class D3D11RenderWindow : Form
 
         Shown += OnWindowShown;
         ClientSizeChanged += OnClientSizeChanged;
+    }
+
+    public void SetDriveOpsNetworkState(
+        string role,
+        bool connected,
+        int peerCount,
+        string session)
+    {
+        _driveOpsPanel?.SetNetworkState(
+            role,
+            connected,
+            peerCount,
+            session);
+    }
+
+    public void ReceiveDriveOpsMessage(
+        RuntimeDriveOpsInboundMessage message)
+    {
+        _driveOpsPanel?.ReceiveMessage(
+            message);
+    }
+
+    private void OnDriveOpsMessageRequested(
+        RuntimeDriveOpsMessageRequest request)
+    {
+        DriveOpsMessageRequested?.Invoke(
+            request);
     }
 
     public static int WarmTextureFileCache(
@@ -23949,6 +23982,12 @@ public sealed class D3D11RenderWindow : Form
             {
                 _busSelectorPanel.SelectionConfirmed -=
                     OnRuntimeBusSelectionConfirmed;
+            }
+
+            if (_driveOpsPanel is not null)
+            {
+                _driveOpsPanel.MessageRequested -=
+                    OnDriveOpsMessageRequested;
             }
 
             if (_scriptRuntime is not null)

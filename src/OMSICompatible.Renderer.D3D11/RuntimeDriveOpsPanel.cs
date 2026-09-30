@@ -6,6 +6,26 @@ using System.Windows.Forms;
 
 namespace OMSICompatible.Renderer.D3D11;
 
+public sealed record RuntimeDriveOpsMessageRequest(
+    string DriverName,
+    string CompanyName,
+    string EmployeeNumber,
+    string Module,
+    string Kind,
+    string Text,
+    string Target);
+
+public sealed record RuntimeDriveOpsInboundMessage(
+    uint SenderId,
+    string SenderName,
+    string CompanyName,
+    string EmployeeNumber,
+    string Module,
+    string Kind,
+    string Text,
+    string Target,
+    long TimestampUnixMilliseconds);
+
 internal sealed class RuntimeDriveOpsPanel : Panel
 {
     private sealed class DriverPassProfile
@@ -19,6 +39,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
     private readonly Panel _contentHost;
     private readonly Label _status;
+    private readonly Label _networkState;
     private readonly Label _vehicleState;
     private readonly TextBox _driverName;
     private readonly TextBox _companyName;
@@ -26,6 +47,30 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     private readonly TextBox _role;
     private readonly CheckBox _requireForStart;
     private readonly Button _insertBadgeButton;
+
+    private readonly ListBox _fleetMessages =
+        OmsiListBox();
+    private readonly TextBox _fleetInput =
+        OmsiTextBox(string.Empty);
+    private readonly ListBox _supportMessages =
+        OmsiListBox();
+    private readonly ComboBox _supportReason =
+        OmsiComboBox();
+    private readonly TextBox _supportDetails =
+        OmsiTextBox(string.Empty);
+    private readonly ListBox _controlMessages =
+        OmsiListBox();
+    private readonly TextBox _controlInput =
+        OmsiTextBox(string.Empty);
+    private readonly ListBox _routeMessages =
+        OmsiListBox();
+    private readonly TextBox _routeLine =
+        OmsiTextBox(string.Empty);
+    private readonly TextBox _routeCode =
+        OmsiTextBox(string.Empty);
+    private readonly TextBox _routeDestination =
+        OmsiTextBox(string.Empty);
+
     private DriverPassProfile _profile;
     private bool _badgeInserted;
 
@@ -49,6 +94,20 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         _profile = LoadProfile();
         _badgeInserted = !_profile.RequireForStart;
 
+        _supportReason.Items.AddRange(
+            new object[]
+            {
+                "Pane mecânica",
+                "Pane elétrica",
+                "Colisão",
+                "Acidente",
+                "Pneu / rodagem",
+                "Guincho",
+                "Troca de veículo",
+                "Apoio operacional"
+            });
+        _supportReason.SelectedIndex = 0;
+
         var header =
             new Panel
             {
@@ -71,12 +130,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                         FontStyle.Bold),
                 TextAlign =
                     ContentAlignment.MiddleLeft,
-                Padding =
-                    new Padding(
-                        12,
-                        0,
-                        0,
-                        0)
+                Padding = new Padding(12, 0, 0, 0)
             };
 
         var close =
@@ -88,10 +142,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
         close.Dock = DockStyle.Right;
         close.BackColor =
-            Color.FromArgb(
-                198,
-                204,
-                211);
+            Color.FromArgb(198, 204, 211);
 
         header.Controls.Add(title);
         header.Controls.Add(close);
@@ -102,10 +153,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 Dock = DockStyle.Bottom,
                 Height = 50,
                 BackColor =
-                    Color.FromArgb(
-                        199,
-                        204,
-                        211),
+                    Color.FromArgb(199, 204, 211),
                 Padding = new Padding(8)
             };
 
@@ -115,12 +163,27 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 ForeColor = OmsiText,
+                Font = new Font("Segoe UI", 9.0f),
+                TextAlign =
+                    ContentAlignment.MiddleLeft
+            };
+
+        _networkState =
+            new Label
+            {
+                AutoSize = false,
+                Dock = DockStyle.Right,
+                Width = 180,
+                Text = "REDE OFFLINE",
+                ForeColor =
+                    Color.FromArgb(110, 45, 45),
                 Font =
                     new Font(
                         "Segoe UI",
-                        9.0f),
+                        8.5f,
+                        FontStyle.Bold),
                 TextAlign =
-                    ContentAlignment.MiddleLeft
+                    ContentAlignment.MiddleRight
             };
 
         _vehicleState =
@@ -128,18 +191,19 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             {
                 AutoSize = false,
                 Dock = DockStyle.Right,
-                Width = 280,
+                Width = 255,
                 ForeColor = OmsiText,
                 Font =
                     new Font(
                         "Segoe UI",
-                        9.0f,
+                        8.5f,
                         FontStyle.Bold),
                 TextAlign =
                     ContentAlignment.MiddleRight
             };
 
         footer.Controls.Add(_status);
+        footer.Controls.Add(_networkState);
         footer.Controls.Add(_vehicleState);
 
         var navigation =
@@ -151,10 +215,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                     FlowDirection.TopDown,
                 WrapContents = false,
                 BackColor =
-                    Color.FromArgb(
-                        190,
-                        196,
-                        203),
+                    Color.FromArgb(190, 196, 203),
                 Padding = new Padding(6),
                 AutoScroll = true
             };
@@ -168,38 +229,10 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             };
 
         AddModuleButton(navigation, "DRIVERPASS", ShowDriverPass);
-        AddModuleButton(
-            navigation,
-            "FLEETLINK",
-            () =>
-                ShowModule(
-                    "FLEETLINK",
-                    "Rede interna da empresa",
-                    "Jogadores da empresa, mensagens operacionais e presença online. A camada de rede será ligada ao multiplayer no próximo bloco."));
-        AddModuleButton(
-            navigation,
-            "ASSISTLINK",
-            () =>
-                ShowModule(
-                    "ASSISTLINK",
-                    "Suporte operacional",
-                    "Pane, colisão, acidente, guincho, troca de veículo e apoio. As solicitações serão encaminhadas ao ControlHub."));
-        AddModuleButton(
-            navigation,
-            "CONTROLHUB",
-            () =>
-                ShowModule(
-                    "CONTROLHUB",
-                    "Centro de controle operacional",
-                    "Gestão de frota, ocorrências, atrasos, recolhimentos e comunicação com motoristas dentro do jogo."));
-        AddModuleButton(
-            navigation,
-            "ROUTECORE",
-            () =>
-                ShowModule(
-                    "ROUTECORE",
-                    "Terminal operacional embarcado",
-                    "Linha, rota, destino, viagem, próxima parada, mensagens, GPS e despacho com identidade própria do runtime."));
+        AddModuleButton(navigation, "FLEETLINK", ShowFleetLink);
+        AddModuleButton(navigation, "ASSISTLINK", ShowAssistLink);
+        AddModuleButton(navigation, "CONTROLHUB", ShowControlHub);
+        AddModuleButton(navigation, "ROUTECORE", ShowRouteCore);
 
         Controls.Add(_contentHost);
         Controls.Add(navigation);
@@ -207,17 +240,13 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         Controls.Add(header);
 
         _driverName =
-            OmsiTextBox(
-                _profile.DriverName);
+            OmsiTextBox(_profile.DriverName);
         _companyName =
-            OmsiTextBox(
-                _profile.CompanyName);
+            OmsiTextBox(_profile.CompanyName);
         _employeeNumber =
-            OmsiTextBox(
-                _profile.EmployeeNumber);
+            OmsiTextBox(_profile.EmployeeNumber);
         _role =
-            OmsiTextBox(
-                _profile.Role);
+            OmsiTextBox(_profile.Role);
 
         _requireForStart =
             new CheckBox
@@ -244,6 +273,9 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         ShowDriverPass();
         RefreshDriverPassStatus();
     }
+
+    public event Action<RuntimeDriveOpsMessageRequest>?
+        MessageRequested;
 
     public bool StartAuthorized =>
         !_profile.RequireForStart ||
@@ -272,16 +304,109 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     public void HidePanel() =>
         Visible = false;
 
+    public void SetNetworkState(
+        string role,
+        bool connected,
+        int peerCount,
+        string session)
+    {
+        _networkState.Text =
+            connected
+                ? $"{role} · {peerCount + 1} ONLINE · {session}"
+                : $"{role} · OFFLINE";
+
+        _networkState.ForeColor =
+            connected
+                ? Color.FromArgb(30, 105, 45)
+                : Color.FromArgb(110, 45, 45);
+    }
+
+    public void ReceiveMessage(
+        RuntimeDriveOpsInboundMessage message)
+    {
+        var localCompany =
+            _companyName.Text.Trim();
+
+        if (!string.IsNullOrWhiteSpace(localCompany) &&
+            !string.IsNullOrWhiteSpace(message.CompanyName) &&
+            !localCompany.Equals(
+                message.CompanyName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var timestamp =
+            message.TimestampUnixMilliseconds >
+                    0
+                ? DateTimeOffset
+                    .FromUnixTimeMilliseconds(
+                        message.TimestampUnixMilliseconds)
+                    .ToLocalTime()
+                    .ToString("HH:mm")
+                : DateTime.Now.ToString("HH:mm");
+
+        var sender =
+            string.IsNullOrWhiteSpace(
+                message.SenderName)
+                ? "SISTEMA"
+                : message.SenderName;
+
+        var line =
+            $"[{timestamp}] {sender}: {message.Text}";
+
+        switch (message.Module.ToUpperInvariant())
+        {
+            case "FLEETLINK":
+            case "DRIVERPASS":
+                AppendMessage(
+                    _fleetMessages,
+                    line);
+                break;
+
+            case "ASSISTLINK":
+                AppendMessage(
+                    _supportMessages,
+                    line);
+                break;
+
+            case "CONTROLHUB":
+                AppendMessage(
+                    _controlMessages,
+                    line);
+                break;
+
+            case "ROUTECORE":
+                AppendMessage(
+                    _routeMessages,
+                    line);
+                break;
+
+            default:
+                AppendMessage(
+                    _fleetMessages,
+                    line);
+                break;
+        }
+
+        if (message.Kind.Equals(
+                "ERROR",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            _status.Text =
+                message.Text;
+            _status.ForeColor =
+                Color.FromArgb(135, 35, 35);
+        }
+    }
+
     public void NotifyStartBlocked(
         string action)
     {
         _status.Text =
             $"DRIVERPASS: ação bloqueada ({action}). Insira um crachá válido.";
         _status.ForeColor =
-            Color.FromArgb(
-                135,
-                35,
-                35);
+            Color.FromArgb(135, 35, 35);
         ShowDriverPass();
     }
 
@@ -291,7 +416,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         float speedMetersPerSecond)
     {
         _vehicleState.Text =
-            $"ELÉTRICA {(electrical ? "ON" : "OFF")}  |  MOTOR {(engine ? "ON" : "OFF")}  |  {Math.Abs(speedMetersPerSecond) * 3.6f:0} km/h";
+            $"ELÉTRICA {(electrical ? "ON" : "OFF")} | MOTOR {(engine ? "ON" : "OFF")} | {Math.Abs(speedMetersPerSecond) * 3.6f:0} km/h";
     }
 
     private void AddModuleButton(
@@ -308,13 +433,50 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
         button.Height = 38;
         button.Margin =
-            new Padding(
-                0,
-                0,
-                0,
-                5);
-
+            new Padding(0, 0, 0, 5);
         parent.Controls.Add(button);
+    }
+
+    private Panel ModuleRoot(
+        string title,
+        string subtitle)
+    {
+        var root =
+            new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent
+            };
+
+        root.Controls.Add(
+            new Label
+            {
+                AutoSize = true,
+                Text = title,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        15.0f,
+                        FontStyle.Bold),
+                ForeColor = OmsiDark,
+                Location = new Point(8, 8)
+            });
+
+        root.Controls.Add(
+            new Label
+            {
+                AutoSize = true,
+                Text = subtitle,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        9.5f,
+                        FontStyle.Bold),
+                ForeColor = OmsiBlue,
+                Location = new Point(8, 42)
+            });
+
+        return root;
     }
 
     private void ShowDriverPass()
@@ -365,11 +527,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                     FlowDirection.LeftToRight,
                 WrapContents = false,
                 Margin =
-                    new Padding(
-                        0,
-                        10,
-                        0,
-                        0)
+                    new Padding(0, 10, 0, 0)
             };
 
         buttons.Controls.Add(
@@ -378,8 +536,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 154,
                 (_, _) =>
                     SaveBadge()));
-        buttons.Controls.Add(
-            _insertBadgeButton);
+        buttons.Controls.Add(_insertBadgeButton);
 
         root.Controls.Add(
             buttons,
@@ -393,117 +550,368 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             new Label
             {
                 AutoSize = true,
-                MaximumSize =
-                    new Size(
-                        520,
-                        0),
+                MaximumSize = new Size(520, 0),
                 Text =
                     "A física e os scripts do ônibus continuam sendo os do OMSI. O DriverPass atua somente como autorização operacional para elétrica e partida.",
                 ForeColor =
-                    Color.FromArgb(
-                        72,
-                        78,
-                        85),
+                    Color.FromArgb(72, 78, 85),
                 Font =
                     new Font(
                         "Segoe UI",
                         8.5f),
                 Margin =
-                    new Padding(
-                        0,
-                        12,
-                        0,
-                        0)
+                    new Padding(0, 12, 0, 0)
             };
 
-        root.Controls.Add(
-            note,
-            0,
-            7);
-        root.SetColumnSpan(
-            note,
-            2);
+        root.Controls.Add(note, 0, 7);
+        root.SetColumnSpan(note, 2);
 
         _contentHost.Controls.Add(root);
         RefreshDriverPassStatus();
     }
 
-    private void ShowModule(
-        string module,
-        string subtitle,
-        string description)
+    private void ShowFleetLink()
     {
         _contentHost.Controls.Clear();
-
         var root =
-            new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Color.Transparent
-            };
+            ModuleRoot(
+                "FLEETLINK",
+                "Rede da empresa · chat e presença operacional");
 
-        root.Controls.Add(
-            new Label
-            {
-                AutoSize = true,
-                Text = module,
-                Font =
-                    new Font(
-                        "Segoe UI",
-                        15.0f,
-                        FontStyle.Bold),
-                ForeColor = OmsiDark,
-                Location = new Point(8, 8)
-            });
+        _fleetMessages.SetBounds(
+            8, 72, 520, 190);
+        _fleetInput.SetBounds(
+            8, 276, 375, 28);
 
-        root.Controls.Add(
-            new Label
-            {
-                AutoSize = true,
-                Text = subtitle,
-                Font =
-                    new Font(
-                        "Segoe UI",
-                        10.0f,
-                        FontStyle.Bold),
-                ForeColor = OmsiBlue,
-                Location = new Point(8, 46)
-            });
+        var send =
+            OmsiButton(
+                "ENVIAR",
+                132,
+                (_, _) =>
+                {
+                    var text =
+                        _fleetInput.Text.Trim();
 
-        root.Controls.Add(
-            new Label
-            {
-                AutoSize = false,
-                Text = description,
-                Font =
-                    new Font(
-                        "Segoe UI",
-                        9.0f),
-                ForeColor = OmsiText,
-                Location = new Point(8, 82),
-                Size = new Size(520, 110)
-            });
+                    if (RequestMessage(
+                            "FLEETLINK",
+                            "CHAT",
+                            text,
+                            string.Empty))
+                    {
+                        _fleetInput.Clear();
+                    }
+                });
 
-        root.Controls.Add(
-            new Label
-            {
-                AutoSize = true,
-                Text =
-                    "ESTADO: preparado para integração online",
-                Font =
-                    new Font(
-                        "Segoe UI",
-                        9.0f,
-                        FontStyle.Bold),
-                ForeColor =
-                    Color.FromArgb(
-                        95,
-                        100,
-                        105),
-                Location = new Point(8, 212)
-            });
+        send.SetBounds(
+            396, 274, 132, 32);
 
+        root.Controls.Add(_fleetMessages);
+        root.Controls.Add(_fleetInput);
+        root.Controls.Add(send);
         _contentHost.Controls.Add(root);
+    }
+
+    private void ShowAssistLink()
+    {
+        _contentHost.Controls.Clear();
+        var root =
+            ModuleRoot(
+                "ASSISTLINK",
+                "Solicitação de suporte operacional");
+
+        _supportReason.SetBounds(
+            8, 76, 220, 28);
+        _supportDetails.SetBounds(
+            240, 76, 288, 28);
+
+        var send =
+            OmsiButton(
+                "SOLICITAR SUPORTE",
+                180,
+                (_, _) =>
+                {
+                    var reason =
+                        _supportReason.SelectedItem
+                            ?.ToString() ??
+                        "Apoio operacional";
+
+                    var detail =
+                        _supportDetails.Text.Trim();
+
+                    var text =
+                        string.IsNullOrWhiteSpace(detail)
+                            ? reason
+                            : $"{reason}: {detail}";
+
+                    if (RequestMessage(
+                            "ASSISTLINK",
+                            "SUPPORT",
+                            text,
+                            "CONTROLHUB"))
+                    {
+                        _supportDetails.Clear();
+                    }
+                });
+
+        send.SetBounds(
+            8, 116, 180, 32);
+        _supportMessages.SetBounds(
+            8, 164, 520, 150);
+
+        root.Controls.Add(_supportReason);
+        root.Controls.Add(_supportDetails);
+        root.Controls.Add(send);
+        root.Controls.Add(_supportMessages);
+        _contentHost.Controls.Add(root);
+    }
+
+    private void ShowControlHub()
+    {
+        _contentHost.Controls.Clear();
+        var root =
+            ModuleRoot(
+                "CONTROLHUB",
+                "CCO · despacho e gestão de ocorrências");
+
+        _controlMessages.SetBounds(
+            8, 72, 520, 190);
+        _controlInput.SetBounds(
+            8, 276, 350, 28);
+
+        var dispatch =
+            OmsiButton(
+                "ENVIAR DESPACHO",
+                160,
+                (_, _) =>
+                {
+                    var text =
+                        _controlInput.Text.Trim();
+
+                    if (RequestMessage(
+                            "CONTROLHUB",
+                            "DISPATCH",
+                            text,
+                            string.Empty))
+                    {
+                        _controlInput.Clear();
+                    }
+                });
+
+        dispatch.Enabled =
+            HasControlHubPermission();
+        dispatch.SetBounds(
+            368, 274, 160, 32);
+
+        if (!dispatch.Enabled)
+        {
+            _status.Text =
+                "CONTROLHUB: seu DriverPass não possui função de CCO/gestão.";
+            _status.ForeColor =
+                Color.FromArgb(110, 70, 30);
+        }
+
+        root.Controls.Add(_controlMessages);
+        root.Controls.Add(_controlInput);
+        root.Controls.Add(dispatch);
+        _contentHost.Controls.Add(root);
+    }
+
+    private void ShowRouteCore()
+    {
+        _contentHost.Controls.Clear();
+        var root =
+            ModuleRoot(
+                "ROUTECORE",
+                "Terminal operacional · linha, rota e destino");
+
+        AddInlineLabel(
+            root,
+            "Linha",
+            8,
+            78);
+        _routeLine.SetBounds(
+            82, 74, 100, 28);
+
+        AddInlineLabel(
+            root,
+            "Rota",
+            200,
+            78);
+        _routeCode.SetBounds(
+            255, 74, 100, 28);
+
+        AddInlineLabel(
+            root,
+            "Destino",
+            8,
+            118);
+        _routeDestination.SetBounds(
+            82, 114, 273, 28);
+
+        var publish =
+            OmsiButton(
+                "PUBLICAR OPERAÇÃO",
+                166,
+                (_, _) =>
+                {
+                    var line =
+                        _routeLine.Text.Trim();
+                    var route =
+                        _routeCode.Text.Trim();
+                    var destination =
+                        _routeDestination.Text.Trim();
+
+                    var text =
+                        $"Linha {line} | Rota {route} | Destino {destination}";
+
+                    RequestMessage(
+                        "ROUTECORE",
+                        "ROUTE",
+                        text,
+                        string.Empty);
+                });
+
+        publish.SetBounds(
+            362, 112, 166, 32);
+        _routeMessages.SetBounds(
+            8, 164, 520, 150);
+
+        root.Controls.Add(_routeLine);
+        root.Controls.Add(_routeCode);
+        root.Controls.Add(_routeDestination);
+        root.Controls.Add(publish);
+        root.Controls.Add(_routeMessages);
+        _contentHost.Controls.Add(root);
+    }
+
+    private bool RequestMessage(
+        string module,
+        string kind,
+        string text,
+        string target)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _status.Text =
+                $"{module}: informe uma mensagem.";
+            _status.ForeColor =
+                Color.FromArgb(110, 70, 30);
+            return false;
+        }
+
+        var driver =
+            _driverName.Text.Trim();
+        var company =
+            _companyName.Text.Trim();
+        var employee =
+            _employeeNumber.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(driver) ||
+            string.IsNullOrWhiteSpace(company) ||
+            string.IsNullOrWhiteSpace(employee))
+        {
+            _status.Text =
+                "DRIVERPASS: cadastre motorista, empresa e matrícula antes de usar a rede operacional.";
+            _status.ForeColor =
+                Color.FromArgb(135, 35, 35);
+            ShowDriverPass();
+            return false;
+        }
+
+        var request =
+            new RuntimeDriveOpsMessageRequest(
+                driver,
+                company,
+                employee,
+                module,
+                kind,
+                text,
+                target);
+
+        AppendLocalMessage(
+            request);
+        MessageRequested?.Invoke(
+            request);
+
+        return true;
+    }
+
+    private void AppendLocalMessage(
+        RuntimeDriveOpsMessageRequest request)
+    {
+        var line =
+            $"[{DateTime.Now:HH:mm}] Você: {request.Text}";
+
+        switch (request.Module)
+        {
+            case "FLEETLINK":
+            case "DRIVERPASS":
+                AppendMessage(
+                    _fleetMessages,
+                    line);
+                break;
+            case "ASSISTLINK":
+                AppendMessage(
+                    _supportMessages,
+                    line);
+                break;
+            case "CONTROLHUB":
+                AppendMessage(
+                    _controlMessages,
+                    line);
+                break;
+            case "ROUTECORE":
+                AppendMessage(
+                    _routeMessages,
+                    line);
+                break;
+        }
+    }
+
+    private static void AppendMessage(
+        ListBox list,
+        string text)
+    {
+        list.Items.Add(text);
+
+        while (list.Items.Count > 100)
+        {
+            list.Items.RemoveAt(0);
+        }
+
+        if (list.Items.Count > 0)
+        {
+            list.TopIndex =
+                list.Items.Count - 1;
+        }
+    }
+
+    private bool HasControlHubPermission()
+    {
+        var role =
+            _role.Text.Trim();
+
+        return role.Contains(
+                   "cco",
+                   StringComparison.OrdinalIgnoreCase) ||
+               role.Contains(
+                   "dispatcher",
+                   StringComparison.OrdinalIgnoreCase) ||
+               role.Contains(
+                   "supervisor",
+                   StringComparison.OrdinalIgnoreCase) ||
+               role.Contains(
+                   "gerente",
+                   StringComparison.OrdinalIgnoreCase) ||
+               role.Contains(
+                   "gestor",
+                   StringComparison.OrdinalIgnoreCase) ||
+               role.Contains(
+                   "diretor",
+                   StringComparison.OrdinalIgnoreCase) ||
+               role.Contains(
+                   "presidente",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private void SaveBadge()
@@ -557,16 +965,21 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             _status.Text =
                 "DRIVERPASS: preencha motorista, empresa e matrícula antes de inserir.";
             _status.ForeColor =
-                Color.FromArgb(
-                    135,
-                    35,
-                    35);
+                Color.FromArgb(135, 35, 35);
             return;
         }
 
         _badgeInserted =
             !_badgeInserted;
         RefreshDriverPassStatus();
+
+        RequestMessage(
+            "DRIVERPASS",
+            "PRESENCE",
+            _badgeInserted
+                ? "Crachá inserido · motorista em operação."
+                : "Crachá retirado · motorista fora de operação.",
+            string.Empty);
     }
 
     private void RefreshDriverPassStatus()
@@ -587,22 +1000,16 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         if (_badgeInserted)
         {
             _status.Text =
-                $"DRIVERPASS: LIBERADO  |  {_profile.CompanyName}  |  {_profile.EmployeeNumber}  |  {_profile.DriverName}";
+                $"DRIVERPASS: LIBERADO | {_profile.CompanyName} | {_profile.EmployeeNumber} | {_profile.DriverName}";
             _status.ForeColor =
-                Color.FromArgb(
-                    30,
-                    105,
-                    45);
+                Color.FromArgb(30, 105, 45);
         }
         else
         {
             _status.Text =
                 "DRIVERPASS: BLOQUEADO — insira o crachá para liberar elétrica/partida.";
             _status.ForeColor =
-                Color.FromArgb(
-                    135,
-                    35,
-                    35);
+                Color.FromArgb(135, 35, 35);
         }
     }
 
@@ -626,12 +1033,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 AutoSize = false,
                 Height = 52,
                 Dock = DockStyle.Top,
-                Margin =
-                    new Padding(
-                        0,
-                        0,
-                        0,
-                        12)
+                Margin = new Padding(0, 0, 0, 12)
             };
 
         panel.Controls.Add(
@@ -661,13 +1063,8 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 Location = new Point(0, 28)
             });
 
-        root.Controls.Add(
-            panel,
-            0,
-            0);
-        root.SetColumnSpan(
-            panel,
-            2);
+        root.Controls.Add(panel, 0, 0);
+        root.SetColumnSpan(panel, 2);
     }
 
     private static void AddField(
@@ -688,27 +1085,35 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                         9.0f,
                         FontStyle.Bold),
                 Anchor = AnchorStyles.Left,
-                Margin =
-                    new Padding(
-                        0,
-                        7,
-                        8,
-                        7)
+                Margin = new Padding(0, 7, 8, 7)
             },
             0,
             row);
 
         control.Dock = DockStyle.Fill;
-        control.Margin =
-            new Padding(
-                0,
-                4,
-                0,
-                4);
+        control.Margin = new Padding(0, 4, 0, 4);
+        root.Controls.Add(control, 1, row);
+    }
+
+    private static void AddInlineLabel(
+        Control root,
+        string text,
+        int x,
+        int y)
+    {
         root.Controls.Add(
-            control,
-            1,
-            row);
+            new Label
+            {
+                AutoSize = true,
+                Text = text,
+                ForeColor = OmsiText,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        8.5f,
+                        FontStyle.Bold),
+                Location = new Point(x, y)
+            });
     }
 
     private static TextBox OmsiTextBox(
@@ -716,14 +1121,33 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         new()
         {
             Text = text,
-            BorderStyle =
-                BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.FixedSingle,
             BackColor = Color.White,
             ForeColor = OmsiText,
+            Font = new Font("Segoe UI", 9.0f)
+        };
+
+    private static ListBox OmsiListBox() =>
+        new()
+        {
+            BackColor =
+                Color.FromArgb(238, 241, 244),
+            ForeColor = OmsiText,
+            BorderStyle = BorderStyle.FixedSingle,
             Font =
                 new Font(
-                    "Segoe UI",
-                    9.0f)
+                    "Consolas",
+                    8.5f)
+        };
+
+    private static ComboBox OmsiComboBox() =>
+        new()
+        {
+            DropDownStyle =
+                ComboBoxStyle.DropDownList,
+            BackColor = Color.White,
+            ForeColor = OmsiText,
+            Font = new Font("Segoe UI", 9.0f)
         };
 
     private static Button OmsiButton(
@@ -737,13 +1161,9 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 Text = text,
                 Width = width,
                 Height = 32,
-                FlatStyle =
-                    FlatStyle.Flat,
+                FlatStyle = FlatStyle.Flat,
                 BackColor =
-                    Color.FromArgb(
-                        238,
-                        241,
-                        244),
+                    Color.FromArgb(238, 241, 244),
                 ForeColor = OmsiText,
                 Font =
                     new Font(
@@ -754,10 +1174,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             };
 
         button.FlatAppearance.BorderColor =
-            Color.FromArgb(
-                140,
-                148,
-                157);
+            Color.FromArgb(140, 148, 157);
         button.Click += handler;
         return button;
     }
@@ -766,8 +1183,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     {
         try
         {
-            var path =
-                ProfilePath();
+            var path = ProfilePath();
 
             if (!File.Exists(path))
             {
@@ -790,12 +1206,10 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     {
         try
         {
-            var path =
-                ProfilePath();
+            var path = ProfilePath();
 
             Directory.CreateDirectory(
-                Path.GetDirectoryName(
-                    path)!);
+                Path.GetDirectoryName(path)!);
 
             File.WriteAllText(
                 path,
@@ -808,7 +1222,6 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         }
         catch
         {
-            // Persistence must not break the runtime.
         }
     }
 
