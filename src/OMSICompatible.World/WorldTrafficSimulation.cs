@@ -66,6 +66,9 @@ public sealed class WorldTrafficSimulation
         _crossingCandidateSegmentsBySceneryObjectId;
     private readonly Dictionary<long, TrafficSignalGroupState> _trafficSignalGroups;
     private readonly List<Agent> _agents;
+    private readonly Dictionary<int, List<Agent>>
+        _activeAgentsBySegment =
+            [];
     private readonly WorldTrafficPathSegment[] _roadSegments = [];
     private readonly Dictionary<(int X, int Z), int[]>
         _roadSegmentsByGridCell =
@@ -3611,8 +3614,11 @@ public sealed class WorldTrafficSimulation
 
     private Dictionary<int, List<Agent>> BuildActiveAgentBuckets()
     {
-        var buckets =
-            new Dictionary<int, List<Agent>>();
+        foreach (var bucket in
+                 _activeAgentsBySegment.Values)
+        {
+            bucket.Clear();
+        }
 
         foreach (var agent in
                  _agents)
@@ -3625,11 +3631,11 @@ public sealed class WorldTrafficSimulation
             }
 
             AddActiveAgentBucket(
-                buckets,
+                _activeAgentsBySegment,
                 agent);
         }
 
-        return buckets;
+        return _activeAgentsBySegment;
     }
 
     private IEnumerable<Agent> EnumerateCrossingCandidateAgents(
@@ -3705,15 +3711,12 @@ public sealed class WorldTrafficSimulation
             return;
         }
 
+        // Keep the list allocated even when it becomes empty. The traffic
+        // network is stable and these buckets are rebuilt every substep, so
+        // retaining them avoids repeatedly allocating dictionaries/lists as
+        // vehicles move between segments.
         bucket.Remove(
             agent);
-
-        if (bucket.Count ==
-            0)
-        {
-            buckets.Remove(
-                segmentIndex);
-        }
     }
 
     private static void MoveActiveAgentBucket(
