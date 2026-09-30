@@ -62,6 +62,7 @@ public sealed class OpenOmsiLanSession :
     private IPEndPoint? _host;
     private uint _nextId = 2;
     private ushort _sequence;
+    private ushort _voiceSequence;
     private double _sendAccumulator;
     private double _helloAccumulator = 1.0;
     private double _infoAccumulator =
@@ -120,6 +121,9 @@ public sealed class OpenOmsiLanSession :
 
     public event Action<OpenOmsiLanOperationalMessage>?
         OperationalMessageReceived;
+
+    public event Action<OpenOmsiLanVoiceFrame>?
+        VoiceFrameReceived;
 
     public static OpenOmsiLanSession Host(
         int port,
@@ -430,6 +434,51 @@ public sealed class OpenOmsiLanSession :
 
         SendText(
             text,
+            _host);
+
+        return true;
+    }
+
+    public bool SendVoiceFrame(
+        ReadOnlySpan<byte> pcm16Mono8Khz)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            pcm16Mono8Khz.Length == 0)
+        {
+            return false;
+        }
+
+        var packet =
+            OpenOmsiLanVoiceCodec.Encode(
+                PlayerId,
+                _voiceSequence++,
+                pcm16Mono8Khz);
+
+        if (Role == OpenOmsiLanRole.Host)
+        {
+            Broadcast(
+                packet,
+                except:
+                    null);
+
+            VoiceFrameReceived?.Invoke(
+                new OpenOmsiLanVoiceFrame(
+                    PlayerId,
+                    unchecked((ushort)(_voiceSequence - 1)),
+                    pcm16Mono8Khz.ToArray()));
+
+            return true;
+        }
+
+        if (_host is null)
+        {
+            return false;
+        }
+
+        Send(
+            packet,
             _host);
 
         return true;
@@ -781,6 +830,16 @@ public sealed class OpenOmsiLanSession :
                 continue;
             }
 
+            if (OpenOmsiLanVoiceCodec.LooksLike(
+                    data))
+            {
+                HandleVoiceFrame(
+                    data,
+                    endpoint);
+
+                continue;
+            }
+
             string text;
 
             try
@@ -798,6 +857,55 @@ public sealed class OpenOmsiLanSession :
                 text,
                 endpoint);
         }
+    }
+
+    private void HandleVoiceFrame(
+        ReadOnlySpan<byte> data,
+        IPEndPoint endpoint)
+    {
+        if (!OpenOmsiLanVoiceCodec.TryDecode(
+                data,
+                out var frame) ||
+            frame.SenderId ==
+                PlayerId)
+        {
+            return;
+        }
+
+        if (Role == OpenOmsiLanRole.Host)
+        {
+            if (!_peers.TryGetValue(
+                    frame.SenderId,
+                    out var peer) ||
+                !peer.Endpoint.Equals(
+                    endpoint))
+            {
+                return;
+            }
+
+            peer.LastSeen =
+                DateTimeOffset.UtcNow;
+
+            Broadcast(
+                data.ToArray(),
+                except:
+                    endpoint);
+
+            VoiceFrameReceived?.Invoke(
+                frame);
+
+            return;
+        }
+
+        if (_host is null ||
+            !endpoint.Equals(
+                _host))
+        {
+            return;
+        }
+
+        VoiceFrameReceived?.Invoke(
+            frame);
     }
 
     private void HandleText(
