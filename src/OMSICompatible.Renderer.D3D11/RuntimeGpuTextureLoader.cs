@@ -216,6 +216,10 @@ internal sealed class RuntimeGpuTextureLoader
                                string.Equals(
                                    extension,
                                    ".jpeg",
+                                   StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(
+                                   extension,
+                                   ".tga",
                                    StringComparison.OrdinalIgnoreCase);
                     })
                 .ToArray();
@@ -1778,6 +1782,35 @@ internal sealed class RuntimeGpuTextureLoader
     private RuntimeGpuTexture? TryLoadTga(
         string path)
     {
+        if (!TryReadRgba(
+                path,
+                out var rgba,
+                out var width,
+                out var height))
+        {
+            return null;
+        }
+
+        return CreateRgbaTexture(
+            rgba,
+            width,
+            height);
+    }
+
+    private static bool TryDecodeTgaPixels(
+        string path,
+        bool requireCacheable,
+        out byte[] rgba,
+        out int width,
+        out int height)
+    {
+        rgba =
+            Array.Empty<byte>();
+        width =
+            0;
+        height =
+            0;
+
         try
         {
             using var stream =
@@ -1792,21 +1825,19 @@ internal sealed class RuntimeGpuTextureLoader
 
             var idLength =
                 header[0];
-
             var colorMapType =
                 header[1];
-
             var imageType =
                 header[2];
 
-            var width =
+            width =
                 BinaryPrimitives
                     .ReadUInt16LittleEndian(
                         header.Slice(
                             12,
                             2));
 
-            var height =
+            height =
                 BinaryPrimitives
                     .ReadUInt16LittleEndian(
                         header.Slice(
@@ -1815,25 +1846,44 @@ internal sealed class RuntimeGpuTextureLoader
 
             var pixelDepth =
                 header[16];
-
             var descriptor =
                 header[17];
 
-            if (
-                colorMapType != 0 ||
+            if (colorMapType !=
+                    0 ||
                 imageType is not
                     (2 or 10) ||
-                width == 0 ||
-                height == 0 ||
-                width > 16_384 ||
-                height > 16_384 ||
+                width <=
+                    0 ||
+                height <=
+                    0 ||
+                width >
+                    16_384 ||
+                height >
+                    16_384 ||
                 pixelDepth is not
                     (24 or 32))
             {
-                return null;
+                return false;
             }
 
-            if (idLength > 0)
+            var decodedByteCount =
+                checked(
+                    (long)width *
+                    height *
+                    4L);
+
+            if (decodedByteCount >
+                    int.MaxValue ||
+                requireCacheable &&
+                decodedByteCount >
+                    MaximumSingleDecodedTextureCacheBytes)
+            {
+                return false;
+            }
+
+            if (idLength >
+                0)
             {
                 stream.Seek(
                     idLength,
@@ -1841,12 +1891,12 @@ internal sealed class RuntimeGpuTextureLoader
             }
 
             var bytesPerPixel =
-                pixelDepth / 8;
-
+                pixelDepth /
+                8;
             var pixelCount =
                 checked(
-                    (int)width *
-                    (int)height);
+                    width *
+                    height);
 
             var source =
                 new byte[
@@ -1854,47 +1904,42 @@ internal sealed class RuntimeGpuTextureLoader
                         pixelCount *
                         bytesPerPixel)];
 
-            if (imageType == 2)
+            if (imageType ==
+                2)
             {
                 stream.ReadExactly(
                     source);
             }
-            else if (
-                !TryDecodeTgaRle(
-                    stream,
-                    source,
-                    bytesPerPixel,
-                    pixelCount))
+            else if (!TryDecodeTgaRle(
+                         stream,
+                         source,
+                         bytesPerPixel,
+                         pixelCount))
             {
-                return null;
+                return false;
             }
 
-            var rgba =
+            rgba =
                 new byte[
-                    checked(
-                        pixelCount *
-                        4)];
+                    (int)decodedByteCount];
 
             var topOrigin =
                 (descriptor &
                     0x20) !=
                 0;
-
             var rightOrigin =
                 (descriptor &
                     0x10) !=
                 0;
 
-            for (
-                var sourceIndex = 0;
-                sourceIndex <
-                    pixelCount;
-                sourceIndex++)
+            for (var sourceIndex = 0;
+                 sourceIndex <
+                 pixelCount;
+                 sourceIndex++)
             {
                 var sourceX =
                     sourceIndex %
                     width;
-
                 var sourceY =
                     sourceIndex /
                     width;
@@ -1947,29 +1992,31 @@ internal sealed class RuntimeGpuTextureLoader
                 rgba[
                     outputOffset +
                     3] =
-                    bytesPerPixel == 4
+                    bytesPerPixel ==
+                    4
                         ? source[
                             inputOffset +
                             3]
                         : (byte)255;
             }
 
-            return CreateRgbaTexture(
-                rgba,
-                width,
-                height);
+            return true;
         }
-        catch (
-            Exception exception)
-            when (
-                exception is
-                    IOException or
-                    UnauthorizedAccessException or
-                    ArgumentException or
-                    NotSupportedException or
-                    OverflowException)
+        catch (Exception exception)
+            when (exception is
+                IOException or
+                UnauthorizedAccessException or
+                ArgumentException or
+                NotSupportedException or
+                OverflowException)
         {
-            return null;
+            rgba =
+                Array.Empty<byte>();
+            width =
+                0;
+            height =
+                0;
+            return false;
         }
     }
 
@@ -2136,86 +2183,105 @@ internal sealed class RuntimeGpuTextureLoader
         int decodedWidth;
         int decodedHeight;
 
-        try
+        if (string.Equals(
+                Path.GetExtension(
+                    path),
+                ".tga",
+                StringComparison.OrdinalIgnoreCase))
         {
-            using var factory =
-                new IWICImagingFactory2();
-
-            using var decoder =
-                factory
-                    .CreateDecoderFromFileName(
-                        path);
-
-            using var frame =
-                decoder.GetFrame(0);
-
-            using var converter =
-                factory.CreateFormatConverter();
-
-            converter.Initialize(
-                frame,
-                WICPixelFormat.Format32bppRGBA);
-
-            var size =
-                converter.Size;
-
-            if (size.Width <= 0 ||
-                size.Height <= 0 ||
-                size.Width > 16_384 ||
-                size.Height > 16_384)
+            if (!TryDecodeTgaPixels(
+                    path,
+                    requireCacheable,
+                    out decodedPixels,
+                    out decodedWidth,
+                    out decodedHeight))
             {
                 return false;
             }
-
-            var decodedByteCount =
-                checked(
-                    (long)size.Width *
-                    size.Height *
-                    4L);
-
-            if (decodedByteCount >
-                    int.MaxValue ||
-                requireCacheable &&
-                decodedByteCount >
-                    MaximumSingleDecodedTextureCacheBytes)
-            {
-                return false;
-            }
-
-            var stride =
-                checked(
-                    (uint)size.Width *
-                    4u);
-
-            decodedPixels =
-                new byte[
-                    (int)decodedByteCount];
-
-            converter.CopyPixels(
-                stride,
-                decodedPixels);
-
-            decodedWidth =
-                size.Width;
-            decodedHeight =
-                size.Height;
         }
-        catch (Exception exception)
-            when (
-                exception is
-                    IOException or
-                    UnauthorizedAccessException or
-                    ArgumentException or
-                    NotSupportedException or
-                    OverflowException ||
-                exception.GetType()
-                    .Namespace?
-                    .StartsWith(
-                        "SharpGen",
-                        StringComparison.Ordinal) ==
-                    true)
+        else
         {
-            return false;
+            try
+            {
+                using var factory =
+                    new IWICImagingFactory2();
+
+                using var decoder =
+                    factory
+                        .CreateDecoderFromFileName(
+                            path);
+
+                using var frame =
+                    decoder.GetFrame(0);
+
+                using var converter =
+                    factory.CreateFormatConverter();
+
+                converter.Initialize(
+                    frame,
+                    WICPixelFormat.Format32bppRGBA);
+
+                var size =
+                    converter.Size;
+
+                if (size.Width <= 0 ||
+                    size.Height <= 0 ||
+                    size.Width > 16_384 ||
+                    size.Height > 16_384)
+                {
+                    return false;
+                }
+
+                var decodedByteCount =
+                    checked(
+                        (long)size.Width *
+                        size.Height *
+                        4L);
+
+                if (decodedByteCount >
+                        int.MaxValue ||
+                    requireCacheable &&
+                    decodedByteCount >
+                        MaximumSingleDecodedTextureCacheBytes)
+                {
+                    return false;
+                }
+
+                var stride =
+                    checked(
+                        (uint)size.Width *
+                        4u);
+
+                decodedPixels =
+                    new byte[
+                        (int)decodedByteCount];
+
+                converter.CopyPixels(
+                    stride,
+                    decodedPixels);
+
+                decodedWidth =
+                    size.Width;
+                decodedHeight =
+                    size.Height;
+            }
+            catch (Exception exception)
+                when (
+                    exception is
+                        IOException or
+                        UnauthorizedAccessException or
+                        ArgumentException or
+                        NotSupportedException or
+                        OverflowException ||
+                    exception.GetType()
+                        .Namespace?
+                        .StartsWith(
+                            "SharpGen",
+                            StringComparison.Ordinal) ==
+                        true)
+            {
+                return false;
+            }
         }
 
         if (decodedPixels.LongLength <=
