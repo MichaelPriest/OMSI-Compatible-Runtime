@@ -35,6 +35,8 @@ public sealed class WorldRailTrafficSimulation
         _segmentsByIndex;
     private readonly IReadOnlyDictionary<int, WorldRailSignalRoute>
         _signalRoutesByIndex;
+    private readonly WorldRailSignalRoute[]
+        _orderedSignalRoutes;
     private readonly IReadOnlyDictionary<int, WorldRailSignalRoute[]>
         _signalRoutesByFirstSegment;
     private readonly WorldRailSignalRouteInterlocking?
@@ -83,6 +85,9 @@ public sealed class WorldRailTrafficSimulation
                     static route =>
                         route.RouteIndex)
                 .ToArray();
+
+        _orderedSignalRoutes =
+            resolvedSignalRoutes;
 
         _signalRoutesByIndex =
             resolvedSignalRoutes
@@ -306,34 +311,47 @@ public sealed class WorldRailTrafficSimulation
     }
 
     public IReadOnlyList<WorldRailSignalRouteState>
-        SignalRouteSnapshot() =>
-        _signalRoutesByIndex
-            .Values
-            .OrderBy(
-                static route =>
-                    route.RouteIndex)
-            .Select(
-                route =>
-                {
-                    var owner =
-                        default(int);
+        SignalRouteSnapshot()
+    {
+        var snapshot =
+            new List<WorldRailSignalRouteState>(
+                _orderedSignalRoutes.Length);
 
-                    var reserved =
-                        _interlocking?.Reservations.TryGetValue(
-                            route.RouteIndex,
-                            out owner) ==
-                        true;
+        AppendSignalRouteSnapshotTo(
+            snapshot);
 
-                    return new WorldRailSignalRouteState(
-                        route.RouteIndex,
-                        route.SegmentIndices,
-                        route.Signal,
-                        reserved,
-                        reserved
-                            ? owner
-                            : null);
-                })
-            .ToArray();
+        return snapshot.ToArray();
+    }
+
+    public void AppendSignalRouteSnapshotTo(
+        List<WorldRailSignalRouteState> destination)
+    {
+        ArgumentNullException.ThrowIfNull(
+            destination);
+
+        foreach (var route in
+                 _orderedSignalRoutes)
+        {
+            var owner =
+                default(int);
+
+            var reserved =
+                _interlocking?.Reservations.TryGetValue(
+                    route.RouteIndex,
+                    out owner) ==
+                true;
+
+            destination.Add(
+                new WorldRailSignalRouteState(
+                    route.RouteIndex,
+                    route.SegmentIndices,
+                    route.Signal,
+                    reserved,
+                    reserved
+                        ? owner
+                        : null));
+        }
+    }
 
     public void SetConsistTrailingDistance(
         string trainConsistPath,
