@@ -508,6 +508,12 @@ public sealed class D3D11RenderWindow : Form
                 ReferenceEqualityComparer.Instance);
     private readonly Dictionary<
         RuntimeObjectBatch,
+        RuntimeVehicleMaterialConstants>
+        _vehicleMaterialConstantsFrameStates =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
         bool>
         _vehicleBatchVisibilityFrameStates =
             new(
@@ -6468,6 +6474,7 @@ public sealed class D3D11RenderWindow : Form
         _vehicleDynamicMaterialFrameStates.Clear();
         _vehicleAnimationMatrixFrameStates.Clear();
         _vehicleSkinFrameStates.Clear();
+        _vehicleMaterialConstantsFrameStates.Clear();
         _vehicleBatchVisibilityFrameStates.Clear();
         _vehicleLightMeshVisibilityFrameStates.Clear();
         ReleaseRetiredStreamingVertexBuffers();
@@ -10599,19 +10606,17 @@ public sealed class D3D11RenderWindow : Form
                 }
             }
 
-            var desiredAlphaScale =
-                _vehiclePreviewMode
-                    ? 1.0f
-                    : ResolveVehicleAlphaScale(
-                        materialState.AlphaScaleVariable,
-                        batch.SectionIndex);
+            var desiredVehicleMaterial =
+                ResolveVehicleMaterialConstants(
+                    batch,
+                    materialState);
 
             // openOMSI skips fully faded blended layers instead of paying for
             // their animation, skinning, texture binds and draw call. Keep
             // opaque/cutout geometry untouched because it may intentionally
             // participate in depth even when its material alpha is unusual.
             if (materialState.AlphaBlend &&
-                desiredAlphaScale <=
+                desiredVehicleMaterial.AlphaScale <=
                     0.0001f)
             {
                 continue;
@@ -10668,51 +10673,6 @@ public sealed class D3D11RenderWindow : Form
                 hasActiveVehicleSkin =
                     true;
             }
-
-            var desiredVehicleMaterial =
-                new RuntimeVehicleMaterialConstants
-                {
-                    AlphaScale =
-                        desiredAlphaScale,
-                    LightMapStrength =
-                        ResolveVehicleLightMapStrength(
-                            materialState.LightMapTexturePath,
-                            materialState.LightMapVariable,
-                            batch.SectionIndex),
-                    MaterialChangeStrength =
-                        materialState.HasMaterialChange
-                            ? 1.0f
-                            : 0.0f,
-                    EnvMapStrength =
-                        ResolveVehicleEnvMapStrength(
-                            materialState.EnvMapTexturePath,
-                            materialState.EnvMapStrength),
-                    EnvMapMaskEnabled =
-                        ResolveVehicleEnvMapMaskEnabled(
-                            materialState.EnvMapMaskTexturePath,
-                            materialState.UseDiffuseAlphaAsEnvMapMask),
-                    BumpMapStrength =
-                        ResolveVehicleBumpMapStrength(
-                            materialState.BumpMapTexturePath,
-                            materialState.BumpMapStrength),
-                    MaterialChangeTextureEnabled =
-                        ResolveVehicleMaterialChangeTextureEnabled(
-                            materialState.MaterialChangeTexturePath),
-                    MaterialChangeColorEnabled =
-                        materialState.MaterialChangeAllColor is null
-                            ? 0.0f
-                            : 1.0f,
-                    MaterialChangeDiffuse =
-                        ResolveVehicleAllColorDiffuse(
-                            materialState.MaterialChangeAllColor,
-                            Vector4.One),
-                    BaseEmissive =
-                        ResolveVehicleAllColorEmissive(
-                            batch.BaseAllColor),
-                    MaterialChangeEmissive =
-                        ResolveVehicleAllColorEmissive(
-                            materialState.MaterialChangeAllColor)
-                };
 
             if (!hasActiveVehicleMaterial ||
                 !VehicleMaterialConstantsEqual(
@@ -11817,6 +11777,74 @@ public sealed class D3D11RenderWindow : Form
         int? TextTextureIndex,
         bool HasMaterialChange,
         bool UseDiffuseAlphaAsEnvMapMask);
+
+    private RuntimeVehicleMaterialConstants
+        ResolveVehicleMaterialConstants(
+            RuntimeObjectBatch batch,
+            ResolvedVehicleMaterialState materialState)
+    {
+        if (_vehicleMaterialConstantsFrameStates.TryGetValue(
+                batch,
+                out var cached))
+        {
+            return cached;
+        }
+
+        var result =
+            new RuntimeVehicleMaterialConstants
+            {
+                AlphaScale =
+                    _vehiclePreviewMode
+                        ? 1.0f
+                        : ResolveVehicleAlphaScale(
+                            materialState.AlphaScaleVariable,
+                            batch.SectionIndex),
+                LightMapStrength =
+                    ResolveVehicleLightMapStrength(
+                        materialState.LightMapTexturePath,
+                        materialState.LightMapVariable,
+                        batch.SectionIndex),
+                MaterialChangeStrength =
+                    materialState.HasMaterialChange
+                        ? 1.0f
+                        : 0.0f,
+                EnvMapStrength =
+                    ResolveVehicleEnvMapStrength(
+                        materialState.EnvMapTexturePath,
+                        materialState.EnvMapStrength),
+                EnvMapMaskEnabled =
+                    ResolveVehicleEnvMapMaskEnabled(
+                        materialState.EnvMapMaskTexturePath,
+                        materialState.UseDiffuseAlphaAsEnvMapMask),
+                BumpMapStrength =
+                    ResolveVehicleBumpMapStrength(
+                        materialState.BumpMapTexturePath,
+                        materialState.BumpMapStrength),
+                MaterialChangeTextureEnabled =
+                    ResolveVehicleMaterialChangeTextureEnabled(
+                        materialState.MaterialChangeTexturePath),
+                MaterialChangeColorEnabled =
+                    materialState.MaterialChangeAllColor is null
+                        ? 0.0f
+                        : 1.0f,
+                MaterialChangeDiffuse =
+                    ResolveVehicleAllColorDiffuse(
+                        materialState.MaterialChangeAllColor,
+                        Vector4.One),
+                BaseEmissive =
+                    ResolveVehicleAllColorEmissive(
+                        batch.BaseAllColor),
+                MaterialChangeEmissive =
+                    ResolveVehicleAllColorEmissive(
+                        materialState.MaterialChangeAllColor)
+            };
+
+        _vehicleMaterialConstantsFrameStates[
+            batch] =
+            result;
+
+        return result;
+    }
 
     private float ResolveVehicleBumpMapStrength(
         string? texturePath,
@@ -23693,6 +23721,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleDynamicMaterialFrameStates.Clear();
             _vehicleAnimationMatrixFrameStates.Clear();
             _vehicleSkinFrameStates.Clear();
+            _vehicleMaterialConstantsFrameStates.Clear();
             _vehicleBatchVisibilityFrameStates.Clear();
             _vehicleLightMeshVisibilityFrameStates.Clear();
             _vehicleAnimationVisitedScratch.Clear();
