@@ -36,6 +36,11 @@ public sealed class OmsiRuntimeOptions
     public double WheelLockDegrees { get; set; }
     public double FieldOfViewDegrees { get; set; }
 
+    public string MultiplayerMode { get; set; } = "off";
+    public string MultiplayerPlayerName { get; set; } = "Driver";
+    public string MultiplayerTarget { get; set; } = "";
+    public int MultiplayerPort { get; set; } = 27015;
+
     public bool ReducedMultithreading { get; set; }
     public bool LoadWholeMapAtStart { get; set; }
     public bool AutoSave { get; set; } = true;

@@ -199,6 +199,7 @@ public sealed partial class MainWindow :
         }
 
         LoadRuntimeOptionsIntoUi();
+        LoadMultiplayerOptionsIntoUi();
         UpdateControlsView();
         UpdateRuntimeStatusCards();
         UpdateHomeSummary();
@@ -246,6 +247,42 @@ public sealed partial class MainWindow :
         ShowView(
             VehiclesView,
             VehiclesNavButton);
+    }
+
+    private void MultiplayerNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        _runtimeOptions =
+            OmsiRuntimeOptions.Load();
+
+        LoadMultiplayerOptionsIntoUi();
+
+        ShowView(
+            MultiplayerView,
+            MultiplayerNavButton);
+    }
+
+    private void MultiplayerPlayButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ApplyMultiplayerOptionsFromUi(
+            showStatus:
+                false);
+
+        ShowView(
+            SessionView,
+            PlayNavButton);
+    }
+
+    private void SaveMultiplayerButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ApplyMultiplayerOptionsFromUi(
+            showStatus:
+                true);
     }
 
     private void ControlsNavButton_Click(
@@ -305,6 +342,7 @@ public sealed partial class MainWindow :
             SessionView,
             MapsView,
             VehiclesView,
+            MultiplayerView,
             ControlsView,
             SettingsView,
             CompatibilityView,
@@ -345,6 +383,7 @@ public sealed partial class MainWindow :
             PlayNavButton,
             MapsNavButton,
             VehiclesNavButton,
+            MultiplayerNavButton,
             ControlsNavButton,
             SettingsNavButton,
             CompatibilityNavButton,
@@ -1569,6 +1608,9 @@ public sealed partial class MainWindow :
         try
         {
             StopEmbeddedVehiclePreview();
+            ApplyMultiplayerOptionsFromUi(
+                showStatus:
+                    false);
             SaveSettings();
 
             ShowLoading(
@@ -2721,6 +2763,145 @@ public sealed partial class MainWindow :
                         line.Trim(),
                         marker,
                         StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void LoadMultiplayerOptionsIntoUi()
+    {
+        var mode =
+            (_runtimeOptions.MultiplayerMode ??
+             "off")
+                .Trim()
+                .ToLowerInvariant();
+
+        MultiplayerHostRadio.IsChecked =
+            mode == "host";
+        MultiplayerJoinRadio.IsChecked =
+            mode == "join";
+        MultiplayerOffRadio.IsChecked =
+            mode is not ("host" or "join");
+
+        MultiplayerPlayerNameBox.Text =
+            string.IsNullOrWhiteSpace(
+                _runtimeOptions.MultiplayerPlayerName)
+                ? "Driver"
+                : _runtimeOptions.MultiplayerPlayerName;
+
+        MultiplayerTargetBox.Text =
+            _runtimeOptions.MultiplayerTarget ??
+            string.Empty;
+
+        MultiplayerPortBox.Text =
+            Math.Clamp(
+                    _runtimeOptions.MultiplayerPort,
+                    1,
+                    ushort.MaxValue)
+                .ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+
+        UpdateMultiplayerStatus();
+    }
+
+    private void ApplyMultiplayerOptionsFromUi(
+        bool showStatus)
+    {
+        var mode =
+            MultiplayerHostRadio.IsChecked ==
+                true
+                ? "host"
+                : MultiplayerJoinRadio.IsChecked ==
+                    true
+                    ? "join"
+                    : "off";
+
+        var name =
+            MultiplayerPlayerNameBox.Text
+                ?.Trim();
+
+        if (string.IsNullOrWhiteSpace(
+                name))
+        {
+            name =
+                "Driver";
+        }
+
+        if (name.Length >
+            32)
+        {
+            name =
+                name[..32];
+        }
+
+        var port =
+            int.TryParse(
+                MultiplayerPortBox.Text,
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsedPort) &&
+            parsedPort is >= 1 and <=
+                ushort.MaxValue
+                ? parsedPort
+                : 27015;
+
+        _runtimeOptions.MultiplayerMode =
+            mode;
+        _runtimeOptions.MultiplayerPlayerName =
+            name;
+        _runtimeOptions.MultiplayerTarget =
+            MultiplayerTargetBox.Text
+                ?.Trim() ??
+            string.Empty;
+        _runtimeOptions.MultiplayerPort =
+            port;
+
+        MultiplayerPortBox.Text =
+            port.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+
+        _runtimeOptions.Save();
+        UpdateMultiplayerStatus();
+
+        if (showStatus)
+        {
+            SetStatus(
+                mode switch
+                {
+                    "host" =>
+                        $"Multiplayer: hospedagem UDP preparada na porta {port}.",
+                    "join" =>
+                        string.IsNullOrWhiteSpace(
+                            _runtimeOptions.MultiplayerTarget)
+                            ? "Multiplayer: informe o host para entrar."
+                            : $"Multiplayer: entrada preparada para {_runtimeOptions.MultiplayerTarget}.",
+                    _ =>
+                        "Multiplayer desativado."
+                });
+        }
+    }
+
+    private void UpdateMultiplayerStatus()
+    {
+        if (MultiplayerStatusText is null)
+        {
+            return;
+        }
+
+        MultiplayerStatusText.Text =
+            (_runtimeOptions.MultiplayerMode ??
+             "off")
+                .Trim()
+                .ToLowerInvariant()
+            switch
+            {
+                "host" =>
+                    $"Hospedar · UDP {_runtimeOptions.MultiplayerPort}",
+                "join" =>
+                    string.IsNullOrWhiteSpace(
+                        _runtimeOptions.MultiplayerTarget)
+                        ? "Entrar · host não informado"
+                        : $"Entrar · {_runtimeOptions.MultiplayerTarget}",
+                _ =>
+                    "Desativado"
+            };
     }
 
     private void LoadRuntimeOptionsIntoUi()
