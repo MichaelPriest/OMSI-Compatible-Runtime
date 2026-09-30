@@ -490,6 +490,12 @@ public sealed class D3D11RenderWindow : Form
                 ReferenceEqualityComparer.Instance);
     private readonly Dictionary<
         RuntimeObjectBatch,
+        ResolvedVehicleMaterialState>
+        _vehicleDynamicMaterialFrameStates =
+            new(
+                ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<
+        RuntimeObjectBatch,
         RuntimeVehicleMaterialChangeSetInfo[]>
         _vehicleOrderedMaterialChangeSets =
             new(
@@ -6209,6 +6215,7 @@ public sealed class D3D11RenderWindow : Form
     {
         _renderFrameSequence++;
         _dynamicSceneryVisibilityFrameCache.Clear();
+        _vehicleDynamicMaterialFrameStates.Clear();
         ReleaseRetiredStreamingVertexBuffers();
 
         if (_deviceContext is null ||
@@ -11211,6 +11218,14 @@ public sealed class D3D11RenderWindow : Form
             return cachedStaticMaterial;
         }
 
+        if (hasDynamicMaterialSelection &&
+            _vehicleDynamicMaterialFrameStates.TryGetValue(
+                batch,
+                out var cachedDynamicMaterial))
+        {
+            return cachedDynamicMaterial;
+        }
+
         RuntimeVehicleMaterialChangeItemInfo? selectedItem =
             null;
 
@@ -11415,7 +11430,13 @@ public sealed class D3D11RenderWindow : Form
                     legacyActive,
                 useDiffuseAlphaAsEnvMapMask);
 
-        if (!hasDynamicMaterialSelection)
+        if (hasDynamicMaterialSelection)
+        {
+            _vehicleDynamicMaterialFrameStates[
+                batch] =
+                resolved;
+        }
+        else
         {
             _vehicleStaticMaterialStates[
                 batch] =
@@ -23117,6 +23138,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleLightMeshCacheInitialized =
                 false;
             _vehicleStaticMaterialStates.Clear();
+            _vehicleDynamicMaterialFrameStates.Clear();
             _vehicleOrderedMaterialChangeSets.Clear();
             _vehicleMaterialChangeItems.Clear();
 
