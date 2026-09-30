@@ -89,6 +89,12 @@ internal sealed class RuntimeOmsiGameControllerHost :
 
     private readonly IDirectInput8 _directInput;
     private readonly List<DeviceBinding> _devices;
+    private readonly List<string> _pressedBuffer =
+        [];
+    private readonly List<string> _triggeredBuffer =
+        [];
+    private readonly List<string> _releasedBuffer =
+        [];
 
     private RuntimeOmsiGameControllerHost(
         IDirectInput8 directInput,
@@ -252,14 +258,18 @@ internal sealed class RuntimeOmsiGameControllerHost :
         float? clutch =
             null;
 
+        _pressedBuffer.Clear();
+        _triggeredBuffer.Clear();
+        _releasedBuffer.Clear();
+
         var pressed =
-            new List<string>();
+            _pressedBuffer;
 
         var triggered =
-            new List<string>();
+            _triggeredBuffer;
 
         var released =
-            new List<string>();
+            _releasedBuffer;
 
         foreach (var binding in
                  _devices)
