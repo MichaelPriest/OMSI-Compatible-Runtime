@@ -553,6 +553,89 @@ internal sealed class RuntimeOmsiAudioHost :
             44100,
             2);
 
+    internal sealed class SharedOutput :
+        IDisposable
+    {
+        private readonly WaveOutEvent _output;
+
+        private SharedOutput(
+            MixingSampleProvider mixer,
+            WaveOutEvent output)
+        {
+            Mixer =
+                mixer;
+            _output =
+                output;
+        }
+
+        internal MixingSampleProvider Mixer
+        {
+            get;
+        }
+
+        internal static SharedOutput? TryCreate(
+            float masterVolume)
+        {
+            WaveOutEvent? output =
+                null;
+
+            try
+            {
+                var mixer =
+                    new MixingSampleProvider(
+                        OutputFormat)
+                    {
+                        ReadFully =
+                            true
+                    };
+
+                output =
+                    new WaveOutEvent
+                    {
+                        DesiredLatency =
+                            180,
+                        NumberOfBuffers =
+                            4,
+                        Volume =
+                            Math.Clamp(
+                                masterVolume,
+                                0.0f,
+                                1.0f)
+                    };
+
+                output.Init(
+                    mixer);
+                output.Play();
+
+                return new SharedOutput(
+                    mixer,
+                    output);
+            }
+            catch (Exception exception)
+            {
+                output?.Dispose();
+
+                Console.WriteLine(
+                    $"[audio] shared OMSI output unavailable: {exception.Message}");
+
+                return null;
+            }
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                _output.Stop();
+            }
+            catch
+            {
+            }
+
+            _output.Dispose();
+        }
+    }
+
     private static readonly object SoundConfigurationCacheGate =
         new();
     private static readonly Dictionary<string, CachedSoundConfiguration>
@@ -564,7 +647,7 @@ internal sealed class RuntimeOmsiAudioHost :
         _sounds;
     private readonly string _soundDirectory;
     private readonly MixingSampleProvider _mixer;
-    private readonly WaveOutEvent _output;
+    private readonly WaveOutEvent? _ownedOutput;
     private readonly int _maximumVoiceCount;
     private int _activeOneShotVoiceCount;
     private readonly object _oneShotVoiceGate =
@@ -597,7 +680,7 @@ internal sealed class RuntimeOmsiAudioHost :
         IReadOnlyList<RuntimeOmsiSoundDefinition> sounds,
         string soundDirectory,
         MixingSampleProvider mixer,
-        WaveOutEvent output,
+        WaveOutEvent? ownedOutput,
         int maximumVoiceCount)
     {
         _sounds =
@@ -606,8 +689,8 @@ internal sealed class RuntimeOmsiAudioHost :
             soundDirectory;
         _mixer =
             mixer;
-        _output =
-            output;
+        _ownedOutput =
+            ownedOutput;
         _maximumVoiceCount =
             Math.Clamp(
                 maximumVoiceCount,
@@ -788,7 +871,8 @@ internal sealed class RuntimeOmsiAudioHost :
         TryCreate(
             string? soundConfigPath,
             float masterVolume = 1.0f,
-            int maximumVoiceCount = 400)
+            int maximumVoiceCount = 400,
+            SharedOutput? sharedOutput = null)
     {
         if (string.IsNullOrWhiteSpace(
                 soundConfigPath) ||
@@ -797,6 +881,9 @@ internal sealed class RuntimeOmsiAudioHost :
         {
             return null;
         }
+
+        WaveOutEvent? ownedOutput =
+            null;
 
         try
         {
@@ -813,38 +900,48 @@ internal sealed class RuntimeOmsiAudioHost :
                 return null;
             }
 
-            var mixer =
-                new MixingSampleProvider(
-                    OutputFormat)
-                {
-                    ReadFully =
-                        true
-                };
+            MixingSampleProvider mixer;
 
-            var output =
-                new WaveOutEvent
-                {
-                    // Leave enough headroom for map streaming / D3D uploads
-                    // without starving the audio callback. OMSI vehicle
-                    // loops are long-running voices, so a little extra
-                    // latency is preferable to audible buffer underruns.
-                    DesiredLatency =
-                        180,
-                    NumberOfBuffers =
-                        4,
-                    Volume =
-                        Math.Clamp(
-                            masterVolume,
-                            0.0f,
-                            1.0f)
-                };
+            if (sharedOutput is not null)
+            {
+                mixer =
+                    sharedOutput.Mixer;
+            }
+            else
+            {
+                mixer =
+                    new MixingSampleProvider(
+                        OutputFormat)
+                    {
+                        ReadFully =
+                            true
+                    };
 
-            output.Init(
-                mixer);
-            output.Play();
+                ownedOutput =
+                    new WaveOutEvent
+                    {
+                        // Leave enough headroom for map streaming / D3D uploads
+                        // without starving the audio callback. OMSI vehicle
+                        // loops are long-running voices, so a little extra
+                        // latency is preferable to audible buffer underruns.
+                        DesiredLatency =
+                            180,
+                        NumberOfBuffers =
+                            4,
+                        Volume =
+                            Math.Clamp(
+                                masterVolume,
+                                0.0f,
+                                1.0f)
+                    };
+
+                ownedOutput.Init(
+                    mixer);
+                ownedOutput.Play();
+            }
 
             Console.WriteLine(
-                $"[audio] OMSI sound.cfg loaded: {sounds.Count} sound entries.");
+                $"[audio] OMSI sound.cfg loaded: {sounds.Count} sound entries{(sharedOutput is null ? string.Empty : " (shared output)")}.");
 
             var host =
                 new RuntimeOmsiAudioHost(
@@ -853,8 +950,12 @@ internal sealed class RuntimeOmsiAudioHost :
                         fullSoundConfigPath) ??
                         AppContext.BaseDirectory,
                     mixer,
-                    output,
+                    ownedOutput,
                     maximumVoiceCount);
+
+            // Ownership moved to the host for the private-output path.
+            ownedOutput =
+                null;
 
             host._lastControlUpdateTimestamp =
                 Stopwatch.GetTimestamp();
@@ -863,6 +964,16 @@ internal sealed class RuntimeOmsiAudioHost :
         }
         catch (Exception ex)
         {
+            try
+            {
+                ownedOutput?.Stop();
+            }
+            catch
+            {
+            }
+
+            ownedOutput?.Dispose();
+
             Console.WriteLine(
                 $"[audio] OMSI audio unavailable: {ex.Message}");
 
@@ -1291,15 +1402,18 @@ internal sealed class RuntimeOmsiAudioHost :
             oneShot.Dispose();
         }
 
-        try
+        if (_ownedOutput is not null)
         {
-            _output.Stop();
-        }
-        catch
-        {
-        }
+            try
+            {
+                _ownedOutput.Stop();
+            }
+            catch
+            {
+            }
 
-        _output.Dispose();
+            _ownedOutput.Dispose();
+        }
     }
 
     private void UpdateLoop(
