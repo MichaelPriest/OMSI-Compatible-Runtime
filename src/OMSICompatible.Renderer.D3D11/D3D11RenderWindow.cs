@@ -380,6 +380,9 @@ public sealed class D3D11RenderWindow : Form
     private readonly Dictionary<int, TrafficOmsiAudioState>
         _trafficOmsiAudio =
             [];
+    private RuntimeOmsiAudioHost.SharedOutput?
+        _trafficOmsiSharedOutput;
+    private double _nextTrafficOmsiSharedOutputRetrySeconds;
     private readonly HashSet<int>
         _activeTrafficAudioAgentIds =
             [];
@@ -12939,6 +12942,11 @@ public sealed class D3D11RenderWindow : Form
             }
 
             _trafficOmsiAudio.Clear();
+
+            _trafficOmsiSharedOutput?.Dispose();
+            _trafficOmsiSharedOutput =
+                null;
+
             return;
         }
 
@@ -13074,11 +13082,41 @@ public sealed class D3D11RenderWindow : Form
                     continue;
                 }
 
+                if (_trafficOmsiSharedOutput is null)
+                {
+                    var nowSeconds =
+                        _frameClock.Elapsed.TotalSeconds;
+
+                    if (nowSeconds <
+                        _nextTrafficOmsiSharedOutputRetrySeconds)
+                    {
+                        continue;
+                    }
+
+                    _nextTrafficOmsiSharedOutputRetrySeconds =
+                        nowSeconds +
+                        5.0;
+
+                    _trafficOmsiSharedOutput =
+                        RuntimeOmsiAudioHost.SharedOutput.TryCreate(
+                            _masterVolume);
+
+                    if (_trafficOmsiSharedOutput is null)
+                    {
+                        continue;
+                    }
+
+                    Console.WriteLine(
+                        "[traffic-ai] shared audio output initialized.");
+                }
+
                 var audio =
                     RuntimeOmsiAudioHost.TryCreate(
                         vehicleInfo.SoundConfigPath,
                         _masterVolume,
-                        perAgentVoiceBudget);
+                        perAgentVoiceBudget,
+                        sharedOutput:
+                            _trafficOmsiSharedOutput);
 
                 if (audio is null)
                 {
@@ -22382,6 +22420,10 @@ public sealed class D3D11RenderWindow : Form
             _trafficOmsiAudio.Clear();
             _activeTrafficAudioAgentIds.Clear();
             _staleTrafficAudioAgentIds.Clear();
+
+            _trafficOmsiSharedOutput?.Dispose();
+            _trafficOmsiSharedOutput =
+                null;
 
             _vehicle.Dispose();
 
