@@ -417,6 +417,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly List<RuntimeObjectMeshInfo>
         _vehicleViewpointLightMeshes =
             [];
+    private bool _vehicleLightMeshCacheInitialized;
     private readonly Dictionary<
         RuntimeObjectBatch,
         RuntimeVehicleMaterialChangeSetInfo[]>
@@ -9348,7 +9349,25 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        _vehicleLightMeshes.Clear();
+        if (!_vehicleLightMeshCacheInitialized)
+        {
+            _vehicleLightMeshes.Clear();
+
+            foreach (var mesh in
+                     vehicle.Meshes)
+            {
+                if (mesh.LightEffects is
+                    { Count: > 0 })
+                {
+                    _vehicleLightMeshes.Add(
+                        mesh);
+                }
+            }
+
+            _vehicleLightMeshCacheInitialized =
+                true;
+        }
+
         _vehicleViewpointLightMeshes.Clear();
 
         var viewpointBit =
@@ -9357,17 +9376,8 @@ public sealed class D3D11RenderWindow : Form
                 : 2;
 
         foreach (var mesh in
-                 vehicle.Meshes)
+                 _vehicleLightMeshes)
         {
-            if (mesh.LightEffects is not
-                { Count: > 0 })
-            {
-                continue;
-            }
-
-            _vehicleLightMeshes.Add(
-                mesh);
-
             if (IsVehicleMeshVisibleFromViewpoint(
                     mesh.ViewpointFlag,
                     viewpointBit))
@@ -21611,6 +21621,8 @@ public sealed class D3D11RenderWindow : Form
             _vehicleDrawItems.Clear();
             _vehicleLightMeshes.Clear();
             _vehicleViewpointLightMeshes.Clear();
+            _vehicleLightMeshCacheInitialized =
+                false;
             _vehicleOrderedMaterialChangeSets.Clear();
             _vehicleMaterialChangeItems.Clear();
 
