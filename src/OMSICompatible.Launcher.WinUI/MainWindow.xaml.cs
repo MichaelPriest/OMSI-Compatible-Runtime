@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Vehicles;
+using OMSICompatible.Multiplayer;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -274,6 +275,62 @@ public sealed partial class MainWindow :
         ShowView(
             SessionView,
             PlayNavButton);
+    }
+
+    private async void DiscoverMultiplayerButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var port =
+            int.TryParse(
+                MultiplayerPortBox.Text,
+                out var parsedPort) &&
+            parsedPort is >= 1 and <=
+                ushort.MaxValue
+                ? parsedPort
+                : OpenOmsiLanProtocol.DefaultPort;
+
+        MultiplayerDiscoveryText.Text =
+            "Procurando sessões openOMSI LAN...";
+
+        try
+        {
+            var found =
+                await Task.Run(
+                    () =>
+                        OpenOmsiLanSession.Discover(
+                            TimeSpan.FromMilliseconds(
+                                1400),
+                            port));
+
+            if (found is null)
+            {
+                MultiplayerDiscoveryText.Text =
+                    $"Nenhuma sessão encontrada nas portas {port}-{Math.Min(port + OpenOmsiLanProtocol.PortRange - 1, ushort.MaxValue)}.";
+                return;
+            }
+
+            MultiplayerJoinRadio.IsChecked =
+                true;
+
+            MultiplayerTargetBox.Text =
+                $"{found.Endpoint.Address}:{found.Endpoint.Port}";
+
+            MultiplayerDiscoveryText.Text =
+                $"{found.HostName} · mapa {found.Map} · {found.Players} jogador(es) · sessão {OpenOmsiLanProtocol.SessionHex(found.Session)} · {found.Endpoint.Address}:{found.Endpoint.Port}";
+
+            ApplyMultiplayerOptionsFromUi(
+                showStatus:
+                    false);
+
+            SetStatus(
+                $"Sessão LAN encontrada: {found.HostName}.");
+        }
+        catch (Exception exception)
+        {
+            MultiplayerDiscoveryText.Text =
+                $"Falha ao descobrir LAN: {exception.Message}";
+        }
     }
 
     private void SaveMultiplayerButton_Click(
@@ -1752,6 +1809,50 @@ public sealed partial class MainWindow :
 
                     SetStatus(
                         "Selecione o próximo ônibus e pressione JOGAR.");
+                    return;
+                }
+
+                if (line.StartsWith(
+                        "[multiplayer-status]|",
+                        StringComparison.Ordinal))
+                {
+                    var fields =
+                        line.Split(
+                            '|',
+                            7,
+                            StringSplitOptions.None);
+
+                    if (fields.Length >=
+                        6)
+                    {
+                        var role =
+                            fields[1];
+                        var connected =
+                            fields[2] ==
+                            "1";
+                        var peers =
+                            fields[3];
+                        var session =
+                            fields[4];
+                        var port =
+                            fields[5];
+                        var reason =
+                            fields.Length >
+                                6
+                                ? fields[6]
+                                : string.Empty;
+
+                        MultiplayerStatusText.Text =
+                            $"{role} · {(connected ? "conectado" : "conectando")} · {peers} peer(s)";
+
+                        MultiplayerLiveText.Text =
+                            $"Sessão {session} · UDP {port}" +
+                            (string.IsNullOrWhiteSpace(
+                                reason)
+                                ? string.Empty
+                                : $" · {reason}");
+                    }
+
                     return;
                 }
 

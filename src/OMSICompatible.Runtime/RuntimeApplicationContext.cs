@@ -42,6 +42,7 @@ internal sealed class RuntimeApplicationContext :
     private WorldRailTrafficSimulation? _railTrafficSimulation;
     private WorldDefinition? _currentWorld;
     private OpenOmsiLanSession? _multiplayerSession;
+    private double _multiplayerStatusAccumulator;
     private readonly HashSet<string>
         _pendingMultiplayerVehiclePaths =
             new(
@@ -2896,6 +2897,8 @@ internal sealed class RuntimeApplicationContext :
     private void StartMultiplayerSession()
     {
         DisposeMultiplayerSession();
+        _multiplayerStatusAccumulator =
+            1.0;
 
         var mode =
             (_options.MultiplayerMode ??
@@ -3246,6 +3249,34 @@ internal sealed class RuntimeApplicationContext :
 
         var peers =
             session.SnapshotPeers();
+
+        _multiplayerStatusAccumulator +=
+            Math.Max(
+                0.0,
+                deltaSeconds);
+
+        if (_multiplayerStatusAccumulator >=
+            1.0)
+        {
+            _multiplayerStatusAccumulator =
+                0.0;
+
+            var rejection =
+                (session.RejectionReason ??
+                 string.Empty)
+                    .Replace(
+                        '|',
+                        '/')
+                    .Replace(
+                        '\r',
+                        ' ')
+                    .Replace(
+                        '\n',
+                        ' ');
+
+            Console.WriteLine(
+                $"[multiplayer-status]|{session.Role}|{(session.Connected ? 1 : 0)}|{peers.Count}|{session.SessionHex}|{session.LocalPort}|{rejection}");
+        }
 
         _multiplayerActivePeerIds.Clear();
 
