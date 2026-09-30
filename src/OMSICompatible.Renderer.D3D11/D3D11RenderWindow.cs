@@ -622,6 +622,27 @@ public sealed class D3D11RenderWindow : Form
         _pendingStreamingTexturePaths =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, double>
+        _streamingTextureNearestDistanceMeters =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string>
+        _streamingReducibleTexturePaths =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int>
+        _streamingTextureDroppedMipLevels =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+    private double _nextStreamingTextureBudgetCheckSeconds;
+    private const double StreamingTileSizeMeters =
+        300.0;
+    private const double StreamingTextureFullResolutionDistanceMeters =
+        150.0;
+    private const int StreamingTextureMinimumMipSide =
+        64;
+    private const int MaximumStreamingTextureMipReductionsPerCheck =
+        4;
     private const int MaximumInactiveStreamingTextureCacheEntries =
         512;
     private const long DefaultMaximumInactiveStreamingTextureCacheBytes =
@@ -2442,6 +2463,132 @@ public sealed class D3D11RenderWindow : Form
         requiredPaths.UnionWith(
             maskPaths);
 
+        var focusX =
+            _streamingTileX ??
+            prepared.TileWork.FirstOrDefault()?.X ??
+            0;
+
+        var focusY =
+            _streamingTileY ??
+            prepared.TileWork.FirstOrDefault()?.Y ??
+            0;
+
+        _streamingTextureNearestDistanceMeters.Clear();
+        _streamingReducibleTexturePaths.Clear();
+
+        foreach (var batch in
+                 prepared.Objects.Batches)
+        {
+            if (!string.IsNullOrWhiteSpace(
+                    batch.TexturePath))
+            {
+                _streamingReducibleTexturePaths.Add(
+                    batch.TexturePath);
+            }
+        }
+
+        foreach (var pinnedPath in
+                 _pinnedVehicleTexturePaths)
+        {
+            _streamingTextureNearestDistanceMeters[
+                pinnedPath] =
+                0.0;
+        }
+
+        foreach (var tile in
+                 prepared.TileWork)
+        {
+            var deltaX =
+                Math.Max(
+                    0,
+                    Math.Abs(
+                        tile.X -
+                        focusX) -
+                    1);
+            var deltaY =
+                Math.Max(
+                    0,
+                    Math.Abs(
+                        tile.Y -
+                        focusY) -
+                    1);
+
+            var distanceMeters =
+                Math.Sqrt(
+                    deltaX *
+                        deltaX +
+                    deltaY *
+                        deltaY) *
+                StreamingTileSizeMeters;
+
+            void RememberDistance(
+                string texturePath)
+            {
+                if (_streamingTextureNearestDistanceMeters.TryGetValue(
+                        texturePath,
+                        out var previous))
+                {
+                    if (distanceMeters <
+                        previous)
+                    {
+                        _streamingTextureNearestDistanceMeters[
+                            texturePath] =
+                            distanceMeters;
+                    }
+                }
+                else
+                {
+                    _streamingTextureNearestDistanceMeters[
+                        texturePath] =
+                        distanceMeters;
+                }
+            }
+
+            foreach (var texturePath in
+                     tile.RegularTexturePaths)
+            {
+                RememberDistance(
+                    texturePath);
+            }
+
+            foreach (var maskPath in
+                     tile.MaskTexturePaths)
+            {
+                RememberDistance(
+                    maskPath);
+            }
+        }
+
+        // A texture reduced while far away must become full resolution again
+        // before it can be seen up close. Retire the reduced resource and let
+        // the normal frame-budgeted queue reload the original.
+        foreach (var reducedPath in
+                 _streamingTextureDroppedMipLevels.Keys
+                     .ToArray())
+        {
+            if (!_streamingTextureNearestDistanceMeters.TryGetValue(
+                    reducedPath,
+                    out var distanceMeters) ||
+                distanceMeters >
+                    StreamingTextureFullResolutionDistanceMeters ||
+                !_objectTextureCache.TryGetValue(
+                    reducedPath,
+                    out var reducedTexture))
+            {
+                continue;
+            }
+
+            RetireStreamingTexture(
+                reducedTexture);
+
+            _objectTextureCache.Remove(
+                reducedPath);
+            _objectTextureLastUsedGeneration.Remove(
+                reducedPath);
+            _streamingTextureDroppedMipLevels.Remove(
+                reducedPath);
+        }
+
         _streamingTextureGeneration++;
 
         foreach (var requiredPath in
@@ -2542,6 +2689,8 @@ public sealed class D3D11RenderWindow : Form
 
             _objectTextureLastUsedGeneration.Remove(
                 oldestPath);
+            _streamingTextureDroppedMipLevels.Remove(
+                oldestPath);
         }
 
         _currentStreamingTextureCacheBytes =
@@ -2589,16 +2738,6 @@ public sealed class D3D11RenderWindow : Form
                         false);
             }
         }
-
-        var focusX =
-            _streamingTileX ??
-            prepared.TileWork.FirstOrDefault()?.X ??
-            0;
-
-        var focusY =
-            _streamingTileY ??
-            prepared.TileWork.FirstOrDefault()?.Y ??
-            0;
 
         foreach (var tile in
                  prepared.TileWork
@@ -2779,6 +2918,130 @@ public sealed class D3D11RenderWindow : Form
             {
                 break;
             }
+        }
+
+        ApplyStreamingDdsTextureBudget();
+    }
+
+    private void ApplyStreamingDdsTextureBudget()
+    {
+        if (_objectTextureLoader is null ||
+            _currentStreamingTextureCacheBytes <=
+                _maximumStreamingTextureCacheBytes)
+        {
+            return;
+        }
+
+        var nowSeconds =
+            _frameClock.Elapsed.TotalSeconds;
+
+        if (nowSeconds <
+            _nextStreamingTextureBudgetCheckSeconds)
+        {
+            return;
+        }
+
+        _nextStreamingTextureBudgetCheckSeconds =
+            nowSeconds +
+            1.0;
+
+        var candidates =
+            _objectTextureCache
+                .Where(
+                    pair =>
+                        _streamingReducibleTexturePaths.Contains(
+                            pair.Key) &&
+                        string.Equals(
+                            Path.GetExtension(
+                                pair.Key),
+                            ".dds",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        _streamingTextureNearestDistanceMeters.TryGetValue(
+                            pair.Key,
+                            out var distanceMeters) &&
+                        distanceMeters >=
+                            StreamingTextureFullResolutionDistanceMeters)
+                .OrderByDescending(
+                    pair =>
+                        _streamingTextureNearestDistanceMeters[
+                            pair.Key])
+                .Select(
+                    static pair =>
+                        pair.Key)
+                .ToArray();
+
+        var reducedCount =
+            0;
+
+        foreach (var path in
+                 candidates)
+        {
+            if (_currentStreamingTextureCacheBytes <=
+                    _maximumStreamingTextureCacheBytes ||
+                reducedCount >=
+                    MaximumStreamingTextureMipReductionsPerCheck ||
+                !_objectTextureCache.TryGetValue(
+                    path,
+                    out var currentTexture))
+            {
+                break;
+            }
+
+            var currentDrop =
+                _streamingTextureDroppedMipLevels.TryGetValue(
+                    path,
+                    out var dropped)
+                    ? dropped
+                    : 0;
+
+            var replacement =
+                _objectTextureLoader.TryLoadReducedDds(
+                    path,
+                    currentDrop +
+                        1,
+                    StreamingTextureMinimumMipSide);
+
+            if (replacement is null)
+            {
+                continue;
+            }
+
+            if (replacement.ApproximateBytes >=
+                currentTexture.ApproximateBytes)
+            {
+                replacement.Dispose();
+                continue;
+            }
+
+            _objectTextureCache[
+                path] =
+                replacement;
+
+            _currentStreamingTextureCacheBytes =
+                Math.Max(
+                    0L,
+                    _currentStreamingTextureCacheBytes -
+                    (
+                        currentTexture.ApproximateBytes -
+                        replacement.ApproximateBytes
+                    ));
+
+            _streamingTextureDroppedMipLevels[
+                path] =
+                currentDrop +
+                1;
+
+            RetireStreamingTexture(
+                currentTexture);
+
+            reducedCount++;
+        }
+
+        if (reducedCount >
+            0)
+        {
+            Console.WriteLine(
+                $"[streaming-textures] mip budget reduced={reducedCount:N0}; gpuMB={_currentStreamingTextureCacheBytes / (1024.0 * 1024.0):0.0}/{_maximumStreamingTextureCacheBytes / (1024.0 * 1024.0):0}");
         }
     }
 
@@ -22152,6 +22415,9 @@ public sealed class D3D11RenderWindow : Form
             _failedObjectTexturePaths.Clear();
             _pendingStreamingTextureLoads.Clear();
             _pendingStreamingTexturePaths.Clear();
+            _streamingTextureNearestDistanceMeters.Clear();
+            _streamingReducibleTexturePaths.Clear();
+            _streamingTextureDroppedMipLevels.Clear();
 
             _vehicleTextTextureRenderer?.Dispose();
             _vehicleTextTextureRenderer = null;
