@@ -44,6 +44,15 @@ public sealed class WorldTrafficSimulation
         WorldTrafficPathSegment Segment,
         double Rank);
 
+    private readonly record struct TrafficBehaviorProfile(
+        double AccelerationMetersPerSecondSquared,
+        double BrakingMetersPerSecondSquared,
+        double MaximumLateralAccelerationMetersPerSecondSquared,
+        double FollowingTimeHeadwaySeconds,
+        double MinimumFollowingGapMeters,
+        double StopLineBufferMeters,
+        double CruiseSpeedFactor);
+
     private sealed record SegmentSampleCache(
         double[] CumulativeLengths,
         double TotalLength);
@@ -761,9 +770,16 @@ public sealed class WorldTrafficSimulation
                 }
             }
 
+            var behavior =
+                ResolveTrafficBehaviorProfile(
+                    vehicle.ResolvedPath!,
+                    vehicle.GroupName,
+                    index);
+
             var cruiseSpeed =
                 ResolveCruiseSpeed(
-                    index);
+                    index) *
+                behavior.CruiseSpeedFactor;
 
             var segmentSpeed =
                 ResolveSegmentMaximumSpeed(
@@ -799,7 +815,8 @@ public sealed class WorldTrafficSimulation
                     groupIndex,
                     defaultDensityClassIndex,
                     vehicle.GroupName,
-                    activationTimeSeconds);
+                    activationTimeSeconds,
+                    behavior);
 
             _agents.Add(
                 agent);
@@ -1096,7 +1113,7 @@ public sealed class WorldTrafficSimulation
                             remaining,
                             Math.Max(
                                 leading.Value.DistanceMeters -
-                                    MinimumTrafficSeparationMeters,
+                                    agent.MinimumFollowingGapMeters,
                                 0.0));
                 }
 
@@ -1107,7 +1124,7 @@ public sealed class WorldTrafficSimulation
                             remaining,
                             Math.Max(
                                 blockedEntryDistance.Value -
-                                    TrafficStopLineBufferMeters,
+                                    agent.StopLineBufferMeters,
                                 0.0));
                 }
 
@@ -1214,7 +1231,7 @@ public sealed class WorldTrafficSimulation
                                 0.0);
 
                     if (distanceToEntry <=
-                        TrafficStopLineBufferMeters +
+                        agent.StopLineBufferMeters +
                             0.0001)
                     {
                         agent.SpeedMetersPerSecond =
@@ -4547,7 +4564,7 @@ public sealed class WorldTrafficSimulation
             {
                 var curveLimitedSpeed =
                     Math.Sqrt(
-                        TrafficMaximumLateralAccelerationMetersPerSecondSquared /
+                        agent.MaximumLateralAccelerationMetersPerSecondSquared /
                         curvature);
 
                 targetSpeed =
@@ -4562,7 +4579,7 @@ public sealed class WorldTrafficSimulation
             var usableDistance =
                 Math.Max(
                     leading.Value.DistanceMeters -
-                        MinimumTrafficSeparationMeters,
+                        agent.MinimumFollowingGapMeters,
                     0.0);
 
             var leaderSpeed =
@@ -4578,10 +4595,10 @@ public sealed class WorldTrafficSimulation
                 leaderSpeed *
                 leaderSpeed /
                 (2.0 *
-                 TrafficBrakingMetersPerSecondSquared);
+                 agent.BrakingMetersPerSecondSquared);
 
             var headwayBrakingTerm =
-                TrafficBrakingMetersPerSecondSquared *
+                agent.BrakingMetersPerSecondSquared *
                 agent.FollowingTimeHeadwaySeconds;
 
             var followingSpeed =
@@ -4591,7 +4608,7 @@ public sealed class WorldTrafficSimulation
                         headwayBrakingTerm *
                             headwayBrakingTerm +
                         2.0 *
-                            TrafficBrakingMetersPerSecondSquared *
+                            agent.BrakingMetersPerSecondSquared *
                             (usableDistance +
                              leaderStoppingDistance)),
                     0.0);
@@ -4607,13 +4624,13 @@ public sealed class WorldTrafficSimulation
             var usableStopDistance =
                 Math.Max(
                     blockedEntryDistance.Value -
-                        TrafficStopLineBufferMeters,
+                        agent.StopLineBufferMeters,
                     0.0);
 
             var brakingLimitedSpeed =
                 Math.Sqrt(
                     2.0 *
-                    TrafficBrakingMetersPerSecondSquared *
+                    agent.BrakingMetersPerSecondSquared *
                     usableStopDistance);
 
             targetSpeed =
@@ -4772,8 +4789,8 @@ public sealed class WorldTrafficSimulation
         var rate =
             clampedTarget <
                 agent.SpeedMetersPerSecond
-                ? TrafficBrakingMetersPerSecondSquared
-                : TrafficAccelerationMetersPerSecondSquared;
+                ? agent.BrakingMetersPerSecondSquared
+                : agent.AccelerationMetersPerSecondSquared;
 
         var maximumChange =
             rate *
@@ -4975,27 +4992,143 @@ public sealed class WorldTrafficSimulation
         return vehicles[^1];
     }
 
-    private static double EstimateTrafficFollowingTimeHeadwaySeconds(
-        string? vehiclePath)
+    private static TrafficBehaviorProfile
+        ResolveTrafficBehaviorProfile(
+            string? vehiclePath,
+            string? groupName,
+            int agentIndex)
     {
-        if (string.IsNullOrWhiteSpace(
-                vehiclePath))
-        {
-            return FollowingTimeHeadwaySeconds;
-        }
-
         var extension =
-            Path.GetExtension(
-                vehiclePath);
+            string.IsNullOrWhiteSpace(
+                    vehiclePath)
+                ? string.Empty
+                : Path.GetExtension(
+                    vehiclePath);
+
+        var identity =
+            (
+                (vehiclePath ??
+                 string.Empty) +
+                "|" +
+                (groupName ??
+                 string.Empty)
+            )
+            .ToLowerInvariant();
+
+        var variation =
+            ((agentIndex %
+                  7) -
+             3) *
+            0.015;
 
         if (extension.Equals(
                 ".bus",
                 StringComparison.OrdinalIgnoreCase))
         {
-            return 1.60;
+            // Urban buses need gentler longitudinal and lateral dynamics,
+            // longer headway and a slightly lower desired cruising speed.
+            // This affects AI only; the player bus remains fully controlled
+            // by the OMSI vehicle scripts and physics path.
+            return new TrafficBehaviorProfile(
+                AccelerationMetersPerSecondSquared:
+                    1.00,
+                BrakingMetersPerSecondSquared:
+                    2.20,
+                MaximumLateralAccelerationMetersPerSecondSquared:
+                    1.25,
+                FollowingTimeHeadwaySeconds:
+                    Math.Clamp(
+                        1.80 +
+                            variation,
+                        1.65,
+                        2.05),
+                MinimumFollowingGapMeters:
+                    3.25,
+                StopLineBufferMeters:
+                    1.10,
+                CruiseSpeedFactor:
+                    Math.Clamp(
+                        0.91 +
+                            variation,
+                        0.86,
+                        0.96));
         }
 
-        return FollowingTimeHeadwaySeconds;
+        var heavy =
+            identity.Contains(
+                "truck",
+                StringComparison.Ordinal) ||
+            identity.Contains(
+                "lkw",
+                StringComparison.Ordinal) ||
+            identity.Contains(
+                "heavy",
+                StringComparison.Ordinal) ||
+            identity.Contains(
+                "delivery",
+                StringComparison.Ordinal);
+
+        if (heavy)
+        {
+            return new TrafficBehaviorProfile(
+                AccelerationMetersPerSecondSquared:
+                    0.80,
+                BrakingMetersPerSecondSquared:
+                    2.00,
+                MaximumLateralAccelerationMetersPerSecondSquared:
+                    1.10,
+                FollowingTimeHeadwaySeconds:
+                    Math.Clamp(
+                        1.95 +
+                            variation,
+                        1.80,
+                        2.20),
+                MinimumFollowingGapMeters:
+                    3.75,
+                StopLineBufferMeters:
+                    1.25,
+                CruiseSpeedFactor:
+                    Math.Clamp(
+                        0.86 +
+                            variation,
+                        0.80,
+                        0.92));
+        }
+
+        var taxi =
+            identity.Contains(
+                "taxi",
+                StringComparison.Ordinal);
+
+        return new TrafficBehaviorProfile(
+            AccelerationMetersPerSecondSquared:
+                taxi
+                    ? 1.90
+                    : 1.65,
+            BrakingMetersPerSecondSquared:
+                3.20,
+            MaximumLateralAccelerationMetersPerSecondSquared:
+                2.20,
+            FollowingTimeHeadwaySeconds:
+                Math.Clamp(
+                    (taxi
+                        ? 1.20
+                        : 1.35) +
+                        variation,
+                    1.10,
+                    1.60),
+            MinimumFollowingGapMeters:
+                2.00,
+            StopLineBufferMeters:
+                0.75,
+            CruiseSpeedFactor:
+                Math.Clamp(
+                    (taxi
+                        ? 1.00
+                        : 0.97) +
+                        variation,
+                    0.90,
+                    1.05));
     }
 
     private static double EstimateTrafficVehicleHalfWidth(
@@ -5817,7 +5950,8 @@ public sealed class WorldTrafficSimulation
         int? groupIndex,
         int? defaultDensityClassIndex,
         string groupName,
-        double activationTimeSeconds)
+        double activationTimeSeconds,
+        TrafficBehaviorProfile behavior)
     {
         public int AgentIndex { get; } =
             agentIndex;
@@ -5864,9 +5998,23 @@ public sealed class WorldTrafficSimulation
             EstimateTrafficVehicleHalfWidth(
                 vehiclePath);
 
+        public double AccelerationMetersPerSecondSquared { get; } =
+            behavior.AccelerationMetersPerSecondSquared;
+
+        public double BrakingMetersPerSecondSquared { get; } =
+            behavior.BrakingMetersPerSecondSquared;
+
+        public double MaximumLateralAccelerationMetersPerSecondSquared { get; } =
+            behavior.MaximumLateralAccelerationMetersPerSecondSquared;
+
         public double FollowingTimeHeadwaySeconds { get; } =
-            EstimateTrafficFollowingTimeHeadwaySeconds(
-                vehiclePath);
+            behavior.FollowingTimeHeadwaySeconds;
+
+        public double MinimumFollowingGapMeters { get; } =
+            behavior.MinimumFollowingGapMeters;
+
+        public double StopLineBufferMeters { get; } =
+            behavior.StopLineBufferMeters;
 
         public int? GroupIndex { get; } =
             groupIndex;

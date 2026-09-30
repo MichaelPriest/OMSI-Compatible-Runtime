@@ -3900,6 +3900,17 @@ try
         Path.GetDirectoryName(
             syntheticAiVehiclePath)!);
 
+    var syntheticAiCarPath =
+        Path.Combine(
+            contentRoot.RootPath,
+            "Vehicles",
+            "Synthetic",
+            "traffic.ovh");
+
+    File.WriteAllText(
+        syntheticAiCarPath,
+        string.Empty);
+
     var syntheticAiTrainPath =
         Path.Combine(
             contentRoot.RootPath,
@@ -4538,6 +4549,74 @@ try
         staggeredTraffic.Snapshot().Count >=
             2,
         "Runtime traffic did not activate the next AI after its stagger delay.");
+
+    var realisticCarTraffic =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "NormalCars",
+                        @"Vehicles\Synthetic\traffic.ovh",
+                        syntheticAiCarPath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1,
+            spawnExclusionCenter:
+                new WorldVector3(
+                    10000.0,
+                    0.0,
+                    10000.0),
+            spawnExclusionRadiusMeters:
+                0.0);
+
+    var realisticBusTraffic =
+        new WorldTrafficSimulation(
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [
+                    new OmsiAiVehicleDefinition(
+                        "LineBuses",
+                        @"Vehicles\Synthetic\traffic.bus",
+                        syntheticAiVehiclePath,
+                        1.0)
+                ],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents:
+                1,
+            spawnExclusionCenter:
+                new WorldVector3(
+                    10000.0,
+                    0.0,
+                    10000.0),
+            spawnExclusionRadiusMeters:
+                0.0);
+
+    realisticCarTraffic.Step(
+        1.0);
+    realisticBusTraffic.Step(
+        1.0);
+
+    var realisticCarAgent =
+        realisticCarTraffic
+            .Snapshot()
+            .Single();
+    var realisticBusAgent =
+        realisticBusTraffic
+            .Snapshot()
+            .Single();
+
+    Require(
+        realisticCarAgent.SpeedMetersPerSecond >
+            realisticBusAgent.SpeedMetersPerSecond +
+                0.25,
+        "Realistic AI profiles did not keep the line bus acceleration gentler than normal road traffic.");
 
     var crossPathRetryNetwork =
         new WorldTrafficPathNetwork(
