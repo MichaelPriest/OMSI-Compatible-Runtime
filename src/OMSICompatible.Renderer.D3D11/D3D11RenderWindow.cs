@@ -411,6 +411,11 @@ public sealed class D3D11RenderWindow : Form
         ResolvedVehicleMaterialState Material)>
         _vehicleDrawItems =
             [];
+    private readonly List<(
+        RuntimeObjectBatch Batch,
+        ResolvedVehicleMaterialState Material)>
+        _vehicleBlendedDrawItems =
+            [];
     private readonly List<RuntimeObjectMeshInfo>
         _vehicleLightMeshes =
             [];
@@ -8793,6 +8798,7 @@ public sealed class D3D11RenderWindow : Form
             _terrainRasterizerState);
 
         _vehicleDrawItems.Clear();
+        _vehicleBlendedDrawItems.Clear();
 
         if (_vehicleDrawItems.Capacity <
             geometry.Batches.Count)
@@ -8801,8 +8807,16 @@ public sealed class D3D11RenderWindow : Form
                 geometry.Batches.Count;
         }
 
-        var opaqueCount =
-            0;
+        if (_vehicleBlendedDrawItems.Capacity <
+            geometry.Batches.Count /
+                4)
+        {
+            _vehicleBlendedDrawItems.Capacity =
+                Math.Max(
+                    geometry.Batches.Count /
+                        4,
+                    8);
+        }
 
         foreach (var batch in
                  geometry.Batches)
@@ -8828,18 +8842,18 @@ public sealed class D3D11RenderWindow : Form
 
             if (material.AlphaBlend)
             {
-                _vehicleDrawItems.Add(
+                _vehicleBlendedDrawItems.Add(
                     draw);
             }
             else
             {
-                _vehicleDrawItems.Insert(
-                    opaqueCount,
+                _vehicleDrawItems.Add(
                     draw);
-
-                opaqueCount++;
             }
         }
+
+        _vehicleDrawItems.AddRange(
+            _vehicleBlendedDrawItems);
 
         _deviceContext.OMSetBlendState(
             null);
@@ -21663,6 +21677,7 @@ public sealed class D3D11RenderWindow : Form
             _vehicleTextTextureRenderer = null;
             _vehicleAnimationParentBatches.Clear();
             _vehicleDrawItems.Clear();
+            _vehicleBlendedDrawItems.Clear();
             _vehicleLightMeshes.Clear();
             _vehicleViewpointLightMeshes.Clear();
             _vehicleLightMeshCacheInitialized =
