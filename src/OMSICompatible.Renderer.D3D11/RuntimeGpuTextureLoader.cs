@@ -115,47 +115,67 @@ internal sealed class RuntimeGpuTextureLoader
             _device.ImmediateContext;
     }
 
+    private static ParallelOptions CreateTextureWarmParallelOptions() =>
+        new()
+        {
+            // Texture prewarming runs after the streamed geometry workers have
+            // completed. Keep enough cores free for rendering/driver work.
+            MaxDegreeOfParallelism =
+                Math.Clamp(
+                    Environment.ProcessorCount /
+                        2,
+                    1,
+                    4)
+        };
+
     public static int WarmFileCache(
         IEnumerable<string> paths)
     {
         ArgumentNullException.ThrowIfNull(
             paths);
 
+        var candidates =
+            paths
+                .Where(
+                    static value =>
+                        !string.IsNullOrWhiteSpace(
+                            value))
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Where(
+                    static path =>
+                    {
+                        var extension =
+                            Path.GetExtension(
+                                path);
+
+                        return string.Equals(
+                                   extension,
+                                   ".dds",
+                                   StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(
+                                   extension,
+                                   ".tga",
+                                   StringComparison.OrdinalIgnoreCase);
+                    })
+                .ToArray();
+
         var warmed =
             0;
 
-        foreach (var path in
-                 paths
-                     .Where(
-                         static value =>
-                             !string.IsNullOrWhiteSpace(
-                                 value))
-                     .Distinct(
-                         StringComparer.OrdinalIgnoreCase))
-        {
-            var extension =
-                Path.GetExtension(
-                    path);
-
-            if (!string.Equals(
-                    extension,
-                    ".dds",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(
-                    extension,
-                    ".tga",
-                    StringComparison.OrdinalIgnoreCase))
+        Parallel.ForEach(
+            candidates,
+            CreateTextureWarmParallelOptions(),
+            path =>
             {
-                continue;
-            }
-
-            if (TryGetCachedFileBytes(
-                    path,
-                    out _))
-            {
-                warmed++;
-            }
-        }
+                if (TryGetCachedFileBytes(
+                        path,
+                        out _))
+                {
+                    Interlocked.Increment(
+                        ref warmed);
+                }
+            });
 
         return warmed;
     }
@@ -166,53 +186,60 @@ internal sealed class RuntimeGpuTextureLoader
         ArgumentNullException.ThrowIfNull(
             paths);
 
+        var candidates =
+            paths
+                .Where(
+                    static value =>
+                        !string.IsNullOrWhiteSpace(
+                            value))
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Where(
+                    static path =>
+                    {
+                        var extension =
+                            Path.GetExtension(
+                                path);
+
+                        return string.Equals(
+                                   extension,
+                                   ".bmp",
+                                   StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(
+                                   extension,
+                                   ".png",
+                                   StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(
+                                   extension,
+                                   ".jpg",
+                                   StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(
+                                   extension,
+                                   ".jpeg",
+                                   StringComparison.OrdinalIgnoreCase);
+                    })
+                .ToArray();
+
         var warmed =
             0;
 
-        foreach (var path in
-                 paths
-                     .Where(
-                         static value =>
-                             !string.IsNullOrWhiteSpace(
-                                 value))
-                     .Distinct(
-                         StringComparer.OrdinalIgnoreCase))
-        {
-            var extension =
-                Path.GetExtension(
-                    path);
-
-            if (!string.Equals(
-                    extension,
-                    ".bmp",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(
-                    extension,
-                    ".png",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(
-                    extension,
-                    ".jpg",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(
-                    extension,
-                    ".jpeg",
-                    StringComparison.OrdinalIgnoreCase))
+        Parallel.ForEach(
+            candidates,
+            CreateTextureWarmParallelOptions(),
+            path =>
             {
-                continue;
-            }
-
-            if (TryReadRgba(
-                    path,
-                    out _,
-                    out _,
-                    out _,
-                    requireCacheable:
-                        true))
-            {
-                warmed++;
-            }
-        }
+                if (TryReadRgba(
+                        path,
+                        out _,
+                        out _,
+                        out _,
+                        requireCacheable:
+                            true))
+                {
+                    Interlocked.Increment(
+                        ref warmed);
+                }
+            });
 
         return warmed;
     }
