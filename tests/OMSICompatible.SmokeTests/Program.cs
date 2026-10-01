@@ -4151,7 +4151,7 @@ try
         "LineAI did not activate the exact TTL service after its scheduled departure.");
 
     for (var lineStep = 0;
-         lineStep < 28;
+         lineStep < 52;
          lineStep++)
     {
         lineSimulation.Step(
