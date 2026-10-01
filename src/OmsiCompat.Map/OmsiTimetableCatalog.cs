@@ -27,15 +27,39 @@ public sealed record OmsiTimetableTrip(
     string Line,
     IReadOnlyList<OmsiTimetableStop> Stops);
 
+public sealed record OmsiTimetableTourTrip(
+    string TripName,
+    int ProfileIndex,
+    double DepartureMinutes);
+
+public sealed record OmsiTimetableTour(
+    string Number,
+    string AiGroup,
+    string Extra,
+    IReadOnlyList<OmsiTimetableTourTrip> Trips);
+
+public sealed record OmsiTimetableLine(
+    string Name,
+    string FilePath,
+    bool UserAllowed,
+    int Priority,
+    IReadOnlyList<OmsiTimetableTour> Tours);
+
 public sealed record OmsiTimetableCatalog(
     IReadOnlyList<OmsiTimetableTrip> Trips,
-    IReadOnlyDictionary<string, OmsiTimetableTrack> Tracks)
+    IReadOnlyDictionary<string, OmsiTimetableTrack> Tracks,
+    IReadOnlyList<OmsiTimetableLine>? LineDefinitions = null)
 {
+    public IReadOnlyList<OmsiTimetableLine> Lines { get; } =
+        LineDefinitions ??
+        Array.Empty<OmsiTimetableLine>();
+
     public static OmsiTimetableCatalog Empty { get; } =
         new(
             Array.Empty<OmsiTimetableTrip>(),
             new Dictionary<string, OmsiTimetableTrack>(
-                StringComparer.OrdinalIgnoreCase));
+                StringComparer.OrdinalIgnoreCase),
+            Array.Empty<OmsiTimetableLine>());
 }
 
 public static class OmsiTimetableCatalogReader
@@ -59,6 +83,10 @@ public static class OmsiTimetableCatalogReader
             new List<OmsiTimetableTrip>();
         var tracks =
             new Dictionary<string, OmsiTimetableTrack>(
+                StringComparer.OrdinalIgnoreCase);
+
+        var lines =
+            new Dictionary<string, OmsiTimetableLine>(
                 StringComparer.OrdinalIgnoreCase);
 
         foreach (var directory in
@@ -87,6 +115,23 @@ public static class OmsiTimetableCatalogReader
                 tracks[
                     track.Name] =
                     track;
+            }
+
+            foreach (var linePath in
+                     EnumerateFilesSafe(
+                         directory,
+                         "*.ttl"))
+            {
+                var line =
+                    ReadLine(
+                        linePath);
+
+                if (line is not null)
+                {
+                    lines[
+                        line.Name] =
+                        line;
+                }
             }
 
             foreach (var tripPath in
@@ -118,7 +163,13 @@ public static class OmsiTimetableCatalogReader
                         trip.Name,
                     StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
-            tracks);
+            tracks,
+            lines.Values
+                .OrderBy(
+                    static line =>
+                        line.Name,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray());
     }
 
     private static OmsiTimetableTrip? ReadTrip(
@@ -262,6 +313,234 @@ public static class OmsiTimetableCatalogReader
             destination,
             line,
             stops.ToArray());
+    }
+
+    private static OmsiTimetableLine? ReadLine(
+        string path)
+    {
+        string[] fileLines;
+
+        try
+        {
+            fileLines =
+                File.ReadAllLines(
+                    path);
+        }
+        catch
+        {
+            return null;
+        }
+
+        var userAllowed =
+            false;
+        var priority =
+            0;
+
+        var tours =
+            new List<OmsiTimetableTour>();
+
+        for (var index = 0;
+             index <
+                 fileLines.Length;
+             index++)
+        {
+            var token =
+                Clean(
+                    fileLines[index]);
+
+            if (token.Equals(
+                    "[userallowed]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                userAllowed =
+                    true;
+                continue;
+            }
+
+            if (token.Equals(
+                    "[priority]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var cursor =
+                    index;
+
+                if (TryReadNextTimetableValue(
+                        fileLines,
+                        ref cursor,
+                        out var value) &&
+                    int.TryParse(
+                        value,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var parsedPriority))
+                {
+                    priority =
+                        parsedPriority;
+                    index =
+                        cursor;
+                }
+
+                continue;
+            }
+
+            if (token.Equals(
+                    "[newtour]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var cursor =
+                    index;
+
+                if (!TryReadNextTimetableValue(
+                        fileLines,
+                        ref cursor,
+                        out var number) ||
+                    !TryReadNextTimetableValue(
+                        fileLines,
+                        ref cursor,
+                        out var aiGroup) ||
+                    !TryReadNextTimetableValue(
+                        fileLines,
+                        ref cursor,
+                        out var extra))
+                {
+                    continue;
+                }
+
+                tours.Add(
+                    new OmsiTimetableTour(
+                        number,
+                        aiGroup,
+                        extra,
+                        Array.Empty<
+                            OmsiTimetableTourTrip>()));
+
+                index =
+                    cursor;
+                continue;
+            }
+
+            if (!token.Equals(
+                    "[addtrip]",
+                    StringComparison.OrdinalIgnoreCase) ||
+                tours.Count ==
+                    0)
+            {
+                continue;
+            }
+
+            var tripCursor =
+                index;
+
+            if (!TryReadNextTimetableValue(
+                    fileLines,
+                    ref tripCursor,
+                    out var tripName) ||
+                !TryReadNextTimetableValue(
+                    fileLines,
+                    ref tripCursor,
+                    out var profileText) ||
+                !TryReadNextTimetableValue(
+                    fileLines,
+                    ref tripCursor,
+                    out var departureText) ||
+                !int.TryParse(
+                    profileText,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var profileIndex))
+            {
+                continue;
+            }
+
+            var departure =
+                ParseFlexibleDouble(
+                    departureText);
+
+            if (!departure.HasValue)
+            {
+                continue;
+            }
+
+            var current =
+                tours[^1];
+
+            tours[^1] =
+                current with
+                {
+                    Trips =
+                        current.Trips
+                            .Append(
+                                new OmsiTimetableTourTrip(
+                                    tripName,
+                                    profileIndex,
+                                    departure.Value))
+                            .ToArray()
+                };
+
+            index =
+                tripCursor;
+        }
+
+        if (tours.Count ==
+                0 &&
+            !userAllowed &&
+            priority ==
+                0)
+        {
+            return null;
+        }
+
+        return new OmsiTimetableLine(
+            Path.GetFileNameWithoutExtension(
+                path),
+            path,
+            userAllowed,
+            priority,
+            tours.ToArray());
+    }
+
+    private static bool TryReadNextTimetableValue(
+        IReadOnlyList<string> lines,
+        ref int cursor,
+        out string value)
+    {
+        for (var index =
+                 cursor + 1;
+             index <
+                 lines.Count;
+             index++)
+        {
+            var clean =
+                Clean(
+                    lines[index]);
+
+            if (clean.Length ==
+                0)
+            {
+                continue;
+            }
+
+            if (clean.StartsWith(
+                    '[') &&
+                clean.EndsWith(
+                    ']'))
+            {
+                value =
+                    string.Empty;
+                return false;
+            }
+
+            cursor =
+                index;
+            value =
+                CleanValue(
+                    lines[index]);
+            return true;
+        }
+
+        value =
+            string.Empty;
+        return false;
     }
 
     private static OmsiTimetableTrack? ReadTrack(

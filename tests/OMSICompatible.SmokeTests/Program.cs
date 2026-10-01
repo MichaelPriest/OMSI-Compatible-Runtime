@@ -2644,6 +2644,23 @@ try
             "20",
             "0"));
 
+    File.WriteAllText(
+        Path.Combine(
+            timetableDirectory,
+            "100.ttl"),
+        Lines(
+            "[userallowed]",
+            "[priority]",
+            "3",
+            "[newtour]",
+            "1",
+            "Busses",
+            "127",
+            "[addtrip]",
+            "Linha100",
+            "0",
+            "480.5"));
+
     var timetableCatalog =
         OmsiTimetableCatalogReader.Read(
             maps[0]);
@@ -2671,8 +2688,33 @@ try
         syntheticTimetableTrack.Entries[0].ObjectId ==
             3001 &&
         syntheticTimetableTrack.Entries[1].PathId ==
-            1,
-        "OMSI TTData parser did not preserve real trip, stop and track-entry data.");
+            1 &&
+        timetableCatalog.Lines.Count ==
+            1 &&
+        timetableCatalog.Lines[0].Name ==
+            "100" &&
+        timetableCatalog.Lines[0].UserAllowed &&
+        timetableCatalog.Lines[0].Priority ==
+            3 &&
+        timetableCatalog.Lines[0].Tours.Count ==
+            1 &&
+        timetableCatalog.Lines[0].Tours[0].Number ==
+            "1" &&
+        timetableCatalog.Lines[0].Tours[0].AiGroup ==
+            "Busses" &&
+        timetableCatalog.Lines[0].Tours[0].Extra ==
+            "127" &&
+        timetableCatalog.Lines[0].Tours[0].Trips.Count ==
+            1 &&
+        timetableCatalog.Lines[0].Tours[0].Trips[0].TripName ==
+            "Linha100" &&
+        timetableCatalog.Lines[0].Tours[0].Trips[0].ProfileIndex ==
+            0 &&
+        Math.Abs(
+            timetableCatalog.Lines[0].Tours[0].Trips[0].DepartureMinutes -
+            480.5) <
+            0.0001,
+        "OMSI TTData parser did not preserve real trip, track, TTL tour, AI group, profile and departure data.");
 
     var buses = BusDiscovery.Discover(contentRoot);
     Require(
