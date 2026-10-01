@@ -2811,25 +2811,28 @@ internal sealed class RuntimeApplicationContext :
         var agents =
             _trafficAgentStateBuffer;
 
+        var playerObstacle =
+            _runtimeWindow?
+                .PlayerTrafficObstacle;
+
+        var worldPlayerObstacle =
+            playerObstacle is null
+                ? null
+                : new WorldTrafficObstacleState(
+                    new WorldVector3(
+                        -playerObstacle.X,
+                        playerObstacle.Y,
+                        playerObstacle.Z),
+                    -playerObstacle.HeadingRadians,
+                    playerObstacle.SpeedMetersPerSecond,
+                    playerObstacle.HalfLengthMeters,
+                    playerObstacle.HalfWidthMeters);
+
         if (_trafficSimulation is
             { } roadSimulation)
         {
-            var playerObstacle =
-                _runtimeWindow?
-                    .PlayerTrafficObstacle;
-
             roadSimulation.SetExternalObstacle(
-                playerObstacle is null
-                    ? null
-                    : new WorldTrafficObstacleState(
-                        new WorldVector3(
-                            -playerObstacle.X,
-                            playerObstacle.Y,
-                            playerObstacle.Z),
-                        -playerObstacle.HeadingRadians,
-                        playerObstacle.SpeedMetersPerSecond,
-                        playerObstacle.HalfLengthMeters,
-                        playerObstacle.HalfWidthMeters));
+                worldPlayerObstacle);
 
             if (double.IsFinite(
                     deltaSeconds) &&
@@ -2847,6 +2850,9 @@ internal sealed class RuntimeApplicationContext :
         if (_lineAiSimulation is
             { } lineSimulation)
         {
+            lineSimulation.SetExternalObstacle(
+                worldPlayerObstacle);
+
             if (double.IsFinite(
                     deltaSeconds) &&
                 deltaSeconds >
@@ -2873,7 +2879,7 @@ internal sealed class RuntimeApplicationContext :
                         lineAgent.HeadingRadians,
                         null,
                         $"LineAI {lineAgent.LineName}",
-                        false,
+                        lineAgent.AiBrakeLight,
                         false,
                         false,
                         lineAgent.TraveledDistanceMeters,

@@ -15,10 +15,15 @@ public sealed record WorldLineAiAgentState(
     WorldVector3 Position,
     double HeadingRadians,
     double TraveledDistanceMeters,
-    int RouteSegmentIndex);
+    int RouteSegmentIndex,
+    bool AiBrakeLight = false);
 
 public sealed class WorldLineAiSimulation
 {
+    private readonly record struct TrafficLead(
+        double DistanceMeters,
+        double SpeedMetersPerSecond);
+
     private sealed class ServiceAgent(
         int agentIndex,
         WorldLineAiScheduledTrip service,
@@ -33,11 +38,17 @@ public sealed class WorldLineAiSimulation
         public double DistanceMeters { get; set; }
         public double SpeedMetersPerSecond { get; set; }
         public double TraveledDistanceMeters { get; set; }
+        public bool BrakeLight { get; set; }
         public bool Active { get; set; }
         public bool Completed { get; set; }
     }
 
     private const double BusAccelerationMetersPerSecondSquared = 1.1;
+    private const double BusBrakingMetersPerSecondSquared = 3.5;
+    private const double BusFollowingTimeHeadwaySeconds = 1.8;
+    private const double MinimumFollowingGapMeters = 4.5;
+    private const double BusHalfLengthMeters = 6.0;
+    private const double TrafficLookAheadMeters = 100.0;
     private const double DefaultBusCruiseMetersPerSecond = 11.1111111111;
     private const double DepartureGraceMinutes = 10.0;
 
@@ -45,6 +56,7 @@ public sealed class WorldLineAiSimulation
         _segmentsByIndex;
     private readonly List<ServiceAgent> _services = [];
     private readonly int _maximumActiveAgents;
+    private WorldTrafficObstacleState? _externalObstacle;
     private double _serviceMinutes;
 
     public WorldLineAiSimulation(
@@ -116,6 +128,13 @@ public sealed class WorldLineAiSimulation
             .Select(static service => service.Vehicle.ResolvedPath!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    public void SetExternalObstacle(
+        WorldTrafficObstacleState? obstacle)
+    {
+        _externalObstacle =
+            obstacle;
+    }
 
     public void Step(double deltaSeconds)
     {
@@ -215,7 +234,8 @@ public sealed class WorldLineAiSimulation
                     position,
                     heading,
                     service.TraveledDistanceMeters,
-                    service.RouteSegmentIndex));
+                    service.RouteSegmentIndex,
+                    service.BrakeLight));
         }
     }
 
@@ -258,6 +278,12 @@ public sealed class WorldLineAiSimulation
                 DepartureGraceMinutes)
             {
                 service.Completed = true;
+                continue;
+            }
+
+            if (!CanOccupyRouteStart(
+                    service))
+            {
                 continue;
             }
 
@@ -320,19 +346,59 @@ public sealed class WorldLineAiSimulation
                 service,
                 service.RouteSegmentIndex,
                 segment);
-        var targetSpeed =
-            ResolveTargetSpeed(segment);
 
-        service.SpeedMetersPerSecond =
-            Math.Min(
-                targetSpeed,
-                service.SpeedMetersPerSecond +
-                BusAccelerationMetersPerSecondSquared *
-                deltaSeconds);
+        var lineLead =
+            FindLineLead(
+                service,
+                segment,
+                travelForward);
+        var obstacleLead =
+            FindExternalObstacleLead(
+                service,
+                segment,
+                travelForward);
+
+        var leading =
+            SelectNearestLead(
+                lineLead,
+                obstacleLead);
+
+        var targetSpeed =
+            ResolveTargetSpeed(
+                segment,
+                leading);
+
+        var previousSpeed =
+            service.SpeedMetersPerSecond;
+
+        service.BrakeLight =
+            targetSpeed <
+                previousSpeed -
+                    0.01 ||
+            (targetSpeed <=
+                 0.05 &&
+             previousSpeed <=
+                 0.5);
+
+        UpdateSpeed(
+            service,
+            targetSpeed,
+            deltaSeconds);
 
         var remaining =
             service.SpeedMetersPerSecond *
             deltaSeconds;
+
+        if (leading.HasValue)
+        {
+            remaining =
+                Math.Min(
+                    remaining,
+                    Math.Max(
+                        leading.Value.DistanceMeters -
+                            MinimumFollowingGapMeters,
+                        0.0));
+        }
 
         while (remaining > 0.000001)
         {
@@ -371,6 +437,7 @@ public sealed class WorldLineAiSimulation
                 service.Completed = true;
                 service.Active = false;
                 service.SpeedMetersPerSecond = 0.0;
+                service.BrakeLight = true;
                 return;
             }
 
@@ -393,13 +460,420 @@ public sealed class WorldLineAiSimulation
                 travelForward
                     ? 0.0
                     : SegmentLength(segment);
+
             targetSpeed =
-                ResolveTargetSpeed(segment);
+                ResolveTargetSpeed(
+                    segment,
+                    null);
             service.SpeedMetersPerSecond =
                 Math.Min(
                     service.SpeedMetersPerSecond,
                     targetSpeed);
         }
+    }
+
+    private bool CanOccupyRouteStart(
+        ServiceAgent service)
+    {
+        if (service.RouteSegments.Count ==
+                0 ||
+            !_segmentsByIndex.TryGetValue(
+                service.RouteSegments[0],
+                out var first))
+        {
+            return false;
+        }
+
+        var forward =
+            ResolveTravelForward(
+                service,
+                0,
+                first);
+        var startDistance =
+            forward
+                ? 0.0
+                : SegmentLength(
+                    first);
+
+        foreach (var other in
+                 _services)
+        {
+            if (!other.Active ||
+                other.Completed ||
+                other.RouteSegmentIndex !=
+                    0 ||
+                other.RouteSegments.Count ==
+                    0 ||
+                other.RouteSegments[0] !=
+                    first.Index)
+            {
+                continue;
+            }
+
+            var otherForward =
+                ResolveTravelForward(
+                    other,
+                    0,
+                    first);
+
+            if (otherForward !=
+                forward)
+            {
+                continue;
+            }
+
+            if (Math.Abs(
+                    other.DistanceMeters -
+                    startDistance) <
+                BusHalfLengthMeters *
+                    2.0 +
+                MinimumFollowingGapMeters)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private TrafficLead? FindLineLead(
+        ServiceAgent source,
+        WorldTrafficPathSegment segment,
+        bool sourceForward)
+    {
+        TrafficLead? nearest =
+            null;
+
+        foreach (var target in
+                 _services)
+        {
+            if (ReferenceEquals(
+                    source,
+                    target) ||
+                !target.Active ||
+                target.Completed ||
+                target.RouteSegmentIndex <
+                    0 ||
+                target.RouteSegmentIndex >=
+                    target.RouteSegments.Count)
+            {
+                continue;
+            }
+
+            double centerDistance;
+
+            if (target.RouteSegments[
+                    target.RouteSegmentIndex] ==
+                segment.Index)
+            {
+                var targetForward =
+                    ResolveTravelForward(
+                        target,
+                        target.RouteSegmentIndex,
+                        segment);
+
+                if (targetForward !=
+                    sourceForward)
+                {
+                    continue;
+                }
+
+                centerDistance =
+                    sourceForward
+                        ? target.DistanceMeters -
+                          source.DistanceMeters
+                        : source.DistanceMeters -
+                          target.DistanceMeters;
+            }
+            else if (source.RouteSegmentIndex + 1 <
+                         source.RouteSegments.Count &&
+                     source.RouteSegments[
+                         source.RouteSegmentIndex + 1] ==
+                         target.RouteSegments[
+                             target.RouteSegmentIndex] &&
+                     _segmentsByIndex.TryGetValue(
+                         target.RouteSegments[
+                             target.RouteSegmentIndex],
+                         out var targetSegment))
+            {
+                var targetForward =
+                    ResolveTravelForward(
+                        target,
+                        target.RouteSegmentIndex,
+                        targetSegment);
+
+                var sourceToExit =
+                    sourceForward
+                        ? Math.Max(
+                            SegmentLength(segment) -
+                            source.DistanceMeters,
+                            0.0)
+                        : Math.Max(
+                            source.DistanceMeters,
+                            0.0);
+
+                var targetFromEntry =
+                    targetForward
+                        ? Math.Max(
+                            target.DistanceMeters,
+                            0.0)
+                        : Math.Max(
+                            SegmentLength(targetSegment) -
+                            target.DistanceMeters,
+                            0.0);
+
+                centerDistance =
+                    sourceToExit +
+                    targetFromEntry;
+            }
+            else
+            {
+                continue;
+            }
+
+            if (centerDistance <=
+                    0.0 ||
+                centerDistance >
+                    TrafficLookAheadMeters)
+            {
+                continue;
+            }
+
+            var lead =
+                new TrafficLead(
+                    Math.Max(
+                        centerDistance -
+                        BusHalfLengthMeters *
+                            2.0,
+                        0.0),
+                    Math.Max(
+                        target.SpeedMetersPerSecond,
+                        0.0));
+
+            if (!nearest.HasValue ||
+                lead.DistanceMeters <
+                    nearest.Value.DistanceMeters)
+            {
+                nearest =
+                    lead;
+            }
+        }
+
+        return nearest;
+    }
+
+    private TrafficLead? FindExternalObstacleLead(
+        ServiceAgent service,
+        WorldTrafficPathSegment segment,
+        bool travelForward)
+    {
+        if (_externalObstacle is not
+            { } obstacle)
+        {
+            return null;
+        }
+
+        SampleSegment(
+            segment,
+            service.DistanceMeters,
+            out var position,
+            out var heading);
+
+        if (!travelForward)
+        {
+            heading =
+                ReverseHeading(
+                    heading);
+        }
+
+        if (Math.Abs(
+                obstacle.Position.Y -
+                position.Y) >
+            3.5)
+        {
+            return null;
+        }
+
+        var deltaX =
+            obstacle.Position.X -
+            position.X;
+        var deltaZ =
+            obstacle.Position.Z -
+            position.Z;
+
+        var forwardX =
+            Math.Sin(
+                heading);
+        var forwardZ =
+            Math.Cos(
+                heading);
+        var rightX =
+            forwardZ;
+        var rightZ =
+            -forwardX;
+
+        var longitudinal =
+            deltaX *
+                forwardX +
+            deltaZ *
+                forwardZ;
+
+        if (longitudinal <=
+                0.0 ||
+            longitudinal >
+                TrafficLookAheadMeters)
+        {
+            return null;
+        }
+
+        var lateral =
+            Math.Abs(
+                deltaX *
+                    rightX +
+                deltaZ *
+                    rightZ);
+
+        var obstacleForwardX =
+            Math.Sin(
+                obstacle.HeadingRadians);
+        var obstacleForwardZ =
+            Math.Cos(
+                obstacle.HeadingRadians);
+        var obstacleRightX =
+            obstacleForwardZ;
+        var obstacleRightZ =
+            -obstacleForwardX;
+
+        var obstacleLateralExtent =
+            Math.Abs(
+                obstacleForwardX *
+                    rightX +
+                obstacleForwardZ *
+                    rightZ) *
+                obstacle.HalfLengthMeters +
+            Math.Abs(
+                obstacleRightX *
+                    rightX +
+                obstacleRightZ *
+                    rightZ) *
+                obstacle.HalfWidthMeters;
+
+        var maximumLateral =
+            Math.Max(
+                Math.Abs(
+                    segment.WidthMeters) *
+                    0.5,
+                1.1) +
+            Math.Max(
+                obstacleLateralExtent,
+                0.45);
+
+        if (lateral >
+            maximumLateral)
+        {
+            return null;
+        }
+
+        var obstacleLongitudinalExtent =
+            Math.Abs(
+                obstacleForwardX *
+                    forwardX +
+                obstacleForwardZ *
+                    forwardZ) *
+                obstacle.HalfLengthMeters +
+            Math.Abs(
+                obstacleRightX *
+                    forwardX +
+                obstacleRightZ *
+                    forwardZ) *
+                obstacle.HalfWidthMeters;
+
+        var headingDelta =
+            NormalizeHeadingDelta(
+                obstacle.HeadingRadians -
+                heading);
+
+        var projectedSpeed =
+            Math.Max(
+                obstacle.SpeedMetersPerSecond *
+                Math.Cos(
+                    headingDelta),
+                0.0);
+
+        return new TrafficLead(
+            Math.Max(
+                longitudinal -
+                obstacleLongitudinalExtent -
+                BusHalfLengthMeters,
+                0.0),
+            projectedSpeed);
+    }
+
+    private static TrafficLead? SelectNearestLead(
+        TrafficLead? first,
+        TrafficLead? second)
+    {
+        if (!first.HasValue)
+        {
+            return second;
+        }
+
+        if (!second.HasValue)
+        {
+            return first;
+        }
+
+        return first.Value.DistanceMeters <=
+               second.Value.DistanceMeters
+            ? first
+            : second;
+    }
+
+    private static void UpdateSpeed(
+        ServiceAgent service,
+        double targetSpeed,
+        double deltaSeconds)
+    {
+        if (targetSpeed >=
+            service.SpeedMetersPerSecond)
+        {
+            service.SpeedMetersPerSecond =
+                Math.Min(
+                    targetSpeed,
+                    service.SpeedMetersPerSecond +
+                    BusAccelerationMetersPerSecondSquared *
+                    deltaSeconds);
+            return;
+        }
+
+        service.SpeedMetersPerSecond =
+            Math.Max(
+                targetSpeed,
+                service.SpeedMetersPerSecond -
+                BusBrakingMetersPerSecondSquared *
+                deltaSeconds);
+    }
+
+    private static double NormalizeHeadingDelta(
+        double radians)
+    {
+        while (radians >
+               Math.PI)
+        {
+            radians -=
+                Math.PI *
+                2.0;
+        }
+
+        while (radians <
+               -Math.PI)
+        {
+            radians +=
+                Math.PI *
+                2.0;
+        }
+
+        return radians;
     }
 
     private bool ResolveTravelForward(
@@ -456,7 +930,8 @@ public sealed class WorldLineAiSimulation
     }
 
     private static double ResolveTargetSpeed(
-        WorldTrafficPathSegment segment)
+        WorldTrafficPathSegment segment,
+        TrafficLead? leading)
     {
         var limit =
             segment.SpeedLimitKilometersPerHour
@@ -466,10 +941,53 @@ public sealed class WorldLineAiSimulation
                 ? speedKph / 3.6
                 : DefaultBusCruiseMetersPerSecond;
 
-        return Math.Clamp(
-            limit,
-            2.0,
-            DefaultBusCruiseMetersPerSecond);
+        var targetSpeed =
+            Math.Clamp(
+                limit,
+                2.0,
+                DefaultBusCruiseMetersPerSecond);
+
+        if (!leading.HasValue)
+        {
+            return targetSpeed;
+        }
+
+        var usableDistance =
+            Math.Max(
+                leading.Value.DistanceMeters -
+                MinimumFollowingGapMeters,
+                0.0);
+
+        var leaderSpeed =
+            Math.Max(
+                leading.Value.SpeedMetersPerSecond,
+                0.0);
+
+        var leaderStoppingDistance =
+            leaderSpeed *
+            leaderSpeed /
+            (2.0 *
+             BusBrakingMetersPerSecondSquared);
+
+        var headwayBrakingTerm =
+            BusBrakingMetersPerSecondSquared *
+            BusFollowingTimeHeadwaySeconds;
+
+        var followingSpeed =
+            Math.Max(
+                -headwayBrakingTerm +
+                Math.Sqrt(
+                    headwayBrakingTerm *
+                        headwayBrakingTerm +
+                    2.0 *
+                        BusBrakingMetersPerSecondSquared *
+                        (usableDistance +
+                         leaderStoppingDistance)),
+                0.0);
+
+        return Math.Min(
+            targetSpeed,
+            followingSpeed);
     }
 
     private static double SegmentLength(

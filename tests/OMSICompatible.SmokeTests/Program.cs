@@ -4170,6 +4170,62 @@ try
             secondRoadPath.Index,
         "LineAI left the resolved TTR sequence instead of advancing onto the next scheduled road segment.");
 
+    var blockedLineSimulation =
+        new WorldLineAiSimulation(
+            lineSchedule,
+            trafficPaths,
+            maximumActiveAgents:
+                1,
+            serviceStartMinutes:
+                480.5);
+
+    var obstaclePoint =
+        firstRoadPath.Points[
+            Math.Min(
+                1,
+                firstRoadPath.Points.Count -
+                    1)];
+
+    var obstacleHeading =
+        firstRoadPath.Points.Count >
+                1
+            ? Math.Atan2(
+                firstRoadPath.Points[1].X -
+                    firstRoadPath.Points[0].X,
+                firstRoadPath.Points[1].Z -
+                    firstRoadPath.Points[0].Z)
+            : 0.0;
+
+    blockedLineSimulation.SetExternalObstacle(
+        new WorldTrafficObstacleState(
+            obstaclePoint,
+            obstacleHeading,
+            0.0,
+            1.0,
+            1.0));
+
+    for (var blockedStep = 0;
+         blockedStep <
+             12;
+         blockedStep++)
+    {
+        blockedLineSimulation.Step(
+            0.25);
+    }
+
+    var blockedLineAgents =
+        blockedLineSimulation.Snapshot();
+
+    Require(
+        blockedLineAgents.Count ==
+            1 &&
+        blockedLineAgents[0].DistanceMeters <
+            0.5 &&
+        blockedLineAgents[0].SpeedMetersPerSecond <
+            0.2 &&
+        blockedLineAgents[0].AiBrakeLight,
+        "LineAI did not hold safely for the player/external obstacle ahead.");
+
     var missingGroupSchedule =
         WorldLineAiScheduleResolver.Resolve(
             lineScheduleCatalog,
