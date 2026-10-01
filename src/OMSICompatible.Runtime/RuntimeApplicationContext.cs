@@ -39,10 +39,12 @@ internal sealed class RuntimeApplicationContext :
     private OmsiVehicleAsset? _vehicleAsset;
     private OmsiScriptRuntime? _playerScriptRuntime;
     private WorldTrafficSimulation? _trafficSimulation;
+    private WorldLineAiSimulation? _lineAiSimulation;
     private WorldRailTrafficSimulation? _railTrafficSimulation;
     private readonly Lazy<OmsiTimetableCatalog> _timetableCatalog;
     private WorldLineAiSchedule _lineAiSchedule =
         WorldLineAiSchedule.Empty;
+    private double _lineAiServiceMinutes;
     private WorldDefinition? _currentWorld;
     private OpenOmsiLanSession? _multiplayerSession;
     private readonly RuntimeCommsLinkVoiceService
@@ -221,6 +223,8 @@ internal sealed class RuntimeApplicationContext :
                 : null;
         _options =
             OmsiRuntimeOptions.Load();
+        _lineAiServiceMinutes =
+            DateTime.Now.TimeOfDay.TotalMinutes;
 
         var d3d12 =
             D3D12BackendProbe.Probe(
@@ -505,17 +509,30 @@ internal sealed class RuntimeApplicationContext :
             var initialSimulations =
                 await Task.Run(
                     () =>
-                        (
+                    {
+                        var traffic =
+                            CreateTrafficSimulation(
+                                world);
+                        var line =
+                            CreateLineAiSimulation(
+                                world);
+                        var rail =
+                            CreateRailTrafficSimulation(
+                                world);
+
+                        return (
                             Traffic:
-                                CreateTrafficSimulation(
-                                    world),
+                                traffic,
+                            Line:
+                                line,
                             Rail:
-                                CreateRailTrafficSimulation(
-                                    world)));
+                                rail);
+                    });
 
             _trafficSimulation =
                 initialSimulations.Traffic;
-
+            _lineAiSimulation =
+                initialSimulations.Line;
             _railTrafficSimulation =
                 initialSimulations.Rail;
 
@@ -525,7 +542,8 @@ internal sealed class RuntimeApplicationContext :
             _trafficScriptRuntimes.Clear();
 
             await EnsureTrafficVehicleAssetsAsync(
-                _trafficSimulation);
+                _trafficSimulation,
+                _lineAiSimulation);
 
             await EnsureRailTrafficAssetsAsync(
                 _railTrafficSimulation);
@@ -1600,17 +1618,30 @@ internal sealed class RuntimeApplicationContext :
                 var streamedSimulations =
                     await Task.Run(
                         () =>
-                            (
+                        {
+                            var traffic =
+                                CreateTrafficSimulation(
+                                    streamedWorld);
+                            var line =
+                                CreateLineAiSimulation(
+                                    streamedWorld);
+                            var rail =
+                                CreateRailTrafficSimulation(
+                                    streamedWorld);
+
+                            return (
                                 Traffic:
-                                    CreateTrafficSimulation(
-                                        streamedWorld),
+                                    traffic,
+                                Line:
+                                    line,
                                 Rail:
-                                    CreateRailTrafficSimulation(
-                                        streamedWorld)));
+                                    rail);
+                        });
 
                 _trafficSimulation =
                     streamedSimulations.Traffic;
-
+                _lineAiSimulation =
+                    streamedSimulations.Line;
                 _railTrafficSimulation =
                     streamedSimulations.Rail;
 
@@ -1620,7 +1651,8 @@ internal sealed class RuntimeApplicationContext :
                 _trafficScriptRuntimes.Clear();
 
                 await EnsureTrafficVehicleAssetsAsync(
-                    _trafficSimulation);
+                    _trafficSimulation,
+                    _lineAiSimulation);
 
                 await EnsureRailTrafficAssetsAsync(
                     _railTrafficSimulation);
@@ -1883,7 +1915,8 @@ internal sealed class RuntimeApplicationContext :
     }
 
     private async Task EnsureTrafficVehicleAssetsAsync(
-        WorldTrafficSimulation simulation)
+        WorldTrafficSimulation simulation,
+        WorldLineAiSimulation? lineSimulation = null)
     {
         var requestedPaths =
             simulation
@@ -1891,6 +1924,9 @@ internal sealed class RuntimeApplicationContext :
                 .Select(
                     static agent =>
                         agent.VehiclePath)
+                .Concat(
+                    lineSimulation?.RequiredVehiclePaths ??
+                    Array.Empty<string>())
                 .Where(
                     static path =>
                         !string.IsNullOrWhiteSpace(
@@ -2455,12 +2491,6 @@ internal sealed class RuntimeApplicationContext :
                     0.75,
                     4.0);
 
-        _lineAiSchedule =
-            WorldLineAiScheduleResolver.Resolve(
-                _timetableCatalog.Value,
-                world.TrafficPaths,
-                world.AiCatalog);
-
         return new WorldTrafficSimulation(
             world.TrafficPaths,
             world.AiCatalog,
@@ -2475,6 +2505,30 @@ internal sealed class RuntimeApplicationContext :
                 45.0,
             spawnIntervalSeconds:
                 spawnIntervalSeconds);
+    }
+
+    private WorldLineAiSimulation
+        CreateLineAiSimulation(
+            WorldDefinition world)
+    {
+        _lineAiSchedule =
+            WorldLineAiScheduleResolver.Resolve(
+                _timetableCatalog.Value,
+                world.TrafficPaths,
+                world.AiCatalog);
+
+        return new WorldLineAiSimulation(
+            _lineAiSchedule,
+            world.TrafficPaths,
+            maximumActiveAgents:
+                Math.Clamp(
+                    _options.MaximumScheduledTraffic,
+                    0,
+                    100),
+            serviceStartMinutes:
+                _lineAiServiceMinutes,
+            serviceDaySeed:
+                DateTime.Today.DayOfYear);
     }
 
     private static WorldRailTrafficSimulation
@@ -2788,6 +2842,43 @@ internal sealed class RuntimeApplicationContext :
 
             roadSimulation.AppendSnapshotTo(
                 agents);
+        }
+
+        if (_lineAiSimulation is
+            { } lineSimulation)
+        {
+            if (double.IsFinite(
+                    deltaSeconds) &&
+                deltaSeconds >
+                    0.0)
+            {
+                lineSimulation.Step(
+                    deltaSeconds);
+            }
+
+            _lineAiServiceMinutes =
+                lineSimulation.ServiceMinutes;
+
+            foreach (var lineAgent in
+                     lineSimulation.Snapshot())
+            {
+                agents.Add(
+                    new WorldTrafficAgentState(
+                        lineAgent.AgentIndex,
+                        lineAgent.SegmentIndex,
+                        lineAgent.DistanceMeters,
+                        lineAgent.SpeedMetersPerSecond,
+                        lineAgent.VehiclePath,
+                        lineAgent.Position,
+                        lineAgent.HeadingRadians,
+                        null,
+                        $"LineAI {lineAgent.LineName}",
+                        false,
+                        false,
+                        false,
+                        lineAgent.TraveledDistanceMeters,
+                        0.0));
+            }
         }
 
         if (_railTrafficSimulation is
@@ -4724,7 +4815,7 @@ internal sealed class RuntimeApplicationContext :
             $"unmatched={world.TrafficPaths.UnmatchedEndpointCount}");
     }
 
-    private static void WriteLineAiDiagnostics(
+    private void WriteLineAiDiagnostics(
         WorldLineAiSchedule schedule)
     {
         var statusCounts =
@@ -4740,7 +4831,7 @@ internal sealed class RuntimeApplicationContext :
                         $"{group.Key}={group.Count()}");
 
         Console.WriteLine(
-            $"[line-ai] scheduled={schedule.Trips.Count}; ready={schedule.ReadyCount}; unresolved={schedule.UnresolvedCount}; {string.Join("; ", statusCounts)}");
+            $"[line-ai] scheduled={schedule.Trips.Count}; ready={schedule.ReadyCount}; unresolved={schedule.UnresolvedCount}; active={_lineAiSimulation?.ActiveCount ?? 0}; serviceMin={_lineAiServiceMinutes:0.00}; {string.Join("; ", statusCounts)}");
     }
 
     private static void WriteRailTrafficDiagnostics(

@@ -4095,6 +4095,81 @@ try
             lineAiVehicle,
         "LineAI did not connect TTL tour/departure to the real TTP/TTR route and AI vehicle group.");
 
+    var lineSimulation =
+        new WorldLineAiSimulation(
+            lineSchedule,
+            trafficPaths,
+            maximumActiveAgents:
+                4,
+            serviceStartMinutes:
+                480.0);
+
+    Require(
+        lineSimulation.RequiredVehiclePaths.Count ==
+            1 &&
+        lineSimulation.ActiveCount ==
+            0,
+        "LineAI simulation did not prepare the selected scheduled vehicle without spawning early.");
+
+    for (var lineStep = 0;
+         lineStep < 80;
+         lineStep++)
+    {
+        lineSimulation.Step(
+            0.25);
+    }
+
+    Require(
+        lineSimulation.ActiveCount ==
+            0 &&
+        lineSimulation.Snapshot().Count ==
+            0,
+        "LineAI activated the TTL trip before its departure time.");
+
+    for (var lineStep = 0;
+         lineStep < 50;
+         lineStep++)
+    {
+        lineSimulation.Step(
+            0.25);
+    }
+
+    var departedLineAgents =
+        lineSimulation.Snapshot();
+
+    Require(
+        lineSimulation.ActiveCount ==
+            1 &&
+        departedLineAgents.Count ==
+            1 &&
+        departedLineAgents[0].LineName ==
+            "100" &&
+        departedLineAgents[0].TripName ==
+            "Linha100" &&
+        departedLineAgents[0].SegmentIndex ==
+            firstRoadPath.Index,
+        "LineAI did not activate the exact TTL service after its scheduled departure.");
+
+    for (var lineStep = 0;
+         lineStep < 28;
+         lineStep++)
+    {
+        lineSimulation.Step(
+            0.25);
+    }
+
+    var advancedLineAgents =
+        lineSimulation.Snapshot();
+
+    Require(
+        advancedLineAgents.Count ==
+            1 &&
+        advancedLineAgents[0].RouteSegmentIndex >=
+            1 &&
+        advancedLineAgents[0].SegmentIndex ==
+            secondRoadPath.Index,
+        "LineAI left the resolved TTR sequence instead of advancing onto the next scheduled road segment.");
+
     var missingGroupSchedule =
         WorldLineAiScheduleResolver.Resolve(
             lineScheduleCatalog,
