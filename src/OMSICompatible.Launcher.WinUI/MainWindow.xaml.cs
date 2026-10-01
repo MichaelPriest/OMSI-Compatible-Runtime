@@ -3050,14 +3050,32 @@ public sealed partial class MainWindow :
                 return;
             }
 
+            var characteristicFlags =
+                SmartBindAxisCurveComboBox.SelectedItem is
+                    ComboBoxItem curveItem &&
+                int.TryParse(
+                    curveItem.Tag?.ToString(),
+                    out var parsedCharacteristic)
+                    ? parsedCharacteristic
+                    : 0;
+
+            var axisFlags =
+                SmartBindControllerProbe.ComposeAxisFlags(
+                    SmartBindAxisInvertCheck.IsChecked ==
+                        true,
+                    SmartBindAxisNarrowCheck.IsChecked ==
+                        true,
+                    characteristicFlags);
+
             SmartBindControllerProbe.BindAxis(
                 controllerPath,
                 device.Name,
                 result.Index,
-                function);
+                function,
+                axisFlags);
 
             SmartBindStatusText.Text =
-                $"Eixo {result.Index} capturado e gravado para {functionItem.Content}. Backup .smartbind.bak preservado.";
+                $"Eixo {result.Index} (raw {result.RawValue}) → {functionItem.Content}; flags OMSI={axisFlags} ({SmartBindControllerProbe.DescribeAxisFlags(axisFlags)}). Backup .smartbind.bak preservado.";
 
             UpdateControlsView();
         }

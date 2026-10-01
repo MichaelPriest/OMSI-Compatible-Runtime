@@ -211,16 +211,100 @@ internal static class SmartBindControllerProbe
         return null;
     }
 
+    public static int ComposeAxisFlags(
+        bool reversed,
+        bool narrowed,
+        int characteristicFlags)
+    {
+        if (characteristicFlags is not
+            (0 or 4 or 8 or 20 or 24))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(characteristicFlags),
+                "Característica de eixo OMSI inválida.");
+        }
+
+        return characteristicFlags |
+               (reversed
+                   ? 1
+                   : 0) |
+               (narrowed
+                   ? 2
+                   : 0);
+    }
+
+    public static string DescribeAxisFlags(
+        int flags)
+    {
+        var characteristic =
+            flags &
+            ~3;
+
+        var curve =
+            characteristic switch
+            {
+                4 =>
+                    "degressiva",
+                8 =>
+                    "progressiva",
+                20 =>
+                    "bi-degressiva",
+                24 =>
+                    "bi-progressiva",
+                _ =>
+                    "linear"
+            };
+
+        var parts =
+            new List<string>
+            {
+                curve
+            };
+
+        if ((flags & 1) !=
+            0)
+        {
+            parts.Add(
+                "invertido");
+        }
+
+        if ((flags & 2) !=
+            0)
+        {
+            parts.Add(
+                "estreito");
+        }
+
+        return string.Join(
+            ", ",
+            parts);
+    }
+
     public static void BindAxis(
         string path,
         string deviceName,
         int axisIndex,
-        int function)
+        int function,
+        int flags = 0)
     {
         if (axisIndex is < 0 or > 7)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(axisIndex));
+        }
+
+        var characteristicFlags =
+            flags &
+            ~3;
+
+        if (characteristicFlags is not
+                (0 or 4 or 8 or 20 or 24) ||
+            (flags & ~31) !=
+                0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(flags),
+                "Flags de eixo OMSI inválidos.");
         }
 
         var text =
@@ -252,6 +336,9 @@ internal static class SmartBindControllerProbe
                     "1",
                 [axis.FunctionLine] =
                     function.ToString(
+                        CultureInfo.InvariantCulture),
+                [axis.FlagsLine] =
+                    flags.ToString(
                         CultureInfo.InvariantCulture)
             };
 

@@ -907,6 +907,19 @@
                                     <ComboBoxItem Content="Embreagem" Tag="3"/>
                                     <ComboBoxItem Content="Acelerador + freio combinado" Tag="4"/>
                                 </ComboBox>
+                                <CheckBox x:Name="SmartBindAxisInvertCheck"
+                                          Content="Inverter eixo (Rev.)"/>
+                                <CheckBox x:Name="SmartBindAxisNarrowCheck"
+                                          Content="Faixa estreita (narrowed)"/>
+                                <ComboBox x:Name="SmartBindAxisCurveComboBox"
+                                          Header="Característica OMSI"
+                                          SelectedIndex="0">
+                                    <ComboBoxItem Content="Linear" Tag="0"/>
+                                    <ComboBoxItem Content="Degressiva" Tag="4"/>
+                                    <ComboBoxItem Content="Progressiva" Tag="8"/>
+                                    <ComboBoxItem Content="Bi-degressiva" Tag="20"/>
+                                    <ComboBoxItem Content="Bi-progressiva" Tag="24"/>
+                                </ComboBox>
                                 <Button Content="MOVER EIXO PARA CAPTURAR"
                                         Click="CaptureSmartBindAxisButton_Click"/>
                                 <TextBlock x:Name="SmartBindStatusText"
