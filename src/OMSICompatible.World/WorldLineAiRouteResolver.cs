@@ -72,6 +72,9 @@ public static class WorldLineAiRouteResolver
                                 segment) &&
                             segment.LocalPathIndex ==
                                 entry.PathId &&
+                            MatchesTile(
+                                segment,
+                                entry) &&
                             (
                                 segment.SplineId ==
                                     entry.ObjectId ||
@@ -144,6 +147,31 @@ public static class WorldLineAiRouteResolver
             entries.Count(
                 static entry =>
                     entry.Ambiguous));
+    }
+
+    private static bool MatchesTile(
+        WorldTrafficPathSegment segment,
+        OmsiTimetableTrackEntry entry)
+    {
+        if (!entry.TileCoordinate.HasValue)
+        {
+            return true;
+        }
+
+        if (!segment.TileCoordinate.HasValue)
+        {
+            return false;
+        }
+
+        var expected =
+            entry.TileCoordinate.Value;
+        var actual =
+            segment.TileCoordinate.Value;
+
+        return actual.X ==
+                   expected.X &&
+               actual.Y ==
+                   expected.Y;
     }
 
     private static WorldTrafficPathSegment? SelectCandidate(

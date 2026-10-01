@@ -2704,6 +2704,10 @@ try
             2 &&
         syntheticTimetableTrack.Entries[0].ObjectId ==
             3001 &&
+        syntheticTimetableTrack.Entries[0].TileCoordinate ==
+            new OmsiTileCoordinate(
+                0,
+                0) &&
         syntheticTimetableTrack.Entries[1].PathId ==
             1 &&
         timetableCatalog.Lines.Count ==
@@ -4337,6 +4341,92 @@ try
             WorldLineAiScheduleStatus.VehicleGroupMissing &&
         !missingGroupSchedule.Trips[0].Ready,
         "LineAI guessed a fallback vehicle when the TTL AI group was missing.");
+
+    var tileAwareLineNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    90,
+                    9900,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            0.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TileCoordinate:
+                        new WorldTileCoordinate(
+                            0,
+                            0)),
+                new WorldTrafficPathSegment(
+                    91,
+                    9900,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(
+                            20.0,
+                            0.0,
+                            0.0),
+                        new WorldVector3(
+                            20.0,
+                            0.0,
+                            10.0)
+                    ],
+                    Array.Empty<int>(),
+                    Array.Empty<int>(),
+                    TileCoordinate:
+                        new WorldTileCoordinate(
+                            1,
+                            0))
+            ],
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0);
+
+    var tileAwareLineRoute =
+        WorldLineAiRouteResolver.Resolve(
+            new OmsiTimetableTrack(
+                "TileAware",
+                "tile-aware.ttr",
+                [
+                    new OmsiTimetableTrackEntry(
+                        9900,
+                        0,
+                        1,
+                        10.0,
+                        new OmsiTileCoordinate(
+                            1,
+                            0))
+                ]),
+            tileAwareLineNetwork);
+
+    Require(
+        tileAwareLineRoute.FullyResolved &&
+        tileAwareLineRoute.SegmentIndices
+            .SequenceEqual(
+                new[]
+                {
+                    91
+                }),
+        "LineAI ignored the TTR global.cfg tile index when duplicate path IDs existed.");
 
     var ambiguousLineNetwork =
         new WorldTrafficPathNetwork(

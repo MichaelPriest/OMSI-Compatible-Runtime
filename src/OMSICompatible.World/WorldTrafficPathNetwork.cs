@@ -30,7 +30,8 @@ public sealed record WorldTrafficPathSegment(
     IReadOnlyDictionary<int, double>? TrafficDensityWeights = null,
     IReadOnlySet<int>? BlockedUnscheduledGroupIndices = null,
     int TrafficPriority = 128,
-    WorldTrafficSignalProgram? TrafficSignal = null)
+    WorldTrafficSignalProgram? TrafficSignal = null,
+    WorldTileCoordinate? TileCoordinate = null)
 {
     public bool AllowsForward =>
         Direction is 0 or 2;
@@ -383,7 +384,9 @@ public static class WorldTrafficPathNetworkBuilder
                             builder.TrafficDensityWeights,
                             builder.BlockedUnscheduledGroupIndices,
                             builder.TrafficPriority,
-                            builder.TrafficSignal))
+                            builder.TrafficSignal,
+                            builder.Spline?.Tile ??
+                                builder.SceneryObject?.Tile))
                 .ToArray();
 
         return new WorldTrafficPathNetwork(

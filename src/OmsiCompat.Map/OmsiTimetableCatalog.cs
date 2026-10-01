@@ -12,7 +12,8 @@ public sealed record OmsiTimetableTrackEntry(
     long ObjectId,
     int PathId,
     int TileIndex,
-    double PathLengthMeters);
+    double PathLengthMeters,
+    OmsiTileCoordinate? TileCoordinate = null);
 
 public sealed record OmsiTimetableTrack(
     string Name,
@@ -75,6 +76,10 @@ public static class OmsiTimetableCatalogReader
         ArgumentNullException.ThrowIfNull(
             map);
 
+        var tileDeclarations =
+            GlobalConfigMapParser.ReadTileDeclarations(
+                map);
+
         var directories =
             GetTimetableDirectories(
                 map.DirectoryPath);
@@ -109,7 +114,8 @@ public static class OmsiTimetableCatalogReader
             {
                 var track =
                     ReadTrack(
-                        trackPath);
+                        trackPath,
+                        tileDeclarations);
 
                 if (track is null ||
                     track.Entries.Count == 0)
@@ -595,7 +601,8 @@ public static class OmsiTimetableCatalogReader
     }
 
     private static OmsiTimetableTrack? ReadTrack(
-        string path)
+        string path,
+        IReadOnlyList<OmsiGlobalTileDeclaration> tileDeclarations)
     {
         string[] lines;
 
@@ -655,6 +662,16 @@ public static class OmsiTimetableCatalogReader
                 ParseFlexibleDouble(
                     lines[index + 5]);
 
+            var tileCoordinate =
+                tileIndex >=
+                        0 &&
+                    tileIndex <
+                        tileDeclarations.Count
+                    ? tileDeclarations[
+                        tileIndex]
+                        .Coordinate
+                    : (OmsiTileCoordinate?)null;
+
             entries.Add(
                 new OmsiTimetableTrackEntry(
                     objectId,
@@ -664,7 +681,8 @@ public static class OmsiTimetableCatalogReader
                         pathLength.Value >
                             0.0
                         ? pathLength.Value
-                        : 0.0));
+                        : 0.0,
+                    tileCoordinate));
         }
 
         return new OmsiTimetableTrack(
