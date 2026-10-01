@@ -4053,7 +4053,11 @@ try
         new OmsiAiVehicleDefinition(
             "Busses",
             @"Vehicles\Synthetic\traffic.bus",
-            syntheticAiVehiclePath,
+            Path.Combine(
+                contentRoot.RootPath,
+                "Vehicles",
+                "Synthetic",
+                "traffic.bus"),
             1.0);
 
     var lineSchedule =
