@@ -6,15 +6,23 @@ internal sealed class RuntimeTerrainSampler
 
     private readonly Dictionary<(int X, int Y), RuntimeTerrainInfo>
         _terrainByTile;
+    private readonly RuntimeSplineTerrainAlignmentSampler
+        _terrainAlignment;
 
     public RuntimeTerrainSampler(
-        IReadOnlyList<RuntimeTileInfo> tiles)
+        IReadOnlyList<RuntimeTileInfo> tiles,
+        IReadOnlyList<RuntimeSplineInfo>? splines = null)
     {
         _terrainByTile = tiles
             .Where(static tile => tile.Terrain is not null)
             .ToDictionary(
                 static tile => (tile.X, tile.Y),
                 static tile => tile.Terrain!);
+
+        _terrainAlignment =
+            RuntimeSplineTerrainAlignmentSampler.Create(
+                splines ??
+                Array.Empty<RuntimeSplineInfo>());
     }
 
     public bool TrySample(
@@ -97,6 +105,48 @@ internal sealed class RuntimeTerrainSampler
             sampleCount,
             z1,
             x1);
+
+        var worldX0 =
+            tileX *
+                TileSizeMeters +
+            x0 *
+                spacing;
+        var worldX1 =
+            tileX *
+                TileSizeMeters +
+            x1 *
+                spacing;
+        var worldZ0 =
+            tileY *
+                TileSizeMeters +
+            z0 *
+                spacing;
+        var worldZ1 =
+            tileY *
+                TileSizeMeters +
+            z1 *
+                spacing;
+
+        h00 =
+            _terrainAlignment.AlignHeight(
+                (float)worldX0,
+                (float)worldZ0,
+                h00);
+        h10 =
+            _terrainAlignment.AlignHeight(
+                (float)worldX1,
+                (float)worldZ0,
+                h10);
+        h01 =
+            _terrainAlignment.AlignHeight(
+                (float)worldX0,
+                (float)worldZ1,
+                h01);
+        h11 =
+            _terrainAlignment.AlignHeight(
+                (float)worldX1,
+                (float)worldZ1,
+                h11);
 
         if (!float.IsFinite(h00) ||
             !float.IsFinite(h10) ||

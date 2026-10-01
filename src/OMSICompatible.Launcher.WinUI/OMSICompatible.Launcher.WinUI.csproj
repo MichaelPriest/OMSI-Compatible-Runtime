@@ -14,11 +14,37 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="Vortice.DirectInput" Version="3.8.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../OMSICompatible.Launcher/OmsiInputConfiguration.cs"
+             Link="Shared/OmsiInputConfiguration.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../OmsiCompat.Core/OmsiCompat.Core.csproj" />
     <ProjectReference Include="../OmsiCompat.Map/OmsiCompat.Map.csproj" />
     <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
+    <ProjectReference Include="../OMSICompatible.Multiplayer/OMSICompatible.Multiplayer.csproj" />
   </ItemGroup>
+
+  <!--
+    .NET 10 + unpackaged WinUI currently generates the application PRI
+    during build but can omit it from dotnet publish output. XAML then
+    fails at runtime in MainWindow.InitializeComponent(). Wire the generated
+    PRI into the normal publish list. The Exists() guard makes this inert
+    once the Windows App SDK fixes the publish path.
+  -->
+  <Target Name="AddProjectPriToResolvedFileToPublish"
+          BeforeTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="$(GenerateProjectPriFile)">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)"
+                             Condition="Exists('$(ProjectPriFullPath)')">
+        <RelativePath>$(ProjectPriFileName)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>

@@ -1,4 +1,5 @@
 using System.Numerics;
+using OmsiCompat.Scripting;
 
 namespace OMSICompatible.Renderer.D3D11;
 
@@ -61,8 +62,74 @@ public sealed record RuntimeSplineInfo(
     double RadiusMeters,
     double GradientStartPercent,
     double GradientEndPercent,
+    bool UsesHeightProfile,
+    double DeltaHeightMeters,
+    double CantStartPercent,
+    double CantEndPercent,
+    double SkewStart,
+    double SkewEnd,
+    bool Mirror,
     IReadOnlyList<RuntimeSplineSurfaceInfo> Surfaces,
-    IReadOnlyList<RuntimeSplinePathInfo> Paths);
+    IReadOnlyList<RuntimeSplinePathInfo> Paths,
+    int? TerrainAlignMode = null);
+
+public sealed record RuntimeTrafficPathPointInfo(
+    double X,
+    double Y,
+    double Z);
+
+public sealed record RuntimeTrafficSignalPhaseInfo(
+    int Phase,
+    double DurationSeconds);
+
+public sealed record RuntimeTrafficSignalStateInfo(
+    int SegmentIndex,
+    int? Phase,
+    double PositionSeconds);
+
+public sealed record RuntimeTrafficSignalProgramInfo(
+    double CycleSeconds,
+    double ApproachDistanceMeters,
+    IReadOnlyList<RuntimeTrafficSignalPhaseInfo> Phases);
+
+public sealed record RuntimeTrafficPathSegmentInfo(
+    int Index,
+    long SplineId,
+    int LocalPathIndex,
+    int Type,
+    int Direction,
+    double WidthMeters,
+    IReadOnlyList<RuntimeTrafficPathPointInfo> Points,
+    IReadOnlyList<int> ForwardConnections,
+    IReadOnlyList<int> ReverseConnections,
+    double? SpeedLimitKilometersPerHour = null,
+    int TrafficPriority = 128,
+    RuntimeTrafficSignalProgramInfo? TrafficSignal = null,
+    long? SceneryObjectId = null);
+
+public sealed record RuntimeTrafficPathNetworkInfo(
+    IReadOnlyList<RuntimeTrafficPathSegmentInfo> Segments,
+    int RoadVehicleSegmentCount,
+    int PedestrianSegmentCount,
+    int RailSegmentCount,
+    int AircraftSegmentCount,
+    int ConnectedEndpointCount,
+    int BoundaryEndpointCount,
+    int TerminalEndpointCount,
+    int UnmatchedEndpointCount)
+{
+    public static RuntimeTrafficPathNetworkInfo Empty { get; } =
+        new(
+            Array.Empty<RuntimeTrafficPathSegmentInfo>(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0);
+}
 
 public sealed record RuntimeObjectInfo(
     int TileX,
@@ -74,7 +141,8 @@ public sealed record RuntimeObjectInfo(
     double HeadingDegrees,
     double PitchDegrees,
     double BankDegrees,
-    IReadOnlyList<string> ExtraValues);
+    IReadOnlyList<string> ExtraValues,
+    long ObjectId = -1);
 
 public sealed record RuntimeObjectMeshTransformInfo(
     double PositionX,
@@ -138,7 +206,8 @@ public sealed record RuntimeVehicleMaterialChangeItemInfo(
     string? BumpMapTexturePath,
     double BumpMapStrength,
     IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures,
-    int? TextTextureIndex);
+    int? TextTextureIndex,
+    bool MaterialChangeIsNightMap = false);
 
 public sealed record RuntimeVehicleMaterialChangeSetInfo(
     string VariableName,
@@ -170,7 +239,9 @@ public sealed record RuntimeO3dMaterialInfo(
     IReadOnlyList<RuntimeVehicleFreeTextureInfo>? FreeTextures = null,
     int? TextTextureIndex = null,
     IReadOnlyList<RuntimeVehicleMaterialChangeSetInfo>? MaterialChangeSets = null,
-    bool HasTransMapDirective = false);
+    bool HasTransMapDirective = false,
+    bool MaterialChangeIsNightMap = false,
+    bool RequiresExternalTransMap = false);
 
 public sealed record RuntimeVehicleLightEffectInfo(
     double PositionX,
@@ -243,7 +314,11 @@ public sealed record RuntimeObjectMeshInfo(
     IReadOnlyList<RuntimeVehicleLightEffectInfo>? LightEffects = null,
     string? MeshIdentifier = null,
     string? AnimationParent = null,
-    int SectionIndex = 0);
+    int SectionIndex = 0,
+    int ModelOrdinal = -1,
+    float[]? SkinWeights = null,
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
+    string? MouseEventTrigger = null);
 
 public sealed record RuntimeTreeInfo(
     string TextureName,
@@ -253,12 +328,73 @@ public sealed record RuntimeTreeInfo(
     double MinimumAspect,
     double MaximumAspect);
 
+public sealed record RuntimeSceneryBoundingBoxInfo(
+    double LengthX,
+    double WidthY,
+    double HeightZ,
+    double CenterX,
+    double CenterY,
+    double CenterZ);
+
+public sealed record RuntimeSceneryCollisionBoundsInfo(
+    double MinimumX,
+    double MaximumX,
+    double MinimumY,
+    double MaximumY,
+    double MinimumZ,
+    double MaximumZ);
+
+public sealed record RuntimeSceneryCollisionGeometryInfo(
+    float[] Positions,
+    uint[] Indices);
+
 public sealed record RuntimeSceneryAssetInfo(
     bool UsesAbsoluteHeight,
     bool OnlyEditor,
     string? RenderType,
     IReadOnlyList<RuntimeObjectMeshInfo> Meshes,
-    RuntimeTreeInfo? Tree);
+    RuntimeTreeInfo? Tree,
+    bool NoCollision = false,
+    bool Fixed = false,
+    bool Surface = false,
+    string? CollisionMeshSource = null,
+    RuntimeSceneryBoundingBoxInfo? BoundingBox = null,
+    RuntimeSceneryCollisionBoundsInfo? CollisionBounds = null,
+    RuntimeSceneryCollisionGeometryInfo? CollisionGeometry = null);
+
+public sealed record RuntimeRailSignalRouteStateInfo(
+    int RouteIndex,
+    long SignalObjectId,
+    int SignalState,
+    bool Reserved,
+    int? ReservedAgentIndex,
+    OmsiScriptRuntime? ScriptRuntime = null);
+
+public sealed record RuntimeTrafficObstacleInfo(
+    double X,
+    double Y,
+    double Z,
+    double HeadingRadians,
+    double SpeedMetersPerSecond,
+    double HalfLengthMeters,
+    double HalfWidthMeters);
+
+public sealed record RuntimeTrafficAgentInfo(
+    int AgentIndex,
+    int SegmentIndex,
+    double DistanceMeters,
+    double SpeedMetersPerSecond,
+    string VehiclePath,
+    double X,
+    double Y,
+    double Z,
+    double HeadingRadians,
+    bool AiBrakeLight = false,
+    bool AiBlinkerLeft = false,
+    bool AiBlinkerRight = false,
+    double TraveledDistanceMeters = 0.0,
+    double PathCurvaturePerMeter = 0.0,
+    OmsiScriptRuntime? ScriptRuntime = null);
 
 public sealed record RuntimeAiFileReferenceInfo(
     string DeclaredPath,
@@ -323,9 +459,20 @@ public sealed record RuntimeReflectionCameraInfo(
     double FieldOfViewDegrees,
     double HeadingDegrees,
     double PitchDegrees,
-    double? MaximumRenderDistanceMeters,
+    double? VisibilityThreshold,
+    bool ContinuousRendering,
     string RuntimeTextureName,
     string RuntimeTextureKey);
+
+public sealed record RuntimeVehicleAxleInfo(
+    double LongitudinalPositionMeters,
+    double? WheelDiameterMeters,
+    double? DriveFactor,
+    double? MaximumWidthMeters,
+    double? MinimumWidthMeters,
+    double? SpringRateKilonewtonsPerMeter,
+    double? MaximumForceKilonewtons,
+    double? DamperRateKilonewtonSecondsPerMeter);
 
 public sealed record RuntimeVehiclePhysicsInfo(
     double? WheelBaseMeters,
@@ -339,7 +486,18 @@ public sealed record RuntimeVehiclePhysicsInfo(
     double? SuspensionDamperKilonewtonSecondsPerMeter = null,
     double? MomentOfInertiaYawTonneSquareMeters = null,
     double? RotationPointLongitudinalMeters = null,
-    double? InverseMinimumTurnRadius = null);
+    double? InverseMinimumTurnRadius = null,
+    double? FrontAxleLongitudinalMeters = null,
+    double? RearAxleLongitudinalMeters = null,
+    double? FrontSuspensionSpringKilonewtonsPerMeter = null,
+    double? RearSuspensionSpringKilonewtonsPerMeter = null,
+    double? FrontSuspensionDamperKilonewtonSecondsPerMeter = null,
+    double? RearSuspensionDamperKilonewtonSecondsPerMeter = null,
+    double? MomentOfInertiaX = null,
+    double? MomentOfInertiaY = null,
+    double? MomentOfInertiaZ = null,
+    IReadOnlyList<RuntimeVehicleAxleInfo>? Axles = null,
+    double? AiDeltaHeightMeters = null);
 
 public sealed record RuntimeDriverPositionInfo(
     double X,
@@ -354,9 +512,24 @@ public sealed record RuntimeVehicleSectionInfo(
     double JointX,
     double JointY,
     double JointZ,
+    double OriginX,
+    double OriginY,
+    double OriginZ,
     double FollowerLengthMeters,
     double MaximumYawDegrees,
-    bool Reverse);
+    double MinimumPitchDegrees,
+    double MaximumPitchDegrees,
+    int CouplingType,
+    bool Reverse,
+    string? SoundConfigPath = null,
+    bool OpenForSound = false,
+    double? MassTonnes = null,
+    double? YawInertiaTonneSquareMeters = null,
+    double? RotationPointLongitudinalMeters = null,
+    double? WheelBaseMeters = null,
+    double? RollingResistanceNewtons = null,
+    double? AverageWheelDiameterMeters = null,
+    RuntimeVehiclePhysicsInfo? Physics = null);
 
 public sealed record RuntimeVehicleInfo(
     string DisplayName,
@@ -389,6 +562,9 @@ public sealed record RuntimeWindowInfo(
     IReadOnlyList<RuntimeObjectInfo> Objects,
     IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> SceneryAssets,
     IReadOnlyList<RuntimeGroundTextureInfo> GroundTextures,
+    RuntimeTrafficPathNetworkInfo TrafficPaths,
     RuntimeAiCatalogInfo AiCatalog,
     RuntimeVehicleInfo? Vehicle,
-    RuntimeSpawnInfo? Spawn);
+    RuntimeSpawnInfo? Spawn,
+    IReadOnlyDictionary<string, RuntimeVehicleInfo>? TrafficVehicleAssets = null,
+    IReadOnlySet<long>? DynamicSceneryObjectIds = null);

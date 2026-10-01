@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 
 namespace OMSICompatible.Launcher.WinUI;
@@ -8,15 +9,139 @@ public partial class App : Application
 
     public App()
     {
-        InitializeComponent();
+        try
+        {
+            InitializeComponent();
+        }
+        catch (Exception exception)
+        {
+            ReportStartupFailure(
+                exception);
+            throw;
+        }
     }
 
     protected override void OnLaunched(
         LaunchActivatedEventArgs args)
     {
-        _window =
-            new MainWindow();
+        var xamlSmoke =
+            Environment
+                .GetCommandLineArgs()
+                .Any(
+                    static argument =>
+                        string.Equals(
+                            argument,
+                            "--xaml-smoke",
+                            StringComparison.OrdinalIgnoreCase));
 
-        _window.Activate();
+        try
+        {
+            _window =
+                new MainWindow(
+                    xamlSmokeOnly:
+                        xamlSmoke);
+
+            if (xamlSmoke)
+            {
+                Environment.Exit(
+                    0);
+                return;
+            }
+
+            _window.Activate();
+        }
+        catch (Exception exception)
+        {
+            ReportStartupFailure(
+                exception);
+
+            if (xamlSmoke)
+            {
+                Environment.Exit(
+                    86);
+                return;
+            }
+
+            throw;
+        }
     }
+
+    private static void ReportStartupFailure(
+        Exception exception)
+    {
+        try
+        {
+            var directory =
+                Path.Combine(
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.LocalApplicationData),
+                    "OMSI-Compatible-Runtime");
+
+            Directory.CreateDirectory(
+                directory);
+
+            var path =
+                Path.Combine(
+                    directory,
+                    "launcher-winui.log");
+
+            File.AppendAllText(
+                path,
+                $"[{DateTimeOffset.Now:O}] {exception}\r\n\r\n");
+        }
+        catch
+        {
+            // Startup reporting must never hide the original exception.
+        }
+
+        var xamlSmoke =
+            Environment
+                .GetCommandLineArgs()
+                .Any(
+                    static argument =>
+                        string.Equals(
+                            argument,
+                            "--xaml-smoke",
+                            StringComparison.OrdinalIgnoreCase));
+
+        if (xamlSmoke)
+        {
+            return;
+        }
+
+        try
+        {
+            var detail =
+                exception.InnerException?.Message;
+
+            var diagnostic =
+                $"{exception.GetType().Name} · HRESULT 0x{exception.HResult:X8}\r\n" +
+                exception.Message +
+                (string.IsNullOrWhiteSpace(detail)
+                    ? string.Empty
+                    : $"\r\n\r\nInner: {detail}");
+
+            MessageBox(
+                IntPtr.Zero,
+                "O novo launcher WinUI não conseguiu iniciar. " +
+                "O erro completo foi registrado em %LocalAppData%\\OMSI-Compatible-Runtime\\launcher-winui.log.\r\n\r\n" +
+                diagnostic,
+                "OMSI Compatible Runtime",
+                0x00000010u);
+        }
+        catch
+        {
+            // Keep the original startup exception if user32 is unavailable.
+        }
+    }
+
+    [DllImport(
+        "user32.dll",
+        CharSet = CharSet.Unicode,
+        EntryPoint = "MessageBoxW")]
+    private static extern int MessageBox(
+        IntPtr hWnd,
+        string text,
+        string caption,
+        uint type);
 }

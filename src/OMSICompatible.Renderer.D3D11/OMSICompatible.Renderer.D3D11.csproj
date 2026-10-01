@@ -4,7 +4,11 @@
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../OMSICompatible.Renderer.Common/OMSICompatible.Renderer.Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../OmsiCompat.Scripting/OmsiCompat.Scripting.csproj" />
+    <ProjectReference Include="../OmsiCompat.Physics.Ode/OmsiCompat.Physics.Ode.csproj" />
     <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
   </ItemGroup>
   <ItemGroup>
@@ -33,6 +37,10 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
     <None Include="Shaders\RuntimeObject.hlsl">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="Shaders\RuntimePostProcess.hlsl">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>

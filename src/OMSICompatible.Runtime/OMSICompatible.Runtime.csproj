@@ -7,11 +7,17 @@
     <AssemblyName>OMSICompatible.Runtime</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../OmsiCompat.Core/OmsiCompat.Core.csproj" />
     <ProjectReference Include="../OmsiCompat.Map/OmsiCompat.Map.csproj" />
     <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
     <ProjectReference Include="../OmsiCompat.Scripting/OmsiCompat.Scripting.csproj" />
+    <ProjectReference Include="../OmsiCompat.Plugins/OmsiCompat.Plugins.csproj" />
     <ProjectReference Include="../OMSICompatible.World/OMSICompatible.World.csproj" />
     <ProjectReference Include="../OMSICompatible.Renderer.D3D11/OMSICompatible.Renderer.D3D11.csproj" />
+    <ProjectReference Include="../OMSICompatible.Renderer.D3D12/OMSICompatible.Renderer.D3D12.csproj" />
+    <ProjectReference Include="../OMSICompatible.Multiplayer/OMSICompatible.Multiplayer.csproj" />
   </ItemGroup>
 </Project>

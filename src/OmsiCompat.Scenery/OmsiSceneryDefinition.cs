@@ -45,6 +45,76 @@ public sealed record OmsiSceneryMaterialOverride(
     bool NoZWrite,
     bool NoZCheck);
 
+public sealed record OmsiSceneryBoundingBox(
+    double LengthX,
+    double WidthY,
+    double HeightZ,
+    double CenterX,
+    double CenterY,
+    double CenterZ);
+
+public sealed record OmsiSceneryTrafficLightPhase(
+    int Phase,
+    double DurationSeconds);
+
+public sealed record OmsiSceneryTrafficLightProgram(
+    string Name,
+    IReadOnlyList<OmsiSceneryTrafficLightPhase> Phases,
+    double ApproachDistanceMeters);
+
+public sealed record OmsiSceneryTrafficLightJump(
+    int CheckTrafficLightIndex,
+    double TriggerTimeSeconds,
+    bool JumpIfNoApproach,
+    double TargetTimeSeconds);
+
+public sealed record OmsiSceneryTrafficLightStop(
+    int CheckTrafficLightIndex,
+    double TriggerTimeSeconds,
+    bool StopIfNoApproach);
+
+public sealed record OmsiSceneryFileReference(
+    string DeclaredPath,
+    string? ResolvedPath)
+{
+    public bool Exists =>
+        ResolvedPath is not null;
+}
+
+public sealed record OmsiSceneryScriptManifest(
+    IReadOnlyList<OmsiSceneryFileReference> ScriptFiles,
+    IReadOnlyList<OmsiSceneryFileReference> VariableLists,
+    IReadOnlyList<OmsiSceneryFileReference> StringVariableLists,
+    IReadOnlyList<OmsiSceneryFileReference> ConstantFiles)
+{
+    public int RegisteredFileCount =>
+        ScriptFiles.Count +
+        VariableLists.Count +
+        StringVariableLists.Count +
+        ConstantFiles.Count;
+
+    public int MissingFileCount =>
+        ScriptFiles.Count(static file => !file.Exists) +
+        VariableLists.Count(static file => !file.Exists) +
+        StringVariableLists.Count(static file => !file.Exists) +
+        ConstantFiles.Count(static file => !file.Exists);
+}
+
+public sealed record OmsiSceneryPathDefinition(
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees,
+    double RadiusMeters,
+    double LengthMeters,
+    double GradientStart,
+    double GradientEnd,
+    int Type,
+    double WidthMeters,
+    int Direction,
+    IReadOnlyList<string> ExtraValues,
+    int? TrafficLightIndex = null);
+
 public sealed record OmsiSceneryDefinition(
     bool Exists,
     bool UsesAbsoluteHeight,
@@ -52,7 +122,18 @@ public sealed record OmsiSceneryDefinition(
     string? RenderType,
     IReadOnlyList<OmsiSceneryMeshReference> Meshes,
     IReadOnlyList<OmsiSceneryMaterialOverride> MaterialOverrides,
-    OmsiSceneryTreeDefinition? Tree)
+    OmsiSceneryTreeDefinition? Tree,
+    IReadOnlyList<OmsiSceneryPathDefinition> Paths,
+    double? TrafficLightCycleSeconds = null,
+    IReadOnlyList<OmsiSceneryTrafficLightProgram>? TrafficLights = null,
+    IReadOnlyList<OmsiSceneryTrafficLightJump>? TrafficLightJumps = null,
+    IReadOnlyList<OmsiSceneryTrafficLightStop>? TrafficLightStops = null,
+    OmsiSceneryScriptManifest? ScriptManifest = null,
+    bool NoCollision = false,
+    bool Fixed = false,
+    bool Surface = false,
+    string? CollisionMeshSource = null,
+    OmsiSceneryBoundingBox? BoundingBox = null)
 {
     public static OmsiSceneryDefinition Missing { get; } =
         new(
@@ -62,5 +143,6 @@ public sealed record OmsiSceneryDefinition(
             null,
             Array.Empty<OmsiSceneryMeshReference>(),
             Array.Empty<OmsiSceneryMaterialOverride>(),
-            null);
+            null,
+            Array.Empty<OmsiSceneryPathDefinition>());
 }

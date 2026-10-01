@@ -24,7 +24,13 @@ internal sealed class RuntimeProcessHost : IDisposable
                 "OMSICompatible.Runtime.exe"),
             Path.Combine(
                 baseDirectory,
-                "OMSICompatible.Runtime.exe")
+                "OMSICompatible.Runtime.exe"),
+            Path.GetFullPath(
+                Path.Combine(
+                    baseDirectory,
+                    "..",
+                    "Runtime",
+                    "OMSICompatible.Runtime.exe"))
         };
 
         return candidates.FirstOrDefault(File.Exists)

@@ -1,6 +1,7 @@
 using OmsiCompat.Core;
 using OmsiCompat.Map;
 using OmsiCompat.Vehicles;
+using OMSICompatible.Renderer.D3D12;
 using OMSICompatible.World;
 
 namespace OMSICompatible.Runtime;
@@ -10,6 +11,13 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (HasFlag(
+                args,
+                "--d3d12-smoke"))
+        {
+            return RunD3D12Smoke();
+        }
+
         var contentPath =
             GetOption(
                 args,
@@ -40,6 +48,11 @@ internal static class Program
                 args,
                 "--repaint-cti");
 
+        var hofPath =
+            GetOption(
+                args,
+                "--hof");
+
         var noBus =
             HasFlag(
                 args,
@@ -55,6 +68,11 @@ internal static class Program
                 args,
                 "--headless");
 
+        var vehiclePreview =
+            HasFlag(
+                args,
+                "--vehicle-preview");
+
         if (!OmsiContentRoot.TryCreate(
                 contentPath,
                 out var contentRoot,
@@ -64,6 +82,88 @@ internal static class Program
             Console.Error.WriteLine(
                 contentError);
             return 2;
+        }
+
+        if (vehiclePreview)
+        {
+            OmsiBusInfo? previewBus =
+                null;
+
+            if (!string.IsNullOrWhiteSpace(
+                    busRelativePath))
+            {
+                var normalizedBusPath =
+                    busRelativePath
+                        .Replace(
+                            '\\',
+                            Path.DirectorySeparatorChar)
+                        .Replace(
+                            '/',
+                            Path.DirectorySeparatorChar)
+                        .TrimStart(
+                            Path.DirectorySeparatorChar,
+                            Path.AltDirectorySeparatorChar);
+
+                var resolvedBusPath =
+                    Path.Combine(
+                        contentRoot.RootPath,
+                        normalizedBusPath);
+
+                if (File.Exists(
+                        resolvedBusPath))
+                {
+                    try
+                    {
+                        var directBus =
+                            OmsiBusReader.ReadFile(
+                                contentRoot.RootPath,
+                                resolvedBusPath);
+
+                        if (BusDiscovery.IsPlayerSelectable(
+                                directBus))
+                        {
+                            previewBus =
+                                directBus;
+                        }
+                    }
+                    catch
+                    {
+                        // Fall back to catalog discovery below.
+                    }
+                }
+            }
+
+            previewBus ??=
+                BusDiscovery
+                    .DiscoverPlayerSelectable(
+                        contentRoot)
+                    .FirstOrDefault(
+                        bus =>
+                            string.Equals(
+                                bus.RelativePath,
+                                busRelativePath,
+                                StringComparison.OrdinalIgnoreCase));
+
+            if (previewBus is null)
+            {
+                Console.Error.WriteLine(
+                    "No OMSI .bus vehicle was found for preview.");
+                return 4;
+            }
+
+            ApplicationConfiguration.Initialize();
+
+            using var previewContext =
+                new VehiclePreviewApplicationContext(
+                    contentRoot,
+                    previewBus,
+                    repaintName,
+                    repaintCtiRelativePath);
+
+            Application.Run(
+                previewContext);
+
+            return 0;
         }
 
         var maps =
@@ -118,7 +218,7 @@ internal static class Program
         if (!noBus)
         {
             var buses =
-                BusDiscovery.Discover(
+                BusDiscovery.DiscoverPlayerSelectable(
                     contentRoot);
 
             selectedBus =
@@ -173,10 +273,72 @@ internal static class Program
                 selectedEntryPoint,
                 externalLoading,
                 repaintName,
-                repaintCtiRelativePath);
+                repaintCtiRelativePath,
+                hofPath);
 
         Application.Run(context);
         return 0;
+    }
+
+    private static int RunD3D12Smoke()
+    {
+        try
+        {
+            ApplicationConfiguration.Initialize();
+
+            using var form =
+                new Form
+                {
+                    Text =
+                        "OMSI Compatible Runtime - D3D12 Smoke",
+                    ClientSize =
+                        new Size(
+                            320,
+                            180),
+                    StartPosition =
+                        FormStartPosition.Manual,
+                    Location =
+                        new Point(
+                            -32000,
+                            -32000),
+                    ShowInTaskbar =
+                        false
+                };
+
+            form.CreateControl();
+
+            using var graphics =
+                D3D12PresentationContext.Create(
+                    form.Handle,
+                    form.ClientSize.Width,
+                    form.ClientSize.Height);
+
+            graphics.ClearAndPresent(
+                0.04f,
+                0.08f,
+                0.12f,
+                vsync:
+                    false);
+
+            graphics.ClearAndPresent(
+                0.08f,
+                0.12f,
+                0.16f,
+                vsync:
+                    false);
+
+            Console.WriteLine(
+                "[d3d12-smoke] success");
+
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"[d3d12-smoke] failed: {exception}");
+
+            return 10;
+        }
     }
 
     private static string? GetOption(

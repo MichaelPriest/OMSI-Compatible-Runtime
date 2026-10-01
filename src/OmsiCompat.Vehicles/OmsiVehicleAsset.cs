@@ -20,7 +20,8 @@ public sealed record OmsiVehicleMaterialChangeItem(
     string? BumpMapTexturePath,
     double BumpMapStrength,
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
-    int? TextTextureIndex);
+    int? TextTextureIndex,
+    bool MaterialChangeIsNightMap = false);
 
 public sealed record OmsiVehicleMaterialChangeSet(
     string VariableName,
@@ -52,7 +53,8 @@ public sealed record OmsiVehicleMaterial(
     IReadOnlyList<OmsiVehicleFreeTexture> FreeTextures,
     int? TextTextureIndex,
     IReadOnlyList<OmsiVehicleMaterialChangeSet>? MaterialChangeSets = null,
-    bool HasTransMapDirective = false);
+    bool HasTransMapDirective = false,
+    bool MaterialChangeIsNightMap = false);
 
 public sealed record OmsiVehicleMeshAsset(
     string DeclaredPath,
@@ -73,7 +75,11 @@ public sealed record OmsiVehicleMeshAsset(
     IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
     string? MeshIdentifier = null,
     string? AnimationParent = null,
-    int SectionIndex = 0)
+    int SectionIndex = 0,
+    int ModelOrdinal = -1,
+    float[]? SkinWeights = null,
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
+    string? MouseEventTrigger = null)
 {
     public bool IsRenderable =>
         ErrorCode is null &&
@@ -87,9 +93,25 @@ public sealed record OmsiVehicleSectionAssetInfo(
     double JointX,
     double JointY,
     double JointZ,
+    double OriginX,
+    double OriginY,
+    double OriginZ,
     double FollowerLengthMeters,
     double MaximumYawDegrees,
-    bool Reverse);
+    double MinimumPitchDegrees,
+    double MaximumPitchDegrees,
+    int CouplingType,
+    bool Reverse,
+    string? SoundConfigPath = null,
+    bool OpenForSound = false,
+    double? MassTonnes = null,
+    double? YawInertiaTonneSquareMeters = null,
+    double? RotationPointLongitudinalMeters = null,
+    double? WheelBaseMeters = null,
+    double? RollingResistanceNewtons = null,
+    double? AverageWheelDiameterMeters = null,
+    OmsiVehiclePhysics? Physics = null,
+    OmsiVehicleScriptManifest? ScriptManifest = null);
 
 public sealed record OmsiVehicleAsset(
     OmsiBusInfo Bus,

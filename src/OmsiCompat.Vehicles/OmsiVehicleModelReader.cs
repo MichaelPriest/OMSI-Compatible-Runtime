@@ -15,6 +15,7 @@ public static class OmsiVehicleModelReader
         string? currentMeshPath = null;
         string? currentMeshIdentifier = null;
         string? currentAnimationParent = null;
+        string? currentMouseEventTrigger = null;
         var currentOrdinal = -1;
         var currentTransform =
             OmsiVehicleMeshTransform.Identity;
@@ -26,9 +27,14 @@ public static class OmsiVehicleModelReader
             new List<OmsiVehicleAnimation>();
         var lightEffects =
             new List<OmsiVehicleLightEffect>();
+        var smoothSkin =
+            false;
+        var skinBoneBindings =
+            new List<OmsiVehicleSkinBoneBinding>();
         var overrides = new List<OmsiVehicleMaterialOverride>();
         var materialChangeGroupIndex = -1;
         MaterialBuilder? material = null;
+        MaterialBuilder? materialChangeBase = null;
         AnimationBuilder? animation = null;
 
         void CommitMaterial()
@@ -38,18 +44,11 @@ public static class OmsiVehicleModelReader
                 return;
             }
 
-            // OMSI stores matl_change as a change set. Only matl_item
-            // entries are selectable variants; the declaration itself is
-            // not an item.
-            if (string.IsNullOrWhiteSpace(
-                    material.MaterialChangeVariable) ||
-                material.MaterialChangeItemIndex > 0)
-            {
-                overrides.Add(
-                    material.Build());
-            }
+            overrides.Add(
+                material.Build());
 
             material = null;
+            materialChangeBase = null;
         }
 
         void CommitAnimation()
@@ -89,20 +88,29 @@ public static class OmsiVehicleModelReader
                     overrides.ToArray(),
                     lightEffects.ToArray(),
                     currentMeshIdentifier,
-                    currentAnimationParent));
+                    currentAnimationParent,
+                    smoothSkin,
+                    skinBoneBindings.ToArray(),
+                    currentMouseEventTrigger));
             }
 
             currentMeshPath = null;
             currentMeshIdentifier = null;
             currentAnimationParent = null;
+            currentMouseEventTrigger = null;
             visibilityConditions =
                 new List<OmsiVehicleVisibilityCondition>();
             animations =
                 new List<OmsiVehicleAnimation>();
             lightEffects =
                 new List<OmsiVehicleLightEffect>();
+            smoothSkin =
+                false;
+            skinBoneBindings =
+                new List<OmsiVehicleSkinBoneBinding>();
             overrides = new List<OmsiVehicleMaterialOverride>();
             materialChangeGroupIndex = -1;
+            materialChangeBase = null;
         }
 
         foreach (var section in document.Sections)
@@ -213,6 +221,68 @@ public static class OmsiVehicleModelReader
             }
 
             if (section.Name.Equals(
+                    "mouseevent",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                currentMouseEventTrigger =
+                    Values(section)
+                        .FirstOrDefault()?
+                        .Trim()
+                        .Trim('"');
+
+                if (string.IsNullOrWhiteSpace(
+                        currentMouseEventTrigger))
+                {
+                    currentMouseEventTrigger =
+                        null;
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "smoothskin",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                smoothSkin =
+                    true;
+                continue;
+            }
+
+            if (section.Name.Equals(
+                    "setbone",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var values =
+                    Values(section).ToArray();
+
+                if (values.Length >= 2 &&
+                    int.TryParse(
+                        values[1],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var targetMeshOrdinal) &&
+                    targetMeshOrdinal >= 0)
+                {
+                    var boneName =
+                        values[0]
+                            .Trim()
+                            .Trim('"');
+
+                    if (!string.IsNullOrWhiteSpace(
+                            boneName))
+                    {
+                        skinBoneBindings.Add(
+                            new OmsiVehicleSkinBoneBinding(
+                                boneName,
+                                targetMeshOrdinal));
+                    }
+                }
+
+                continue;
+            }
+
+            if (section.Name.Equals(
                     "light_enh",
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -264,6 +334,8 @@ public static class OmsiVehicleModelReader
                     material = new MaterialBuilder(
                         values[0].Trim().Trim('"'),
                         materialIndex);
+                    materialChangeBase =
+                        null;
                 }
 
                 continue;
@@ -303,6 +375,9 @@ public static class OmsiVehicleModelReader
                             MaterialChangeItemIndex =
                                 0
                         };
+
+                    materialChangeBase =
+                        null;
                 }
 
                 continue;
@@ -685,18 +760,40 @@ public static class OmsiVehicleModelReader
                 if (!string.IsNullOrWhiteSpace(
                         material.MaterialChangeVariable))
                 {
-                    // Native OMSI clones the current material when a
-                    // matl_item is encountered. The script variable then
-                    // selects item 1, 2, ... while value 0 keeps the base
-                    // material. Preserve that inheritance here.
-                    if (material.MaterialChangeItemIndex > 0)
+                    if (material.MaterialChangeItemIndex == 0)
                     {
+                        // Everything before the first [matl_item] is the
+                        // common OMSI material state and applies to every
+                        // discrete state, including variable value 0.
+                        materialChangeBase =
+                            material.CloneForMaterialChangeItem(
+                                0);
+
+                        overrides.Add(
+                            materialChangeBase.Build());
+
+                        material =
+                            materialChangeBase.CloneForMaterialChangeItem(
+                                1);
+                    }
+                    else
+                    {
+                        // Each subsequent [matl_item] starts again from the
+                        // common base. Item-specific alpha/nightmap/etc. must
+                        // never leak into the following item.
+                        var nextItem =
+                            material.MaterialChangeItemIndex +
+                            1;
+
                         overrides.Add(
                             material.Build());
-                    }
 
-                    material =
-                        material.CloneForNextMaterialChangeItem();
+                        material =
+                            (materialChangeBase ??
+                             material)
+                                .CloneForMaterialChangeItem(
+                                    nextItem);
+                    }
                 }
 
                 continue;
@@ -766,6 +863,9 @@ public static class OmsiVehicleModelReader
                             .FirstOrDefault()?
                             .Trim()
                             .Trim('"');
+
+                    material.MaterialChangeMapIsNightMap =
+                        true;
                 }
 
                 continue;
@@ -1609,6 +1709,7 @@ public static class OmsiVehicleModelReader
         public string? LightMapVariable { get; set; }
         public string? MaterialChangeVariable { get; set; }
         public string? MaterialChangeMapSource { get; set; }
+        public bool MaterialChangeMapIsNightMap { get; set; }
         public OmsiVehicleMaterialColor? AllColor { get; set; }
         public string? EnvMapSource { get; set; }
         public double EnvMapStrength { get; set; }
@@ -1622,7 +1723,8 @@ public static class OmsiVehicleModelReader
         public int MaterialChangeGroupIndex { get; set; } = -1;
         public int MaterialChangeItemIndex { get; set; }
 
-        public MaterialBuilder CloneForNextMaterialChangeItem()
+        public MaterialBuilder CloneForMaterialChangeItem(
+            int itemIndex)
         {
             var clone =
                 new MaterialBuilder(
@@ -1639,6 +1741,8 @@ public static class OmsiVehicleModelReader
                     LightMapVariable = LightMapVariable,
                     MaterialChangeVariable = MaterialChangeVariable,
                     MaterialChangeMapSource = MaterialChangeMapSource,
+                    MaterialChangeMapIsNightMap =
+                        MaterialChangeMapIsNightMap,
                     AllColor = AllColor,
                     EnvMapSource = EnvMapSource,
                     EnvMapStrength = EnvMapStrength,
@@ -1650,7 +1754,9 @@ public static class OmsiVehicleModelReader
                     TextureCoordinateYVariable = TextureCoordinateYVariable,
                     MaterialChangeGroupIndex = MaterialChangeGroupIndex,
                     MaterialChangeItemIndex =
-                        MaterialChangeItemIndex + 1
+                        Math.Max(
+                            itemIndex,
+                            0)
                 };
 
             clone.FreeTextures.AddRange(
@@ -1684,6 +1790,7 @@ public static class OmsiVehicleModelReader
                 TextureCoordinateXVariable,
                 TextureCoordinateYVariable,
                 MaterialChangeGroupIndex,
-                MaterialChangeItemIndex);
+                MaterialChangeItemIndex,
+                MaterialChangeMapIsNightMap);
     }
 }

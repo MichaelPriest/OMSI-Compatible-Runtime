@@ -7,5 +7,6 @@
     <ProjectReference Include="../OmsiCompat.Models/OmsiCompat.Models.csproj" />
     <ProjectReference Include="../OmsiCompat.Scenery/OmsiCompat.Scenery.csproj" />
     <ProjectReference Include="../OmsiCompat.Splines/OmsiCompat.Splines.csproj" />
+    <ProjectReference Include="../OmsiCompat.Vehicles/OmsiCompat.Vehicles.csproj" />
   </ItemGroup>
 </Project>

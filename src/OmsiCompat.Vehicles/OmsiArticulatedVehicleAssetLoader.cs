@@ -74,7 +74,10 @@ public static class OmsiArticulatedVehicleAssetLoader
                 0.0);
 
         var sectionCount = 1;
-
+        var combinedMassTonnes =
+            bus.Physics.MassTonnes;
+        var combinedRollingResistanceNewtons =
+            bus.Physics.RollingResistanceNewtons;
         while (sectionCount <
                MaximumSectionCount &&
                parent.CoupledBack is
@@ -195,6 +198,9 @@ public static class OmsiArticulatedVehicleAssetLoader
                     joint.X,
                     joint.Y,
                     joint.Z,
+                    childOffset.X,
+                    childOffset.Y,
+                    childOffset.Z,
                     followerLength,
                     Math.Clamp(
                         childBus.FrontCouplingCharacter?
@@ -202,8 +208,41 @@ public static class OmsiArticulatedVehicleAssetLoader
                         55.0,
                         5.0,
                         89.0),
-                    coupledBack.Reverse));
+                    Math.Clamp(
+                        childBus.FrontCouplingCharacter?
+                            .MinimumPitchDegrees ??
+                        -20.0,
+                        -45.0,
+                        0.0),
+                    Math.Clamp(
+                        childBus.FrontCouplingCharacter?
+                            .MaximumPitchDegrees ??
+                        20.0,
+                        0.0,
+                        45.0),
+                    childBus.FrontCouplingCharacter?
+                        .Type ??
+                    1,
+                    coupledBack.Reverse,
+                    childBus.SoundConfigPath,
+                    childBus.FrontCouplingOpenForSound,
+                    childBus.Physics.MassTonnes,
+                    childBus.Physics.MomentOfInertiaZ,
+                    childBus.Physics.RotationPointLongitudinalMeters,
+                    childBus.Physics.WheelBaseMeters,
+                    childBus.Physics.RollingResistanceNewtons,
+                    childBus.Physics.AverageWheelDiameterMeters,
+                    childBus.Physics,
+                    childBus.ScriptManifest));
 
+            combinedMassTonnes =
+                SumOptional(
+                    combinedMassTonnes,
+                    childBus.Physics.MassTonnes);
+            combinedRollingResistanceNewtons =
+                SumOptional(
+                    combinedRollingResistanceNewtons,
+                    childBus.Physics.RollingResistanceNewtons);
             sectionCount++;
 
             progress?.Report(
@@ -238,8 +277,27 @@ public static class OmsiArticulatedVehicleAssetLoader
                 100,
                 $"Veículo carregado com {sectionCount} seção(ões) e {meshes.Count} mesh(es)."));
 
+        var combinedPhysics =
+            leading.Bus.Physics with
+            {
+                // Steering geometry remains that of the leading section,
+                // but longitudinal inertia/resistance must include every
+                // coupled body so an articulated bus does not accelerate
+                // like the rigid front section alone.
+                MassTonnes =
+                    combinedMassTonnes,
+                RollingResistanceNewtons =
+                    combinedRollingResistanceNewtons
+            };
+
         return leading with
         {
+            Bus =
+                leading.Bus with
+                {
+                    Physics =
+                        combinedPhysics
+                },
             Meshes =
                 meshes.ToArray(),
             TextTextures =
@@ -367,6 +425,24 @@ public static class OmsiArticulatedVehicleAssetLoader
             MaterialChangeSets =
                 changeSets
         };
+    }
+
+    private static double? SumOptional(
+        double? left,
+        double? right)
+    {
+        if (!left.HasValue)
+        {
+            return right;
+        }
+
+        if (!right.HasValue)
+        {
+            return left;
+        }
+
+        return left.Value +
+               right.Value;
     }
 
     private static double ResolveFollowerLength(

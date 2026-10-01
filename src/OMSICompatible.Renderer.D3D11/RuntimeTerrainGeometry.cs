@@ -1,48 +1,10 @@
 using System.Numerics;
+using OMSICompatible.Renderer.Common;
 using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
-internal sealed record RuntimeTerrainBatch(
-    uint StartVertex,
-    uint VertexCount,
-    string? TexturePath,
-    string? MaskTexturePath,
-    string? DetailTexturePath,
-    bool AdditiveLightmap,
-    int? TerrainLayerIndex);
-
-internal sealed record RuntimeTerrainGeometry(
-    RuntimeTerrainVertex[] Vertices,
-    IReadOnlyList<RuntimeTerrainBatch> Batches,
-    Vector3 Center,
-    float HorizontalSpan,
-    float MinimumHeight,
-    float MaximumHeight)
-{
-    public int TexturedBatchCount =>
-        Batches.Count(
-            static batch =>
-                !string.IsNullOrWhiteSpace(
-                    batch.TexturePath));
-
-    public int MaskedLayerCount =>
-        Batches.Count(
-            static batch =>
-                !string.IsNullOrWhiteSpace(
-                    batch.MaskTexturePath));
-
-    public static RuntimeTerrainGeometry Empty { get; } =
-        new(
-            [],
-            Array.Empty<RuntimeTerrainBatch>(),
-            Vector3.Zero,
-            300.0f,
-            0.0f,
-            0.0f);
-}
-
-internal static class RuntimeTerrainGeometryBuilder
+public static class RuntimeTerrainGeometryBuilder
 {
     private const double TileSizeMeters = 300.0;
     private const int VertexBudget = 1_200_000;
@@ -51,8 +13,14 @@ internal static class RuntimeTerrainGeometryBuilder
 
     public static RuntimeTerrainGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
-        IReadOnlyList<RuntimeGroundTextureInfo> groundTextures)
+        IReadOnlyList<RuntimeGroundTextureInfo> groundTextures,
+        IReadOnlyList<RuntimeSplineInfo>? splines = null)
     {
+        var terrainAlignment =
+            RuntimeSplineTerrainAlignmentSampler.Create(
+                splines ??
+                Array.Empty<RuntimeSplineInfo>());
+
         var terrainTiles =
             tiles
                 .Where(
@@ -163,7 +131,8 @@ internal static class RuntimeTerrainGeometryBuilder
                 terrainLayerIndex: 0,
                 cellsPerAxisBudget,
                 minimumHeight,
-                maximumHeight);
+                maximumHeight,
+                terrainAlignment);
 
             var overlayOrdinal = 0;
 
@@ -200,18 +169,23 @@ internal static class RuntimeTerrainGeometryBuilder
                     ground.DetailTexturePath,
                     ground.MainTextureRepeating,
                     ground.DetailTextureRepeating,
+                    // Terrain masks are coplanar texture layers in OMSI.
+                    // Keep only a microscopic bias to avoid z-fighting;
+                    // centimetre-scale lifts can visually cover rails and
+                    // other spline geometry on elevated/embedded track.
                     heightOffset:
                         Math.Min(
                             overlayOrdinal,
                             16) *
-                        0.002f,
+                        0.00002f,
                     fallbackToHeightColor: false,
                     additiveLightmap: false,
                     terrainLayerIndex:
                         mask.LayerIndex,
                     cellsPerAxisBudget,
                     minimumHeight,
-                    maximumHeight);
+                    maximumHeight,
+                    terrainAlignment);
             }
 
             if (!string.IsNullOrWhiteSpace(
@@ -229,13 +203,16 @@ internal static class RuntimeTerrainGeometryBuilder
                     detailTexturePath: null,
                     repeating: 1.0,
                     detailRepeating: 1.0,
-                    heightOffset: 0.04f,
+                    // Lightmaps must shade the terrain, not become a
+                    // separate surface several centimetres above it.
+                    heightOffset: 0.0001f,
                     fallbackToHeightColor: false,
                     additiveLightmap: true,
                     terrainLayerIndex: null,
                     cellsPerAxisBudget,
                     minimumHeight,
-                    maximumHeight);
+                    maximumHeight,
+                    terrainAlignment);
             }
         }
 
@@ -259,11 +236,28 @@ internal static class RuntimeTerrainGeometryBuilder
                 (maximumTileY + 1) *
                 TileSizeMeters);
 
+        var alignedMinimumHeight =
+            vertices.Count >
+                    0
+                ? vertices.Min(
+                    static vertex =>
+                        vertex.Position.Y)
+                : minimumHeight;
+
+        var alignedMaximumHeight =
+            vertices.Count >
+                    0
+                ? vertices.Max(
+                    static vertex =>
+                        vertex.Position.Y)
+                : maximumHeight;
+
         var center =
             new Vector3(
                 (minimumX + maximumX) *
                 0.5f,
-                (minimumHeight + maximumHeight) *
+                (alignedMinimumHeight +
+                 alignedMaximumHeight) *
                 0.5f,
                 (minimumZ + maximumZ) *
                 0.5f);
@@ -280,8 +274,9 @@ internal static class RuntimeTerrainGeometryBuilder
             MathF.Max(
                 horizontalSpan,
                 300.0f),
-            minimumHeight,
-            maximumHeight);
+            alignedMinimumHeight,
+            alignedMaximumHeight,
+            terrainAlignment.SegmentCount);
     }
 
     private static void AppendTileLayer(
@@ -300,7 +295,8 @@ internal static class RuntimeTerrainGeometryBuilder
         int? terrainLayerIndex,
         int cellsPerAxisBudget,
         float globalMinimumHeight,
-        float globalMaximumHeight)
+        float globalMaximumHeight,
+        RuntimeSplineTerrainAlignmentSampler terrainAlignment)
     {
         var sampleCount =
             terrain.CellCount +
@@ -420,6 +416,30 @@ internal static class RuntimeTerrainGeometryBuilder
                 var z1 =
                     originZ +
                     localZ1;
+
+                h00 =
+                    terrainAlignment.AlignHeight(
+                        (float)x0,
+                        (float)z0,
+                        h00);
+
+                h10 =
+                    terrainAlignment.AlignHeight(
+                        (float)x1,
+                        (float)z0,
+                        h10);
+
+                h01 =
+                    terrainAlignment.AlignHeight(
+                        (float)x0,
+                        (float)z1,
+                        h01);
+
+                h11 =
+                    terrainAlignment.AlignHeight(
+                        (float)x1,
+                        (float)z1,
+                        h11);
 
                 var uv00 =
                     CreateUv(
@@ -595,10 +615,15 @@ internal static class RuntimeTerrainGeometryBuilder
                 ? repeating
                 : 1.0;
 
+        // Runtime world X is mirrored relative to OMSI source X to keep
+        // the renderer ground plane right-handed. Sample terrain textures
+        // from the corresponding source-side U coordinate so lightmaps,
+        // masks and base/detail textures remain in the same place as OMSI.
         return new Vector2(
             (float)(
-                localX /
-                TileSizeMeters *
+                (1.0 -
+                 localX /
+                     TileSizeMeters) *
                 safeRepeating),
             (float)(
                 localZ /
@@ -611,8 +636,9 @@ internal static class RuntimeTerrainGeometryBuilder
         double localZ) =>
         new(
             (float)(
+                1.0 -
                 localX /
-                TileSizeMeters),
+                    TileSizeMeters),
             (float)(
                 localZ /
                 TileSizeMeters));
@@ -689,29 +715,4 @@ internal static class RuntimeTerrainGeometryBuilder
                 maskUvC,
                 detailUvC));
     }
-}
-
-internal readonly struct RuntimeTerrainVertex
-{
-    public const uint SizeInBytes = 52;
-
-    public RuntimeTerrainVertex(
-        Vector3 position,
-        Color4 color,
-        Vector2 uv,
-        Vector2 maskUv,
-        Vector2 detailUv)
-    {
-        Position = position;
-        Color = color;
-        Uv = uv;
-        MaskUv = maskUv;
-        DetailUv = detailUv;
-    }
-
-    public readonly Vector3 Position;
-    public readonly Color4 Color;
-    public readonly Vector2 Uv;
-    public readonly Vector2 MaskUv;
-    public readonly Vector2 DetailUv;
 }

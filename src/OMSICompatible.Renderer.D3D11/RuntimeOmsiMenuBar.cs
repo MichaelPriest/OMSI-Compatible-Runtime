@@ -9,6 +9,7 @@ internal enum RuntimeOmsiMenuCommand
     StartMenu,
     SaveSituation,
     NewBus,
+    RemoveBus,
     FindBus,
     RepositionBus,
     RouteDestination,
@@ -21,6 +22,9 @@ internal enum RuntimeOmsiMenuCommand
     Wash,
     Refuel,
     DirectionSigns,
+    LiveBoard,
+    PerformanceCenter,
+    ReplayOps,
     Pause,
     DriverView,
     PassengerView,
@@ -28,6 +32,7 @@ internal enum RuntimeOmsiMenuCommand
     FreeMapCamera,
     MouseSteering,
     GameController,
+    VehiclePanel,
     ResetVehicle
 }
 
@@ -51,10 +56,10 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             AutoSizeMode.GrowAndShrink;
         BackColor =
             Color.FromArgb(
-                226,
-                24,
-                28,
-                34);
+                238,
+                214,
+                218,
+                224);
         Padding =
             new Padding(
                 5);
@@ -92,168 +97,203 @@ internal sealed class RuntimeOmsiMenuBar : Panel
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Close,
-            "▼",
+            "\uE70E",
             "Fechar menu do OMSI",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.StartMenu,
-            "MENU",
+            "\uE700",
             "Menu principal / voltar ao launcher",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.SaveSituation,
-            "SAVE",
+            "\uE74E",
             "Salvar situação",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.NewBus,
-            "BUS+",
-            "Adicionar novo ônibus",
-            false);
+            "\uE710",
+            "Iniciar outro ônibus",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.RemoveBus,
+            "\uE74D",
+            "Remover ônibus atual do mapa",
+            true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.FindBus,
-            "BUS?",
+            "\uE721",
             "Localizar / assumir ônibus",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.RepositionBus,
-            "POS",
+            "\uE707",
             "Reposicionar veículo",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.RouteDestination,
-            "RTE",
+            "\uE8F1",
             "Rota e destino",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Personnel,
-            "DRV",
-            "Arquivo do motorista",
-            false);
+            "\uE77B",
+            "DriveOps — DriverPass, FleetLink, AssistLink, ControlHub e RouteCore",
+            true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Schedule,
-            "TT",
+            "\uE787",
             "Horário / escala",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.TimeDate,
-            "TIME",
+            "\uE823",
             "Data e hora",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Weather,
-            "WX",
+            "\uE706",
             "Clima",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Options,
-            "OPT",
+            "\uE713",
             "Opções",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Repair,
-            "FIX",
+            "\uE90F",
             "Reparar ônibus",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Wash,
-            "WASH",
+            "\uE790",
             "Lavar ônibus",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Refuel,
-            "FUEL",
+            "\uE7A5",
             "Abastecer",
             false);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.DirectionSigns,
-            "→?",
-            "Setas / ajuda de rota",
-            false);
+            "\uE72A",
+            "NavPulse — GPS/minimapa e FuelTrack",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.LiveBoard,
+            "\uE9D2",
+            "LiveBoard — HUD operacional compacto",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.PerformanceCenter,
+            "\uE9D9",
+            "Performance Center — FPS, CPU, GPU, draw calls e streaming",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.ReplayOps,
+            "\uE81C",
+            "ReplayOps — rever os últimos minutos e ocorrências",
+            true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.Pause,
-            "Ⅱ",
+            "\uE769",
             "Pausar / continuar simulação",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.DriverView,
-            "F1",
+            "\uE890",
             "Visão do motorista",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.PassengerView,
-            "F2",
+            "\uE8B0",
             "Visão de passageiro",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.ExteriorView,
-            "F3",
+            "\uE714",
             "Visão externa",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.FreeMapCamera,
-            "F4",
+            "\uE8B7",
             "Câmera livre / mapa",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.MouseSteering,
-            "MOUSE",
+            "\uE962",
             "Direção pelo mouse (O)",
             true);
 
         AddButton(
             flow,
             RuntimeOmsiMenuCommand.GameController,
-            "CTRL",
+            "\uE7FC",
             "Volante / game controller (K)",
             true);
 
         AddButton(
             flow,
+            RuntimeOmsiMenuCommand.VehiclePanel,
+            "\uE713",
+            "VehiclePanel — configurar teclado e comandos do ônibus",
+            true);
+
+        AddButton(
+            flow,
             RuntimeOmsiMenuCommand.ResetVehicle,
-            "RESET",
+            "\uE777",
             "Reposicionar veículo no ponto atual de spawn",
             true);
     }
@@ -322,13 +362,9 @@ internal sealed class RuntimeOmsiMenuBar : Panel
                 Text =
                     text,
                 Width =
-                    text.Length >= 5
-                        ? 58
-                        : text.Length >= 4
-                            ? 50
-                            : 42,
+                    44,
                 Height =
-                    36,
+                    42,
                 Margin =
                     new Padding(
                         2),
@@ -339,25 +375,28 @@ internal sealed class RuntimeOmsiMenuBar : Panel
                 BackColor =
                     implemented
                         ? Color.FromArgb(
-                            48,
-                            54,
-                            64)
+                            244,
+                            246,
+                            249)
                         : Color.FromArgb(
-                            42,
-                            44,
-                            49),
+                            226,
+                            229,
+                            234),
                 ForeColor =
                     implemented
-                        ? Color.White
+                        ? Color.FromArgb(
+                            30,
+                            35,
+                            43)
                         : Color.FromArgb(
-                            125,
-                            130,
-                            138),
+                            138,
+                            143,
+                            151),
                 Font =
                     new Font(
-                        "Segoe UI",
-                        8.0f,
-                        FontStyle.Bold),
+                        "Segoe MDL2 Assets",
+                        14.0f,
+                        FontStyle.Regular),
                 Cursor =
                     implemented
                         ? Cursors.Hand
@@ -373,13 +412,13 @@ internal sealed class RuntimeOmsiMenuBar : Panel
         button.FlatAppearance.BorderColor =
             implemented
                 ? Color.FromArgb(
-                    88,
-                    96,
-                    110)
+                    165,
+                    171,
+                    181)
                 : Color.FromArgb(
-                    60,
-                    63,
-                    70);
+                    198,
+                    202,
+                    209);
 
         button.Click +=
             (_, _) =>
@@ -417,23 +456,23 @@ internal sealed class RuntimeOmsiMenuBar : Panel
         button.BackColor =
             active
                 ? Color.FromArgb(
-                    35,
-                    112,
-                    72)
+                    198,
+                    225,
+                    246)
                 : Color.FromArgb(
-                    48,
-                    54,
-                    64);
+                    244,
+                    246,
+                    249);
 
         button.FlatAppearance.BorderColor =
             active
                 ? Color.FromArgb(
-                    92,
-                    190,
-                    132)
+                    65,
+                    124,
+                    171)
                 : Color.FromArgb(
-                    88,
-                    96,
-                    110);
+                    165,
+                    171,
+                    181);
     }
 }
