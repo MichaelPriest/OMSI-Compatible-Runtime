@@ -36,6 +36,150 @@ public static class WorldLineAiRouteResolver
     {
         ArgumentNullException.ThrowIfNull(
             track);
+
+        return ResolveEntries(
+            track.Name,
+            track.Entries,
+            network);
+    }
+
+    public static bool HasCompleteStationLinkChain(
+        OmsiTimetableTrip trip,
+        IReadOnlyList<OmsiTimetableStationLink> stationLinks)
+    {
+        ArgumentNullException.ThrowIfNull(
+            trip);
+        ArgumentNullException.ThrowIfNull(
+            stationLinks);
+
+        var stopIds =
+            trip.Stops
+                .Select(
+                    static stop =>
+                        stop.StopId)
+                .ToArray();
+
+        if (stopIds.Length <
+                2 ||
+            stopIds.Any(
+                static stopId =>
+                    !stopId.HasValue))
+        {
+            return false;
+        }
+
+        for (var index = 0;
+             index <
+                 stopIds.Length -
+                 1;
+             index++)
+        {
+            var from =
+                stopIds[index]!.Value;
+            var to =
+                stopIds[index + 1]!.Value;
+
+            if (!stationLinks.Any(
+                    link =>
+                        link.FromStopId ==
+                            from &&
+                        link.ToStopId ==
+                            to &&
+                        link.Entries.Count >
+                            0))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static WorldLineAiRoute ResolveStationLinks(
+        OmsiTimetableTrip trip,
+        IReadOnlyList<OmsiTimetableStationLink> stationLinks,
+        WorldTrafficPathNetwork network)
+    {
+        ArgumentNullException.ThrowIfNull(
+            trip);
+        ArgumentNullException.ThrowIfNull(
+            stationLinks);
+        ArgumentNullException.ThrowIfNull(
+            network);
+
+        if (!HasCompleteStationLinkChain(
+                trip,
+                stationLinks))
+        {
+            return new WorldLineAiRoute(
+                $"StnLinks:{trip.Name}",
+                Array.Empty<int>(),
+                Array.Empty<WorldLineAiRouteEntry>(),
+                1,
+                0);
+        }
+
+        var flattened =
+            new List<OmsiTimetableTrackEntry>();
+
+        for (var stopIndex = 0;
+             stopIndex <
+                 trip.Stops.Count -
+                 1;
+             stopIndex++)
+        {
+            var from =
+                trip.Stops[
+                    stopIndex]
+                    .StopId!.Value;
+            var to =
+                trip.Stops[
+                    stopIndex +
+                    1]
+                    .StopId!.Value;
+
+            var link =
+                stationLinks.First(
+                    candidate =>
+                        candidate.FromStopId ==
+                            from &&
+                        candidate.ToStopId ==
+                            to);
+
+            foreach (var entry in
+                     link.Entries)
+            {
+                if (flattened.Count >
+                        0 &&
+                    SamePathKey(
+                        flattened[^1],
+                        entry))
+                {
+                    // OMSI station links repeat the shared lane between
+                    // consecutive stop-to-stop legs. Keep it only once.
+                    continue;
+                }
+
+                flattened.Add(
+                    entry);
+            }
+        }
+
+        return ResolveEntries(
+            $"StnLinks:{trip.Name}",
+            flattened,
+            network);
+    }
+
+    private static WorldLineAiRoute ResolveEntries(
+        string routeName,
+        IReadOnlyList<OmsiTimetableTrackEntry> timetableEntries,
+        WorldTrafficPathNetwork network)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            routeName);
+        ArgumentNullException.ThrowIfNull(
+            timetableEntries);
         ArgumentNullException.ThrowIfNull(
             network);
 
@@ -46,22 +190,22 @@ public static class WorldLineAiRouteResolver
 
         var resolvedSegments =
             new List<int>(
-                track.Entries.Count);
+                timetableEntries.Count);
 
         var entries =
             new List<WorldLineAiRouteEntry>(
-                track.Entries.Count);
+                timetableEntries.Count);
 
         WorldTrafficPathSegment? previous =
             null;
 
         for (var entryIndex = 0;
              entryIndex <
-                 track.Entries.Count;
+                 timetableEntries.Count;
              entryIndex++)
         {
             var entry =
-                track.Entries[
+                timetableEntries[
                     entryIndex];
 
             var candidates =
@@ -105,12 +249,8 @@ public static class WorldLineAiRouteResolver
                         Ambiguous:
                             ambiguous));
 
-                // Do not carry connectivity across an unresolved timetable
-                // entry. Reusing an older segment would allow a later
-                // candidate to appear unique even though the route has a gap.
                 previous =
                     null;
-
                 continue;
             }
 
@@ -138,7 +278,7 @@ public static class WorldLineAiRouteResolver
         }
 
         return new WorldLineAiRoute(
-            track.Name,
+            routeName,
             resolvedSegments.ToArray(),
             entries.ToArray(),
             entries.Count(
@@ -148,6 +288,16 @@ public static class WorldLineAiRouteResolver
                 static entry =>
                     entry.Ambiguous));
     }
+
+    private static bool SamePathKey(
+        OmsiTimetableTrackEntry first,
+        OmsiTimetableTrackEntry second) =>
+        first.ObjectId ==
+            second.ObjectId &&
+        first.PathId ==
+            second.PathId &&
+        first.TileIndex ==
+            second.TileIndex;
 
     private static bool MatchesTile(
         WorldTrafficPathSegment segment,

@@ -8,6 +8,7 @@ public enum WorldLineAiScheduleStatus
     TripMissing,
     TripAmbiguous,
     TrackMissing,
+    StationLinkMissing,
     RouteUnresolved,
     VehicleGroupMissing
 }
@@ -136,6 +137,7 @@ public static class WorldLineAiScheduleResolver
                             tourTrip,
                             tripsByName,
                             catalog.Tracks,
+                            catalog.StationLinks,
                             vehiclesByGroup,
                             network));
                 }
@@ -236,6 +238,7 @@ public static class WorldLineAiScheduleResolver
         OmsiTimetableTourTrip tourTrip,
         IReadOnlyDictionary<string, OmsiTimetableTrip[]> tripsByName,
         IReadOnlyDictionary<string, OmsiTimetableTrack> tracks,
+        IReadOnlyList<OmsiTimetableStationLink> stationLinks,
         IReadOnlyDictionary<string, IReadOnlyList<OmsiAiVehicleDefinition>>
             vehiclesByGroup,
         WorldTrafficPathNetwork network)
@@ -260,19 +263,43 @@ public static class WorldLineAiScheduleResolver
         var trip =
             matchingTrips[0];
 
-        if (!tracks.TryGetValue(
-                trip.TrackName,
-                out var track))
-        {
-            return Create(
-                WorldLineAiScheduleStatus.TrackMissing,
-                trip);
-        }
+        WorldLineAiRoute route;
 
-        var route =
-            WorldLineAiRouteResolver.Resolve(
-                track,
-                network);
+        if (!string.IsNullOrWhiteSpace(
+                trip.TrackName))
+        {
+            if (!tracks.TryGetValue(
+                    trip.TrackName,
+                    out var track))
+            {
+                return Create(
+                    WorldLineAiScheduleStatus.TrackMissing,
+                    trip);
+            }
+
+            route =
+                WorldLineAiRouteResolver.Resolve(
+                    track,
+                    network);
+        }
+        else
+        {
+            if (!WorldLineAiRouteResolver
+                .HasCompleteStationLinkChain(
+                    trip,
+                    stationLinks))
+            {
+                return Create(
+                    WorldLineAiScheduleStatus.StationLinkMissing,
+                    trip);
+            }
+
+            route =
+                WorldLineAiRouteResolver.ResolveStationLinks(
+                    trip,
+                    stationLinks,
+                    network);
+        }
 
         if (!route.FullyResolved)
         {

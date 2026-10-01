@@ -2617,7 +2617,11 @@ try
             "[busstop]",
             "Terminal Central",
             "0",
-            "42"));
+            "42",
+            "[busstop]",
+            "Avenida Brasil",
+            "0",
+            "43"));
 
     File.WriteAllText(
         Path.Combine(
@@ -2635,6 +2639,54 @@ try
             "43",
             "75.5",
             "Avenida Brasil",
+            "0"));
+
+    File.WriteAllText(
+        Path.Combine(
+            timetableDirectory,
+            "Linha200.ttp"),
+        Lines(
+            "[trip]",
+            "",
+            "Bairro",
+            "200",
+            "[station_typ2]",
+            "42",
+            "0",
+            "[station_typ2]",
+            "43",
+            "0"));
+
+    File.WriteAllText(
+        Path.Combine(
+            timetableDirectory,
+            "StnLinks.cfg"),
+        Lines(
+            "[StnLink]",
+            "150",
+            "42",
+            "43",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "[StnLink_entry]",
+            "3001",
+            "0",
+            "0",
+            "100",
+            "0",
+            "0",
+            "0",
+            "[StnLink_entry]",
+            "3002",
+            "1",
+            "0",
+            "50",
+            "0",
+            "0",
             "0"));
 
     File.WriteAllText(
@@ -2684,7 +2736,7 @@ try
 
     Require(
         timetableCatalog.Trips.Count ==
-            1 &&
+            2 &&
         timetableCatalog.Trips[0].TrackName ==
             "Track100" &&
         timetableCatalog.Trips[0].Line ==
@@ -2744,6 +2796,43 @@ try
             480.5) <
             0.0001,
         "OMSI TTData parser did not preserve real trip, track, TTL tour, AI group, day mask, profile and departure data.");
+
+    var parsedStationLinkTrip =
+        timetableCatalog.Trips.Single(
+            static trip =>
+                trip.Name ==
+                "Linha200");
+
+    Require(
+        parsedStationLinkTrip.TrackName ==
+            string.Empty &&
+        parsedStationLinkTrip.Destination ==
+            "Bairro" &&
+        parsedStationLinkTrip.Line ==
+            "200" &&
+        parsedStationLinkTrip.Stops.Count ==
+            2 &&
+        parsedStationLinkTrip.Stops[0].StopId ==
+            42 &&
+        parsedStationLinkTrip.Stops[1].StopId ==
+            43 &&
+        timetableCatalog.StationLinks.Count ==
+            1 &&
+        timetableCatalog.StationLinks[0].FromStopId ==
+            42 &&
+        timetableCatalog.StationLinks[0].ToStopId ==
+            43 &&
+        timetableCatalog.StationLinks[0].Entries.Count ==
+            2 &&
+        timetableCatalog.StationLinks[0].Entries[0].ObjectId ==
+            3001 &&
+        timetableCatalog.StationLinks[0].Entries[0].TileCoordinate ==
+            new OmsiTileCoordinate(
+                0,
+                0) &&
+        timetableCatalog.StationLinks[0].Entries[1].PathId ==
+            1,
+        "OMSI TTData parser did not preserve a bus trip routed through StnLinks.cfg.");
 
     var mapCalendar =
         OmsiMapCalendarReader.Read(
@@ -4066,6 +4155,64 @@ try
             syntheticLineTrack,
             trafficPaths);
 
+    var syntheticStationLinkTrip =
+        new OmsiTimetableTrip(
+            "Linha200",
+            "Linha200.ttp",
+            string.Empty,
+            "Bairro",
+            "200",
+            [
+                new OmsiTimetableStop(
+                    42,
+                    "Terminal Central",
+                    0.0,
+                    0),
+                new OmsiTimetableStop(
+                    43,
+                    "Avenida Brasil",
+                    75.5,
+                    0)
+            ]);
+
+    var syntheticStationLinks =
+        new[]
+        {
+            new OmsiTimetableStationLink(
+                150.0,
+                42,
+                43,
+                [
+                    new OmsiTimetableTrackEntry(
+                        firstRoadPath.SplineId,
+                        firstRoadPath.LocalPathIndex,
+                        0,
+                        100.0),
+                    new OmsiTimetableTrackEntry(
+                        secondRoadPath.SplineId,
+                        secondRoadPath.LocalPathIndex,
+                        0,
+                        50.0)
+                ])
+        };
+
+    var resolvedStationLinkRoute =
+        WorldLineAiRouteResolver.ResolveStationLinks(
+            syntheticStationLinkTrip,
+            syntheticStationLinks,
+            trafficPaths);
+
+    Require(
+        resolvedStationLinkRoute.FullyResolved &&
+        resolvedStationLinkRoute.SegmentIndices
+            .SequenceEqual(
+                new[]
+                {
+                    firstRoadPath.Index,
+                    secondRoadPath.Index
+                }),
+        "LineAI did not resolve an ordinary OMSI bus TTP through StnLinks.cfg.");
+
     Require(
         resolvedLineRoute.FullyResolved &&
         resolvedLineRoute.SegmentIndices.Count ==
@@ -4156,6 +4303,58 @@ try
                 "traffic.bus"),
             1.0,
             "SyntheticDepot");
+
+    var stationLinkScheduleCatalog =
+        new OmsiTimetableCatalog(
+            [syntheticStationLinkTrip],
+            new Dictionary<string, OmsiTimetableTrack>(
+                StringComparer.OrdinalIgnoreCase),
+            [
+                new OmsiTimetableLine(
+                    "200",
+                    "200.ttl",
+                    true,
+                    3,
+                    [
+                        new OmsiTimetableTour(
+                            "1",
+                            "Busses",
+                            "1023",
+                            [
+                                new OmsiTimetableTourTrip(
+                                    "Linha200",
+                                    0,
+                                    481.0)
+                            ])
+                    ])
+            ],
+            syntheticStationLinks);
+
+    var stationLinkSchedule =
+        WorldLineAiScheduleResolver.Resolve(
+            stationLinkScheduleCatalog,
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [lineAiVehicle],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()));
+
+    Require(
+        stationLinkSchedule.ReadyCount ==
+            1 &&
+        stationLinkSchedule.Trips[0].Status ==
+            WorldLineAiScheduleStatus.Ready &&
+        stationLinkSchedule.Trips[0].Route is
+            { FullyResolved: true } &&
+        stationLinkSchedule.Trips[0].Route!.SegmentIndices
+            .SequenceEqual(
+                new[]
+                {
+                    firstRoadPath.Index,
+                    secondRoadPath.Index
+                }),
+        "LineAI schedule resolver did not accept a bus service whose TTP route comes from StnLinks.cfg.");
 
     var lineSchedule =
         WorldLineAiScheduleResolver.Resolve(

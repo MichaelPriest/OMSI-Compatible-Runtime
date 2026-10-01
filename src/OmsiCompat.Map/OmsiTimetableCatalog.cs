@@ -20,6 +20,12 @@ public sealed record OmsiTimetableTrack(
     string FilePath,
     IReadOnlyList<OmsiTimetableTrackEntry> Entries);
 
+public sealed record OmsiTimetableStationLink(
+    double LengthMeters,
+    int FromStopId,
+    int ToStopId,
+    IReadOnlyList<OmsiTimetableTrackEntry> Entries);
+
 public sealed record OmsiTimetableTrip(
     string Name,
     string FilePath,
@@ -54,18 +60,24 @@ public sealed record OmsiTimetableLine(
 public sealed record OmsiTimetableCatalog(
     IReadOnlyList<OmsiTimetableTrip> Trips,
     IReadOnlyDictionary<string, OmsiTimetableTrack> Tracks,
-    IReadOnlyList<OmsiTimetableLine>? LineDefinitions = null)
+    IReadOnlyList<OmsiTimetableLine>? LineDefinitions = null,
+    IReadOnlyList<OmsiTimetableStationLink>? StationLinkDefinitions = null)
 {
     public IReadOnlyList<OmsiTimetableLine> Lines { get; } =
         LineDefinitions ??
         Array.Empty<OmsiTimetableLine>();
+
+    public IReadOnlyList<OmsiTimetableStationLink> StationLinks { get; } =
+        StationLinkDefinitions ??
+        Array.Empty<OmsiTimetableStationLink>();
 
     public static OmsiTimetableCatalog Empty { get; } =
         new(
             Array.Empty<OmsiTimetableTrip>(),
             new Dictionary<string, OmsiTimetableTrack>(
                 StringComparer.OrdinalIgnoreCase),
-            Array.Empty<OmsiTimetableLine>());
+            Array.Empty<OmsiTimetableLine>(),
+            Array.Empty<OmsiTimetableStationLink>());
 }
 
 public static class OmsiTimetableCatalogReader
@@ -95,6 +107,9 @@ public static class OmsiTimetableCatalogReader
             new Dictionary<string, OmsiTimetableTrack>(
                 StringComparer.OrdinalIgnoreCase);
 
+        var stationLinks =
+            new Dictionary<(int FromStopId, int ToStopId), OmsiTimetableStationLink>();
+
         var lines =
             new Dictionary<string, OmsiTimetableLine>(
                 StringComparer.OrdinalIgnoreCase);
@@ -106,6 +121,22 @@ public static class OmsiTimetableCatalogReader
                 ReadBusStopNames(
                     directory,
                     map.DirectoryPath);
+
+            foreach (var stationLink in
+                     ReadStationLinks(
+                         directory,
+                         tileDeclarations))
+            {
+                // A later active timetable directory replaces an earlier
+                // map-level link with the same stop pair. Inside one file,
+                // ReadStationLinks preserves OMSI's first matching link.
+                stationLinks[
+                    (
+                        stationLink.FromStopId,
+                        stationLink.ToStopId
+                    )] =
+                    stationLink;
+            }
 
             foreach (var trackPath in
                      EnumerateFilesSafe(
@@ -180,6 +211,14 @@ public static class OmsiTimetableCatalogReader
                     static line =>
                         line.Name,
                     StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            stationLinks.Values
+                .OrderBy(
+                    static link =>
+                        link.FromStopId)
+                .ThenBy(
+                    static link =>
+                        link.ToStopId)
                 .ToArray());
     }
 
@@ -311,7 +350,11 @@ public static class OmsiTimetableCatalogReader
         }
 
         if (string.IsNullOrWhiteSpace(
-                trackName))
+                trackName) &&
+            stops.Count(
+                static stop =>
+                    stop.StopId.HasValue) <
+                2)
         {
             return null;
         }
@@ -598,6 +641,225 @@ public static class OmsiTimetableCatalogReader
         value =
             string.Empty;
         return false;
+    }
+
+    private static IReadOnlyList<OmsiTimetableStationLink>
+        ReadStationLinks(
+            string timetableDirectory,
+            IReadOnlyList<OmsiGlobalTileDeclaration> tileDeclarations)
+    {
+        var path =
+            EnumerateFilesSafe(
+                    timetableDirectory,
+                    "*")
+                .FirstOrDefault(
+                    static candidate =>
+                        Path.GetFileName(
+                                candidate)
+                            .Equals(
+                                "StnLinks.cfg",
+                                StringComparison.OrdinalIgnoreCase));
+
+        if (path is null)
+        {
+            return Array.Empty<OmsiTimetableStationLink>();
+        }
+
+        string[] lines;
+
+        try
+        {
+            lines =
+                File.ReadAllLines(
+                    path);
+        }
+        catch
+        {
+            return Array.Empty<OmsiTimetableStationLink>();
+        }
+
+        var result =
+            new List<OmsiTimetableStationLink>();
+
+        var seen =
+            new HashSet<(int FromStopId, int ToStopId)>();
+
+        double currentLength =
+            0.0;
+        int? currentFrom =
+            null;
+        int? currentTo =
+            null;
+        List<OmsiTimetableTrackEntry>? currentEntries =
+            null;
+
+        void Flush()
+        {
+            if (!currentFrom.HasValue ||
+                !currentTo.HasValue ||
+                currentEntries is null)
+            {
+                return;
+            }
+
+            var key =
+                (
+                    currentFrom.Value,
+                    currentTo.Value
+                );
+
+            if (!seen.Add(
+                    key))
+            {
+                return;
+            }
+
+            result.Add(
+                new OmsiTimetableStationLink(
+                    currentLength,
+                    currentFrom.Value,
+                    currentTo.Value,
+                    currentEntries.ToArray()));
+        }
+
+        for (var index = 0;
+             index <
+                 lines.Length;
+             index++)
+        {
+            var token =
+                Clean(
+                    lines[index]);
+
+            if (token.Equals(
+                    "[StnLink]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                Flush();
+
+                currentLength =
+                    0.0;
+                currentFrom =
+                    null;
+                currentTo =
+                    null;
+                currentEntries =
+                    new List<OmsiTimetableTrackEntry>();
+
+                var cursor =
+                    index;
+
+                if (!TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var lengthText) ||
+                    !TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var fromText) ||
+                    !TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var toText) ||
+                    !int.TryParse(
+                        fromText,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var fromStopId) ||
+                    !int.TryParse(
+                        toText,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var toStopId))
+                {
+                    currentEntries =
+                        null;
+                    continue;
+                }
+
+                currentLength =
+                    ParseFlexibleDouble(
+                        lengthText) ??
+                    0.0;
+                currentFrom =
+                    fromStopId;
+                currentTo =
+                    toStopId;
+                continue;
+            }
+
+            if (!token.Equals(
+                    "[StnLink_entry]",
+                    StringComparison.OrdinalIgnoreCase) ||
+                currentEntries is null)
+            {
+                continue;
+            }
+
+            var entryCursor =
+                index;
+
+            if (!TryReadNextTimetableValue(
+                    lines,
+                    ref entryCursor,
+                    out var objectText) ||
+                !TryReadNextTimetableValue(
+                    lines,
+                    ref entryCursor,
+                    out var pathText) ||
+                !TryReadNextTimetableValue(
+                    lines,
+                    ref entryCursor,
+                    out var tileText) ||
+                !TryReadNextTimetableValue(
+                    lines,
+                    ref entryCursor,
+                    out var lengthText) ||
+                !long.TryParse(
+                    objectText,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var objectId) ||
+                !int.TryParse(
+                    pathText,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var pathId) ||
+                !int.TryParse(
+                    tileText,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var tileIndex))
+            {
+                continue;
+            }
+
+            var tileCoordinate =
+                tileIndex >=
+                        0 &&
+                    tileIndex <
+                        tileDeclarations.Count
+                    ? tileDeclarations[
+                        tileIndex]
+                        .Coordinate
+                    : (OmsiTileCoordinate?)null;
+
+            currentEntries.Add(
+                new OmsiTimetableTrackEntry(
+                    objectId,
+                    pathId,
+                    tileIndex,
+                    Math.Max(
+                        ParseFlexibleDouble(
+                            lengthText) ??
+                        0.0,
+                        0.0),
+                    tileCoordinate));
+        }
+
+        Flush();
+
+        return result;
     }
 
     private static OmsiTimetableTrack? ReadTrack(
