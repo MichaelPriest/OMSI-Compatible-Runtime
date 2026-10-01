@@ -46,6 +46,8 @@ internal sealed class RuntimeApplicationContext :
         _commsLinkVoice =
             new();
     private double _multiplayerStatusAccumulator;
+    private DateTimeOffset? _commsLinkLastRemoteVoiceAt;
+    private uint _commsLinkLastRemoteSpeakerId;
     private readonly HashSet<string>
         _pendingMultiplayerVehiclePaths =
             new(
@@ -727,6 +729,8 @@ internal sealed class RuntimeApplicationContext :
 
             _runtimeWindow.DriveOpsMessageRequested +=
                 OnDriveOpsMessageRequested;
+            _runtimeWindow.CommsLinkTransmitRequested +=
+                OnCommsLinkTransmitRequested;
             _runtimeWindow.KeyDown +=
                 OnCommsLinkKeyDown;
             _runtimeWindow.KeyUp +=
@@ -769,6 +773,8 @@ internal sealed class RuntimeApplicationContext :
                         OnStreamingCenterChanged;
                     _runtimeWindow.DriveOpsMessageRequested -=
                         OnDriveOpsMessageRequested;
+                    _runtimeWindow.CommsLinkTransmitRequested -=
+                        OnCommsLinkTransmitRequested;
                     _runtimeWindow.KeyDown -=
                         OnCommsLinkKeyDown;
                     _runtimeWindow.KeyUp -=
@@ -3088,6 +3094,13 @@ internal sealed class RuntimeApplicationContext :
                 message.TimestampUnixMilliseconds));
     }
 
+    private void OnCommsLinkTransmitRequested(
+        bool active)
+    {
+        SetCommsLinkTransmit(
+            active);
+    }
+
     private void OnCommsLinkKeyDown(
         object? sender,
         KeyEventArgs e)
@@ -3101,29 +3114,8 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
-        var session =
-            _multiplayerSession;
-
-        if (session is null ||
-            !session.Connected)
-        {
-            NotifyCommsLinkVoiceState(
-                "VOZ: indisponível · entre em uma sessão multiplayer");
-            e.SuppressKeyPress =
-                true;
-            return;
-        }
-
-        if (_commsLinkVoice.StartTransmit())
-        {
-            NotifyCommsLinkVoiceState(
-                "VOZ: TRANSMITINDO · solte F10 para encerrar");
-        }
-        else
-        {
-            NotifyCommsLinkVoiceState(
-                $"VOZ: falha no microfone · {_commsLinkVoice.LastError ?? "dispositivo indisponível"}");
-        }
+        SetCommsLinkTransmit(
+            true);
 
         e.SuppressKeyPress =
             true;
@@ -3139,15 +3131,54 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
-        if (_commsLinkVoice.IsTransmitting)
-        {
-            _commsLinkVoice.StopTransmit();
-            NotifyCommsLinkVoiceState(
-                "VOZ: PTT F10 · pronto");
-        }
+        SetCommsLinkTransmit(
+            false);
 
         e.SuppressKeyPress =
             true;
+    }
+
+    private void SetCommsLinkTransmit(
+        bool active)
+    {
+        if (!active)
+        {
+            if (_commsLinkVoice.IsTransmitting)
+            {
+                _commsLinkVoice.StopTransmit();
+            }
+
+            NotifyCommsLinkVoiceState(
+                "VOZ: PTT F10 · pronto");
+            return;
+        }
+
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            !session.Connected)
+        {
+            NotifyCommsLinkVoiceState(
+                "VOZ: indisponível · entre em uma sessão multiplayer");
+            return;
+        }
+
+        _commsLinkLastRemoteVoiceAt =
+            null;
+        _commsLinkLastRemoteSpeakerId =
+            0;
+
+        if (_commsLinkVoice.StartTransmit())
+        {
+            NotifyCommsLinkVoiceState(
+                "VOZ: TRANSMITINDO · solte F10/PTT para encerrar");
+        }
+        else
+        {
+            NotifyCommsLinkVoiceState(
+                $"VOZ: falha no microfone · {_commsLinkVoice.LastError ?? "dispositivo indisponível"}");
+        }
     }
 
     private void OnMultiplayerVoiceFrame(
@@ -3165,6 +3196,11 @@ internal sealed class RuntimeApplicationContext :
 
         _commsLinkVoice.Play(
             frame);
+
+        _commsLinkLastRemoteVoiceAt =
+            DateTimeOffset.UtcNow;
+        _commsLinkLastRemoteSpeakerId =
+            frame.SenderId;
 
         var speaker =
             session
@@ -3218,6 +3254,10 @@ internal sealed class RuntimeApplicationContext :
             OnMultiplayerVoiceFrame;
 
         _commsLinkVoice.StopTransmit();
+        _commsLinkLastRemoteVoiceAt =
+            null;
+        _commsLinkLastRemoteSpeakerId =
+            0;
         NotifyCommsLinkVoiceState(
             "VOZ: PTT F10 · aguardando sessão");
 
@@ -3515,6 +3555,22 @@ internal sealed class RuntimeApplicationContext :
 
         var peers =
             session.SnapshotPeers();
+
+        if (!_commsLinkVoice.IsTransmitting &&
+            _commsLinkLastRemoteVoiceAt.HasValue &&
+            DateTimeOffset.UtcNow -
+                _commsLinkLastRemoteVoiceAt.Value >=
+                TimeSpan.FromMilliseconds(
+                    650))
+        {
+            _commsLinkLastRemoteVoiceAt =
+                null;
+            _commsLinkLastRemoteSpeakerId =
+                0;
+
+            NotifyCommsLinkVoiceState(
+                "VOZ: PTT F10 · pronto");
+        }
 
         _multiplayerStatusAccumulator +=
             Math.Max(

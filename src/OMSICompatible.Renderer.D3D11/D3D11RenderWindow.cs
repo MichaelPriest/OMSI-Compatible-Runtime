@@ -664,6 +664,9 @@ public sealed class D3D11RenderWindow : Form
     public event Action<RuntimeDriveOpsMessageRequest>?
         DriveOpsMessageRequested;
 
+    public event Action<bool>?
+        CommsLinkTransmitRequested;
+
     private IDXGIFactory2? _factory;
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _deviceContext;
@@ -1598,6 +1601,8 @@ public sealed class D3D11RenderWindow : Form
         {
             _driveOpsPanel.MessageRequested +=
                 OnDriveOpsMessageRequested;
+            _driveOpsPanel.CommsLinkTransmitRequested +=
+                OnCommsLinkTransmitRequested;
 
             Controls.Add(
                 _driveOpsPanel);
@@ -1712,6 +1717,13 @@ public sealed class D3D11RenderWindow : Form
     {
         _driveOpsPanel?.ReceiveMessage(
             message);
+    }
+
+    private void OnCommsLinkTransmitRequested(
+        bool active)
+    {
+        CommsLinkTransmitRequested?.Invoke(
+            active);
     }
 
     private void OnDriveOpsMessageRequested(
@@ -24824,6 +24836,8 @@ public sealed class D3D11RenderWindow : Form
             {
                 _driveOpsPanel.MessageRequested -=
                     OnDriveOpsMessageRequested;
+                _driveOpsPanel.CommsLinkTransmitRequested -=
+                    OnCommsLinkTransmitRequested;
             }
 
             if (_scriptRuntime is not null)

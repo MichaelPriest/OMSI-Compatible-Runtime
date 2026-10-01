@@ -367,6 +367,9 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     public event Action<RuntimeDriveOpsMessageRequest>?
         MessageRequested;
 
+    public event Action<bool>?
+        CommsLinkTransmitRequested;
+
     public bool StartAuthorized =>
         !_profile.RequireForStart ||
         _badgeInserted;
@@ -902,7 +905,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         _commsInput.SetBounds(
             8,
             278,
-            375,
+            260,
             28);
 
         var send =
@@ -925,17 +928,58 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 });
 
         send.SetBounds(
+            276,
+            276,
+            112,
+            32);
+
+        var ptt =
+            OmsiButton(
+                "SEGURE PTT",
+                132,
+                (_, _) =>
+                {
+                });
+
+        ptt.SetBounds(
             396,
             276,
             132,
             32);
+
+        ptt.MouseDown +=
+            (_, eventArgs) =>
+            {
+                if (eventArgs.Button ==
+                    MouseButtons.Left)
+                {
+                    CommsLinkTransmitRequested?.Invoke(
+                        true);
+                }
+            };
+
+        ptt.MouseUp +=
+            (_, eventArgs) =>
+            {
+                if (eventArgs.Button ==
+                    MouseButtons.Left)
+                {
+                    CommsLinkTransmitRequested?.Invoke(
+                        false);
+                }
+            };
+
+        ptt.MouseLeave +=
+            (_, _) =>
+                CommsLinkTransmitRequested?.Invoke(
+                    false);
 
         var hint =
             new Label
             {
                 AutoSize = false,
                 Text =
-                    "F10 = pressione e segure para falar. Áudio e chat usam a mesma sessão multiplayer.",
+                    "F10 ou SEGURE PTT = pressione e segure para falar. Áudio e chat usam a mesma sessão multiplayer.",
                 ForeColor =
                     Color.FromArgb(
                         72,
@@ -961,6 +1005,8 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             _commsInput);
         root.Controls.Add(
             send);
+        root.Controls.Add(
+            ptt);
         root.Controls.Add(
             hint);
 

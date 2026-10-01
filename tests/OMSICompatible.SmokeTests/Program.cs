@@ -7683,6 +7683,52 @@ try
             opsMessage.Text,
         "Runtime operational LAN extension round-trip failed.");
 
+    var voicePcm =
+        new byte[]
+        {
+            0x00,
+            0x01,
+            0xFE,
+            0x7F,
+            0x10,
+            0x80,
+            0x34,
+            0x12
+        };
+
+    var encodedVoice =
+        OpenOmsiLanVoiceCodec.Encode(
+            2,
+            ushort.MaxValue,
+            voicePcm);
+
+    Require(
+        OpenOmsiLanVoiceCodec.TryDecode(
+            encodedVoice,
+            out var decodedVoice) &&
+        decodedVoice.SenderId ==
+            2 &&
+        decodedVoice.Sequence ==
+            ushort.MaxValue &&
+        decodedVoice.Pcm16Mono8Khz
+            .SequenceEqual(
+                voicePcm),
+        "CommsLink voice frame codec round-trip failed.");
+
+    var malformedVoice =
+        encodedVoice.ToArray();
+
+    malformedVoice[10] =
+        0xFF;
+    malformedVoice[11] =
+        0x7F;
+
+    Require(
+        !OpenOmsiLanVoiceCodec.TryDecode(
+            malformedVoice,
+            out _),
+        "CommsLink voice frame codec accepted an invalid payload length.");
+
     var lanWorld =
         new OpenOmsiLanWorld(
             "maps/SyntheticMap/global.cfg",
@@ -7869,6 +7915,87 @@ try
         clientReceivedOps.Kind ==
             "DISPATCH",
         "Runtime operational LAN host-to-client relay failed.");
+
+    OpenOmsiLanVoiceFrame?
+        hostReceivedVoice =
+            null;
+    OpenOmsiLanVoiceFrame?
+        clientReceivedVoice =
+            null;
+
+    lanHost.VoiceFrameReceived +=
+        frame =>
+            hostReceivedVoice =
+                frame;
+    lanClient.VoiceFrameReceived +=
+        frame =>
+            clientReceivedVoice =
+                frame;
+
+    Require(
+        lanClient.SendVoiceFrame(
+            voicePcm),
+        "CommsLink client voice frame send was rejected.");
+
+    for (var voiceStep = 0;
+         voiceStep <
+             100 &&
+         hostReceivedVoice is null;
+         voiceStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        hostReceivedVoice is not null &&
+        hostReceivedVoice.SenderId ==
+            lanClient.PlayerId &&
+        hostReceivedVoice.Pcm16Mono8Khz
+            .SequenceEqual(
+                voicePcm),
+        "CommsLink client-to-host voice relay failed.");
+
+    var hostVoicePcm =
+        voicePcm
+            .Reverse()
+            .ToArray();
+
+    Require(
+        lanHost.SendVoiceFrame(
+            hostVoicePcm),
+        "CommsLink host voice frame send was rejected.");
+
+    for (var voiceStep = 0;
+         voiceStep <
+             100 &&
+         clientReceivedVoice is null;
+         voiceStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        clientReceivedVoice is not null &&
+        clientReceivedVoice.SenderId ==
+            lanHost.PlayerId &&
+        clientReceivedVoice.Pcm16Mono8Khz
+            .SequenceEqual(
+                hostVoicePcm),
+        "CommsLink host-to-client voice relay failed.");
 
     Console.WriteLine("OMSI Compatible Runtime smoke test passed.");
     Console.WriteLine(
