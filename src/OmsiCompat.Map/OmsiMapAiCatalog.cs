@@ -21,7 +21,8 @@ public sealed record OmsiAiVehicleDefinition(
     string GroupName,
     string DeclaredPath,
     string? ResolvedPath,
-    double Weight)
+    double Weight,
+    string? DepotHofName = null)
 {
     public bool Exists =>
         ResolvedPath is not null;
@@ -279,6 +280,9 @@ public static partial class OmsiMapAiCatalogReader
         var group =
             "Legacy";
 
+        string? depotHofName =
+            null;
+
         for (var index = 0;
              index <
                  lines.Length;
@@ -290,9 +294,6 @@ public static partial class OmsiMapAiCatalogReader
 
             if (line.Equals(
                     "[aigroup_2]",
-                    StringComparison.OrdinalIgnoreCase) ||
-                line.Equals(
-                    "[aigroup_depot_typgroup_2]",
                     StringComparison.OrdinalIgnoreCase))
             {
                 var groupName =
@@ -305,6 +306,63 @@ public static partial class OmsiMapAiCatalogReader
                 {
                     group =
                         groupName;
+                }
+
+                depotHofName =
+                    null;
+                continue;
+            }
+
+            if (line.Equals(
+                    "[aigroup_depot]",
+                    StringComparison.OrdinalIgnoreCase) ||
+                line.Equals(
+                    "[aigroup_depot_2]",
+                    StringComparison.OrdinalIgnoreCase) ||
+                line.Equals(
+                    "[aigroup_depot_typgroup_2]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var groupNameLine =
+                    FindNextNonEmptyDataLineIndex(
+                        lines,
+                        index + 1);
+
+                if (groupNameLine >=
+                    0)
+                {
+                    group =
+                        Clean(
+                            lines[
+                                groupNameLine]);
+
+                    var hofNameLine =
+                        FindNextNonEmptyDataLineIndex(
+                            lines,
+                            groupNameLine + 1);
+
+                    if (hofNameLine >=
+                        0)
+                    {
+                        var candidate =
+                            Clean(
+                                lines[
+                                    hofNameLine]);
+
+                        depotHofName =
+                            candidate.Length >
+                                    0 &&
+                            !VehicleLineRegex()
+                                .IsMatch(
+                                    candidate)
+                                ? candidate
+                                : null;
+                    }
+                    else
+                    {
+                        depotHofName =
+                            null;
+                    }
                 }
 
                 continue;
@@ -365,7 +423,8 @@ public static partial class OmsiMapAiCatalogReader
                     ResolveRootRelativeFile(
                         root,
                         declared),
-                    weight));
+                    weight,
+                    depotHofName));
         }
 
         return result;

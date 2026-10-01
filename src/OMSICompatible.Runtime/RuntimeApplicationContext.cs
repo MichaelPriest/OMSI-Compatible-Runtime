@@ -93,6 +93,10 @@ internal sealed class RuntimeApplicationContext :
         _trafficHofByVehiclePath =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, OmsiHofCatalog?>
+        _hofCatalogsByPath =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, TrafficScriptRuntimeState>
         _trafficScriptRuntimes =
             [];
@@ -2908,7 +2912,12 @@ internal sealed class RuntimeApplicationContext :
                         false,
                         false,
                         lineAgent.TraveledDistanceMeters,
-                        0.0));
+                        0.0,
+                        lineAgent.LineName,
+                        lineAgent.Destination,
+                        lineAgent.TourNumber,
+                        lineAgent.TripName,
+                        lineAgent.DepotHofName));
             }
         }
 
@@ -4465,6 +4474,8 @@ internal sealed class RuntimeApplicationContext :
 
                 double? wheelDiameterMeters =
                     null;
+                string? trafficHofPath =
+                    null;
 
                 if (_trafficVehicleAssets.TryGetValue(
                         agent.VehiclePath,
@@ -4476,17 +4487,23 @@ internal sealed class RuntimeApplicationContext :
                             .Physics
                             .AverageWheelDiameterMeters;
 
-                    if (!_trafficHofByVehiclePath.TryGetValue(
+                    var hofCacheKey =
+                        BuildTrafficHofCacheKey(
                             agent.VehiclePath,
-                            out var trafficHofPath))
+                            agent.DepotHofName);
+
+                    if (!_trafficHofByVehiclePath.TryGetValue(
+                            hofCacheKey,
+                            out trafficHofPath))
                     {
                         trafficHofPath =
                             ResolveMapHofForBus(
                                 trafficAsset.Bus,
-                                _map.FolderName);
+                                _map.FolderName,
+                                agent.DepotHofName);
 
                         _trafficHofByVehiclePath[
-                            agent.VehiclePath] =
+                            hofCacheKey] =
                             trafficHofPath;
                     }
 
@@ -4504,6 +4521,11 @@ internal sealed class RuntimeApplicationContext :
                     wheelDiameterMeters);
 
                 runtime.ExecuteInit();
+
+                ApplyScheduledAiTarget(
+                    runtime,
+                    agent,
+                    trafficHofPath);
 
                 state =
                     new TrafficScriptRuntimeState(
@@ -4693,9 +4715,18 @@ internal sealed class RuntimeApplicationContext :
         }
     }
 
+    private static string BuildTrafficHofCacheKey(
+        string vehiclePath,
+        string? depotHofName) =>
+        vehiclePath +
+        "|" +
+        (depotHofName ??
+         string.Empty);
+
     private static string? ResolveMapHofForBus(
         OmsiBusInfo bus,
-        string mapFolderName)
+        string mapFolderName,
+        string? preferredHofName = null)
     {
         try
         {
@@ -4722,6 +4753,49 @@ internal sealed class RuntimeApplicationContext :
                 0)
             {
                 return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(
+                    preferredHofName))
+            {
+                var preferred =
+                    preferredHofName.Trim();
+
+                var byFileName =
+                    hofFiles.FirstOrDefault(
+                        path =>
+                            Path.GetFileNameWithoutExtension(
+                                    path)
+                                .Equals(
+                                    preferred,
+                                    StringComparison.OrdinalIgnoreCase));
+
+                if (byFileName is not
+                    null)
+                {
+                    return byFileName;
+                }
+
+                foreach (var path in
+                         hofFiles)
+                {
+                    try
+                    {
+                        var catalog =
+                            OmsiHofCatalogReader.ReadFile(
+                                path);
+
+                        if (catalog.Name.Equals(
+                                preferred,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            return path;
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
             }
 
             var normalizedMap =
@@ -4752,6 +4826,128 @@ internal sealed class RuntimeApplicationContext :
         {
             return null;
         }
+    }
+
+    private void ApplyScheduledAiTarget(
+        OmsiScriptRuntime runtime,
+        WorldTrafficAgentState agent,
+        string? hofPath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                agent.ScheduledLine) ||
+            string.IsNullOrWhiteSpace(
+                agent.ScheduledDestination))
+        {
+            return;
+        }
+
+        var line =
+            agent.ScheduledLine.Trim();
+        var destination =
+            agent.ScheduledDestination.Trim();
+
+        runtime.SetStringLocal(
+            "SetLineTo",
+            line);
+
+        OmsiHofCatalog? hof =
+            null;
+
+        if (!string.IsNullOrWhiteSpace(
+                hofPath))
+        {
+            if (!_hofCatalogsByPath.TryGetValue(
+                    hofPath,
+                    out hof))
+            {
+                try
+                {
+                    hof =
+                        OmsiHofCatalogReader.ReadFile(
+                            hofPath);
+                }
+                catch
+                {
+                    hof =
+                        null;
+                }
+
+                _hofCatalogsByPath[
+                    hofPath] =
+                    hof;
+            }
+        }
+
+        var terminusIndex =
+            hof?.FindTerminusIndex(
+                destination);
+
+        if (!terminusIndex.HasValue)
+        {
+            Console.WriteLine(
+                $"[line-ai] destination not found in HOF: line={line}; destination={destination}; hof={hof?.Name ?? "<none>"}");
+            return;
+        }
+
+        var terminus =
+            hof!.Termini[
+                terminusIndex.Value];
+
+        runtime.SetLocal(
+            "AI_target_index",
+            terminusIndex.Value);
+
+        if (runtime.HasTrigger(
+                "ai_scheduled_settarget"))
+        {
+            runtime.ExecuteTrigger(
+                "ai_scheduled_settarget");
+
+            Console.WriteLine(
+                $"[line-ai] script target line={line}; destination={destination}; index={terminusIndex.Value}; hof={hof.Name}");
+            return;
+        }
+
+        // Compatibility fallback for buses without the OMSI AI target trigger.
+        runtime.SetLocal(
+            "IBIS_TerminusIndex",
+            terminusIndex.Value);
+        runtime.SetLocal(
+            "IBIS_TerminusCode",
+            terminus.Code);
+        runtime.SetStringLocal(
+            "IBIS_terminus_name",
+            terminus.Strings.FirstOrDefault(
+                static value =>
+                    !string.IsNullOrWhiteSpace(
+                        value)) ??
+            terminus.Identifier);
+        runtime.SetStringLocal(
+            "IBIS_terminus_texture",
+            terminus.Identifier);
+
+        var lineDigits =
+            new string(
+                line
+                    .TakeWhile(
+                        static character =>
+                            char.IsDigit(
+                                character))
+                    .ToArray());
+
+        if (double.TryParse(
+                lineDigits,
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var lineNumber))
+        {
+            runtime.SetLocal(
+                "IBIS_LinieKurs",
+                lineNumber);
+        }
+
+        Console.WriteLine(
+            $"[line-ai] fallback target line={line}; destination={destination}; index={terminusIndex.Value}; hof={hof.Name}");
     }
 
     private static void ApplyHofToScriptRuntime(

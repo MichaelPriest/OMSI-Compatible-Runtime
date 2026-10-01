@@ -4113,6 +4113,38 @@ try
                     ])
             ]);
 
+    var syntheticHof =
+        OmsiHofCatalogReader.ParseText(
+            Lines(
+                "stringcount_terminus",
+                "3",
+                "[name]",
+                "SyntheticDepot",
+                "[addterminus]",
+                "7",
+                "Centro",
+                "CENTRO",
+                "",
+                "CENTRO",
+                "[addterminus_list]",
+                "\t12\tBairro\tBAIRRO\t\tBAIRRO",
+                "[end]"));
+
+    Require(
+        syntheticHof.Name ==
+            "SyntheticDepot" &&
+        syntheticHof.Termini.Count ==
+            2 &&
+        syntheticHof.FindTerminusIndex(
+            "Centro") ==
+            0 &&
+        syntheticHof.FindTerminusIndex(
+            "bairro") ==
+            1 &&
+        syntheticHof.Termini[1].Code ==
+            12,
+        "HOF parser did not preserve OMSI terminus order/identifiers for scheduled AI.");
+
     var lineAiVehicle =
         new OmsiAiVehicleDefinition(
             "Busses",
@@ -4122,7 +4154,8 @@ try
                 "Vehicles",
                 "Synthetic",
                 "traffic.bus"),
-            1.0);
+            1.0,
+            "SyntheticDepot");
 
     var lineSchedule =
         WorldLineAiScheduleResolver.Resolve(
@@ -4249,7 +4282,9 @@ try
         departedLineAgents[0].TripName ==
             "Linha100" &&
         departedLineAgents[0].SegmentIndex ==
-            firstRoadPath.Index,
+            firstRoadPath.Index &&
+        departedLineAgents[0].DepotHofName ==
+            "SyntheticDepot",
         "LineAI did not activate the exact TTL service after its scheduled departure.");
 
     for (var lineStep = 0;

@@ -16,7 +16,12 @@ public sealed record WorldTrafficAgentState(
     bool AiBlinkerLeft = false,
     bool AiBlinkerRight = false,
     double TraveledDistanceMeters = 0.0,
-    double PathCurvaturePerMeter = 0.0);
+    double PathCurvaturePerMeter = 0.0,
+    string? ScheduledLine = null,
+    string? ScheduledDestination = null,
+    string? ScheduledTour = null,
+    string? ScheduledTrip = null,
+    string? DepotHofName = null);
 
 public sealed record WorldTrafficObstacleState(
     WorldVector3 Position,
