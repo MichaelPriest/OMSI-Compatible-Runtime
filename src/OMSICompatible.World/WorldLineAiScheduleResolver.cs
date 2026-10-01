@@ -29,6 +29,10 @@ public sealed record WorldLineAiScheduledTrip(
     public bool Ready =>
         Status ==
         WorldLineAiScheduleStatus.Ready;
+
+    public int DayMask =>
+        OmsiTimetableDayMask.Parse(
+            Extra);
 }
 
 public sealed record WorldLineAiSchedule(

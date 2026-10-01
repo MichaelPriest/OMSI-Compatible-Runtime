@@ -2598,6 +2598,19 @@ try
 
     File.WriteAllText(
         Path.Combine(
+            maps[0].DirectoryPath,
+            "Holidays.txt"),
+        Lines(
+            "[holiday]",
+            "20260930",
+            "Public Holiday",
+            "[holidays]",
+            "20261001",
+            "20261010",
+            "School Holidays"));
+
+    File.WriteAllText(
+        Path.Combine(
             timetableDirectory,
             "Busstops.cfg"),
         Lines(
@@ -2659,7 +2672,11 @@ try
             "[addtrip]",
             "Linha100",
             "0",
-            "480.5"));
+            "480.5",
+            "[newtour]",
+            "2",
+            "Busses",
+            ""));
 
     var timetableCatalog =
         OmsiTimetableCatalogReader.Read(
@@ -2697,13 +2714,21 @@ try
         timetableCatalog.Lines[0].Priority ==
             3 &&
         timetableCatalog.Lines[0].Tours.Count ==
-            1 &&
+            2 &&
         timetableCatalog.Lines[0].Tours[0].Number ==
             "1" &&
         timetableCatalog.Lines[0].Tours[0].AiGroup ==
             "Busses" &&
         timetableCatalog.Lines[0].Tours[0].Extra ==
             "127" &&
+        timetableCatalog.Lines[0].Tours[0].DayMask ==
+            127 &&
+        timetableCatalog.Lines[0].Tours[1].Number ==
+            "2" &&
+        timetableCatalog.Lines[0].Tours[1].Extra ==
+            string.Empty &&
+        timetableCatalog.Lines[0].Tours[1].DayMask ==
+            1023 &&
         timetableCatalog.Lines[0].Tours[0].Trips.Count ==
             1 &&
         timetableCatalog.Lines[0].Tours[0].Trips[0].TripName ==
@@ -2714,7 +2739,42 @@ try
             timetableCatalog.Lines[0].Tours[0].Trips[0].DepartureMinutes -
             480.5) <
             0.0001,
-        "OMSI TTData parser did not preserve real trip, track, TTL tour, AI group, profile and departure data.");
+        "OMSI TTData parser did not preserve real trip, track, TTL tour, AI group, day mask, profile and departure data.");
+
+    var mapCalendar =
+        OmsiMapCalendarReader.Read(
+            maps[0]);
+
+    var publicHolidayBits =
+        OmsiTimetableDayMask.Resolve(
+            new DateOnly(
+                2026,
+                9,
+                30),
+            mapCalendar);
+
+    var schoolHolidayBits =
+        OmsiTimetableDayMask.Resolve(
+            new DateOnly(
+                2026,
+                10,
+                2),
+            mapCalendar);
+
+    Require(
+        mapCalendar.IsPublicHoliday(
+            20260930) &&
+        mapCalendar.IsSchoolHoliday(
+            20261002) &&
+        publicHolidayBits.DayBit ==
+            (1 << 7) &&
+        publicHolidayBits.SchoolBit ==
+            (1 << 9) &&
+        schoolHolidayBits.DayBit ==
+            (1 << 4) &&
+        schoolHolidayBits.SchoolBit ==
+            (1 << 8),
+        "OMSI Holidays.txt calendar/day-mask resolution is incorrect.");
 
     var buses = BusDiscovery.Discover(contentRoot);
     Require(
@@ -4039,7 +4099,7 @@ try
                         new OmsiTimetableTour(
                             "1",
                             "Busses",
-                            "127",
+                            "1023",
                             [
                                 new OmsiTimetableTourTrip(
                                     "Linha100",
@@ -4094,6 +4154,44 @@ try
             lineSchedule.Trips[0]) ==
             lineAiVehicle,
         "LineAI did not connect TTL tour/departure to the real TTP/TTR route and AI vehicle group.");
+
+    var priorityFilteredLineSimulation =
+        new WorldLineAiSimulation(
+            lineSchedule,
+            trafficPaths,
+            maximumActiveAgents:
+                4,
+            serviceStartMinutes:
+                480.0,
+            maximumLinePriority:
+                2);
+
+    Require(
+        priorityFilteredLineSimulation.RequiredVehiclePaths.Count ==
+            0,
+        "LineAI ignored OMSI scheduled-traffic priority filtering.");
+
+    var calendarFilteredLineSimulation =
+        new WorldLineAiSimulation(
+            lineSchedule,
+            trafficPaths,
+            maximumActiveAgents:
+                4,
+            serviceStartMinutes:
+                480.0,
+            maximumLinePriority:
+                3,
+            requiredDayBit:
+                1 <<
+                7,
+            requiredSchoolBit:
+                1 <<
+                9);
+
+    Require(
+        calendarFilteredLineSimulation.RequiredVehiclePaths.Count ==
+            1,
+        "LineAI rejected a tour whose OMSI day/school mask is valid.");
 
     var lineSimulation =
         new WorldLineAiSimulation(

@@ -36,7 +36,12 @@ public sealed record OmsiTimetableTour(
     string Number,
     string AiGroup,
     string Extra,
-    IReadOnlyList<OmsiTimetableTourTrip> Trips);
+    IReadOnlyList<OmsiTimetableTourTrip> Trips)
+{
+    public int DayMask =>
+        OmsiTimetableDayMask.Parse(
+            Extra);
+}
 
 public sealed record OmsiTimetableLine(
     string Name,
@@ -398,7 +403,7 @@ public static class OmsiTimetableCatalogReader
                         fileLines,
                         ref cursor,
                         out var aiGroup) ||
-                    !TryReadNextTimetableValue(
+                    !TryReadTourDayMask(
                         fileLines,
                         ref cursor,
                         out var extra))
@@ -497,6 +502,52 @@ public static class OmsiTimetableCatalogReader
             userAllowed,
             priority,
             tours.ToArray());
+    }
+
+    private static bool TryReadTourDayMask(
+        IReadOnlyList<string> lines,
+        ref int cursor,
+        out string value)
+    {
+        for (var index =
+                 cursor + 1;
+             index <
+                 lines.Count;
+             index++)
+        {
+            var raw =
+                CleanValue(
+                    lines[index]);
+
+            if (raw.StartsWith(
+                    '#') ||
+                raw.StartsWith(
+                    "//",
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (raw.StartsWith(
+                    '[') &&
+                raw.EndsWith(
+                    ']'))
+            {
+                value =
+                    string.Empty;
+                return true;
+            }
+
+            cursor =
+                index;
+            value =
+                raw;
+            return true;
+        }
+
+        value =
+            string.Empty;
+        return true;
     }
 
     private static bool TryReadNextTimetableValue(

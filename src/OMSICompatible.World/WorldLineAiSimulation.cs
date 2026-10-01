@@ -64,7 +64,10 @@ public sealed class WorldLineAiSimulation
         WorldTrafficPathNetwork network,
         int maximumActiveAgents,
         double serviceStartMinutes,
-        int serviceDaySeed = 0)
+        int serviceDaySeed = 0,
+        int maximumLinePriority = int.MaxValue,
+        int requiredDayBit = 0,
+        int requiredSchoolBit = 0)
     {
         ArgumentNullException.ThrowIfNull(schedule);
         ArgumentNullException.ThrowIfNull(network);
@@ -81,9 +84,21 @@ public sealed class WorldLineAiSimulation
 
         foreach (var trip in
                  schedule.Trips.Where(
-                     static trip =>
+                     trip =>
                          trip.Ready &&
-                         trip.Route is { FullyResolved: true }))
+                         trip.Route is { FullyResolved: true } &&
+                         trip.LinePriority <=
+                             maximumLinePriority &&
+                         (requiredDayBit ==
+                              0 ||
+                          (trip.DayMask &
+                           requiredDayBit) !=
+                              0) &&
+                         (requiredSchoolBit ==
+                              0 ||
+                          (trip.DayMask &
+                           requiredSchoolBit) !=
+                              0)))
         {
             var vehicle =
                 WorldLineAiScheduleResolver.SelectVehicle(

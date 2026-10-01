@@ -42,6 +42,7 @@ internal sealed class RuntimeApplicationContext :
     private WorldLineAiSimulation? _lineAiSimulation;
     private WorldRailTrafficSimulation? _railTrafficSimulation;
     private readonly Lazy<OmsiTimetableCatalog> _timetableCatalog;
+    private readonly Lazy<OmsiMapCalendar> _mapCalendar;
     private WorldLineAiSchedule _lineAiSchedule =
         WorldLineAiSchedule.Empty;
     private double _lineAiServiceMinutes;
@@ -197,6 +198,12 @@ internal sealed class RuntimeApplicationContext :
             new Lazy<OmsiTimetableCatalog>(
                 () =>
                     OmsiTimetableCatalogReader.Read(
+                        _map),
+                LazyThreadSafetyMode.ExecutionAndPublication);
+        _mapCalendar =
+            new Lazy<OmsiMapCalendar>(
+                () =>
+                    OmsiMapCalendarReader.Read(
                         _map),
                 LazyThreadSafetyMode.ExecutionAndPublication);
         _bus = bus;
@@ -2517,6 +2524,15 @@ internal sealed class RuntimeApplicationContext :
                 world.TrafficPaths,
                 world.AiCatalog);
 
+        var serviceDate =
+            DateOnly.FromDateTime(
+                DateTime.Today);
+
+        var dayBits =
+            OmsiTimetableDayMask.Resolve(
+                serviceDate,
+                _mapCalendar.Value);
+
         return new WorldLineAiSimulation(
             _lineAiSchedule,
             world.TrafficPaths,
@@ -2528,7 +2544,16 @@ internal sealed class RuntimeApplicationContext :
             serviceStartMinutes:
                 _lineAiServiceMinutes,
             serviceDaySeed:
-                DateTime.Today.DayOfYear);
+                serviceDate.DayOfYear,
+            maximumLinePriority:
+                Math.Clamp(
+                    _options.ScheduledTrafficPriority,
+                    1,
+                    4),
+            requiredDayBit:
+                dayBits.DayBit,
+            requiredSchoolBit:
+                dayBits.SchoolBit);
     }
 
     private static WorldRailTrafficSimulation
