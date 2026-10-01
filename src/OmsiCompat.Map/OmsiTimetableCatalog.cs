@@ -814,7 +814,7 @@ public static class OmsiTimetableCatalogReader
                 !TryReadNextTimetableValue(
                     lines,
                     ref entryCursor,
-                    out var lengthText) ||
+                    out var entryLengthText) ||
                 !long.TryParse(
                     objectText,
                     NumberStyles.Integer,
@@ -851,7 +851,7 @@ public static class OmsiTimetableCatalogReader
                     tileIndex,
                     Math.Max(
                         ParseFlexibleDouble(
-                            lengthText) ??
+                            entryLengthText) ??
                         0.0,
                         0.0),
                     tileCoordinate));
