@@ -27,6 +27,21 @@ public sealed record RuntimeDriveOpsInboundMessage(
     string Target,
     long TimestampUnixMilliseconds);
 
+internal readonly record struct RuntimeFleetCareState(
+    string EngineTemperature,
+    string OilPressure,
+    string AirPressure,
+    string BatteryVoltage,
+    string FaultState,
+    bool FaultActive);
+
+internal readonly record struct RuntimePassengerFlowState(
+    string PassengerCount,
+    string DoorState,
+    string RampState,
+    string KneelingState,
+    string WheelchairState);
+
 internal sealed class RuntimeDriveOpsPanel : Panel
 {
     private sealed class DriverPassProfile
@@ -69,6 +84,29 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         OmsiListBox();
     private readonly ListBox _incidentMessages =
         OmsiListBox();
+    private readonly Label _fleetCareState =
+        OmsiTelemetryLabel(
+            "TEMPERATURA MOTOR: N/D\r\n" +
+            "PRESSÃO ÓLEO: N/D\r\n" +
+            "PRESSÃO AR: N/D\r\n" +
+            "TENSÃO BATERIA: N/D\r\n" +
+            "FALHAS: N/D");
+    private readonly Label _passengerFlowState =
+        OmsiTelemetryLabel(
+            "PASSAGEIROS: N/D\r\n" +
+            "PORTAS: N/D\r\n" +
+            "RAMPA: N/D\r\n" +
+            "KNEELING: N/D\r\n" +
+            "CADEIRANTE: N/D");
+    private RuntimeFleetCareState _lastFleetCareState =
+        new(
+            "N/D",
+            "N/D",
+            "N/D",
+            "N/D",
+            "N/D",
+            false);
+    private bool _fleetCareFaultReported;
     private readonly Label _shiftState =
         new()
         {
@@ -272,6 +310,8 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         AddModuleButton(navigation, "ASSISTLINK", ShowAssistLink);
         AddModuleButton(navigation, "CONTROLHUB", ShowControlHub);
         AddModuleButton(navigation, "ROUTECORE", ShowRouteCore);
+        AddModuleButton(navigation, "FLEETCARE", ShowFleetCare);
+        AddModuleButton(navigation, "PASSENGERFLOW", ShowPassengerFlow);
         AddModuleButton(navigation, "SHIFTFLOW", ShowShiftFlow);
         AddModuleButton(navigation, "INCIDENTLOG", ShowIncidentLog);
 
@@ -554,6 +594,55 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             electrical;
         _lastEngineState =
             engine;
+    }
+
+    public void UpdateFleetCareState(
+        RuntimeFleetCareState state)
+    {
+        _lastFleetCareState =
+            state;
+
+        _fleetCareState.Text =
+            $"TEMPERATURA MOTOR: {state.EngineTemperature}\r\n" +
+            $"PRESSÃO ÓLEO: {state.OilPressure}\r\n" +
+            $"PRESSÃO AR: {state.AirPressure}\r\n" +
+            $"TENSÃO BATERIA: {state.BatteryVoltage}\r\n" +
+            $"FALHAS: {state.FaultState}";
+
+        _fleetCareState.ForeColor =
+            state.FaultActive
+                ? Color.FromArgb(
+                    150,
+                    32,
+                    32)
+                : OmsiText;
+
+        if (state.FaultActive &&
+            !_fleetCareFaultReported)
+        {
+            _fleetCareFaultReported =
+                true;
+
+            RecordIncident(
+                "FLEETCARE",
+                state.FaultState);
+        }
+        else if (!state.FaultActive)
+        {
+            _fleetCareFaultReported =
+                false;
+        }
+    }
+
+    public void UpdatePassengerFlowState(
+        RuntimePassengerFlowState state)
+    {
+        _passengerFlowState.Text =
+            $"PASSAGEIROS: {state.PassengerCount}\r\n" +
+            $"PORTAS: {state.DoorState}\r\n" +
+            $"RAMPA: {state.RampState}\r\n" +
+            $"KNEELING: {state.KneelingState}\r\n" +
+            $"CADEIRANTE: {state.WheelchairState}";
     }
 
     public void RecordIncident(
@@ -1050,6 +1139,122 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         root.Controls.Add(publish);
         root.Controls.Add(_routeMessages);
         _contentHost.Controls.Add(root);
+    }
+
+    private void ShowFleetCare()
+    {
+        _contentHost.Controls.Clear();
+
+        var root =
+            ModuleRoot(
+                "FLEETCARE",
+                "Saúde operacional do ônibus · somente dados expostos pelos scripts OMSI");
+
+        _fleetCareState.SetBounds(
+            8,
+            74,
+            520,
+            150);
+
+        var support =
+            OmsiButton(
+                "ENVIAR AO ASSISTLINK",
+                190,
+                (_, _) =>
+                {
+                    var summary =
+                        _lastFleetCareState.FaultActive
+                            ? _lastFleetCareState.FaultState
+                            : "Solicitação preventiva de verificação do veículo.";
+
+                    RequestMessage(
+                        "ASSISTLINK",
+                        "FLEETCARE",
+                        summary,
+                        "CONTROLHUB");
+                });
+
+        support.SetBounds(
+            8,
+            238,
+            190,
+            32);
+
+        var note =
+            new Label
+            {
+                AutoSize = false,
+                Text =
+                    "O FleetCare não altera física, desgaste ou scripts. Ele apenas lê telemetria real que o veículo disponibiliza.",
+                ForeColor = OmsiText,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        8.5f),
+                TextAlign =
+                    ContentAlignment.MiddleLeft
+            };
+
+        note.SetBounds(
+            8,
+            282,
+            520,
+            48);
+
+        root.Controls.Add(
+            _fleetCareState);
+        root.Controls.Add(
+            support);
+        root.Controls.Add(
+            note);
+
+        _contentHost.Controls.Add(
+            root);
+    }
+
+    private void ShowPassengerFlow()
+    {
+        _contentHost.Controls.Clear();
+
+        var root =
+            ModuleRoot(
+                "PASSENGERFLOW",
+                "Passageiros e acessibilidade · leitura dos estados OMSI do veículo");
+
+        _passengerFlowState.SetBounds(
+            8,
+            74,
+            520,
+            150);
+
+        var note =
+            new Label
+            {
+                AutoSize = false,
+                Text =
+                    "Quando o ônibus não expõe contagem, rampa, kneeling ou cadeirante em suas variáveis de script, o valor permanece N/D.",
+                ForeColor = OmsiText,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        8.5f),
+                TextAlign =
+                    ContentAlignment.MiddleLeft
+            };
+
+        note.SetBounds(
+            8,
+            238,
+            520,
+            54);
+
+        root.Controls.Add(
+            _passengerFlowState);
+        root.Controls.Add(
+            note);
+
+        _contentHost.Controls.Add(
+            root);
     }
 
     private void ShowShiftFlow()
@@ -1605,6 +1810,32 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 new Font(
                     "Consolas",
                     8.5f)
+        };
+
+    private static Label OmsiTelemetryLabel(
+        string text) =>
+        new()
+        {
+            AutoSize = false,
+            Text = text,
+            BackColor =
+                Color.FromArgb(
+                    238,
+                    241,
+                    244),
+            ForeColor = OmsiText,
+            BorderStyle =
+                BorderStyle.FixedSingle,
+            Font =
+                new Font(
+                    "Consolas",
+                    9.0f,
+                    FontStyle.Bold),
+            Padding =
+                new Padding(
+                    10),
+            TextAlign =
+                ContentAlignment.TopLeft
         };
 
     private static ComboBox OmsiComboBox() =>

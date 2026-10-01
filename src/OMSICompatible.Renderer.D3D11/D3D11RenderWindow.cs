@@ -6853,10 +6853,22 @@ public sealed class D3D11RenderWindow : Form
             var fuelState =
                 ResolveFuelTrackState();
 
+            var fleetCareState =
+                ResolveFleetCareState();
+
+            var passengerFlowState =
+                ResolvePassengerFlowState();
+
             _driveOpsPanel?.UpdateVehicleState(
                 _vehicle.ElectricalSystemEnabled,
                 _vehicle.EngineRunning,
                 _vehicle.SpeedMetersPerSecond);
+
+            _driveOpsPanel?.UpdateFleetCareState(
+                fleetCareState);
+
+            _driveOpsPanel?.UpdatePassengerFlowState(
+                passengerFlowState);
 
             _navPulsePanel?.UpdateState(
                 _vehicle.Position,
@@ -6970,6 +6982,265 @@ public sealed class D3D11RenderWindow : Form
             kind,
             percent.HasValue &&
             percent.Value <= 15.0);
+    }
+
+    private RuntimeFleetCareState ResolveFleetCareState()
+    {
+        var engineTemperature =
+            FormatDriveOpsTelemetry(
+                ReadFirstDriveOpsScriptValue(
+                    "engine_coolant_temp",
+                    "coolant_temp",
+                    "engine_temperature",
+                    "engine_temp",
+                    "motortemperatur"));
+
+        var oilPressure =
+            FormatDriveOpsTelemetry(
+                ReadFirstDriveOpsScriptValue(
+                    "engine_oil_pressure",
+                    "oil_pressure",
+                    "oeldruck"));
+
+        var airPressure =
+            FormatDriveOpsTelemetry(
+                ReadFirstDriveOpsScriptValue(
+                    "air_pressure",
+                    "main_air_pressure",
+                    "brake_pressure",
+                    "brake_pressure_1",
+                    "bremse_hauptdruck"));
+
+        var batteryVoltage =
+            FormatDriveOpsTelemetry(
+                ReadFirstDriveOpsScriptValue(
+                    "battery_voltage",
+                    "elec_voltage",
+                    "batteriespannung"));
+
+        var faultNames =
+            new[]
+            {
+                "engine_damage",
+                "engine_failure",
+                "damage_engine",
+                "vehicle_damage",
+                "veh_damage"
+            };
+
+        var faultKnown =
+            false;
+        var faultActive =
+            false;
+        var faultText =
+            "N/D";
+
+        foreach (var variable in
+                 faultNames)
+        {
+            if (_scriptRuntime?.HasLocalVariable(
+                    variable) !=
+                true)
+            {
+                continue;
+            }
+
+            faultKnown =
+                true;
+
+            var value =
+                _scriptRuntime.GetLocal(
+                    variable);
+
+            if (!double.IsFinite(
+                    value))
+            {
+                continue;
+            }
+
+            if (Math.Abs(
+                    value) >
+                0.001)
+            {
+                faultActive =
+                    true;
+                faultText =
+                    $"{variable}={value:0.###}";
+                break;
+            }
+        }
+
+        if (faultKnown &&
+            !faultActive)
+        {
+            faultText =
+                "SEM FALHA EXPOSTA ATIVA";
+        }
+
+        return new RuntimeFleetCareState(
+            engineTemperature,
+            oilPressure,
+            airPressure,
+            batteryVoltage,
+            faultText,
+            faultActive);
+    }
+
+    private RuntimePassengerFlowState ResolvePassengerFlowState()
+    {
+        var passengerCount =
+            FormatDriveOpsTelemetry(
+                ReadFirstDriveOpsScriptValue(
+                    "passenger_count",
+                    "pax_count",
+                    "passengers",
+                    "people_count",
+                    "human_count"));
+
+        var wheelchair =
+            FormatDriveOpsTelemetry(
+                ReadFirstDriveOpsScriptValue(
+                    "wheelchair_count",
+                    "wheelchair",
+                    "rollstuhl"));
+
+        var ramp =
+            FormatDriveOpsFlag(
+                ReadFirstDriveOpsScriptValue(
+                    "wheelchair_ramp",
+                    "ramp_state",
+                    "ramp_position",
+                    "ramp"),
+                "ACIONADA",
+                "RECOLHIDA");
+
+        var kneeling =
+            FormatDriveOpsFlag(
+                ReadFirstDriveOpsScriptValue(
+                    "kneeling",
+                    "kneel",
+                    "niveau_absenkung"),
+                "ATIVO",
+                "NORMAL");
+
+        var knownDoor =
+            false;
+        var doorOpen =
+            false;
+
+        foreach (var variable in
+                 new[]
+                 {
+                     "door_0",
+                     "door_1",
+                     "door_2",
+                     "door_3",
+                     "door_4",
+                     "door_5"
+                 })
+        {
+            if (_scriptRuntime?.HasLocalVariable(
+                    variable) !=
+                true)
+            {
+                continue;
+            }
+
+            knownDoor =
+                true;
+
+            var value =
+                _scriptRuntime.GetLocal(
+                    variable);
+
+            if (double.IsFinite(
+                    value) &&
+                Math.Abs(
+                    value) >
+                0.05)
+            {
+                doorOpen =
+                    true;
+            }
+        }
+
+        return new RuntimePassengerFlowState(
+            passengerCount,
+            knownDoor
+                ? doorOpen
+                    ? "ABERTA"
+                    : "FECHADA"
+                : "N/D",
+            ramp,
+            kneeling,
+            wheelchair);
+    }
+
+    private (string Name, double Value)?
+        ReadFirstDriveOpsScriptValue(
+            params string[] variables)
+    {
+        if (_scriptRuntime is null)
+        {
+            return null;
+        }
+
+        foreach (var variable in
+                 variables)
+        {
+            if (!_scriptRuntime.HasLocalVariable(
+                    variable))
+            {
+                continue;
+            }
+
+            var value =
+                _scriptRuntime.GetLocal(
+                    variable);
+
+            if (double.IsFinite(
+                    value))
+            {
+                return (
+                    variable,
+                    value);
+            }
+        }
+
+        return null;
+    }
+
+    private static string FormatDriveOpsTelemetry(
+        (string Name, double Value)? reading)
+    {
+        if (!reading.HasValue)
+        {
+            return "N/D";
+        }
+
+        var value =
+            reading.Value;
+
+        return
+            $"{value.Value:0.##} · {value.Name}";
+    }
+
+    private static string FormatDriveOpsFlag(
+        (string Name, double Value)? reading,
+        string activeText,
+        string inactiveText)
+    {
+        if (!reading.HasValue)
+        {
+            return "N/D";
+        }
+
+        return
+            Math.Abs(
+                reading.Value.Value) >
+            0.05
+                ? $"{activeText} · {reading.Value.Name}"
+                : $"{inactiveText} · {reading.Value.Name}";
     }
 
     private void CheckStreamingCenter()
