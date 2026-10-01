@@ -4012,6 +4012,99 @@ try
             secondRoadPath.Index,
         "LineAI did not resolve ordered OMSI TTR entries to the exact connected road segments.");
 
+    var lineScheduleCatalog =
+        new OmsiTimetableCatalog(
+            [
+                new OmsiTimetableTrip(
+                    "Linha100",
+                    "Linha100.ttp",
+                    syntheticLineTrack.Name,
+                    "Centro",
+                    "100",
+                    Array.Empty<OmsiTimetableStop>())
+            ],
+            new Dictionary<string, OmsiTimetableTrack>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [syntheticLineTrack.Name] =
+                    syntheticLineTrack
+            },
+            [
+                new OmsiTimetableLine(
+                    "100",
+                    "100.ttl",
+                    true,
+                    3,
+                    [
+                        new OmsiTimetableTour(
+                            "1",
+                            "Busses",
+                            "127",
+                            [
+                                new OmsiTimetableTourTrip(
+                                    "Linha100",
+                                    0,
+                                    480.5)
+                            ])
+                    ])
+            ]);
+
+    var lineAiVehicle =
+        new OmsiAiVehicleDefinition(
+            "Busses",
+            @"Vehicles\Synthetic\traffic.bus",
+            syntheticAiVehiclePath,
+            1.0);
+
+    var lineSchedule =
+        WorldLineAiScheduleResolver.Resolve(
+            lineScheduleCatalog,
+            trafficPaths,
+            new OmsiMapAiCatalog(
+                [lineAiVehicle],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()));
+
+    Require(
+        lineSchedule.Trips.Count ==
+            1 &&
+        lineSchedule.ReadyCount ==
+            1 &&
+        lineSchedule.UnresolvedCount ==
+            0 &&
+        lineSchedule.Trips[0].Status ==
+            WorldLineAiScheduleStatus.Ready &&
+        lineSchedule.Trips[0].Route is
+            { FullyResolved: true } &&
+        lineSchedule.Trips[0].Route!.SegmentIndices
+            .SequenceEqual(
+                new[]
+                {
+                    firstRoadPath.Index,
+                    secondRoadPath.Index
+                }) &&
+        lineSchedule.Trips[0].DepartureMinutes ==
+            480.5 &&
+        WorldLineAiScheduleResolver.SelectVehicle(
+            lineSchedule.Trips[0]) ==
+            lineAiVehicle,
+        "LineAI did not connect TTL tour/departure to the real TTP/TTR route and AI vehicle group.");
+
+    var missingGroupSchedule =
+        WorldLineAiScheduleResolver.Resolve(
+            lineScheduleCatalog,
+            trafficPaths,
+            OmsiMapAiCatalog.Empty);
+
+    Require(
+        missingGroupSchedule.Trips.Count ==
+            1 &&
+        missingGroupSchedule.Trips[0].Status ==
+            WorldLineAiScheduleStatus.VehicleGroupMissing &&
+        !missingGroupSchedule.Trips[0].Ready,
+        "LineAI guessed a fallback vehicle when the TTL AI group was missing.");
+
     var ambiguousLineNetwork =
         new WorldTrafficPathNetwork(
             [

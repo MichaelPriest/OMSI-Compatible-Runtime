@@ -40,6 +40,9 @@ internal sealed class RuntimeApplicationContext :
     private OmsiScriptRuntime? _playerScriptRuntime;
     private WorldTrafficSimulation? _trafficSimulation;
     private WorldRailTrafficSimulation? _railTrafficSimulation;
+    private readonly Lazy<OmsiTimetableCatalog> _timetableCatalog;
+    private WorldLineAiSchedule _lineAiSchedule =
+        WorldLineAiSchedule.Empty;
     private WorldDefinition? _currentWorld;
     private OpenOmsiLanSession? _multiplayerSession;
     private readonly RuntimeCommsLinkVoiceService
@@ -188,6 +191,12 @@ internal sealed class RuntimeApplicationContext :
     {
         _contentRoot = contentRoot;
         _map = map;
+        _timetableCatalog =
+            new Lazy<OmsiTimetableCatalog>(
+                () =>
+                    OmsiTimetableCatalogReader.Read(
+                        _map),
+                LazyThreadSafetyMode.ExecutionAndPublication);
         _bus = bus;
         _entryPoint = entryPoint;
         _externalLoading =
@@ -527,6 +536,8 @@ internal sealed class RuntimeApplicationContext :
             WriteTrafficDiagnostics(
                 world,
                 _trafficSimulation);
+            WriteLineAiDiagnostics(
+                _lineAiSchedule);
 
             WriteRailTrafficDiagnostics(
                 world,
@@ -1620,6 +1631,8 @@ internal sealed class RuntimeApplicationContext :
                 WriteTrafficDiagnostics(
                     streamedWorld,
                     _trafficSimulation);
+                WriteLineAiDiagnostics(
+                    _lineAiSchedule);
 
                 WriteRailTrafficDiagnostics(
                     streamedWorld,
@@ -2441,6 +2454,12 @@ internal sealed class RuntimeApplicationContext :
                     3.25,
                     0.75,
                     4.0);
+
+        _lineAiSchedule =
+            WorldLineAiScheduleResolver.Resolve(
+                _timetableCatalog.Value,
+                world.TrafficPaths,
+                world.AiCatalog);
 
         return new WorldTrafficSimulation(
             world.TrafficPaths,
@@ -4703,6 +4722,25 @@ internal sealed class RuntimeApplicationContext :
             $"terminal={world.TrafficPaths.TerminalEndpointCount}; " +
             $"boundary={world.TrafficPaths.BoundaryEndpointCount}; " +
             $"unmatched={world.TrafficPaths.UnmatchedEndpointCount}");
+    }
+
+    private static void WriteLineAiDiagnostics(
+        WorldLineAiSchedule schedule)
+    {
+        var statusCounts =
+            schedule.Trips
+                .GroupBy(
+                    static trip =>
+                        trip.Status)
+                .OrderBy(
+                    static group =>
+                        group.Key)
+                .Select(
+                    static group =>
+                        $"{group.Key}={group.Count()}");
+
+        Console.WriteLine(
+            $"[line-ai] scheduled={schedule.Trips.Count}; ready={schedule.ReadyCount}; unresolved={schedule.UnresolvedCount}; {string.Join("; ", statusCounts)}");
     }
 
     private static void WriteRailTrafficDiagnostics(
