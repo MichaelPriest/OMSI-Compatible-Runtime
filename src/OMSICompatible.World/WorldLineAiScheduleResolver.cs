@@ -25,7 +25,8 @@ public sealed record WorldLineAiScheduledTrip(
     OmsiTimetableTrip? Trip,
     WorldLineAiRoute? Route,
     IReadOnlyList<OmsiAiVehicleDefinition> VehicleCandidates,
-    WorldLineAiScheduleStatus Status)
+    WorldLineAiScheduleStatus Status,
+    WorldLineAiTripTiming? Timing = null)
 {
     public bool Ready =>
         Status ==
@@ -349,7 +350,13 @@ public static class WorldLineAiScheduleResolver
                 resolvedRoute,
                 vehicleCandidates ??
                     Array.Empty<OmsiAiVehicleDefinition>(),
-                status);
+                status,
+                resolvedTrip is null
+                    ? null
+                    : WorldLineAiTripTimingResolver.Resolve(
+                        resolvedTrip,
+                        tourTrip.ProfileIndex,
+                        stationLinks));
     }
 
     private static bool IsLineVehicle(

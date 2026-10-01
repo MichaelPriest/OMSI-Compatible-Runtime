@@ -2655,7 +2655,16 @@ try
             "0",
             "[station_typ2]",
             "43",
-            "0"));
+            "0",
+            "[profile]",
+            "Weekday",
+            "10",
+            "[profile_man_dep_time]",
+            "0",
+            "1",
+            "[profile_man_arr_time]",
+            "1",
+            "9"));
 
     File.WriteAllText(
         Path.Combine(
@@ -2831,8 +2840,121 @@ try
                 0,
                 0) &&
         timetableCatalog.StationLinks[0].Entries[1].PathId ==
-            1,
-        "OMSI TTData parser did not preserve a bus trip routed through StnLinks.cfg.");
+            1 &&
+        parsedStationLinkTrip.Profiles.Count ==
+            1 &&
+        parsedStationLinkTrip.Profiles[0].Name ==
+            "Weekday" &&
+        parsedStationLinkTrip.Profiles[0].FactorMinutes ==
+            10.0 &&
+        parsedStationLinkTrip.Profiles[0].ManualDepartureTimes.Count ==
+            1 &&
+        parsedStationLinkTrip.Profiles[0].ManualDepartureTimes[0].StationIndex ==
+            0 &&
+        parsedStationLinkTrip.Profiles[0].ManualDepartureTimes[0].Minutes ==
+            1.0 &&
+        parsedStationLinkTrip.Profiles[0].ManualArrivalTimes.Count ==
+            1 &&
+        parsedStationLinkTrip.Profiles[0].ManualArrivalTimes[0].StationIndex ==
+            1 &&
+        parsedStationLinkTrip.Profiles[0].ManualArrivalTimes[0].Minutes ==
+            9.0,
+        "OMSI TTData parser did not preserve a bus trip, StnLinks.cfg and its selected TTP profile data.");
+
+    var timingTrip =
+        new OmsiTimetableTrip(
+            "TimingTrip",
+            "TimingTrip.ttp",
+            string.Empty,
+            "Terminal",
+            "300",
+            [
+                new OmsiTimetableStop(
+                    1,
+                    "A",
+                    null,
+                    null),
+                new OmsiTimetableStop(
+                    2,
+                    "B",
+                    null,
+                    null),
+                new OmsiTimetableStop(
+                    3,
+                    "C",
+                    null,
+                    null)
+            ],
+            [
+                new OmsiTimetableTripProfile(
+                    "Timed",
+                    10.0,
+                    [
+                        new OmsiTimetableProfileTime(
+                            2,
+                            8.0)
+                    ],
+                    [
+                        new OmsiTimetableProfileTime(
+                            0,
+                            0.0)
+                    ],
+                    [
+                        new OmsiTimetableProfileStopping(
+                            1,
+                            2)
+                    ])
+            ]);
+
+    var timing =
+        WorldLineAiTripTimingResolver.Resolve(
+            timingTrip,
+            0,
+            [
+                new OmsiTimetableStationLink(
+                    100.0,
+                    1,
+                    2,
+                    Array.Empty<OmsiTimetableTrackEntry>()),
+                new OmsiTimetableStationLink(
+                    300.0,
+                    2,
+                    3,
+                    Array.Empty<OmsiTimetableTrackEntry>())
+            ]);
+
+    Require(
+        timing.Stops.Count ==
+            3 &&
+        timing.Stops[0].DepartureSeconds ==
+            0.0 &&
+        Math.Abs(
+            timing.Stops[1].ArrivalSeconds -
+            120.0) <
+            0.0001 &&
+        !timing.Stops[1].Stops &&
+        timing.Stops[2].ArrivalSeconds ==
+            480.0 &&
+        timing.DurationSeconds ==
+            480.0,
+        "LineAI TTP timing did not interpolate untimed stations by real StnLink lengths or honor pass-through stops.");
+
+    var parsedTiming =
+        WorldLineAiTripTimingResolver.Resolve(
+            parsedStationLinkTrip,
+            0,
+            timetableCatalog.StationLinks);
+
+    Require(
+        parsedTiming.Stops.Count ==
+            2 &&
+        parsedTiming.Stops[0].DepartureSeconds ==
+            60.0 &&
+        parsedTiming.Stops[1].ArrivalSeconds ==
+            540.0 &&
+        parsedTiming.DurationSeconds ==
+            540.0,
+        "LineAI did not apply parsed TTP manual arrival/departure profile times.");
 
     var mapCalendar =
         OmsiMapCalendarReader.Read(

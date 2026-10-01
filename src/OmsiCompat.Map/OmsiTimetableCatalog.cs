@@ -26,13 +26,34 @@ public sealed record OmsiTimetableStationLink(
     int ToStopId,
     IReadOnlyList<OmsiTimetableTrackEntry> Entries);
 
+public sealed record OmsiTimetableProfileTime(
+    int StationIndex,
+    double Minutes);
+
+public sealed record OmsiTimetableProfileStopping(
+    int StationIndex,
+    int Mode);
+
+public sealed record OmsiTimetableTripProfile(
+    string Name,
+    double FactorMinutes,
+    IReadOnlyList<OmsiTimetableProfileTime> ManualArrivalTimes,
+    IReadOnlyList<OmsiTimetableProfileTime> ManualDepartureTimes,
+    IReadOnlyList<OmsiTimetableProfileStopping> OtherStopping);
+
 public sealed record OmsiTimetableTrip(
     string Name,
     string FilePath,
     string TrackName,
     string Destination,
     string Line,
-    IReadOnlyList<OmsiTimetableStop> Stops);
+    IReadOnlyList<OmsiTimetableStop> Stops,
+    IReadOnlyList<OmsiTimetableTripProfile>? ProfileDefinitions = null)
+{
+    public IReadOnlyList<OmsiTimetableTripProfile> Profiles { get; } =
+        ProfileDefinitions ??
+        Array.Empty<OmsiTimetableTripProfile>();
+}
 
 public sealed record OmsiTimetableTourTrip(
     string TripName,
@@ -249,6 +270,9 @@ public static class OmsiTimetableCatalogReader
         var stops =
             new List<OmsiTimetableStop>();
 
+        var profiles =
+            new List<OmsiTimetableTripProfile>();
+
         for (var index = 0;
              index <
                  lines.Length;
@@ -346,6 +370,165 @@ public static class OmsiTimetableCatalogReader
                             lines,
                             index + 3));
                 }
+
+                continue;
+            }
+
+            if (token.Equals(
+                    "[profile]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var cursor =
+                    index;
+
+                if (!TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var profileName) ||
+                    !TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var factorText))
+                {
+                    continue;
+                }
+
+                profiles.Add(
+                    new OmsiTimetableTripProfile(
+                        profileName,
+                        ParseFlexibleDouble(
+                            factorText) ??
+                            0.0,
+                        Array.Empty<OmsiTimetableProfileTime>(),
+                        Array.Empty<OmsiTimetableProfileTime>(),
+                        Array.Empty<OmsiTimetableProfileStopping>()));
+
+                index =
+                    cursor;
+                continue;
+            }
+
+            if (profiles.Count ==
+                0)
+            {
+                continue;
+            }
+
+            if (token.Equals(
+                    "[profile_man_arr_time]",
+                    StringComparison.OrdinalIgnoreCase) ||
+                token.Equals(
+                    "[profile_man_dep_time]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var cursor =
+                    index;
+
+                if (!TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var stationText) ||
+                    !TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var minutesText) ||
+                    !int.TryParse(
+                        stationText,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var stationIndex))
+                {
+                    continue;
+                }
+
+                var minutes =
+                    ParseFlexibleDouble(
+                        minutesText);
+
+                if (!minutes.HasValue)
+                {
+                    continue;
+                }
+
+                var current =
+                    profiles[^1];
+                var value =
+                    new OmsiTimetableProfileTime(
+                        stationIndex,
+                        minutes.Value);
+
+                profiles[^1] =
+                    token.Equals(
+                        "[profile_man_arr_time]",
+                        StringComparison.OrdinalIgnoreCase)
+                        ? current with
+                        {
+                            ManualArrivalTimes =
+                                current.ManualArrivalTimes
+                                    .Append(
+                                        value)
+                                    .ToArray()
+                        }
+                        : current with
+                        {
+                            ManualDepartureTimes =
+                                current.ManualDepartureTimes
+                                    .Append(
+                                        value)
+                                    .ToArray()
+                        };
+
+                index =
+                    cursor;
+                continue;
+            }
+
+            if (token.Equals(
+                    "[profile_otherstopping]",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var cursor =
+                    index;
+
+                if (!TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var stationText) ||
+                    !TryReadNextTimetableValue(
+                        lines,
+                        ref cursor,
+                        out var modeText) ||
+                    !int.TryParse(
+                        stationText,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var stationIndex) ||
+                    !int.TryParse(
+                        modeText,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var mode))
+                {
+                    continue;
+                }
+
+                var current =
+                    profiles[^1];
+
+                profiles[^1] =
+                    current with
+                    {
+                        OtherStopping =
+                            current.OtherStopping
+                                .Append(
+                                    new OmsiTimetableProfileStopping(
+                                        stationIndex,
+                                        mode))
+                                .ToArray()
+                    };
+
+                index =
+                    cursor;
             }
         }
 
@@ -366,7 +549,8 @@ public static class OmsiTimetableCatalogReader
             trackName,
             destination,
             line,
-            stops.ToArray());
+            stops.ToArray(),
+            profiles.ToArray());
     }
 
     private static OmsiTimetableLine? ReadLine(
