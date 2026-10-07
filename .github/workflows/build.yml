@@ -71,7 +71,15 @@ jobs:
           "version_tag=$versionTag" >> $env:GITHUB_OUTPUT
           Write-Host "Resolved runtime version: $version ($versionTag)"
 
+      - name: Restore ODE x64 cache
+        id: ode-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: native/win-x64/ode_single.dll
+          key: ode-win-x64-single-0.16.6-windows-2022-v1
+
       - name: Build ODE x64 single precision
+        if: steps.ode-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -117,6 +125,13 @@ jobs:
           $odeDll = Get-ChildItem $buildRoot -Recurse -Filter "ode_single.dll" | Select-Object -First 1
           if (-not $odeDll) { throw "ode_single.dll was not produced." }
           Copy-Item $odeDll.FullName (Join-Path $outputRoot "ode_single.dll") -Force
+
+      - name: Save ODE x64 cache
+        if: steps.ode-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: native/win-x64/ode_single.dll
+          key: ode-win-x64-single-0.16.6-windows-2022-v1
 
       - name: Verify preinstalled .NET
         run: dotnet --info
