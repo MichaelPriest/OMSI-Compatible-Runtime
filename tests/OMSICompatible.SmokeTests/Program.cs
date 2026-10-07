@@ -8841,6 +8841,59 @@ try
         decodedFirstLight.Held,
         $"openOMSI WORLD car/signal codec round-trip failed: packets={worldPackets.Count}; bytes={(worldPackets.Count > 0 ? worldPackets[0].Length : 0)}; decoded={worldDecoded}; seq={(worldDecoded ? decodedWorldFrame.Sequence : 0)}/{sharedWorldFrame.Sequence}; cars={(worldDecoded ? decodedWorldFrame.Cars.Count : 0)}; lights={(worldDecoded ? decodedWorldFrame.Lights.Count : 0)}; car0={(decodedFirstCar is null ? "-" : $"{decodedFirstCar.X:0.000},{decodedFirstCar.Y:0.000},{decodedFirstCar.Z:0.000},brake={decodedFirstCar.Brake},station={decodedFirstCar.AtStation}")}; expectedCar0={sharedWorldFrame.Cars[0].X:0.000},{sharedWorldFrame.Cars[0].Y:0.000},{sharedWorldFrame.Cars[0].Z:0.000}; light0={(decodedFirstLight is null ? "-" : $"{decodedFirstLight.ObjectId},held={decodedFirstLight.Held},t={decodedFirstLight.PositionSeconds:0.00}")}; expectedLight0={sharedWorldFrame.Lights[0].ObjectId},held={sharedWorldFrame.Lights[0].Held},t={sharedWorldFrame.Lights[0].PositionSeconds:0.00}.");
 
+    var peopleWorldVector =
+        Convert.FromHexString(
+            "B4063700D204000064000000C80000000A000081030000CA00000A00000000758180A465091000003401004006F0000A80030000");
+
+    Require(
+        OpenOmsiLanWorldPeopleCodec.TryDecode(
+            peopleWorldVector,
+            out var decodedPeopleWorld) &&
+        decodedPeopleWorld.Sequence ==
+            55 &&
+        decodedPeopleWorld.HostMilliseconds ==
+            1234 &&
+        decodedPeopleWorld.People.Count ==
+            2 &&
+        decodedPeopleWorld.People[0].Id ==
+            7 &&
+        decodedPeopleWorld.People[0].Activity ==
+            OpenOmsiLanWorldPersonActivity.Walk &&
+        !decodedPeopleWorld.People[0].Aboard &&
+        Math.Abs(
+            decodedPeopleWorld.People[0].X -
+            100.25) <
+            0.011 &&
+        decodedPeopleWorld.People[0].WaitingStopObjectId ==
+            3_000_123_456 &&
+        decodedPeopleWorld.People[0].WaitingSpot ==
+            4 &&
+        decodedPeopleWorld.People[1].Id ==
+            8 &&
+        decodedPeopleWorld.People[1].Aboard &&
+        decodedPeopleWorld.People[1].PlayerBus &&
+        decodedPeopleWorld.People[1].BusId ==
+            9 &&
+        decodedPeopleWorld.People[1].Activity ==
+            OpenOmsiLanWorldPersonActivity.Sit &&
+        decodedPeopleWorld.People[1].SeatIndex ==
+            3,
+        "openOMSI WORLD people decode vector failed.");
+
+    var personDescription =
+        new OpenOmsiLanWorldPersonDescription(
+            7,
+            "Humans/Man01.hum");
+
+    Require(
+        OpenOmsiLanWorldPeopleCodec.TryDecodeDescription(
+            OpenOmsiLanWorldPeopleCodec.EncodeDescription(
+                personDescription),
+            out var decodedPersonDescription) &&
+        decodedPersonDescription ==
+            personDescription,
+        "openOMSI WORLD person DESC round-trip failed.");
+
     var worldDescription =
         new OpenOmsiLanWorldCarDescription(
             10,
