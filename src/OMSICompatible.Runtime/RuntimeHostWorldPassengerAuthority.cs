@@ -435,6 +435,7 @@ internal sealed class RuntimeHostWorldPassengerAuthority
         _pendingDescriptions.Clear();
         _described.Clear();
         _goneSeconds.Clear();
+        _transferredDescriptions.Clear();
         _idsBySpot.Clear();
         _spotById.Clear();
         _nextPersonId =
