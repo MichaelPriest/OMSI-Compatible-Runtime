@@ -3140,6 +3140,8 @@ internal sealed class RuntimeApplicationContext :
                 window.SetNavigationGuidance(
                     [],
                     []);
+                window.SetTeleMatrixState(
+                    RuntimeTeleMatrixState.Unavailable);
             }
 
             return;
@@ -3165,6 +3167,8 @@ internal sealed class RuntimeApplicationContext :
         if (candidates.Length ==
             0)
         {
+            window.SetTeleMatrixState(
+                RuntimeTeleMatrixState.Unavailable);
             return;
         }
 
@@ -3274,6 +3278,167 @@ internal sealed class RuntimeApplicationContext :
         window.SetNavigationGuidance(
             _navigationRuntimeRoute,
             guidance);
+
+        window.SetTeleMatrixState(
+            BuildTeleMatrixState(
+                selected,
+                navigation));
+    }
+
+    private RuntimeTeleMatrixState BuildTeleMatrixState(
+        WorldLineAiScheduledTrip trip,
+        WorldNavigationAssistState navigation)
+    {
+        var timing =
+            trip.Timing;
+
+        if (timing is null ||
+            timing.Stops.Count ==
+                0)
+        {
+            return RuntimeTeleMatrixState.Unavailable;
+        }
+
+        var authoredDistance =
+            timing.Stops
+                .Select(
+                    static stop =>
+                        stop.RouteDistanceMeters)
+                .DefaultIfEmpty()
+                .Max();
+
+        var scale =
+            authoredDistance >
+                    0.001 &&
+                navigation.RouteLengthMeters >
+                    0.001
+                ? navigation.RouteLengthMeters /
+                  authoredDistance
+                : 1.0;
+
+        var scaledStops =
+            timing.Stops
+                .Select(
+                    (
+                        stop,
+                        index
+                    ) =>
+                        (
+                            Stop: stop,
+                            Index: index,
+                            Distance:
+                                stop.RouteDistanceMeters *
+                                scale
+                        ))
+                .ToArray();
+
+        var next =
+            scaledStops
+                .Where(
+                    item =>
+                        item.Stop.Stops &&
+                        item.Distance >=
+                            navigation.ProgressMeters -
+                            3.0)
+                .OrderBy(
+                    static item =>
+                        item.Distance)
+                .FirstOrDefault();
+
+        if (next.Stop is null)
+        {
+            next =
+                scaledStops[
+                    ^1];
+        }
+
+        var previous =
+            scaledStops
+                .Where(
+                    item =>
+                        item.Distance <=
+                            navigation.ProgressMeters)
+                .OrderByDescending(
+                    static item =>
+                        item.Distance)
+                .FirstOrDefault();
+
+        var expectedSeconds =
+            next.Stop.ArrivalSeconds;
+
+        if (previous.Stop is not null &&
+            next.Distance >
+                previous.Distance +
+                    0.001)
+        {
+            var t =
+                Math.Clamp(
+                    (
+                        navigation.ProgressMeters -
+                        previous.Distance
+                    ) /
+                    (
+                        next.Distance -
+                        previous.Distance
+                    ),
+                    0.0,
+                    1.0);
+
+            expectedSeconds =
+                previous.Stop.DepartureSeconds +
+                (
+                    next.Stop.ArrivalSeconds -
+                    previous.Stop.DepartureSeconds
+                ) *
+                t;
+        }
+
+        var elapsedMinutes =
+            _lineAiServiceMinutes -
+            trip.DepartureMinutes;
+
+        if (elapsedMinutes <
+            -720.0)
+        {
+            elapsedMinutes +=
+                1440.0;
+        }
+        else if (elapsedMinutes >
+                 720.0)
+        {
+            elapsedMinutes -=
+                1440.0;
+        }
+
+        var tripSeconds =
+            Math.Max(
+                elapsedMinutes *
+                    60.0,
+                0.0);
+
+        var delaySeconds =
+            (int)Math.Round(
+                tripSeconds -
+                expectedSeconds,
+                MidpointRounding.AwayFromZero);
+
+        return new RuntimeTeleMatrixState(
+            true,
+            trip.LineName,
+            trip.Trip?.Destination ??
+                string.Empty,
+            string.IsNullOrWhiteSpace(
+                next.Stop.StopName)
+                ? $"Parada {next.Index + 1}"
+                : next.Stop.StopName,
+            next.Index +
+                1,
+            timing.Stops.Count,
+            delaySeconds,
+            Math.Max(
+                next.Distance -
+                    navigation.ProgressMeters,
+                0.0));
     }
 
     private static WorldVector3[] BuildNavigationRoute(
