@@ -1520,6 +1520,24 @@ public static class WorldLoader
                             geometry.SourceTransform));
                 }
 
+                var passengerCabin =
+                    OmsiPassengerCabinReader.ReadFile(
+                        definition.PassengerCabin?
+                            .ResolvedPath);
+
+                var passengerWaitingPositions =
+                    passengerCabin.PassengerPositions
+                        .Select(
+                            static place =>
+                                new WorldPassengerWaitingPosition(
+                                    place.X,
+                                    place.Y,
+                                    place.Z,
+                                    place.RotationDegrees,
+                                    place.Height,
+                                    place.FileIndex))
+                        .ToArray();
+
                 var asset =
                     new WorldSceneryAsset(
                         declaredPath,
@@ -1603,7 +1621,9 @@ public static class WorldLoader
                         collisionGeometry?.Bounds,
                         collisionGeometry?.Geometry,
                         IsCarPark:
-                            definition.IsCarPark);
+                            definition.IsCarPark,
+                        PassengerWaitingPositions:
+                            passengerWaitingPositions);
 
                 result[
                     declaredPath] =
