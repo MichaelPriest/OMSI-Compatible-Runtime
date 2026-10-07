@@ -5434,6 +5434,11 @@ internal sealed class RuntimeApplicationContext :
                     _commsLinkVoice.IsTransmitting
             };
 
+        pose.DisplayTexts =
+            ResolveVehicleDisplayTextValues(
+                _vehicleAsset,
+                _playerScriptRuntime);
+
         pose.FreeTexturePaths =
             ResolveVehicleFreeTextureValues(
                 _vehicleAsset,
@@ -6810,6 +6815,11 @@ internal sealed class RuntimeApplicationContext :
                 vehiclePath,
                 out var remoteAsset))
         {
+            ApplyVehicleDisplayTextValues(
+                remoteAsset,
+                runtime,
+                peer.Pose.DisplayTexts);
+
             ApplyVehicleFreeTextureValues(
                 remoteAsset,
                 runtime,
@@ -6817,6 +6827,96 @@ internal sealed class RuntimeApplicationContext :
         }
 
         return runtime;
+    }
+
+    private static List<string> ResolveVehicleDisplayTextValues(
+        OmsiVehicleAsset? asset,
+        OmsiScriptRuntime? runtime)
+    {
+        if (asset is null ||
+            runtime is null)
+        {
+            return [];
+        }
+
+        return GetVehicleDisplayTextVariableNames(
+                asset)
+            .Select(
+                name =>
+                    runtime.HasStringLocalVariable(
+                        name)
+                        ? runtime.GetStringLocal(
+                            name)
+                        : string.Empty)
+            .ToList();
+    }
+
+    private static void ApplyVehicleDisplayTextValues(
+        OmsiVehicleAsset asset,
+        OmsiScriptRuntime runtime,
+        IReadOnlyList<string> values)
+    {
+        if (values.Count ==
+            0)
+        {
+            return;
+        }
+
+        var names =
+            GetVehicleDisplayTextVariableNames(
+                asset);
+
+        for (var index = 0;
+             index <
+                 Math.Min(
+                     names.Count,
+                     values.Count);
+             index++)
+        {
+            runtime.SetStringLocal(
+                names[index],
+                values[index]);
+        }
+    }
+
+    private static List<string> GetVehicleDisplayTextVariableNames(
+        OmsiVehicleAsset asset)
+    {
+        var names =
+            new List<string>();
+
+        foreach (var textTexture in
+                 asset.TextTextures
+                     .OrderBy(
+                         static texture =>
+                             texture.Index))
+        {
+            var name =
+                textTexture.StringVariable
+                    .Trim();
+
+            if (name.Length ==
+                    0 ||
+                names.Any(
+                    existing =>
+                        existing.Equals(
+                            name,
+                            StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            names.Add(
+                name);
+
+            if (names.Count >=
+                OpenOmsiLanProtocol.MaximumDisplayTexts)
+            {
+                break;
+            }
+        }
+
+        return names;
     }
 
     private static List<string> ResolveVehicleFreeTextureValues(
