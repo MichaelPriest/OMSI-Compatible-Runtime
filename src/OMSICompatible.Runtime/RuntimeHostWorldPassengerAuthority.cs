@@ -18,7 +18,7 @@ internal sealed class RuntimeHostWorldPassengerAuthority
         [];
     private readonly Dictionary<uint, HostPassenger> _people =
         [];
-    private readonly HashSet<string> _handedOver =
+    private readonly Dictionary<string, DateTimeOffset> _handedOver =
         new(StringComparer.Ordinal);
     private readonly Queue<OpenOmsiLanWorldPersonDescription>
         _pendingDescriptions =
@@ -42,6 +42,26 @@ internal sealed class RuntimeHostWorldPassengerAuthority
         WorldDefinition? world,
         OmsiTimetableCatalog timetable)
     {
+        var now =
+            DateTimeOffset.UtcNow;
+
+        foreach (var stale in
+                 _handedOver
+                     .Where(
+                         pair =>
+                             now -
+                                 pair.Value >=
+                             TimeSpan.FromMinutes(
+                                 3))
+                     .Select(
+                         static pair =>
+                             pair.Key)
+                     .ToArray())
+        {
+            _handedOver.Remove(
+                stale);
+        }
+
         if (world is null)
         {
             RemoveAllVisible();
@@ -303,7 +323,7 @@ internal sealed class RuntimeHostWorldPassengerAuthority
                             CultureInfo.InvariantCulture),
                         spot.Key);
 
-                if (_handedOver.Contains(
+                if (_handedOver.ContainsKey(
                         key))
                 {
                     continue;
@@ -513,8 +533,9 @@ internal sealed class RuntimeHostWorldPassengerAuthority
                 continue;
             }
 
-            _handedOver.Add(
-                passenger.Key);
+            _handedOver[
+                passenger.Key] =
+                DateTimeOffset.UtcNow;
 
             _people.Remove(
                 id);
