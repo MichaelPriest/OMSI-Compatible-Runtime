@@ -5844,8 +5844,8 @@ internal sealed class RuntimeApplicationContext :
                 .Where(
                     static item =>
                         item.DistanceSquared <=
-                        20.0 *
-                        20.0)
+                        12.0 *
+                        12.0)
                 .OrderBy(
                     static item =>
                         item.DistanceSquared)
