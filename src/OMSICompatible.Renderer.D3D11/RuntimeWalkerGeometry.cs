@@ -105,11 +105,7 @@ internal static class RuntimeWalkerGeometry
 
         foreach (var walker in walkers)
         {
-            // Seated people still use the compact fallback until the WORLD
-            // seat origin is converted from [passpos] hip height to the
-            // human's visual feet origin.
-            if (walker.Seated ||
-                !TryResolveHumanAsset(
+            if (!TryResolveHumanAsset(
                     contentRoot,
                     walker.FigurePath,
                     fallbackFigurePath,
@@ -133,13 +129,29 @@ internal static class RuntimeWalkerGeometry
                     human,
                     now);
 
+            var originY =
+                walker.Y;
+
+            if (walker.Seated &&
+                double.IsFinite(
+                    human.Definition.SeatHeight))
+            {
+                // openOMSI/OMSI store a seated WORLD/passpos position at
+                // the hip. Human meshes are rooted at the feet, so move
+                // the visual origin down by the .hum seat_height.
+                originY -=
+                    Math.Max(
+                        0.0,
+                        human.Definition.SeatHeight);
+            }
+
             instances.Add(
                 new RuntimeObjectInfo(
                     0,
                     0,
                     posedKey,
                     walker.X,
-                    walker.Y,
+                    originY,
                     walker.Z,
                     walker.HeadingDegrees,
                     0.0,
@@ -805,13 +817,15 @@ internal static class RuntimeWalkerGeometry
                 : 0.0f;
 
         var activity =
-            speed >
-                0.05f
-                ? speed >
-                      2.2f
-                    ? OmsiHumanActivity.Run
-                    : OmsiHumanActivity.Walk
-                : OmsiHumanActivity.Stand;
+            walker.Seated
+                ? OmsiHumanActivity.Sit
+                : speed >
+                      0.05f
+                    ? speed >
+                          2.2f
+                        ? OmsiHumanActivity.Run
+                        : OmsiHumanActivity.Walk
+                    : OmsiHumanActivity.Stand;
 
         var bones =
             state.Animator.Advance(
