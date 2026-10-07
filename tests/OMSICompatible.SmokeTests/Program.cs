@@ -9275,6 +9275,35 @@ try
         passengerPathsSmoke.Links[1].OneWay,
         "OMSI paths.cfg passenger-network compatibility smoke failed.");
 
+    var waitingScenerySmokePath =
+        Path.Combine(
+            root,
+            "waiting-smoke.sco");
+
+    File.WriteAllText(
+        waitingScenerySmokePath,
+        """
+        [passengercabin]
+        passengercabin-smoke.cfg
+        """,
+        Encoding.UTF8);
+
+    var waitingScenerySmoke =
+        OmsiSceneryObjectReader.ReadFile(
+            waitingScenerySmokePath);
+
+    Require(
+        waitingScenerySmoke.PassengerCabin is
+            {
+                Exists:
+                    true
+            } &&
+        Path.GetFullPath(
+            waitingScenerySmoke.PassengerCabin.ResolvedPath!) ==
+        Path.GetFullPath(
+            passengerCabinSmokePath),
+        "OMSI scenery [passengercabin] reference was not resolved for waiting places.");
+
     var carParkScenerySmokePath =
         Path.Combine(
             root,
