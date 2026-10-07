@@ -1761,6 +1761,13 @@ public sealed class D3D11RenderWindow : Form
             ];
     }
 
+    public void SetTeleMatrixState(
+        RuntimeTeleMatrixState state)
+    {
+        _liveBoardPanel?.UpdateTeleMatrix(
+            state);
+    }
+
     public void SetDriveOpsNetworkState(
         string role,
         bool connected,
@@ -6365,7 +6372,7 @@ public sealed class D3D11RenderWindow : Form
                     ClientSize.Width /
                     3));
         _liveBoardPanel.Height =
-            112;
+            138;
 
         _liveBoardPanel.Left =
             14;
