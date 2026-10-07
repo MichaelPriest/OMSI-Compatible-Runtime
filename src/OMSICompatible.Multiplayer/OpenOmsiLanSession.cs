@@ -53,6 +53,12 @@ public sealed class OpenOmsiLanSession :
 
     private readonly Socket _socket;
     private readonly Dictionary<uint, Peer> _peers = [];
+    private readonly Dictionary<uint, OpenOmsiLanWorldCarDescription>
+        _worldCarDescriptions =
+            [];
+    private readonly Dictionary<uint, OpenOmsiLanWorldPersonDescription>
+        _worldPersonDescriptions =
+            [];
     private readonly byte[] _receiveBuffer =
         new byte[
             OpenOmsiLanProtocol.MaximumDatagramBytes + 1];
@@ -600,6 +606,10 @@ public sealed class OpenOmsiLanSession :
             return false;
         }
 
+        _worldCarDescriptions[
+            description.Id] =
+            description;
+
         BroadcastText(
             OpenOmsiLanWorldCodec.EncodeDescription(
                 description),
@@ -620,6 +630,10 @@ public sealed class OpenOmsiLanSession :
         {
             return false;
         }
+
+        _worldPersonDescriptions[
+            description.Id] =
+            description;
 
         BroadcastText(
             OpenOmsiLanWorldPeopleCodec.EncodeDescription(
@@ -1871,6 +1885,35 @@ public sealed class OpenOmsiLanSession :
 
         peer.LastSeen =
             DateTimeOffset.UtcNow;
+
+        foreach (var entity in
+                 request.Entities)
+        {
+            if (entity.Person)
+            {
+                if (_worldPersonDescriptions.TryGetValue(
+                        entity.Id,
+                        out var person))
+                {
+                    SendText(
+                        OpenOmsiLanWorldPeopleCodec.EncodeDescription(
+                            person),
+                        peer.Endpoint);
+                }
+
+                continue;
+            }
+
+            if (_worldCarDescriptions.TryGetValue(
+                    entity.Id,
+                    out var car))
+            {
+                SendText(
+                    OpenOmsiLanWorldCodec.EncodeDescription(
+                        car),
+                    peer.Endpoint);
+            }
+        }
 
         WorldWantRequested?.Invoke(
             request);
