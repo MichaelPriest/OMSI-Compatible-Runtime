@@ -2457,6 +2457,8 @@ public sealed class OpenOmsiLanSession :
             [.. info.DisplayTexts];
         target.FigurePath =
             info.FigurePath;
+        target.FreeTexturePaths =
+            [.. info.FreeTexturePaths];
         target.LengthMeters =
             info.LengthMeters;
         target.WidthMeters =
@@ -2521,6 +2523,8 @@ public sealed class OpenOmsiLanSession :
             state.Walker;
         target.SentMilliseconds =
             state.SentMilliseconds;
+        target.RadioKeyed =
+            state.RadioKeyed;
     }
 
     private static IPEndPoint ResolveTarget(string target)
