@@ -309,7 +309,49 @@ public static class OmsiSceneryObjectReader
                     static section =>
                         section.Name.Equals(
                             "carpark_p",
-                            StringComparison.OrdinalIgnoreCase)));
+                            StringComparison.OrdinalIgnoreCase)),
+            PassengerCabin:
+                ReadPassengerCabinReference(
+                    document,
+                    Path.GetDirectoryName(
+                        Path.GetFullPath(
+                            path)) ??
+                    string.Empty));
+    }
+
+    private static OmsiSceneryFileReference?
+        ReadPassengerCabinReference(
+            OmsiSectionDocument document,
+            string baseDirectory)
+    {
+        var section =
+            document.Sections
+                .FirstOrDefault(
+                    static item =>
+                        item.Name.Equals(
+                            "passengercabin",
+                            StringComparison.OrdinalIgnoreCase));
+
+        var declared =
+            section is null
+                ? null
+                : Data(section)
+                    .FirstOrDefault()
+                    ?.Value
+                    .Trim()
+                    .Trim('"');
+
+        if (string.IsNullOrWhiteSpace(
+                declared))
+        {
+            return null;
+        }
+
+        return new OmsiSceneryFileReference(
+            declared,
+            ResolveRelativeFile(
+                baseDirectory,
+                declared));
     }
 
     private static string? ReadCollisionMeshSource(
