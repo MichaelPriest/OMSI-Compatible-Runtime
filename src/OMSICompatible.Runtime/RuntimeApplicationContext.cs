@@ -6036,9 +6036,13 @@ internal sealed class RuntimeApplicationContext :
                         index!.Value)
                 .ToHashSet();
 
-        var doorsOpen =
-            IsPassengerEntryOpen(
+        var openEntries =
+            GetOpenPassengerEntries(
                 localPose);
+
+        var doorsOpen =
+            openEntries.Count >
+            0;
 
         foreach (var passenger in
                  _ownedWorldPassengers
@@ -6053,7 +6057,8 @@ internal sealed class RuntimeApplicationContext :
                 localPose,
                 session.PlayerId,
                 doorsOpen,
-                reserved);
+                reserved,
+                openEntries);
 
             var world =
                 passenger.WorldPose(
