@@ -33,7 +33,8 @@ public sealed record WorldTrafficObstacleState(
 public sealed record WorldTrafficSignalState(
     int SegmentIndex,
     int? Phase,
-    double PositionSeconds);
+    double PositionSeconds,
+    bool Held = false);
 
 public sealed class WorldTrafficSimulation
 {
@@ -886,12 +887,15 @@ public sealed class WorldTrafficSimulation
         foreach (var segment in
                  _trafficSignalSegments)
         {
-            var positionSeconds =
+            var hasGroup =
                 segment.SceneryObjectId.HasValue &&
                 _trafficSignalGroups.TryGetValue(
                     segment.SceneryObjectId.Value,
-                    out var group)
-                    ? group.PositionSeconds
+                    out var group);
+
+            var positionSeconds =
+                hasGroup
+                    ? group!.PositionSeconds
                     : _simulationElapsedSeconds;
 
             destination.Add(
@@ -900,7 +904,9 @@ public sealed class WorldTrafficSimulation
                     ResolveTrafficSignalPhase(
                         segment.TrafficSignal,
                         positionSeconds),
-                    positionSeconds));
+                    positionSeconds,
+                    hasGroup &&
+                    group!.Held));
         }
     }
 
@@ -2617,6 +2623,9 @@ public sealed class WorldTrafficSimulation
             return;
         }
 
+        group.Held =
+            false;
+
         var remaining =
             deltaSeconds;
 
@@ -2744,6 +2753,8 @@ public sealed class WorldTrafficSimulation
 
             if (control.IsStop)
             {
+                group.Held =
+                    true;
                 break;
             }
 
@@ -5959,6 +5970,12 @@ public sealed class WorldTrafficSimulation
             stops;
 
         public double PositionSeconds
+        {
+            get;
+            set;
+        }
+
+        public bool Held
         {
             get;
             set;

@@ -3587,7 +3587,7 @@ internal sealed class RuntimeApplicationContext :
                             return new OpenOmsiLanWorldLightState(
                                 segment.SceneryObjectId.Value,
                                 state.PositionSeconds,
-                                false);
+                                state.Held);
                         })
                     .Where(
                         static state =>
@@ -3602,7 +3602,11 @@ internal sealed class RuntimeApplicationContext :
                 0,
                 0,
                 cars,
-                lights));
+                lights,
+                Parked:
+                    new OpenOmsiLanWorldParkedState(
+                        true,
+                        Array.Empty<uint>())));
     }
 
     private void UpdateNavigationGuidance(

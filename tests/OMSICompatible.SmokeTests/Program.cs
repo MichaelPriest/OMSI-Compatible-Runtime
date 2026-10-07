@@ -7820,7 +7820,8 @@ try
         Math.Abs(
             requestStopSignalState.PositionSeconds -
             1.0) <
-            0.001,
+            0.001 &&
+        requestStopSignalState.Held,
         "Dynamic signal snapshot did not expose the traffic_light_stop-held group clock.");
 
     var playerRequestSimulation =
@@ -7859,7 +7860,8 @@ try
         Math.Abs(
             playerRequestSignalState.PositionSeconds -
             1.0) <
-            0.001,
+            0.001 &&
+        playerRequestSignalState.Held,
         "Player-only OMSI signal approach did not hold traffic_light_stop with AI traffic disabled.");
 
     var ambiguousPlayerRequestNetwork =
@@ -7977,7 +7979,8 @@ try
         ambiguousPlayerSignalState.Phase ==
             6 &&
         ambiguousPlayerSignalState.PositionSeconds >
-            2.5,
+            2.5 &&
+        !ambiguousPlayerSignalState.Held,
         "Player signal approach incorrectly guessed a route across an ambiguous branch.");
 
     var densityRoutingNetwork =
