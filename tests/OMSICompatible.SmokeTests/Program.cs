@@ -9287,6 +9287,62 @@ try
             -12,
         "OMSI human [setbone] negative engine ids were not preserved.");
 
+    var humanRigSmoke =
+        OmsiHumanRig.FromDefinition(
+            humanSmoke);
+
+    var humanAnimatorSmoke =
+        new OmsiHumanAnimator(
+            humanRigSmoke);
+
+    var standingBones =
+        humanAnimatorSmoke.Advance(
+            OmsiHumanActivity.Stand,
+            0.0f,
+            0.0f,
+            1.0f /
+            60.0f);
+
+    var walkingBones =
+        humanAnimatorSmoke.Advance(
+            OmsiHumanActivity.Walk,
+            1.2f,
+            1.2f /
+            60.0f,
+            1.0f /
+            60.0f);
+
+    var sittingBones =
+        humanAnimatorSmoke.Advance(
+            OmsiHumanActivity.Sit,
+            0.0f,
+            0.0f,
+            1.0f /
+            60.0f,
+            seatHeightMeters:
+                0.45f);
+
+    Require(
+        standingBones.Length ==
+            OmsiHumanAnimator.BoneCount &&
+        walkingBones.Length ==
+            OmsiHumanAnimator.BoneCount &&
+        sittingBones.Length ==
+            OmsiHumanAnimator.BoneCount &&
+        humanAnimatorSmoke.Angles[0] >=
+            60.0f &&
+        humanAnimatorSmoke.Angles[4] >=
+            90.0f &&
+        humanAnimatorSmoke.Angles[9] ==
+            -20.0f &&
+        standingBones.All(
+            MatrixIsFinite) &&
+        walkingBones.All(
+            MatrixIsFinite) &&
+        sittingBones.All(
+            MatrixIsFinite),
+        "OMSI human stand/walk/sit bone animation smoke failed.");
+
     var passengerCabinSmokePath =
         Path.Combine(
             root,
@@ -10641,6 +10697,25 @@ static void WriteTerrain(string path)
     writer.Write(2.0f);
     writer.Write(3.0f);
 }
+
+static bool MatrixIsFinite(
+    Matrix4x4 value) =>
+    float.IsFinite(value.M11) &&
+    float.IsFinite(value.M12) &&
+    float.IsFinite(value.M13) &&
+    float.IsFinite(value.M14) &&
+    float.IsFinite(value.M21) &&
+    float.IsFinite(value.M22) &&
+    float.IsFinite(value.M23) &&
+    float.IsFinite(value.M24) &&
+    float.IsFinite(value.M31) &&
+    float.IsFinite(value.M32) &&
+    float.IsFinite(value.M33) &&
+    float.IsFinite(value.M34) &&
+    float.IsFinite(value.M41) &&
+    float.IsFinite(value.M42) &&
+    float.IsFinite(value.M43) &&
+    float.IsFinite(value.M44);
 
 static void Require(bool condition, string message)
 {
