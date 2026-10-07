@@ -104,6 +104,9 @@ internal sealed class RuntimeApplicationContext :
     private double _hostWorldPassengerRefreshAccumulator =
         1.0;
     private double _hostWorldPassengerSendAccumulator;
+    private readonly Dictionary<uint, HostWorldPassengerPeerView>
+        _hostWorldPassengerPeerViews =
+            [];
     private readonly Dictionary<(bool Person, uint Id), DateTimeOffset>
         _sharedWorldWantRequestedAt =
             [];
@@ -238,6 +241,15 @@ internal sealed class RuntimeApplicationContext :
         public double Y { get; set; }
         public double Z { get; set; }
         public double HeadingDegrees { get; set; }
+    }
+
+    private sealed class HostWorldPassengerPeerView
+    {
+        public HashSet<uint> VisibleIds { get; } =
+            [];
+
+        public Dictionary<uint, double> GoneSeconds { get; } =
+            [];
     }
 
     private sealed class HostedPluginSession(
