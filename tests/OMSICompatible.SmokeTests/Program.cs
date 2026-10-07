@@ -8651,15 +8651,13 @@ try
     var walkerState =
         OpenOmsiLanStateCodec.Encode(
             walkerPose,
-            OpenOmsiLanProtocol.ProtocolVersion,
             44);
 
     Require(
         OpenOmsiLanStateCodec.TryDecode(
             walkerState,
-            OpenOmsiLanProtocol.ProtocolVersion,
-            out var decodedWalkerPose,
-            out var decodedWalkerSequence) &&
+            out var decodedWalkerSequence,
+            out var decodedWalkerPose) &&
         decodedWalkerSequence ==
             44 &&
         !decodedWalkerPose.HasVehicle &&
