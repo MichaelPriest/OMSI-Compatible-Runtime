@@ -5350,6 +5350,11 @@ internal sealed class RuntimeApplicationContext :
         _ownedWorldPassengers.Clear();
         _worldPassengerUplinkAccumulator =
             0.0;
+        _hostWorldPassengers.ResetSession();
+        _hostWorldPassengerRefreshAccumulator =
+            1.0;
+        _hostWorldPassengerSendAccumulator =
+            0.0;
         _sharedWorldWantRequestedAt.Clear();
         _relayedWorldPersonIds.Clear();
         _relayedWorldPersonIdsInUse.Clear();
