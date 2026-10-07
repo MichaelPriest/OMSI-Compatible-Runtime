@@ -304,20 +304,23 @@ internal static class RuntimeWalkerGeometry
         return true;
     }
 
-    private static RuntimeSceneryAssetInfo? LoadHumanAsset(
+    private static RuntimeHumanAsset? LoadHumanAsset(
         string contentRoot,
         string humanPath)
     {
         try
         {
-            if (!TryReadHumanModelPath(
-                    humanPath,
-                    out var declaredModelPath) ||
+            var definition =
+                OmsiHumanDefinitionReader.ReadFile(
+                    humanPath);
+
+            if (string.IsNullOrWhiteSpace(
+                    definition.ModelPath) ||
                 !TryResolveRelativeContentPath(
                     contentRoot,
                     Path.GetDirectoryName(
                         humanPath),
-                    declaredModelPath,
+                    definition.ModelPath,
                     out var modelPath))
             {
                 Console.Error.WriteLine(
@@ -337,7 +340,12 @@ internal static class RuntimeWalkerGeometry
                 new List<RuntimeObjectMeshInfo>(
                     selectedMeshes.Length);
 
-            foreach (var mesh in selectedMeshes)
+            var skins =
+                new List<RuntimeHumanMeshSkin?>(
+                    selectedMeshes.Length);
+
+            foreach (var mesh in
+                     selectedMeshes)
             {
                 if (!TryResolveHumanMeshPath(
                         contentRoot,
@@ -402,35 +410,57 @@ internal static class RuntimeWalkerGeometry
                         geometry.Indices,
                         geometry.TriangleMaterialIndices,
                         materials,
+                        // OMSI's O3D matrix is the authored pivot frame,
+                        // not a transform that moves human vertices.
                         SourceTransform:
-                            geometry.SourceTransform,
+                            Matrix4x4.Identity,
                         ModelOrdinal:
                             mesh.Ordinal));
+
+                skins.Add(
+                    BuildHumanSkin(
+                        mesh,
+                        geometry));
             }
 
-            if (runtimeMeshes.Count == 0)
+            if (runtimeMeshes.Count ==
+                0)
             {
                 Console.Error.WriteLine(
                     $"[human] no renderable meshes: {humanPath}");
                 return null;
             }
 
-            Console.WriteLine(
-                $"[human] loaded {Path.GetRelativePath(contentRoot, humanPath)} · meshes={runtimeMeshes.Count}");
+            var scenery =
+                new RuntimeSceneryAssetInfo(
+                    UsesAbsoluteHeight:
+                        true,
+                    OnlyEditor:
+                        false,
+                    RenderType:
+                        null,
+                    Meshes:
+                        runtimeMeshes,
+                    Tree:
+                        null,
+                    NoCollision:
+                        true);
 
-            return new RuntimeSceneryAssetInfo(
-                UsesAbsoluteHeight:
-                    true,
-                OnlyEditor:
-                    false,
-                RenderType:
-                    null,
-                Meshes:
-                    runtimeMeshes,
-                Tree:
-                    null,
-                NoCollision:
-                    true);
+            var rig =
+                definition.HasCompleteLinks
+                    ? OmsiHumanRig.FromDefinition(
+                        definition)
+                    : null;
+
+            Console.WriteLine(
+                $"[human] loaded {Path.GetRelativePath(contentRoot, humanPath)} · meshes={runtimeMeshes.Count} · rig={(rig is null ? "fallback" : "omsi")}");
+
+            return new RuntimeHumanAsset(
+                humanPath,
+                definition,
+                rig,
+                scenery,
+                skins);
         }
         catch (Exception exception) when (
             exception is IOException or
@@ -445,6 +475,266 @@ internal static class RuntimeWalkerGeometry
                 $"[human] failed {humanPath}: {exception.Message}");
             return null;
         }
+    }
+
+    private static RuntimeHumanMeshSkin? BuildHumanSkin(
+        OmsiVehicleMeshReference mesh,
+        OmsiO3dGeometry geometry)
+    {
+        var vertexCount =
+            geometry.Positions.Length /
+            3;
+
+        if (vertexCount <=
+                0 ||
+            geometry.Bones is not
+                { Count: > 0 })
+        {
+            return null;
+        }
+
+        var perVertex =
+            Enumerable.Range(
+                    0,
+                    vertexCount)
+                .Select(
+                    static _ =>
+                        new List<(byte Slot, float Weight)>())
+                .ToArray();
+
+        foreach (var bone in
+                 geometry.Bones)
+        {
+            var binding =
+                mesh.SkinBoneBindings?
+                    .FirstOrDefault(
+                        item =>
+                            string.Equals(
+                                item.BoneName,
+                                bone.Name,
+                                StringComparison.OrdinalIgnoreCase));
+
+            var boneId =
+                binding?
+                    .TargetMeshOrdinal ??
+                HumanBoneIdByName(
+                    bone.Name);
+
+            var slot =
+                HumanBoneSlot(
+                    boneId);
+
+            if (!slot.HasValue)
+            {
+                continue;
+            }
+
+            foreach (var influence in
+                     bone.Weights)
+            {
+                if (influence.VertexIndex <
+                        0 ||
+                    influence.VertexIndex >=
+                        vertexCount ||
+                    !float.IsFinite(
+                        influence.Weight) ||
+                    influence.Weight <=
+                        0.0f)
+                {
+                    continue;
+                }
+
+                var list =
+                    perVertex[
+                        influence.VertexIndex];
+
+                var existing =
+                    list.FindIndex(
+                        item =>
+                            item.Slot ==
+                            slot.Value);
+
+                if (existing >=
+                    0)
+                {
+                    var current =
+                        list[
+                            existing];
+
+                    list[
+                        existing] =
+                        (
+                            current.Slot,
+                            Math.Max(
+                                current.Weight,
+                                influence.Weight)
+                        );
+                }
+                else
+                {
+                    list.Add(
+                        (
+                            slot.Value,
+                            influence.Weight
+                        ));
+                }
+            }
+        }
+
+        var slots =
+            new byte[
+                checked(
+                    vertexCount *
+                    4)];
+
+        var weights =
+            new float[
+                checked(
+                    vertexCount *
+                    4)];
+
+        for (var vertex = 0;
+             vertex <
+                 vertexCount;
+             vertex++)
+        {
+            var influences =
+                perVertex[
+                    vertex]
+                    .OrderByDescending(
+                        static item =>
+                            item.Weight)
+                    .Take(
+                        4)
+                    .ToArray();
+
+            if (influences.Length ==
+                0)
+            {
+                // openOMSI/OMSI behavior: unclaimed vertices follow MAIN.
+                slots[
+                    vertex *
+                    4] =
+                    9;
+
+                weights[
+                    vertex *
+                    4] =
+                    1.0f;
+                continue;
+            }
+
+            var total =
+                influences.Sum(
+                    static item =>
+                        item.Weight);
+
+            if (!float.IsFinite(
+                    total) ||
+                total <
+                    0.0001f)
+            {
+                slots[
+                    vertex *
+                    4] =
+                    9;
+
+                weights[
+                    vertex *
+                    4] =
+                    1.0f;
+                continue;
+            }
+
+            for (var index = 0;
+                 index <
+                     influences.Length;
+                 index++)
+            {
+                var offset =
+                    vertex *
+                    4 +
+                    index;
+
+                slots[
+                    offset] =
+                    influences[
+                        index]
+                        .Slot;
+
+                weights[
+                    offset] =
+                    influences[
+                        index]
+                        .Weight /
+                    total;
+            }
+        }
+
+        return new RuntimeHumanMeshSkin(
+            slots,
+            weights);
+    }
+
+    private static byte? HumanBoneSlot(
+        int boneId) =>
+        boneId is >=
+            -14 and <=
+            -2
+            ? (byte)(
+                -boneId -
+                2)
+            : null;
+
+    private static int HumanBoneIdByName(
+        string? name)
+    {
+        if (string.IsNullOrWhiteSpace(
+                name))
+        {
+            return 0;
+        }
+
+        var normalized =
+            name
+                .Trim()
+                .Replace(
+                    "_",
+                    string.Empty,
+                    StringComparison.Ordinal)
+                .ToLowerInvariant();
+
+        return normalized switch
+        {
+            "osl" =>
+                -2,
+            "osr" =>
+                -3,
+            "usl" =>
+                -4,
+            "usr" =>
+                -5,
+            "oal" =>
+                -6,
+            "oar" =>
+                -7,
+            "ual" =>
+                -8,
+            "uar" =>
+                -9,
+            "hip" =>
+                -10,
+            "main" =>
+                -11,
+            "head" =>
+                -12,
+            "handl" =>
+                -13,
+            "handr" =>
+                -14,
+            _ =>
+                0
+        };
     }
 
     private static OmsiVehicleMeshReference[] SelectDetailedMeshes(
