@@ -9165,6 +9165,245 @@ try
                         hostPose.VehiclePath),
         "openOMSI LAN protocol-6 host/client loopback handshake, INFO or STATE relay failed.");
 
+    using var lanObserver =
+        OpenOmsiLanSession.Join(
+            $"127.0.0.1:{lanHost.LocalPort}",
+            "Smoke Observer",
+            lanWorld);
+
+    var observerPose =
+        lanPose.Clone();
+
+    observerPose.Id =
+        0;
+
+    observerPose.Name =
+        "Smoke Observer";
+
+    observerPose.X +=
+        24.0;
+
+    var observerConnected =
+        false;
+
+    for (var observerStep = 0;
+         observerStep <
+             300;
+         observerStep++)
+    {
+        lanObserver.Tick(
+            0.02,
+            observerPose);
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        lanObserver.Tick(
+            0.02,
+            observerPose);
+
+        if (lanObserver.Connected &&
+            lanHost.SnapshotPeers().Count ==
+                2)
+        {
+            observerConnected =
+                true;
+            break;
+        }
+
+        Thread.Sleep(
+            2);
+    }
+
+    Require(
+        observerConnected,
+        "openOMSI LAN second client did not join the loopback host.");
+
+    OpenOmsiLanWorldPersonDescription?
+        observerRelayedDescription =
+            null;
+    OpenOmsiLanWorldPeopleFrame?
+        observerRelayedPeople =
+            null;
+    var sourceEchoedPeople =
+        false;
+
+    lanObserver.WorldPersonDescriptionReceived +=
+        description =>
+            observerRelayedDescription =
+                description;
+
+    lanObserver.WorldPeopleFrameReceived +=
+        frame =>
+            observerRelayedPeople =
+                frame;
+
+    lanClient.WorldPeopleFrameReceived +=
+        _ =>
+            sourceEchoedPeople =
+                true;
+
+    lanHost.WorldPersonDescriptionUpReceived +=
+        (
+            peerId,
+            description
+        ) =>
+        {
+            lanHost.RelayWorldPersonDescription(
+                peerId,
+                description with
+                {
+                    Id =
+                        0x00C00021u
+                });
+        };
+
+    lanHost.WorldPeopleFrameUpReceived +=
+        (
+            peerId,
+            frame
+        ) =>
+        {
+            lanHost.RelayWorldPeopleFrame(
+                peerId,
+                frame with
+                {
+                    People =
+                    [
+                        frame.People[0] with
+                        {
+                            Id =
+                                0x00C00021u,
+                            PlayerBus =
+                                true,
+                            BusId =
+                                peerId,
+                            WaitingStopObjectId =
+                                null,
+                            WaitingSpot =
+                                null
+                        }
+                    ]
+                });
+        };
+
+    lanClient.SendWorldPersonDescriptionUp(
+        new OpenOmsiLanWorldPersonDescription(
+            21,
+            "Humans/Man01.hum"));
+
+    lanClient.SendWorldPeopleFrameUp(
+        new OpenOmsiLanWorldPeopleFrame(
+            0,
+            0,
+            [
+                new OpenOmsiLanWorldPersonState(
+                    21,
+                    OpenOmsiLanWorldPersonActivity.Sit,
+                    true,
+                    true,
+                    lanClient.PlayerId,
+                    0.35,
+                    1.75,
+                    1.10,
+                    90.0f,
+                    0.0f,
+                    null,
+                    null,
+                    7)
+            ]));
+
+    for (var relayStep = 0;
+         relayStep <
+             120 &&
+         (
+             observerRelayedDescription is null ||
+             observerRelayedPeople is null
+         );
+         relayStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        lanObserver.Tick(
+            0.02,
+            observerPose);
+
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        observerRelayedDescription?.Id ==
+            0x00C00021u &&
+        observerRelayedPeople?.People.Count ==
+            1 &&
+        observerRelayedPeople.People[0].Id ==
+            0x00C00021u &&
+        observerRelayedPeople.People[0].PlayerBus &&
+        observerRelayedPeople.People[0].BusId ==
+            lanClient.PlayerId &&
+        !sourceEchoedPeople,
+        "openOMSI WORLD people uplink relay did not reach only the other client.");
+
+    OpenOmsiLanWorldClaimResult?
+        deniedClaim =
+            null;
+
+    lanClient.WorldClaimResultReceived +=
+        result =>
+            deniedClaim =
+                result;
+
+    lanHost.WorldClaimRequested +=
+        request =>
+            lanHost.SendWorldClaimResult(
+                request.PlayerId,
+                Array.Empty<uint>(),
+                request.People);
+
+    lanClient.SendWorldClaim(
+        [
+            77u
+        ]);
+
+    for (var claimStep = 0;
+         claimStep <
+             120 &&
+         deniedClaim is null;
+         claimStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        lanObserver.Tick(
+            0.02,
+            observerPose);
+
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        deniedClaim is
+            {
+                Granted:
+                    false
+            } &&
+        deniedClaim.People.SequenceEqual(
+            [
+                77u
+            ]),
+        "openOMSI WORLD passenger CLAIM/DENY loopback flow failed.");
+
     var synchronizedWorld =
         new OpenOmsiLanWorld(
             lanWorld.Map,
