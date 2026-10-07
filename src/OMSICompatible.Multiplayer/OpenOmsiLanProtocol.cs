@@ -48,6 +48,7 @@ public static class OpenOmsiLanProtocol
     public const int MaximumSwitches = 31;
     public const int MaximumValues = 63;
     public const int MaximumDisplayTexts = 12;
+    public const int MaximumFreeTextures = 8;
 
     public static string CleanText(string? value, int maximumCharacters)
     {
@@ -153,28 +154,71 @@ public static class OpenOmsiLanProtocol
             NormalizeVehiclePath(pose.VehiclePath) ??
             string.Empty;
 
-        var texts =
-            EncodeDisplayTexts(pose.DisplayTexts);
+        var figure =
+            NormalizeHumanPath(pose.FigurePath) ??
+            string.Empty;
 
-        return string.Join(
-            "|",
-            "INFO",
-            pose.Id.ToString(CultureInfo.InvariantCulture),
-            CleanText(pose.Name, MaximumNameCharacters),
-            path,
-            CleanText(pose.Paint, MaximumFieldCharacters),
-            CleanText(pose.Line, 16),
-            CleanText(pose.Destination, MaximumFieldCharacters),
-            ClampFinite(pose.LengthMeters, 0.0f, 60.0f)
-                .ToString("0.00", CultureInfo.InvariantCulture),
-            ClampFinite(pose.WidthMeters, 0.0f, 8.0f)
-                .ToString("0.00", CultureInfo.InvariantCulture),
-            ClampFinite(pose.BoxOffsetMeters, -40.0f, 40.0f)
-                .ToString("0.00", CultureInfo.InvariantCulture),
-            pose.SyncTableHash.ToString("X8", CultureInfo.InvariantCulture),
-            CleanText(pose.Tour, MaximumFieldCharacters),
-            texts,
-            NormalizeHumanPath(pose.FigurePath) ?? string.Empty);
+        var head =
+            string.Join(
+                "|",
+                "INFO",
+                pose.Id.ToString(CultureInfo.InvariantCulture),
+                CleanText(pose.Name, MaximumNameCharacters),
+                path,
+                CleanText(pose.Paint, MaximumFieldCharacters),
+                CleanText(pose.Line, 16),
+                CleanText(pose.Destination, MaximumFieldCharacters),
+                ClampFinite(pose.LengthMeters, 0.0f, 60.0f)
+                    .ToString("0.00", CultureInfo.InvariantCulture),
+                ClampFinite(pose.WidthMeters, 0.0f, 8.0f)
+                    .ToString("0.00", CultureInfo.InvariantCulture),
+                ClampFinite(pose.BoxOffsetMeters, -40.0f, 40.0f)
+                    .ToString("0.00", CultureInfo.InvariantCulture),
+                pose.SyncTableHash.ToString("X8", CultureInfo.InvariantCulture),
+                CleanText(pose.Tour, MaximumFieldCharacters)) +
+            "|";
+
+        var textRoom =
+            Math.Max(
+                0,
+                MaximumDatagramBytes -
+                Encoding.UTF8.GetByteCount(
+                    head) -
+                Encoding.UTF8.GetByteCount(
+                    figure) -
+                1);
+
+        var texts =
+            EncodeTextValues(
+                pose.DisplayTexts,
+                MaximumDisplayTexts,
+                32,
+                textRoom);
+
+        var info =
+            head +
+            texts +
+            "|" +
+            figure;
+
+        var freeTextureRoom =
+            Math.Max(
+                0,
+                MaximumDatagramBytes -
+                Encoding.UTF8.GetByteCount(
+                    info) -
+                1);
+
+        var freeTextures =
+            EncodeTextValues(
+                pose.FreeTexturePaths,
+                MaximumFreeTextures,
+                128,
+                freeTextureRoom);
+
+        return info +
+               "|" +
+               freeTextures;
     }
 
     public static bool TryDecodeInfo(
@@ -231,51 +275,113 @@ public static class OpenOmsiLanProtocol
         pose.FigurePath = fields.Length > 13
             ? NormalizeHumanPath(fields[13]) ?? string.Empty
             : string.Empty;
+        pose.FreeTexturePaths = fields.Length > 14
+            ? DecodeTextValues(
+                fields[14],
+                MaximumFreeTextures,
+                128)
+            : [];
 
         return true;
     }
 
     public static string EncodeDisplayTexts(
-        IReadOnlyList<string> texts)
+        IReadOnlyList<string> texts) =>
+        EncodeTextValues(
+            texts,
+            MaximumDisplayTexts,
+            32,
+            720);
+
+    public static List<string> DecodeDisplayTexts(
+        string field) =>
+        DecodeTextValues(
+            field,
+            MaximumDisplayTexts,
+            32);
+
+    private static string EncodeTextValues(
+        IReadOnlyList<string> values,
+        int maximumItems,
+        int maximumCharacters,
+        int room)
     {
         var result =
             new List<string>(
                 Math.Min(
-                    texts.Count,
-                    MaximumDisplayTexts));
+                    values.Count,
+                    maximumItems));
 
-        foreach (var value in texts.Take(MaximumDisplayTexts))
+        var used =
+            0;
+
+        foreach (var value in
+                 values.Take(
+                     maximumItems))
         {
             var clean =
                 new string(
-                    value
+                    (value ??
+                     string.Empty)
                         .Where(
                             static character =>
-                                !char.IsControl(character))
-                        .Take(32)
+                                !char.IsControl(
+                                    character))
+                        .Take(
+                            maximumCharacters)
                         .ToArray());
 
-            result.Add(
+            var encoded =
                 Convert.ToHexString(
-                        Encoding.UTF8.GetBytes(clean))
-                    .ToLowerInvariant());
+                        Encoding.UTF8.GetBytes(
+                            clean))
+                    .ToLowerInvariant();
+
+            used +=
+                encoded.Length +
+                1;
+
+            if (used >
+                Math.Min(
+                    Math.Max(
+                        room,
+                        0),
+                    720))
+            {
+                break;
+            }
+
+            result.Add(
+                encoded);
         }
 
-        return string.Join(",", result);
+        return string.Join(
+            ",",
+            result);
     }
 
-    public static List<string> DecodeDisplayTexts(string field)
+    private static List<string> DecodeTextValues(
+        string field,
+        int maximumItems,
+        int maximumCharacters)
     {
-        var result = new List<string>();
+        var result =
+            new List<string>();
 
-        if (string.IsNullOrWhiteSpace(field))
+        if (string.IsNullOrWhiteSpace(
+                field))
         {
             return result;
         }
 
-        foreach (var hex in field.Split(',').Take(MaximumDisplayTexts))
+        foreach (var hex in
+                 field.Split(',')
+                     .Take(
+                         maximumItems))
         {
-            if ((hex.Length & 1) != 0)
+            if ((hex.Length &
+                 1) !=
+                0)
             {
                 continue;
             }
@@ -284,15 +390,18 @@ public static class OpenOmsiLanProtocol
             {
                 var text =
                     Encoding.UTF8.GetString(
-                        Convert.FromHexString(hex));
+                        Convert.FromHexString(
+                            hex));
 
                 result.Add(
                     new string(
                         text
                             .Where(
                                 static character =>
-                                    !char.IsControl(character))
-                            .Take(32)
+                                    !char.IsControl(
+                                        character))
+                            .Take(
+                                maximumCharacters)
                             .ToArray()));
             }
             catch
@@ -422,6 +531,7 @@ public sealed class OpenOmsiLanPose
     public string Tour { get; set; } = string.Empty;
     public List<string> DisplayTexts { get; set; } = [];
     public string FigurePath { get; set; } = string.Empty;
+    public List<string> FreeTexturePaths { get; set; } = [];
     public float LengthMeters { get; set; }
     public float WidthMeters { get; set; }
     public float BoxOffsetMeters { get; set; }
@@ -469,6 +579,7 @@ public sealed class OpenOmsiLanPose
             Tour = Tour,
             DisplayTexts = [.. DisplayTexts],
             FigurePath = FigurePath,
+            FreeTexturePaths = [.. FreeTexturePaths],
             LengthMeters = LengthMeters,
             WidthMeters = WidthMeters,
             BoxOffsetMeters = BoxOffsetMeters,
