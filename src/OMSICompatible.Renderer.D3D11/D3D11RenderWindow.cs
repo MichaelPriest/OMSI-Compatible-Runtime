@@ -622,6 +622,8 @@ public sealed class D3D11RenderWindow : Form
     private float _walkerVerticalSpeed;
     private bool _walkerGrounded = true;
     private bool _walkerKneeling;
+    private bool _walkerSeated;
+    private RuntimeVehiclePassengerPlaceInfo? _walkerPassengerPlace;
     private RuntimeVehicleViewMode _vehicleViewMode =
         RuntimeVehicleViewMode.Driver;
     private int _driverCameraIndex;
@@ -2055,31 +2057,44 @@ public sealed class D3D11RenderWindow : Form
         get
         {
             var speed =
-                _walkerVelocity.Length();
+                _walkerSeated
+                    ? 0.0f
+                    : _walkerVelocity.Length();
+
+            var heading =
+                _walkerSeated &&
+                _walkerPassengerPlace is
+                    { } seatedPlace
+                    ? NormalizeDegrees(
+                        _vehicle.HeadingRadians *
+                            180.0f /
+                            MathF.PI +
+                        (float)seatedPlace.HeadingDegrees)
+                    : NormalizeDegrees(
+                        _camera.Yaw *
+                        180.0f /
+                        MathF.PI);
 
             var course =
-                speed >
-                    0.02f
-                    ? MathF.Atan2(
-                          _walkerVelocity.X,
-                          _walkerVelocity.Y) *
-                      180.0f /
-                      MathF.PI
-                    : _camera.Yaw *
-                      180.0f /
-                      MathF.PI;
+                _walkerSeated
+                    ? heading
+                    : speed >
+                          0.02f
+                        ? NormalizeDegrees(
+                            MathF.Atan2(
+                                _walkerVelocity.X,
+                                _walkerVelocity.Y) *
+                            180.0f /
+                            MathF.PI)
+                        : heading;
 
             return new RuntimeLocalWalkerState(
                 _onFootMode,
                 _walkerPosition,
-                NormalizeDegrees(
-                    _camera.Yaw *
-                    180.0f /
-                    MathF.PI),
+                heading,
                 speed,
-                NormalizeDegrees(
-                    course),
-                false,
+                course,
+                _walkerSeated,
                 _walkerKneeling);
         }
     }
