@@ -8723,7 +8723,52 @@ try
                         1 &&
                     peer.Pose.VehiclePath ==
                         hostPose.VehiclePath),
-        "openOMSI LAN protocol-5 host/client loopback handshake, INFO or STATE relay failed.");
+        "openOMSI LAN protocol-6 host/client loopback handshake, INFO or STATE relay failed.");
+
+    var synchronizedWorld =
+        new OpenOmsiLanWorld(
+            lanWorld.Map,
+            "2026-10-01",
+            13.0 *
+                3600.0 +
+            37.0,
+            "weather/regen.cfg",
+            "winter");
+
+    lanHost.SetWorld(
+        synchronizedWorld);
+
+    var worldClockSynchronized =
+        false;
+
+    for (var clockStep = 0;
+         clockStep <
+             20;
+         clockStep++)
+    {
+        lanHost.Tick(
+            0.5,
+            hostPose);
+        lanClient.Tick(
+            0.5,
+            clientPose);
+
+        if (lanClient.World ==
+            synchronizedWorld)
+        {
+            worldClockSynchronized =
+                true;
+
+            break;
+        }
+
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        worldClockSynchronized,
+        "openOMSI LAN CLOCK did not keep the client date/time/weather/season synchronized with the host.");
 
     OpenOmsiLanOperationalMessage?
         hostReceivedOps =
