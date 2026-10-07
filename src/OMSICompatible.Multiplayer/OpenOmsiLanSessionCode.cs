@@ -181,8 +181,9 @@ public sealed record OpenOmsiLanSessionCode(
                         static character =>
                             !char.IsWhiteSpace(
                                 character) &&
-                            character is not
-                                '-' and
+                            character !=
+                                '-' &&
+                            character !=
                                 '_')
                     .ToArray());
 
@@ -486,8 +487,9 @@ public sealed record OpenOmsiLanSessionCode(
                         static character =>
                             !char.IsWhiteSpace(
                                 character) &&
-                            character is not
-                                '-' and
+                            character !=
+                                '-' &&
+                            character !=
                                 '_')
                     .ToArray());
 
