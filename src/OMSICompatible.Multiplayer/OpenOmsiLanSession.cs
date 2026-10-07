@@ -85,6 +85,8 @@ public sealed class OpenOmsiLanSession :
         1.0;
     private OpenOmsiLanFootprint? _requestedNearFootprint;
     private IReadOnlyList<OpenOmsiLanFootprint>? _nearFootprints;
+    private IReadOnlyList<OpenOmsiLanFootprint> _localNearFootprints =
+        Array.Empty<OpenOmsiLanFootprint>();
     private OpenOmsiLanPose _currentLocalPose =
         new();
     private double _unchangedSeconds;
@@ -517,6 +519,18 @@ public sealed class OpenOmsiLanSession :
     {
         World =
             world;
+    }
+
+    public void SetLocalNearFootprints(
+        IReadOnlyList<OpenOmsiLanFootprint> footprints)
+    {
+        ThrowIfDisposed();
+
+        _localNearFootprints =
+            footprints
+                .Take(
+                    256)
+                .ToArray();
     }
 
     public bool RequestNear(
@@ -1818,6 +1832,9 @@ public sealed class OpenOmsiLanSession :
                 FootprintFromPose(
                     _currentLocalPose));
         }
+
+        near.AddRange(
+            _localNearFootprints);
 
         foreach (var pair in
                  _peers)
