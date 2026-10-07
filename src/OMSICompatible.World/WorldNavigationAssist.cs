@@ -3,11 +3,13 @@ namespace OMSICompatible.World;
 public sealed record WorldNavigationGuidanceWaypoint(
     WorldVector3 Position,
     double DistanceAheadMeters,
-    double HeadingDegrees);
+    double HeadingDegrees,
+    double PitchDegrees);
 
 public sealed record WorldNavigationGroundArrow(
     WorldVector3 Position,
     double HeadingDegrees,
+    double PitchDegrees,
     double DistanceAheadMeters,
     string Kind);
 
@@ -206,6 +208,8 @@ public sealed class WorldNavigationAssist
                         projection.Value.T),
                     projection.Value.Z,
                     SegmentHeadingDegrees(
+                        projection.Value.SegmentIndex),
+                    SegmentPitchDegrees(
                         projection.Value.SegmentIndex));
 
         var waypoints =
@@ -239,6 +243,7 @@ public sealed class WorldNavigationAssist
                         return new WorldNavigationGroundArrow(
                             point.Position,
                             point.HeadingDegrees,
+                            point.PitchDegrees,
                             point.DistanceAheadMeters,
                             kind);
                     })
@@ -503,7 +508,10 @@ public sealed class WorldNavigationAssist
                         1),
                     Math.Round(
                         sample.HeadingDegrees,
-                        1)));
+                        1),
+                    Math.Round(
+                        sample.PitchDegrees,
+                        2)));
 
             target +=
                 WaypointSpacingMeters;
@@ -517,7 +525,8 @@ public sealed class WorldNavigationAssist
         double X,
         double Y,
         double Z,
-        double HeadingDegrees);
+        double HeadingDegrees,
+        double PitchDegrees);
 
     private RouteSample PointAtDistance(
         double distance)
@@ -530,6 +539,7 @@ public sealed class WorldNavigationAssist
                 _route[0].X,
                 _route[0].Y,
                 _route[0].Z,
+                0.0,
                 0.0);
         }
 
@@ -602,6 +612,8 @@ public sealed class WorldNavigationAssist
                     ) *
                     t,
                 SegmentHeadingDegrees(
+                    index),
+                SegmentPitchDegrees(
                     index));
         }
 
@@ -615,6 +627,9 @@ public sealed class WorldNavigationAssist
             last.Y,
             last.Z,
             SegmentHeadingDegrees(
+                _route.Length -
+                    2),
+            SegmentPitchDegrees(
                 _route.Length -
                     2));
     }
@@ -679,6 +694,42 @@ public sealed class WorldNavigationAssist
             ? heading +
               360.0
             : heading;
+    }
+
+    private double SegmentPitchDegrees(
+        int segmentIndex)
+    {
+        var index =
+            Math.Clamp(
+                segmentIndex,
+                0,
+                _route.Length -
+                    2);
+
+        var a =
+            _route[index];
+        var b =
+            _route[index + 1];
+
+        var horizontal =
+            Distance2D(
+                a.X,
+                a.Z,
+                b.X,
+                b.Z);
+
+        if (horizontal <=
+            0.000001)
+        {
+            return 0.0;
+        }
+
+        return Math.Atan2(
+                   b.Y -
+                       a.Y,
+                   horizontal) *
+               180.0 /
+               Math.PI;
     }
 
     private static double[] BuildCumulative(
