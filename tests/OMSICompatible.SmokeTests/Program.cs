@@ -4345,6 +4345,47 @@ try
             0,
         "NavBR navigation core did not preserve adaptive zoom, congestion, route waypoints and ground guidance.");
 
+    var gradedNavigationAssist =
+        new WorldNavigationAssist();
+
+    gradedNavigationAssist.SetRoute(
+        [
+            new WorldVector3(
+                0.0,
+                0.0,
+                0.0),
+            new WorldVector3(
+                0.0,
+                9.0,
+                30.0),
+            new WorldVector3(
+                0.0,
+                18.0,
+                60.0)
+        ]);
+
+    var gradedNavigation =
+        gradedNavigationAssist.Build(
+            new WorldVector3(
+                0.0,
+                0.0,
+                0.0),
+            0.0,
+            30.0,
+            onFoot:
+                false);
+
+    Require(
+        gradedNavigation.GroundArrows.Count >
+            0 &&
+        gradedNavigation.GroundArrows.All(
+            static arrow =>
+                arrow.PitchDegrees >
+                    10.0 &&
+                arrow.PitchDegrees <
+                    20.0),
+        "NavBR ground arrows no longer follow the vertical grade of the route.");
+
     var navigationOffRoute =
         navigationAssist.Build(
             new WorldVector3(
