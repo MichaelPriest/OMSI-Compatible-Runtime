@@ -66,6 +66,9 @@ internal sealed class RuntimeWorldPassengerSimulation
             }
 
             if (!doorsOpen ||
+                (_entryOrdinal.HasValue &&
+                 openEntries is not null &&
+                 !openEntries.Contains(_entryOrdinal.Value)) ||
                 vehicle?.PassengerPaths is not { } paths ||
                 !_entry.HasValue ||
                 _entry.Value < 0 ||
