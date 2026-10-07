@@ -115,8 +115,8 @@ public static class OpenOmsiLanWorldCodec
                 carIndex++;
             }
 
-            Span<byte> header =
-                stackalloc byte[
+            var header =
+                new byte[
                     HeaderBytes];
 
             header[0] =
