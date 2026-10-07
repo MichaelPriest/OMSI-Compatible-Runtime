@@ -733,7 +733,13 @@ public sealed record OpenOmsiLanSessionCode(
     }
 
     private static ushort Crc16(
-        IEnumerable<byte> bytes)
+        IEnumerable<byte> bytes) =>
+        Crc16(
+            bytes.ToArray()
+                .AsSpan());
+
+    private static ushort Crc16(
+        ReadOnlySpan<byte> bytes)
     {
         ushort crc =
             0xFFFF;
