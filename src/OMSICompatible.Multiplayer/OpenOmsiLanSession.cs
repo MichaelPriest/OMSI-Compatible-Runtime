@@ -60,6 +60,9 @@ public sealed class OpenOmsiLanSession :
         CreateNonce();
 
     private IPEndPoint? _host;
+    private readonly List<IPEndPoint>
+        _candidateHosts =
+            [];
     private uint _nextId = 2;
     private ushort _sequence;
     private ushort _voiceSequence;
@@ -212,6 +215,8 @@ public sealed class OpenOmsiLanSession :
         OpenOmsiLanWorld world)
     {
         IPEndPoint endpoint;
+        var candidateHosts =
+            new List<IPEndPoint>();
         ulong? requestedSession =
             null;
         string sessionCode =
@@ -231,14 +236,31 @@ public sealed class OpenOmsiLanSession :
                     $"Session code uses LAN protocol {decodedCode.Protocol}, runtime uses {OpenOmsiLanProtocol.ProtocolVersion}.");
             }
 
-            var address =
-                decodedCode.Addresses.FirstOrDefault() ??
-                IPAddress.Loopback;
+            foreach (var address in
+                     decodedCode.Addresses
+                         .Where(
+                             static address =>
+                                 address.AddressFamily ==
+                                 AddressFamily.InterNetwork)
+                         .Distinct())
+            {
+                candidateHosts.Add(
+                    new IPEndPoint(
+                        address,
+                        decodedCode.Port));
+            }
+
+            if (candidateHosts.Count ==
+                0)
+            {
+                candidateHosts.Add(
+                    new IPEndPoint(
+                        IPAddress.Loopback,
+                        decodedCode.Port));
+            }
 
             endpoint =
-                new IPEndPoint(
-                    address,
-                    decodedCode.Port);
+                candidateHosts[0];
             requestedSession =
                 decodedCode.SessionId;
             sessionCode =
@@ -248,6 +270,8 @@ public sealed class OpenOmsiLanSession :
         {
             endpoint =
                 ResolveTarget(target);
+            candidateHosts.Add(
+                endpoint);
         }
 
         var socket =
@@ -258,19 +282,25 @@ public sealed class OpenOmsiLanSession :
                 IPAddress.Any,
                 0));
 
-        return new OpenOmsiLanSession(
-            socket,
-            OpenOmsiLanRole.Client,
-            playerName,
-            world)
-        {
-            _host =
-                endpoint,
-            _requestedSessionId =
-                requestedSession,
-            _sessionCode =
-                sessionCode
-        };
+        var session =
+            new OpenOmsiLanSession(
+                socket,
+                OpenOmsiLanRole.Client,
+                playerName,
+                world)
+            {
+                _host =
+                    endpoint,
+                _requestedSessionId =
+                    requestedSession,
+                _sessionCode =
+                    sessionCode
+            };
+
+        session._candidateHosts.AddRange(
+            candidateHosts);
+
+        return session;
     }
 
     public static OpenOmsiLanDiscoveryResult? Discover(
@@ -873,7 +903,9 @@ public sealed class OpenOmsiLanSession :
     private void SendHello(
         OpenOmsiLanPose pose)
     {
-        if (_host is null)
+        if (_host is null &&
+            _candidateHosts.Count ==
+                0)
         {
             return;
         }
@@ -883,7 +915,7 @@ public sealed class OpenOmsiLanSession :
                 pose.VehiclePath) ??
             string.Empty;
 
-        SendText(
+        var hello =
             string.Join(
                 "|",
                 "HELLO",
@@ -899,8 +931,23 @@ public sealed class OpenOmsiLanSession :
                     World),
                 _nonce.ToString(
                     "X16",
-                    CultureInfo.InvariantCulture)),
-            _host);
+                    CultureInfo.InvariantCulture));
+
+        var targets =
+            _candidateHosts.Count >
+                    0
+                ? _candidateHosts
+                : [
+                    _host!
+                ];
+
+        foreach (var target in
+                 targets)
+        {
+            SendText(
+                hello,
+                target);
+        }
     }
 
     private void ReceiveAvailable()
@@ -1311,6 +1358,16 @@ public sealed class OpenOmsiLanSession :
         IReadOnlyList<string> fields,
         IPEndPoint endpoint)
     {
+        if (_candidateHosts.Count >
+                0 &&
+            !_candidateHosts.Any(
+                candidate =>
+                    candidate.Equals(
+                        endpoint)))
+        {
+            return;
+        }
+
         if (fields.Count < 11 ||
             !byte.TryParse(
                 fields[1],
