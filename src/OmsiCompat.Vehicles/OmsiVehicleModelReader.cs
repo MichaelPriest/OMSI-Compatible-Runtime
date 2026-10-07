@@ -261,8 +261,7 @@ public static class OmsiVehicleModelReader
                         values[1],
                         NumberStyles.Integer,
                         CultureInfo.InvariantCulture,
-                        out var targetMeshOrdinal) &&
-                    targetMeshOrdinal >= 0)
+                        out var targetMeshOrdinal))
                 {
                     var boneName =
                         values[0]
