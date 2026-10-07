@@ -81,6 +81,12 @@ public sealed class OpenOmsiLanSession :
         OpenOmsiLanProtocol.InfoEverySeconds;
     private double _clockAccumulator =
         OpenOmsiLanProtocol.ClockEverySeconds;
+    private double _nearAccumulator =
+        1.0;
+    private OpenOmsiLanFootprint? _requestedNearFootprint;
+    private IReadOnlyList<OpenOmsiLanFootprint>? _nearFootprints;
+    private OpenOmsiLanPose _currentLocalPose =
+        new();
     private double _unchangedSeconds;
     private byte[] _lastStateBody = [];
     private string _lastInfo = string.Empty;
@@ -138,6 +144,12 @@ public sealed class OpenOmsiLanSession :
 
     public string SessionCode =>
         _sessionCode;
+
+    public IReadOnlyList<OpenOmsiLanFootprint>? NearFootprints =>
+        _nearFootprints;
+
+    public event Action<IReadOnlyList<OpenOmsiLanFootprint>>?
+        NearFootprintsReceived;
 
     public event Action<OpenOmsiLanOperationalMessage>?
         OperationalMessageReceived;
@@ -505,6 +517,38 @@ public sealed class OpenOmsiLanSession :
     {
         World =
             world;
+    }
+
+    public bool RequestNear(
+        OpenOmsiLanFootprint footprint)
+    {
+        ThrowIfDisposed();
+
+        if (Role !=
+                OpenOmsiLanRole.Client ||
+            !Connected ||
+            _host is null)
+        {
+            return false;
+        }
+
+        _requestedNearFootprint =
+            footprint;
+        _nearFootprints =
+            null;
+        _nearAccumulator =
+            1.0;
+
+        SendText(
+            OpenOmsiLanProtocol.EncodePlace(
+                PlayerId,
+                footprint),
+            _host);
+
+        _nearAccumulator =
+            0.0;
+
+        return true;
     }
 
     public bool SendOperationalMessage(
