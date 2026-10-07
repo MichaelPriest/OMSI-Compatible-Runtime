@@ -85,6 +85,14 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<uint, OpenOmsiLanWorldPersonDescription>
         _sharedWorldPersonDescriptions =
             [];
+    private readonly Dictionary<(uint PeerId, uint PersonId), uint>
+        _relayedWorldPersonIds =
+            [];
+    private readonly HashSet<uint>
+        _relayedWorldPersonIdsInUse =
+            [];
+    private uint _nextRelayedWorldPersonId =
+        0x00C00000u;
     private readonly Dictionary<long, (
         OpenOmsiLanWorldLightState State,
         DateTimeOffset LastSeen)>
@@ -4137,6 +4145,14 @@ internal sealed class RuntimeApplicationContext :
                 OnMultiplayerWorldPeopleFrame;
             _multiplayerSession.WorldPersonDescriptionReceived +=
                 OnMultiplayerWorldPersonDescription;
+            _multiplayerSession.WorldPeopleFrameUpReceived +=
+                OnMultiplayerWorldPeopleFrameUp;
+            _multiplayerSession.WorldPersonDescriptionUpReceived +=
+                OnMultiplayerWorldPersonDescriptionUp;
+            _multiplayerSession.WorldClaimRequested +=
+                OnMultiplayerWorldClaimRequested;
+            _multiplayerSession.WorldClaimResultReceived +=
+                OnMultiplayerWorldClaimResult;
 
             NotifyCommsLinkVoiceState(
                 "VOZ: PTT F10 · pronto");
@@ -4328,6 +4344,224 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldPersonDescriptions[
             description.Id] =
             description;
+    }
+
+    private void OnMultiplayerWorldPersonDescriptionUp(
+        uint peerId,
+        OpenOmsiLanWorldPersonDescription description)
+    {
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            session.Role !=
+                OpenOmsiLanRole.Host)
+        {
+            return;
+        }
+
+        var mappedId =
+            ResolveRelayedWorldPersonId(
+                peerId,
+                description.Id);
+
+        var mapped =
+            description with
+            {
+                Id =
+                    mappedId
+            };
+
+        _sharedWorldPersonDescriptions[
+            mappedId] =
+            mapped;
+
+        session.RelayWorldPersonDescription(
+            peerId,
+            mapped);
+    }
+
+    private void OnMultiplayerWorldPeopleFrameUp(
+        uint peerId,
+        OpenOmsiLanWorldPeopleFrame frame)
+    {
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            session.Role !=
+                OpenOmsiLanRole.Host)
+        {
+            return;
+        }
+
+        var now =
+            DateTimeOffset.UtcNow;
+
+        var mappedPeople =
+            frame.People
+                .Select(
+                    person =>
+                    {
+                        var mappedId =
+                            ResolveRelayedWorldPersonId(
+                                peerId,
+                                person.Id);
+
+                        var mapped =
+                            person with
+                            {
+                                Id =
+                                    mappedId,
+                                PlayerBus =
+                                    person.Aboard,
+                                BusId =
+                                    person.Aboard
+                                        ? peerId
+                                        : 0,
+                                WaitingStopObjectId =
+                                    null,
+                                WaitingSpot =
+                                    null
+                            };
+
+                        _sharedWorldPeople[
+                            mappedId] =
+                            (
+                                mapped,
+                                now
+                            );
+
+                        return mapped;
+                    })
+                .ToArray();
+
+        if (mappedPeople.Length ==
+            0)
+        {
+            return;
+        }
+
+        session.RelayWorldPeopleFrame(
+            peerId,
+            new OpenOmsiLanWorldPeopleFrame(
+                frame.Sequence,
+                frame.HostMilliseconds,
+                mappedPeople));
+    }
+
+    private void OnMultiplayerWorldClaimRequested(
+        OpenOmsiLanWorldClaimRequest request)
+    {
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            session.Role !=
+                OpenOmsiLanRole.Host ||
+            request.People.Count ==
+                0)
+        {
+            return;
+        }
+
+        // The runtime does not yet own a local human/passenger simulator.
+        // Client-owned people are mirrored only and therefore cannot be handed
+        // to another bus. Explicit DENY matches openOMSI's ownership rule and
+        // prevents a client from waiting forever for an answer.
+        session.SendWorldClaimResult(
+            request.PlayerId,
+            Array.Empty<uint>(),
+            request.People);
+    }
+
+    private void OnMultiplayerWorldClaimResult(
+        OpenOmsiLanWorldClaimResult result)
+    {
+        if (_multiplayerSession?.Role !=
+            OpenOmsiLanRole.Client)
+        {
+            return;
+        }
+
+        if (result.Granted)
+        {
+            foreach (var id in
+                     result.People)
+            {
+                _sharedWorldPeople.Remove(
+                    id);
+            }
+        }
+
+        Console.WriteLine(
+            $"[multiplayer-world] passenger claim {(result.Granted ? "granted" : "denied")}: {string.Join(",", result.People)}");
+    }
+
+    private uint ResolveRelayedWorldPersonId(
+        uint peerId,
+        uint personId)
+    {
+        var key =
+            (
+                PeerId:
+                    peerId,
+                PersonId:
+                    personId
+            );
+
+        if (_relayedWorldPersonIds.TryGetValue(
+                key,
+                out var existing))
+        {
+            return existing;
+        }
+
+        const uint start =
+            0x00C00000u;
+        const uint end =
+            0x00FFFFFFu;
+
+        var candidate =
+            Math.Clamp(
+                _nextRelayedWorldPersonId,
+                start,
+                end);
+
+        for (var attempts = 0;
+             attempts <
+                 0x00400000;
+             attempts++)
+        {
+            if (!_relayedWorldPersonIdsInUse.Contains(
+                    candidate))
+            {
+                _relayedWorldPersonIds[
+                    key] =
+                    candidate;
+                _relayedWorldPersonIdsInUse.Add(
+                    candidate);
+
+                _nextRelayedWorldPersonId =
+                    candidate >=
+                            end
+                        ? start
+                        : candidate +
+                          1u;
+
+                return candidate;
+            }
+
+            candidate =
+                candidate >=
+                        end
+                    ? start
+                    : candidate +
+                      1u;
+        }
+
+        throw new InvalidOperationException(
+            "No relayed openOMSI WORLD person ids are available.");
     }
 
     private void OnMultiplayerWorldCarDescription(
@@ -4528,6 +4762,14 @@ internal sealed class RuntimeApplicationContext :
             OnMultiplayerWorldPeopleFrame;
         session.WorldPersonDescriptionReceived -=
             OnMultiplayerWorldPersonDescription;
+        session.WorldPeopleFrameUpReceived -=
+            OnMultiplayerWorldPeopleFrameUp;
+        session.WorldPersonDescriptionUpReceived -=
+            OnMultiplayerWorldPersonDescriptionUp;
+        session.WorldClaimRequested -=
+            OnMultiplayerWorldClaimRequested;
+        session.WorldClaimResultReceived -=
+            OnMultiplayerWorldClaimResult;
 
         _commsLinkVoice.StopTransmit();
         _commsLinkLastRemoteVoiceAt =
@@ -4567,6 +4809,10 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldDescriptions.Clear();
         _sharedWorldPeople.Clear();
         _sharedWorldPersonDescriptions.Clear();
+        _relayedWorldPersonIds.Clear();
+        _relayedWorldPersonIdsInUse.Clear();
+        _nextRelayedWorldPersonId =
+            0x00C00000u;
         _sharedWorldLights.Clear();
         _sharedWorldSignalStateBuffer.Clear();
         _sharedWorldSendAccumulator =
