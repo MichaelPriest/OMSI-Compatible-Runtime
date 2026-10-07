@@ -8,7 +8,9 @@ public sealed record WorldLineAiStopTiming(
     string StopName,
     double ArrivalSeconds,
     double DepartureSeconds,
-    bool Stops);
+    bool Stops,
+    double RouteDistanceMeters = 0.0,
+    int StoppingMode = 0);
 
 public sealed record WorldLineAiTripTiming(
     IReadOnlyList<WorldLineAiStopTiming> Stops,
@@ -95,6 +97,9 @@ public static class WorldLineAiTripTimingResolver
                     true,
                     count)
                 .ToArray();
+        var stoppingMode =
+            new int[
+                count];
 
         if (profile is not
             null)
@@ -139,13 +144,19 @@ public static class WorldLineAiTripTimingResolver
                 if (value.StationIndex >=
                         0 &&
                     value.StationIndex <
-                        count &&
-                    value.Mode ==
-                        2)
+                        count)
                 {
-                    stopping[
+                    stoppingMode[
                         value.StationIndex] =
-                        false;
+                        value.Mode;
+
+                    if (value.Mode ==
+                        2)
+                    {
+                        stopping[
+                            value.StationIndex] =
+                            false;
+                    }
                 }
             }
         }
@@ -394,7 +405,9 @@ public static class WorldLineAiTripTimingResolver
                     stop.Name,
                     arrivalSeconds,
                     departureSeconds,
-                    stopping[index]));
+                    stopping[index],
+                    along[index],
+                    stoppingMode[index]));
         }
 
         var duration =
