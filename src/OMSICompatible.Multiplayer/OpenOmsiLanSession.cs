@@ -933,13 +933,14 @@ public sealed class OpenOmsiLanSession :
                     "X16",
                     CultureInfo.InvariantCulture));
 
-        var targets =
+        IEnumerable<IPEndPoint> targets =
             _candidateHosts.Count >
                     0
                 ? _candidateHosts
-                : [
+                : new[]
+                {
                     _host!
-                ];
+                };
 
         foreach (var target in
                  targets)
