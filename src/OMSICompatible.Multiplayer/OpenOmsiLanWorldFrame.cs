@@ -721,7 +721,8 @@ public static class OpenOmsiLanWorldCodec
             value)
             ? (int)Math.Clamp(
                 Math.Round(
-                    value),
+                    value,
+                    MidpointRounding.AwayFromZero),
                 int.MinValue,
                 int.MaxValue)
             : 0;
@@ -774,7 +775,8 @@ public static class OpenOmsiLanWorldCodec
                 Math.Round(
                     heading /
                     360.0 *
-                    4096.0) %
+                    4096.0,
+                    MidpointRounding.AwayFromZero) %
                 4096),
             12);
         writer.PutFixed(
