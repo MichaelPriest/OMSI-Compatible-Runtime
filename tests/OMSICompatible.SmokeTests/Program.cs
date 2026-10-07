@@ -10190,6 +10190,112 @@ try
         hostPeopleAtObserver,
         "openOMSI WORLD host people broadcast did not reach every client.");
 
+    var targetedPeopleAtClient =
+        false;
+    var targetedPeopleAtObserver =
+        false;
+    var targetedDescriptionAtClient =
+        false;
+    var targetedDescriptionAtObserver =
+        false;
+
+    lanClient.WorldPeopleFrameReceived +=
+        frame =>
+        {
+            targetedPeopleAtClient |=
+                frame.People.Any(
+                    static person =>
+                        person.Id ==
+                        0x00400043u);
+        };
+
+    lanObserver.WorldPeopleFrameReceived +=
+        frame =>
+        {
+            targetedPeopleAtObserver |=
+                frame.People.Any(
+                    static person =>
+                        person.Id ==
+                        0x00400043u);
+        };
+
+    lanClient.WorldPersonDescriptionReceived +=
+        description =>
+        {
+            targetedDescriptionAtClient |=
+                description.Id ==
+                0x00400043u;
+        };
+
+    lanObserver.WorldPersonDescriptionReceived +=
+        description =>
+        {
+            targetedDescriptionAtObserver |=
+                description.Id ==
+                0x00400043u;
+        };
+
+    Require(
+        lanHost.SendWorldPersonDescriptionTo(
+            lanClient.PlayerId,
+            new OpenOmsiLanWorldPersonDescription(
+                0x00400043u,
+                "Humans/Man01.hum")) &&
+        lanHost.SendWorldPeopleFrameTo(
+            lanClient.PlayerId,
+            new OpenOmsiLanWorldPeopleFrame(
+                0,
+                0,
+                [
+                    new OpenOmsiLanWorldPersonState(
+                        0x00400043u,
+                        OpenOmsiLanWorldPersonActivity.Stand,
+                        false,
+                        false,
+                        0,
+                        hostPose.X +
+                            2.0,
+                        hostPose.Y +
+                            1.0,
+                        hostPose.Z,
+                        0.0f,
+                        0.0f,
+                        7001,
+                        3,
+                        null)
+                ])),
+        "openOMSI WORLD targeted people send could not be queued.");
+
+    for (var targetedStep = 0;
+         targetedStep <
+             120 &&
+         (
+             !targetedPeopleAtClient ||
+             !targetedDescriptionAtClient
+         );
+         targetedStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        lanObserver.Tick(
+            0.02,
+            observerPose);
+
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        targetedPeopleAtClient &&
+        targetedDescriptionAtClient &&
+        !targetedPeopleAtObserver &&
+        !targetedDescriptionAtObserver,
+        "openOMSI WORLD targeted people/description send leaked to another client.");
+
     OpenOmsiLanWorldPersonDescription?
         observerRelayedDescription =
             null;
