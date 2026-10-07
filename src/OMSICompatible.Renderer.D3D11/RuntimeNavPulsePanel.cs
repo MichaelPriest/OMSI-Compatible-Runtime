@@ -37,9 +37,8 @@ internal sealed class RuntimeNavPulsePanel : Panel
     private RuntimeFuelTrackState _fuel =
         RuntimeFuelTrackState.Unknown;
     private bool _circleMode;
-
-    private const float RangeMeters =
-        260.0f;
+    private float _rangeMeters =
+        450.0f;
 
     public RuntimeNavPulsePanel(
         IReadOnlyList<RuntimeSplineInfo> splines)
@@ -133,6 +132,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
     public void UpdateState(
         Vector3 position,
         float headingRadians,
+        float speedMetersPerSecond,
         IReadOnlyList<RuntimeTrafficAgentInfo> traffic,
         RuntimeFuelTrackState fuel)
     {
@@ -142,6 +142,11 @@ internal sealed class RuntimeNavPulsePanel : Panel
             headingRadians;
         _fuel =
             fuel;
+        _rangeMeters =
+            SuggestedRadius(
+                Math.Abs(
+                    speedMetersPerSecond) *
+                3.6f);
 
         _remoteVehicles =
             traffic
@@ -273,7 +278,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
             Math.Min(
                 mapRect.Width,
                 mapRect.Height) /
-            (RangeMeters * 2.0f);
+            (_rangeMeters * 2.0f);
 
         using var roadPen =
             new Pen(
@@ -295,8 +300,8 @@ internal sealed class RuntimeNavPulsePanel : Panel
 
             if (dx * dx +
                 dz * dz >
-                (RangeMeters + 80.0f) *
-                (RangeMeters + 80.0f))
+                (_rangeMeters + 80.0f) *
+                (_rangeMeters + 80.0f))
             {
                 continue;
             }
@@ -335,8 +340,8 @@ internal sealed class RuntimeNavPulsePanel : Panel
                     _position.Z);
 
             if (delta.LengthSquared() >
-                RangeMeters *
-                RangeMeters)
+                _rangeMeters *
+                _rangeMeters)
             {
                 continue;
             }
@@ -401,7 +406,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
                     233));
 
         graphics.DrawString(
-            "NAVPULSE",
+            $"NAVPULSE · {_rangeMeters:0} m",
             titleFont,
             titleBrush,
             8.0f,
@@ -412,6 +417,18 @@ internal sealed class RuntimeNavPulsePanel : Panel
             bodyFont,
             mapRect.Bottom + 5.0f);
     }
+
+    private static float SuggestedRadius(
+        float speedKph) =>
+        speedKph switch
+        {
+            < 10.0f => 450.0f,
+            < 25.0f => 650.0f,
+            < 45.0f => 900.0f,
+            < 65.0f => 1250.0f,
+            < 90.0f => 1750.0f,
+            _ => 2400.0f
+        };
 
     private PointF ToScreen(
         Vector2 world,
