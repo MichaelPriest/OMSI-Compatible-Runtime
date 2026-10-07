@@ -8781,12 +8781,21 @@ try
         OpenOmsiLanWorldCodec.Encode(
             sharedWorldFrame);
 
+    var decodedWorldFrame =
+        new OpenOmsiLanWorldFrame(
+            0,
+            0,
+            Array.Empty<
+                OpenOmsiLanWorldCarState>(),
+            Array.Empty<
+                OpenOmsiLanWorldLightState>());
+
     var worldDecoded =
         worldPackets.Count >
             0 &&
         OpenOmsiLanWorldCodec.TryDecode(
             worldPackets[0],
-            out var decodedWorldFrame);
+            out decodedWorldFrame);
 
     var decodedFirstCar =
         worldDecoded &&
