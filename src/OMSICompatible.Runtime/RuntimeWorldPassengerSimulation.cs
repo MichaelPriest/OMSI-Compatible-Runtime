@@ -16,6 +16,12 @@ internal sealed class RuntimeWorldPassengerSimulation
     private int[] _route = [];
     private int _routeIndex;
     private Vector3 _local;
+    private bool _exiting;
+    private bool _disembarked;
+    private double _afterExitSeconds;
+    private double _rideMeters;
+    private readonly double _rideTargetMeters;
+    private Vector2? _lastBusPosition;
 
     public RuntimeWorldPassengerSimulation(
         OpenOmsiLanWorldPersonState state,
@@ -27,11 +33,27 @@ internal sealed class RuntimeWorldPassengerSimulation
             WaitingSpot = null
         };
         HumanPath = humanPath ?? string.Empty;
+
+        // openOMSI falls back to a random 1..20 km ride when no
+        // timetable destination is available. Keep that behavior
+        // deterministic per WORLD person id so reconnects do not
+        // reshuffle destinations.
+        _rideTargetMeters =
+            1000.0 +
+            (
+                state.Id %
+                1901u
+            ) *
+            10.0;
     }
 
     public OpenOmsiLanWorldPersonState State { get; private set; }
     public string HumanPath { get; }
     public int? ReservedPlaceIndex => _place?.FileIndex;
+    public bool Completed =>
+        _disembarked &&
+        _afterExitSeconds >=
+            5.0;
 
     public void Update(
         double deltaSeconds,
@@ -43,6 +65,56 @@ internal sealed class RuntimeWorldPassengerSimulation
         IReadOnlySet<int>? openEntries = null)
     {
         var dt = (float)Math.Clamp(deltaSeconds, 0.0, 0.1);
+
+        if (_disembarked)
+        {
+            _afterExitSeconds +=
+                Math.Max(
+                    0.0,
+                    deltaSeconds);
+
+            State = State with
+            {
+                Activity =
+                    OpenOmsiLanWorldPersonActivity.Stand,
+                SpeedMetersPerSecond =
+                    0
+            };
+
+            return;
+        }
+
+        var busPosition =
+            new Vector2(
+                (float)bus.X,
+                (float)bus.Y);
+
+        if (State.Aboard)
+        {
+            if (_lastBusPosition is
+                { } previousBusPosition)
+            {
+                var delta =
+                    busPosition -
+                    previousBusPosition;
+
+                var distance =
+                    delta.Length();
+
+                if (float.IsFinite(
+                        distance) &&
+                    distance <
+                        100.0f)
+                {
+                    _rideMeters +=
+                        distance;
+                }
+            }
+
+            _lastBusPosition =
+                busPosition;
+        }
+
         if (_place is not null)
         {
             reserved.Add(_place.FileIndex);
@@ -102,6 +174,9 @@ internal sealed class RuntimeWorldPassengerSimulation
 
             _local = localEntry;
             _routeIndex = _route.Length > 1 && _route[0] == _entry.Value ? 1 : 0;
+            _lastBusPosition =
+                busPosition;
+
             State = State with
             {
                 Aboard = true,
@@ -117,8 +192,45 @@ internal sealed class RuntimeWorldPassengerSimulation
         }
 
         if (_place is null ||
-            vehicle?.PassengerPaths is not { } cabinPaths ||
-            State.Activity == OpenOmsiLanWorldPersonActivity.Sit)
+            vehicle?.PassengerPaths is not { } cabinPaths)
+        {
+            return;
+        }
+
+        if (!_exiting &&
+            _rideMeters >=
+                _rideTargetMeters &&
+            Math.Abs(
+                bus.SpeedKph) <=
+                1.5 &&
+            doorsOpen &&
+            TryConfigureExit(
+                vehicle,
+                cabinPaths))
+        {
+            _exiting =
+                true;
+
+            State = State with
+            {
+                Activity =
+                    OpenOmsiLanWorldPersonActivity.Walk,
+                SpeedMetersPerSecond =
+                    WalkSpeed,
+                SeatIndex =
+                    null,
+                X =
+                    _local.X,
+                Y =
+                    _local.Y,
+                Z =
+                    _local.Z
+            };
+        }
+
+        if (State.Activity ==
+                OpenOmsiLanWorldPersonActivity.Sit &&
+            !_exiting)
         {
             return;
         }
@@ -148,6 +260,55 @@ internal sealed class RuntimeWorldPassengerSimulation
             {
                 _routeIndex++;
             }
+            return;
+        }
+
+        if (_exiting)
+        {
+            var worldExit =
+                LocalToWorld(
+                    bus,
+                    _local);
+
+            State = State with
+            {
+                Aboard =
+                    false,
+                PlayerBus =
+                    false,
+                BusId =
+                    0,
+                X =
+                    worldExit.X,
+                Y =
+                    worldExit.Y,
+                Z =
+                    worldExit.Z,
+                Activity =
+                    OpenOmsiLanWorldPersonActivity.Walk,
+                SpeedMetersPerSecond =
+                    WalkSpeed,
+                SeatIndex =
+                    null
+            };
+
+            _place =
+                null;
+            _entry =
+                null;
+            _entryOrdinal =
+                null;
+            _route =
+                [];
+            _routeIndex =
+                0;
+            _disembarked =
+                true;
+            _afterExitSeconds =
+                0.0;
+            _lastBusPosition =
+                null;
+
             return;
         }
 
@@ -270,6 +431,96 @@ internal sealed class RuntimeWorldPassengerSimulation
         _place = place;
         _route = route;
         reserved.Add(place.FileIndex);
+        return true;
+    }
+
+    private bool TryConfigureExit(
+        OmsiVehicleAsset vehicle,
+        OmsiVehiclePathNetwork paths)
+    {
+        var cabin =
+            vehicle.PassengerCabin;
+
+        if (cabin is null ||
+            cabin.Exits.Count ==
+                0 ||
+            paths.Points.Count ==
+                0)
+        {
+            return false;
+        }
+
+        var start =
+            NearestPoint(
+                paths,
+                _place is null
+                    ? _local
+                    : PlaceFloor(
+                        _place));
+
+        if (start <
+            0)
+        {
+            return false;
+        }
+
+        var exit =
+            cabin.Exits
+                .Where(
+                    point =>
+                        point >=
+                            0 &&
+                        point <
+                            paths.Points.Count)
+                .Select(
+                    point =>
+                        new
+                        {
+                            Point =
+                                point,
+                            Distance =
+                                Vector3.DistanceSquared(
+                                    _local,
+                                    V(
+                                        paths.Points[
+                                            point]))
+                        })
+                .OrderBy(
+                    static item =>
+                        item.Distance)
+                .FirstOrDefault();
+
+        if (exit is null)
+        {
+            return false;
+        }
+
+        var route =
+            Route(
+                paths,
+                start,
+                exit.Point);
+
+        if (route.Length ==
+            0)
+        {
+            return false;
+        }
+
+        _local =
+            _place is null
+                ? _local
+                : PlaceFloor(
+                    _place);
+
+        _route =
+            route;
+        _routeIndex =
+            route[0] ==
+                    start
+                ? 1
+                : 0;
+
         return true;
     }
 
