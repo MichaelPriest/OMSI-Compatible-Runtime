@@ -470,6 +470,13 @@ public static class OpenOmsiLanStateCodec
                         : pose.Walker.HeadingDegrees),
                 16);
         }
+
+        writer.Put(1, 1);
+        writer.Put(
+            pose.RadioKeyed
+                ? 1UL
+                : 0UL,
+            1);
     }
 
     private static void GetTail(
@@ -547,23 +554,46 @@ public static class OpenOmsiLanStateCodec
                 value;
         }
 
-        if (!reader.TryGet(1, out var hasCourse) ||
-            hasCourse == 0 ||
-            pose.Walker is null ||
-            !reader.TryGet(16, out var course))
+        if (reader.TryGet(
+                1,
+                out var hasCourse) &&
+            hasCourse !=
+                0)
         {
-            return;
+            if (!reader.TryGet(
+                    16,
+                    out var course))
+            {
+                return;
+            }
+
+            if (pose.Walker is not null)
+            {
+                pose.Walker =
+                    pose.Walker with
+                    {
+                        CourseDegrees =
+                            (float)(
+                                course *
+                                360.0 /
+                                65536.0)
+                    };
+            }
         }
 
-        pose.Walker =
-            pose.Walker with
-            {
-                CourseDegrees =
-                    (float)(
-                        course *
-                        360.0 /
-                        65536.0)
-            };
+        if (reader.TryGet(
+                1,
+                out var hasRadio) &&
+            hasRadio !=
+                0 &&
+            reader.TryGet(
+                1,
+                out var radioKeyed))
+        {
+            pose.RadioKeyed =
+                radioKeyed !=
+                0;
+        }
     }
 
     private static ulong QuantizeHeading(float value)
