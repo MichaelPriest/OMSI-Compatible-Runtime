@@ -388,6 +388,19 @@ internal sealed class RuntimeHostWorldPassengerAuthority
         }
     }
 
+    public void ResetSession()
+    {
+        _people.Clear();
+        _handedOver.Clear();
+        _pendingDescriptions.Clear();
+        _described.Clear();
+        _goneSeconds.Clear();
+        _idsBySpot.Clear();
+        _spotById.Clear();
+        _nextPersonId =
+            FirstPersonId;
+    }
+
     public IReadOnlyList<OpenOmsiLanWorldPersonDescription>
         TakePendingDescriptions()
     {
