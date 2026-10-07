@@ -15353,6 +15353,12 @@ public sealed class D3D11RenderWindow : Form
                         deltaSeconds);
             }
         }
+        else if (_onFootMode &&
+                 !_onFootFreeCamera)
+        {
+            UpdateOnFoot(
+                deltaSeconds);
+        }
         else
         {
             var forward =
@@ -19183,6 +19189,19 @@ public sealed class D3D11RenderWindow : Form
         return result;
     }
 
+    private static float NormalizeDegrees(
+        float value)
+    {
+        value %=
+            360.0f;
+
+        return value <
+                   0.0f
+            ? value +
+              360.0f
+            : value;
+    }
+
     private static float NormalizeRadians(
         float value)
     {
@@ -21498,6 +21517,82 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
+        if (e.Control &&
+            e.Shift &&
+            e.KeyCode ==
+                Keys.G)
+        {
+            ToggleOnFootMode();
+            e.SuppressKeyPress =
+                true;
+            e.Handled =
+                true;
+            return;
+        }
+
+        if (_onFootMode)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.F1:
+                    _onFootFreeCamera =
+                        false;
+                    SnapCameraToWalker();
+                    e.SuppressKeyPress =
+                        true;
+                    e.Handled =
+                        true;
+                    return;
+
+                case Keys.F4:
+                    _onFootFreeCamera =
+                        true;
+                    e.SuppressKeyPress =
+                        true;
+                    e.Handled =
+                        true;
+                    return;
+
+                case Keys.Space:
+                    if (_walkerGrounded &&
+                        !_walkerKneeling)
+                    {
+                        _walkerVerticalSpeed =
+                            4.0f;
+                        _walkerGrounded =
+                            false;
+                    }
+
+                    e.SuppressKeyPress =
+                        true;
+                    e.Handled =
+                        true;
+                    return;
+
+                case Keys.C:
+                    _walkerKneeling =
+                        !_walkerKneeling;
+                    e.SuppressKeyPress =
+                        true;
+                    e.Handled =
+                        true;
+                    return;
+
+                case Keys.W:
+                case Keys.A:
+                case Keys.S:
+                case Keys.D:
+                case Keys.ShiftKey:
+                case Keys.LShiftKey:
+                case Keys.RShiftKey:
+                    e.SuppressKeyPress =
+                        true;
+                    e.Handled =
+                        true;
+                    return;
+            }
+        }
+
         var matchedOmsiBinding =
             !_vehiclePreviewMode &&
             DispatchOmsiKeyboardKeyDown(
@@ -21581,6 +21676,291 @@ public sealed class D3D11RenderWindow : Form
 
         ApplyLegacyKeyboardFallback(
             e);
+    }
+
+    private void ToggleOnFootMode()
+    {
+        if (_vehiclePreviewMode ||
+            _windowInfo.Vehicle is null ||
+            _vehicleRemoved)
+        {
+            return;
+        }
+
+        if (_onFootMode)
+        {
+            _onFootMode =
+                false;
+            _onFootFreeCamera =
+                false;
+            _walkerVelocity =
+                Vector2.Zero;
+            _walkerVerticalSpeed =
+                0.0f;
+            _walkerKneeling =
+                false;
+            _driveMode =
+                true;
+            _vehicleViewMode =
+                RuntimeVehicleViewMode.Driver;
+            UpdateCaption();
+            return;
+        }
+
+        var heading =
+            _vehicle.HeadingRadians;
+
+        var forward =
+            new Vector3(
+                MathF.Sin(
+                    heading),
+                0.0f,
+                MathF.Cos(
+                    heading));
+
+        var right =
+            new Vector3(
+                forward.Z,
+                0.0f,
+                -forward.X);
+
+        var trackWidth =
+            (float)(
+                _windowInfo.Vehicle
+                    .Physics
+                    .TrackWidthMeters ??
+                2.4);
+
+        var position =
+            _vehicle.Position +
+            right *
+            (
+                trackWidth *
+                0.5f +
+                0.8f
+            ) +
+            forward *
+            1.2f;
+
+        if (_terrainSurfaceSampler.TrySample(
+                position.X,
+                position.Z,
+                out var ground))
+        {
+            position.Y =
+                ground +
+                0.02f;
+        }
+
+        _walkerPosition =
+            position;
+        _walkerVelocity =
+            Vector2.Zero;
+        _walkerVerticalSpeed =
+            0.0f;
+        _walkerGrounded =
+            true;
+        _walkerKneeling =
+            false;
+        _onFootMode =
+            true;
+        _onFootFreeCamera =
+            false;
+        _driveMode =
+            false;
+
+        _camera.SetLookAt(
+            _walkerPosition +
+                Vector3.UnitY *
+                1.62f,
+            _walkerPosition +
+                Vector3.UnitY *
+                1.62f +
+                forward,
+            moveSpeed:
+                4.3f);
+
+        UpdateCaption();
+    }
+
+    private void UpdateOnFoot(
+        float deltaSeconds)
+    {
+        if (!_onFootMode ||
+            deltaSeconds <=
+                0.0f)
+        {
+            return;
+        }
+
+        var yaw =
+            _camera.Yaw;
+
+        var forward =
+            new Vector2(
+                MathF.Sin(
+                    yaw),
+                MathF.Cos(
+                    yaw));
+
+        var right =
+            new Vector2(
+                forward.Y,
+                -forward.X);
+
+        var direction =
+            Vector2.Zero;
+
+        if (_pressedKeys.Contains(
+                Keys.W))
+        {
+            direction +=
+                forward;
+        }
+
+        if (_pressedKeys.Contains(
+                Keys.S))
+        {
+            direction -=
+                forward;
+        }
+
+        if (_pressedKeys.Contains(
+                Keys.D))
+        {
+            direction +=
+                right;
+        }
+
+        if (_pressedKeys.Contains(
+                Keys.A))
+        {
+            direction -=
+                right;
+        }
+
+        if (direction.LengthSquared() >
+            0.0001f)
+        {
+            direction =
+                Vector2.Normalize(
+                    direction);
+        }
+
+        var running =
+            _pressedKeys.Contains(
+                Keys.ShiftKey) ||
+            _pressedKeys.Contains(
+                Keys.LShiftKey) ||
+            _pressedKeys.Contains(
+                Keys.RShiftKey);
+
+        var targetSpeed =
+            _walkerKneeling
+                ? 0.5f
+                : running
+                    ? 4.3f
+                    : 1.45f;
+
+        var targetVelocity =
+            direction *
+            targetSpeed;
+
+        var acceleration =
+            _walkerGrounded
+                ? 7.0f
+                : 1.0f;
+
+        var blend =
+            1.0f -
+            MathF.Exp(
+                -deltaSeconds *
+                acceleration);
+
+        _walkerVelocity =
+            Vector2.Lerp(
+                _walkerVelocity,
+                targetVelocity,
+                blend);
+
+        if (_walkerVelocity.Length() <
+                0.02f &&
+            direction ==
+                Vector2.Zero)
+        {
+            _walkerVelocity =
+                Vector2.Zero;
+        }
+
+        var next =
+            _walkerPosition;
+
+        next.X +=
+            _walkerVelocity.X *
+            deltaSeconds;
+        next.Z +=
+            _walkerVelocity.Y *
+            deltaSeconds;
+
+        var hasGround =
+            _terrainSurfaceSampler.TrySample(
+                next.X,
+                next.Z,
+                out var ground);
+
+        if (!_walkerGrounded)
+        {
+            _walkerVerticalSpeed -=
+                9.81f *
+                deltaSeconds;
+
+            next.Y +=
+                _walkerVerticalSpeed *
+                deltaSeconds;
+        }
+
+        if (hasGround)
+        {
+            var floor =
+                ground +
+                0.02f;
+
+            if (_walkerGrounded ||
+                next.Y <=
+                    floor)
+            {
+                next.Y =
+                    floor;
+                _walkerVerticalSpeed =
+                    0.0f;
+                _walkerGrounded =
+                    true;
+            }
+        }
+
+        _walkerPosition =
+            next;
+
+        SnapCameraToWalker();
+    }
+
+    private void SnapCameraToWalker()
+    {
+        if (!_onFootMode ||
+            _onFootFreeCamera)
+        {
+            return;
+        }
+
+        var eyeHeight =
+            _walkerKneeling
+                ? 1.02f
+                : 1.62f;
+
+        _camera.SetPosition(
+            _walkerPosition +
+            Vector3.UnitY *
+            eyeHeight);
     }
 
     private bool TryApplyOmsiDefaultDriveKeyFallback(
