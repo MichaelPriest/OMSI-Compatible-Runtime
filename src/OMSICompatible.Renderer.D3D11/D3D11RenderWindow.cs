@@ -726,6 +726,11 @@ public sealed class D3D11RenderWindow : Form
         RuntimeSplineGeometry.Empty;
     private uint _splineVertexCount;
 
+    private ID3D11Buffer? _navigationGuidanceVertexBuffer;
+    private uint _navigationGuidanceVertexCount;
+    private RuntimeObjectBatch[] _navigationGuidanceBatches =
+        [];
+
     private ID3D11Buffer? _objectVertexBuffer;
     private ID3D11VertexShader? _objectVertexShader;
     private ID3D11PixelShader? _objectColorPixelShader;
@@ -1695,6 +1700,65 @@ public sealed class D3D11RenderWindow : Form
 
         Shown += OnWindowShown;
         ClientSizeChanged += OnClientSizeChanged;
+    }
+
+    public string CurrentOperationLine =>
+        _driveOpsPanel?.CurrentLine ??
+        string.Empty;
+
+    public string CurrentOperationDestination =>
+        _driveOpsPanel?.CurrentDestination ??
+        string.Empty;
+
+    public void SetNavigationGuidance(
+        IReadOnlyList<RuntimeTrafficPathPointInfo> route,
+        IReadOnlyList<RuntimeNavigationGuidancePointInfo> guidance)
+    {
+        _navPulsePanel?.SetRoute(
+            route);
+
+        _navigationGuidanceVertexBuffer?.Dispose();
+        _navigationGuidanceVertexBuffer =
+            null;
+        _navigationGuidanceVertexCount =
+            0;
+        _navigationGuidanceBatches =
+            [];
+
+        if (_device is null ||
+            guidance.Count ==
+                0)
+        {
+            return;
+        }
+
+        var vertices =
+            RuntimeNavigationGuidanceGeometry.Build(
+                guidance);
+
+        if (vertices.Length ==
+            0)
+        {
+            return;
+        }
+
+        _navigationGuidanceVertexBuffer =
+            _device.CreateBuffer(
+                vertices.AsSpan(),
+                BindFlags.VertexBuffer);
+        _navigationGuidanceVertexCount =
+            (uint)vertices.Length;
+        _navigationGuidanceBatches =
+            [
+                new RuntimeObjectBatch(
+                    0,
+                    _navigationGuidanceVertexCount,
+                    null,
+                    false,
+                    true,
+                    NoZWrite:
+                        true)
+            ];
     }
 
     public void SetDriveOpsNetworkState(
@@ -7608,6 +7672,8 @@ public sealed class D3D11RenderWindow : Form
             DrawObjects(
                 RuntimeSceneryRenderPass.Three);
 
+            DrawNavigationGuidance();
+
             DrawTrafficVehicles();
             DrawTrafficVehicleLights();
 
@@ -8418,6 +8484,22 @@ public sealed class D3D11RenderWindow : Form
             _splineVertexBuffer,
             _splineVertexCount,
             _splineGeometry.Batches);
+    }
+
+    private void DrawNavigationGuidance()
+    {
+        if (_navigationGuidanceVertexCount ==
+                0 ||
+            _navigationGuidanceBatches.Length ==
+                0)
+        {
+            return;
+        }
+
+        DrawTexturedGeometry(
+            _navigationGuidanceVertexBuffer,
+            _navigationGuidanceVertexCount,
+            _navigationGuidanceBatches);
     }
 
     private void DrawObjects(
@@ -24986,6 +25068,7 @@ public sealed class D3D11RenderWindow : Form
             }
 
             _terrainVertexBuffer?.Dispose();
+            _navigationGuidanceVertexBuffer?.Dispose();
             _splineVertexBuffer?.Dispose();
 
             while (_retiredStreamingTextures.Count >
