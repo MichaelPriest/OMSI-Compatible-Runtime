@@ -450,6 +450,7 @@ public sealed class OpenOmsiLanPose
     public List<float> Values { get; set; } = [];
     public OpenOmsiLanWalker? Walker { get; set; }
     public uint SentMilliseconds { get; set; }
+    public bool RadioKeyed { get; set; }
 
     public bool HasVehicle =>
         (Flags & OpenOmsiLanProtocol.FlagVehicle) != 0 &&
@@ -495,7 +496,8 @@ public sealed class OpenOmsiLanPose
             Switches = [.. Switches],
             Values = [.. Values],
             Walker = Walker,
-            SentMilliseconds = SentMilliseconds
+            SentMilliseconds = SentMilliseconds,
+            RadioKeyed = RadioKeyed
         };
     }
 }
