@@ -6869,6 +6869,7 @@ internal sealed class RuntimeApplicationContext :
     private void UpdateHostWorldPassengers(
         OpenOmsiLanSession session,
         IReadOnlyList<OpenOmsiLanPeerSnapshot> peers,
+        OpenOmsiLanPose localPose,
         double deltaSeconds,
         ICollection<RuntimeRemoteWalkerInfo> target)
     {
@@ -6920,8 +6921,32 @@ internal sealed class RuntimeApplicationContext :
                 _hostWorldPassengers.TakePendingDescriptions();
         }
 
+        // The host's own 3D scene needs only people around the active
+        // vehicle/walker. Other peers still receive their independent
+        // 260 m WORLD views below, without using this local cull.
+        var localCenterX =
+            localPose.Walker?.X ??
+            localPose.X;
+        var localCenterY =
+            localPose.Walker?.Y ??
+            localPose.Y;
+
         foreach (var person in
-                 _hostWorldPassengers.People)
+                 _hostWorldPassengers.People.Where(
+                     person =>
+                     {
+                         var dx =
+                             person.X -
+                             localCenterX;
+                         var dy =
+                             person.Y -
+                             localCenterY;
+
+                         return person.Aboard ||
+                                dx * dx +
+                                dy * dy <=
+                                radiusSquared;
+                     }))
         {
             var humanPath =
                 _hostWorldPassengers.HumanPath(
@@ -7394,6 +7419,7 @@ internal sealed class RuntimeApplicationContext :
         UpdateHostWorldPassengers(
             session,
             peers,
+            localPose,
             deltaSeconds,
             remoteWalkers);
 
