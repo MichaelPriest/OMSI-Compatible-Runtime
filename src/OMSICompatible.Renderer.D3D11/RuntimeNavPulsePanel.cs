@@ -31,6 +31,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
     private readonly RoadSegment[] _roads;
     private readonly Button _modeButton;
     private readonly Button _expandButton;
+    private readonly Button _guidanceButton;
     private Vector3 _position;
     private float _headingRadians;
     private Vector2[] _remoteVehicles =
@@ -41,14 +42,22 @@ internal sealed class RuntimeNavPulsePanel : Panel
         RuntimeFuelTrackState.Unknown;
     private bool _circleMode;
     private bool _expanded;
+    private bool _guidanceEnabled =
+        true;
     private float _rangeMeters =
         450.0f;
 
     public bool Expanded =>
         _expanded;
 
+    public bool GuidanceEnabled =>
+        _guidanceEnabled;
+
     public event EventHandler?
         DisplayModeChanged;
+
+    public event EventHandler?
+        GuidanceVisibilityChanged;
 
     public RuntimeNavPulsePanel(
         IReadOnlyList<RuntimeSplineInfo> splines)
@@ -139,6 +148,53 @@ internal sealed class RuntimeNavPulsePanel : Panel
                 TabStop = false
             };
 
+        _guidanceButton =
+            new Button
+            {
+                Text = "SETAS",
+                Width = 52,
+                Height = 24,
+                Top = 4,
+                FlatStyle =
+                    FlatStyle.Flat,
+                BackColor =
+                    Color.FromArgb(
+                        205,
+                        210,
+                        216),
+                ForeColor =
+                    Color.FromArgb(
+                        30,
+                        35,
+                        40),
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        7.0f,
+                        FontStyle.Bold),
+                TabStop = false
+            };
+
+        _guidanceButton.FlatAppearance.BorderColor =
+            Color.FromArgb(
+                130,
+                138,
+                146);
+        _guidanceButton.Click +=
+            (_, _) =>
+            {
+                _guidanceEnabled =
+                    !_guidanceEnabled;
+                _guidanceButton.Text =
+                    _guidanceEnabled
+                        ? "SETAS"
+                        : "SEM SETA";
+
+                GuidanceVisibilityChanged?.Invoke(
+                    this,
+                    EventArgs.Empty);
+            };
+
         _expandButton.FlatAppearance.BorderColor =
             Color.FromArgb(
                 130,
@@ -173,6 +229,8 @@ internal sealed class RuntimeNavPulsePanel : Panel
             _modeButton);
         Controls.Add(
             _expandButton);
+        Controls.Add(
+            _guidanceButton);
 
         Resize +=
             (_, _) =>
@@ -189,6 +247,13 @@ internal sealed class RuntimeNavPulsePanel : Panel
                         4,
                         _modeButton.Left -
                         _expandButton.Width -
+                        4);
+
+                _guidanceButton.Left =
+                    Math.Max(
+                        4,
+                        _expandButton.Left -
+                        _guidanceButton.Width -
                         4);
             };
     }
