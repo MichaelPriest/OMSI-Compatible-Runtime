@@ -66,6 +66,7 @@ public sealed class OpenOmsiLanSession :
     private uint _nextId = 2;
     private ushort _sequence;
     private ushort _voiceSequence;
+    private ushort _worldSequence;
     private double _sendAccumulator;
     private double _helloAccumulator = 1.0;
     private double _infoAccumulator =
@@ -135,6 +136,12 @@ public sealed class OpenOmsiLanSession :
 
     public event Action<OpenOmsiLanVoiceFrame>?
         VoiceFrameReceived;
+
+    public event Action<OpenOmsiLanWorldFrame>?
+        WorldFrameReceived;
+
+    public event Action<OpenOmsiLanWorldCarDescription>?
+        WorldCarDescriptionReceived;
 
     public static OpenOmsiLanSession Host(
         int port,
@@ -521,6 +528,62 @@ public sealed class OpenOmsiLanSession :
         SendText(
             text,
             _host);
+
+        return true;
+    }
+
+    public bool SendWorldFrame(
+        OpenOmsiLanWorldFrame frame)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host)
+        {
+            return false;
+        }
+
+        var outbound =
+            frame with
+            {
+                Sequence =
+                    _worldSequence++,
+                HostMilliseconds =
+                    unchecked(
+                        (uint)Environment.TickCount64)
+            };
+
+        foreach (var packet in
+                 OpenOmsiLanWorldCodec.Encode(
+                     outbound))
+        {
+            Broadcast(
+                packet,
+                except:
+                    null);
+        }
+
+        return true;
+    }
+
+    public bool SendWorldCarDescription(
+        OpenOmsiLanWorldCarDescription description)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host)
+        {
+            return false;
+        }
+
+        BroadcastText(
+            OpenOmsiLanWorldCodec.EncodeDescription(
+                description),
+            except:
+                null);
 
         return true;
     }
@@ -1009,6 +1072,16 @@ public sealed class OpenOmsiLanSession :
                 continue;
             }
 
+            if (data[0] ==
+                OpenOmsiLanWorldCodec.WorldMagic)
+            {
+                HandleWorldFrame(
+                    data,
+                    endpoint);
+
+                continue;
+            }
+
             if (OpenOmsiLanVoiceCodec.LooksLike(
                     data))
             {
@@ -1036,6 +1109,27 @@ public sealed class OpenOmsiLanSession :
                 text,
                 endpoint);
         }
+    }
+
+    private void HandleWorldFrame(
+        ReadOnlySpan<byte> data,
+        IPEndPoint endpoint)
+    {
+        if (Role !=
+                OpenOmsiLanRole.Client ||
+            !Connected ||
+            _host is null ||
+            !endpoint.Equals(
+                _host) ||
+            !OpenOmsiLanWorldCodec.TryDecode(
+                data,
+                out var frame))
+        {
+            return;
+        }
+
+        WorldFrameReceived?.Invoke(
+            frame);
     }
 
     private void HandleVoiceFrame(
@@ -1163,6 +1257,12 @@ public sealed class OpenOmsiLanSession :
 
             case "INFO":
                 HandleInfo(
+                    text,
+                    endpoint);
+                break;
+
+            case "DESC":
+                HandleWorldDescription(
                     text,
                     endpoint);
                 break;
@@ -1427,6 +1527,27 @@ public sealed class OpenOmsiLanSession :
 
         RejectionReason =
             null;
+    }
+
+    private void HandleWorldDescription(
+        string text,
+        IPEndPoint endpoint)
+    {
+        if (Role !=
+                OpenOmsiLanRole.Client ||
+            !Connected ||
+            _host is null ||
+            !endpoint.Equals(
+                _host) ||
+            !OpenOmsiLanWorldCodec.TryDecodeDescription(
+                text,
+                out var description))
+        {
+            return;
+        }
+
+        WorldCarDescriptionReceived?.Invoke(
+            description);
     }
 
     private void HandleClock(
