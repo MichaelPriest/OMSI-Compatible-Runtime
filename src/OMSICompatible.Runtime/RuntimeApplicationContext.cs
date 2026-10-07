@@ -5395,6 +5395,7 @@ internal sealed class RuntimeApplicationContext :
             1.0;
         _hostWorldPassengerSendAccumulator =
             0.0;
+        _hostWorldPassengerPeerViews.Clear();
         _sharedWorldWantRequestedAt.Clear();
         _relayedWorldPersonIds.Clear();
         _relayedWorldPersonIdsInUse.Clear();
@@ -6269,6 +6270,7 @@ internal sealed class RuntimeApplicationContext :
 
     private void UpdateHostWorldPassengers(
         OpenOmsiLanSession session,
+        IReadOnlyList<OpenOmsiLanPeerSnapshot> peers,
         double deltaSeconds,
         ICollection<RuntimeRemoteWalkerInfo> target)
     {
@@ -6277,6 +6279,13 @@ internal sealed class RuntimeApplicationContext :
         {
             return;
         }
+
+        const double personRadiusMeters =
+            260.0;
+
+        var radiusSquared =
+            personRadiusMeters *
+            personRadiusMeters;
 
         _hostWorldPassengerRefreshAccumulator +=
             Math.Max(
@@ -6305,12 +6314,12 @@ internal sealed class RuntimeApplicationContext :
                     $"[multiplayer-world] host passenger refresh failed: {exception.Message}");
             }
 
-            foreach (var description in
-                     _hostWorldPassengers.TakePendingDescriptions())
-            {
-                session.SendWorldPersonDescription(
-                    description);
-            }
+            // Descriptions are now sent only when a passenger enters a
+            // peer's 260 m WORLD view. The session caches each description
+            // so a later WANT can be answered even if the first DESC packet
+            // was lost.
+            _ =
+                _hostWorldPassengers.TakePendingDescriptions();
         }
 
         foreach (var person in
@@ -6361,17 +6370,204 @@ internal sealed class RuntimeApplicationContext :
                 0.0,
                 0.1);
 
-        var frame =
+        // CreateFrame also ages the authority's global gone markers. Per-peer
+        // visibility below maintains its own gone queue so people leaving a
+        // client's radius disappear immediately, as in openOMSI.
+        var authorityFrame =
             _hostWorldPassengers.CreateFrame(
                 elapsed);
 
-        if (frame.People.Count >
-                0 ||
-            frame.Gone is
-                { Count: > 0 })
+        var activePeers =
+            peers
+                .Where(
+                    static peer =>
+                        peer.HasState &&
+                        peer.Pose.HasVehicle)
+                .ToArray();
+
+        var activePeerIds =
+            activePeers
+                .Select(
+                    static peer =>
+                        peer.Id)
+                .ToHashSet();
+
+        foreach (var stalePeerId in
+                 _hostWorldPassengerPeerViews
+                     .Keys
+                     .Where(
+                         id =>
+                             !activePeerIds.Contains(
+                                 id))
+                     .ToArray())
         {
-            session.SendWorldPeopleFrame(
-                frame);
+            _hostWorldPassengerPeerViews.Remove(
+                stalePeerId);
+        }
+
+        foreach (var peer in
+                 activePeers)
+        {
+            if (!_hostWorldPassengerPeerViews.TryGetValue(
+                    peer.Id,
+                    out var view))
+            {
+                view =
+                    new HostWorldPassengerPeerView();
+
+                _hostWorldPassengerPeerViews[
+                    peer.Id] =
+                    view;
+            }
+
+            var visiblePeople =
+                authorityFrame.People
+                    .Where(
+                        person =>
+                        {
+                            if (person.Aboard)
+                            {
+                                return true;
+                            }
+
+                            var dx =
+                                person.X -
+                                peer.Pose.X;
+
+                            var dy =
+                                person.Y -
+                                peer.Pose.Y;
+
+                            return dx *
+                                       dx +
+                                   dy *
+                                       dy <=
+                                   radiusSquared;
+                        })
+                    .OrderBy(
+                        static person =>
+                            person.Id)
+                    .ToArray();
+
+            var visibleIds =
+                visiblePeople
+                    .Select(
+                        static person =>
+                            person.Id)
+                    .ToHashSet();
+
+            foreach (var newlyVisible in
+                     visiblePeople.Where(
+                         person =>
+                             !view.VisibleIds.Contains(
+                                 person.Id)))
+            {
+                var humanPath =
+                    _hostWorldPassengers.HumanPath(
+                        newlyVisible.Id);
+
+                if (string.IsNullOrWhiteSpace(
+                        humanPath))
+                {
+                    continue;
+                }
+
+                session.SendWorldPersonDescriptionTo(
+                    peer.Id,
+                    new OpenOmsiLanWorldPersonDescription(
+                        newlyVisible.Id,
+                        humanPath));
+            }
+
+            foreach (var previousId in
+                     view.VisibleIds)
+            {
+                if (!visibleIds.Contains(
+                        previousId))
+                {
+                    view.GoneSeconds[
+                        previousId] =
+                        1.0;
+                }
+            }
+
+            foreach (var visibleId in
+                     visibleIds)
+            {
+                view.GoneSeconds.Remove(
+                    visibleId);
+            }
+
+            view.VisibleIds.Clear();
+
+            foreach (var visibleId in
+                     visibleIds)
+            {
+                view.VisibleIds.Add(
+                    visibleId);
+            }
+
+            var gone =
+                view.GoneSeconds
+                    .Keys
+                    .OrderBy(
+                        static id =>
+                            id)
+                    .Take(
+                        63)
+                    .Select(
+                        static id =>
+                            new OpenOmsiLanWorldGoneEntity(
+                                true,
+                                id))
+                    .ToArray();
+
+            if (visiblePeople.Length >
+                    0 ||
+                gone.Length >
+                    0)
+            {
+                session.SendWorldPeopleFrameTo(
+                    peer.Id,
+                    new OpenOmsiLanWorldPeopleFrame(
+                        0,
+                        0,
+                        visiblePeople,
+                        gone));
+            }
+
+            var goneStep =
+                Math.Clamp(
+                    elapsed,
+                    0.0,
+                    0.25);
+
+            foreach (var removed in
+                     gone)
+            {
+                if (!view.GoneSeconds.TryGetValue(
+                        removed.Id,
+                        out var remaining))
+                {
+                    continue;
+                }
+
+                remaining -=
+                    goneStep;
+
+                if (remaining <=
+                    0.000001)
+                {
+                    view.GoneSeconds.Remove(
+                        removed.Id);
+                }
+                else
+                {
+                    view.GoneSeconds[
+                        removed.Id] =
+                        remaining;
+                }
+            }
         }
     }
 
@@ -6513,6 +6709,7 @@ internal sealed class RuntimeApplicationContext :
 
         UpdateHostWorldPassengers(
             session,
+            peers,
             deltaSeconds,
             remoteWalkers);
 
