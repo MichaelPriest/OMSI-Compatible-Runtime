@@ -4480,6 +4480,8 @@ internal sealed class RuntimeApplicationContext :
             false,
             0,
             string.Empty);
+        _runtimeWindow?.SetRemoteWalkers(
+            []);
         _multiplayerTravelMeters.Clear();
         _multiplayerRemoteStates.Clear();
         _multiplayerScriptRuntimes.Clear();
@@ -4524,6 +4526,29 @@ internal sealed class RuntimeApplicationContext :
             { IsDisposed: false } window ||
             _bus is null)
         {
+            return pose;
+        }
+
+        var walker =
+            window.LocalWalkerState;
+
+        if (walker.Active)
+        {
+            pose.VehiclePath =
+                string.Empty;
+            pose.Flags =
+                0;
+            pose.Walker =
+                new OpenOmsiLanWalker(
+                    -walker.Position.X,
+                    walker.Position.Z,
+                    walker.Position.Y,
+                    -walker.HeadingDegrees,
+                    walker.SpeedMetersPerSecond,
+                    -walker.CourseDegrees,
+                    walker.Seated,
+                    null);
+
             return pose;
         }
 
@@ -4771,6 +4796,41 @@ internal sealed class RuntimeApplicationContext :
 
         var peers =
             session.SnapshotPeers();
+
+        var remoteWalkers =
+            new List<RuntimeRemoteWalkerInfo>();
+
+        foreach (var peer in
+                 peers)
+        {
+            var walker =
+                peer.Pose.Walker;
+
+            if (!peer.HasState ||
+                walker is null)
+            {
+                continue;
+            }
+
+            remoteWalkers.Add(
+                new RuntimeRemoteWalkerInfo(
+                    peer.Id,
+                    peer.Name,
+                    peer.Pose.FigurePath,
+                    RuntimeWorldXFromSource(
+                        walker.X),
+                    walker.Z,
+                    walker.Y,
+                    RuntimeHeadingDegreesFromSource(
+                        walker.HeadingDegrees),
+                    walker.SpeedMetersPerSecond,
+                    RuntimeHeadingDegreesFromSource(
+                        walker.CourseDegrees),
+                    walker.Seated));
+        }
+
+        _runtimeWindow?.SetRemoteWalkers(
+            remoteWalkers);
 
         if (!_commsLinkVoice.IsTransmitting &&
             _commsLinkLastRemoteVoiceAt.HasValue &&
