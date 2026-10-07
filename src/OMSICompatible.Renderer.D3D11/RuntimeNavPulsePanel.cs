@@ -30,6 +30,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
 
     private readonly RoadSegment[] _roads;
     private readonly Button _modeButton;
+    private readonly Button _expandButton;
     private Vector3 _position;
     private float _headingRadians;
     private Vector2[] _remoteVehicles =
@@ -37,8 +38,15 @@ internal sealed class RuntimeNavPulsePanel : Panel
     private RuntimeFuelTrackState _fuel =
         RuntimeFuelTrackState.Unknown;
     private bool _circleMode;
+    private bool _expanded;
     private float _rangeMeters =
         450.0f;
+
+    public bool Expanded =>
+        _expanded;
+
+    public event EventHandler?
+        DisplayModeChanged;
 
     public RuntimeNavPulsePanel(
         IReadOnlyList<RuntimeSplineInfo> splines)
@@ -102,8 +110,67 @@ internal sealed class RuntimeNavPulsePanel : Panel
                 Invalidate();
             };
 
+        _expandButton =
+            new Button
+            {
+                Text = "MAX",
+                Width = 40,
+                Height = 24,
+                Top = 4,
+                FlatStyle =
+                    FlatStyle.Flat,
+                BackColor =
+                    Color.FromArgb(
+                        205,
+                        210,
+                        216),
+                ForeColor =
+                    Color.FromArgb(
+                        30,
+                        35,
+                        40),
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        7.5f,
+                        FontStyle.Bold),
+                TabStop = false
+            };
+
+        _expandButton.FlatAppearance.BorderColor =
+            Color.FromArgb(
+                130,
+                138,
+                146);
+        _expandButton.Click +=
+            (_, _) =>
+            {
+                _expanded =
+                    !_expanded;
+
+                if (_expanded)
+                {
+                    _circleMode =
+                        false;
+                    _modeButton.Text =
+                        "○";
+                }
+
+                _expandButton.Text =
+                    _expanded
+                        ? "MIN"
+                        : "MAX";
+
+                DisplayModeChanged?.Invoke(
+                    this,
+                    EventArgs.Empty);
+                Invalidate();
+            };
+
         Controls.Add(
             _modeButton);
+        Controls.Add(
+            _expandButton);
 
         Resize +=
             (_, _) =>
@@ -114,6 +181,13 @@ internal sealed class RuntimeNavPulsePanel : Panel
                         Width -
                         _modeButton.Width -
                         5);
+
+                _expandButton.Left =
+                    Math.Max(
+                        4,
+                        _modeButton.Left -
+                        _expandButton.Width -
+                        4);
             };
     }
 
