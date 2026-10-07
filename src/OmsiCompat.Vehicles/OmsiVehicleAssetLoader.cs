@@ -15,6 +15,14 @@ public static class OmsiVehicleAssetLoader
         ArgumentNullException.ThrowIfNull(contentRoot);
         ArgumentNullException.ThrowIfNull(bus);
 
+        var passengerCabin =
+            OmsiPassengerCabinReader.ReadFile(
+                bus.PassengerCabinPath);
+
+        var passengerPaths =
+            OmsiVehiclePathReader.ReadFile(
+                bus.PathConfigPath);
+
         progress?.Report(
             new OmsiVehicleLoadProgress(
                 2,
@@ -32,7 +40,11 @@ public static class OmsiVehicleAssetLoader
                 bus,
                 Array.Empty<OmsiVehicleMeshAsset>(),
                 OmsiDriverPositionReader.ReadFile(bus.PassengerCabinPath),
-                Array.Empty<OmsiVehicleTextTexture>());
+                Array.Empty<OmsiVehicleTextTexture>(),
+                PassengerCabin:
+                    passengerCabin,
+                PassengerPaths:
+                    passengerPaths);
         }
 
         var model = OmsiVehicleModelReader.ReadFile(bus.ModelConfigPath);
@@ -559,7 +571,11 @@ public static class OmsiVehicleAssetLoader
             bus,
             meshes.ToArray(),
             OmsiDriverPositionReader.ReadFile(bus.PassengerCabinPath),
-            model.TextTextures);
+            model.TextTextures,
+            PassengerCabin:
+                passengerCabin,
+            PassengerPaths:
+                passengerPaths);
     }
 
     private sealed record SmoothSkinData(
