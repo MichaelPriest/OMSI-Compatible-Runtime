@@ -3668,11 +3668,14 @@ internal sealed class RuntimeApplicationContext :
                 _multiplayerSession.Role.ToString().ToUpperInvariant(),
                 _multiplayerSession.Connected,
                 0,
-                _multiplayerSession.SessionHex);
+                string.IsNullOrWhiteSpace(
+                    _multiplayerSession.SessionCode)
+                    ? _multiplayerSession.SessionHex
+                    : _multiplayerSession.SessionCode);
 
             Console.WriteLine(
                 mode == "host"
-                    ? $"[multiplayer] host protocol={OpenOmsiLanProtocol.ProtocolVersion}; port={_multiplayerSession.LocalPort}; session={_multiplayerSession.SessionHex}"
+                    ? $"[multiplayer] host protocol={OpenOmsiLanProtocol.ProtocolVersion}; port={_multiplayerSession.LocalPort}; session={_multiplayerSession.SessionHex}; code={_multiplayerSession.SessionCode}"
                     : $"[multiplayer] join protocol={OpenOmsiLanProtocol.ProtocolVersion}; target={_options.MultiplayerTarget}; localPort={_multiplayerSession.LocalPort}");
         }
         catch (Exception exception)
@@ -4287,7 +4290,10 @@ internal sealed class RuntimeApplicationContext :
                 session.Role.ToString().ToUpperInvariant(),
                 session.Connected,
                 peers.Count,
-                session.SessionHex);
+                string.IsNullOrWhiteSpace(
+                    session.SessionCode)
+                    ? session.SessionHex
+                    : session.SessionCode);
         }
 
         _multiplayerActivePeerIds.Clear();
