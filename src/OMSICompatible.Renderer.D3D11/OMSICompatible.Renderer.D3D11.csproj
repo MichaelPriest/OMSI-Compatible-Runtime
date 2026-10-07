@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../OMSICompatible.Renderer.Common/OMSICompatible.Renderer.Common.csproj" />
+    <ProjectReference Include="../OmsiCompat.Models/OmsiCompat.Models.csproj" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../OmsiCompat.Scripting/OmsiCompat.Scripting.csproj" />
