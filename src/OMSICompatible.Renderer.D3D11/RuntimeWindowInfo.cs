@@ -107,6 +107,14 @@ public sealed record RuntimeTrafficPathSegmentInfo(
     RuntimeTrafficSignalProgramInfo? TrafficSignal = null,
     long? SceneryObjectId = null);
 
+public sealed record RuntimeNavigationGuidancePointInfo(
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees,
+    double DistanceAheadMeters,
+    string Kind);
+
 public sealed record RuntimeTrafficPathNetworkInfo(
     IReadOnlyList<RuntimeTrafficPathSegmentInfo> Segments,
     int RoadVehicleSegmentCount,
