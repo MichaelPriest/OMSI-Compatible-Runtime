@@ -72,6 +72,9 @@ public sealed class OpenOmsiLanSession :
     private double _unchangedSeconds;
     private byte[] _lastStateBody = [];
     private string _lastInfo = string.Empty;
+    private ulong? _requestedSessionId;
+    private string _sessionCode = string.Empty;
+    private DateTimeOffset? _hostLostAt;
     private bool _disposed;
 
     private OpenOmsiLanSession(
@@ -120,6 +123,9 @@ public sealed class OpenOmsiLanSession :
     public string SessionHex =>
         OpenOmsiLanProtocol.SessionHex(
             SessionId);
+
+    public string SessionCode =>
+        _sessionCode;
 
     public event Action<OpenOmsiLanOperationalMessage>?
         OperationalMessageReceived;
@@ -176,6 +182,14 @@ public sealed class OpenOmsiLanSession :
                             CreateSessionId()
                     };
 
+                session._sessionCode =
+                    new OpenOmsiLanSessionCode(
+                        OpenOmsiLanProtocol.ProtocolVersion,
+                        [ResolveAdvertisedAddress()],
+                        (ushort)session.LocalPort,
+                        session.SessionId)
+                    .Encode();
+
                 return session;
             }
             catch (Exception exception)
@@ -197,8 +211,44 @@ public sealed class OpenOmsiLanSession :
         string playerName,
         OpenOmsiLanWorld world)
     {
-        var endpoint =
-            ResolveTarget(target);
+        IPEndPoint endpoint;
+        ulong? requestedSession =
+            null;
+        string sessionCode =
+            string.Empty;
+
+        if (OpenOmsiLanSessionCode.LooksLikeCode(
+                target) &&
+            OpenOmsiLanSessionCode.TryDecode(
+                target,
+                out var decodedCode,
+                out _))
+        {
+            if (decodedCode.Protocol !=
+                OpenOmsiLanProtocol.ProtocolVersion)
+            {
+                throw new IOException(
+                    $"Session code uses LAN protocol {decodedCode.Protocol}, runtime uses {OpenOmsiLanProtocol.ProtocolVersion}.");
+            }
+
+            var address =
+                decodedCode.Addresses.FirstOrDefault() ??
+                IPAddress.Loopback;
+
+            endpoint =
+                new IPEndPoint(
+                    address,
+                    decodedCode.Port);
+            requestedSession =
+                decodedCode.SessionId;
+            sessionCode =
+                decodedCode.Encode();
+        }
+        else
+        {
+            endpoint =
+                ResolveTarget(target);
+        }
 
         var socket =
             CreateSocket();
@@ -215,7 +265,11 @@ public sealed class OpenOmsiLanSession :
             world)
         {
             _host =
-                endpoint
+                endpoint,
+            _requestedSessionId =
+                requestedSession,
+            _sessionCode =
+                sessionCode
         };
     }
 
@@ -561,6 +615,19 @@ public sealed class OpenOmsiLanSession :
         {
             _peers.Remove(id);
 
+            if (Role ==
+                    OpenOmsiLanRole.Client &&
+                id ==
+                    1)
+            {
+                Connected =
+                    false;
+                _hostLostAt ??=
+                    now;
+                _helloAccumulator =
+                    1.0;
+            }
+
             if (Role == OpenOmsiLanRole.Host)
             {
                 BroadcastText(
@@ -613,6 +680,50 @@ public sealed class OpenOmsiLanSession :
             true;
 
         _socket.Dispose();
+    }
+
+    private static IPAddress ResolveAdvertisedAddress()
+    {
+        try
+        {
+            return Dns.GetHostEntry(
+                    Dns.GetHostName())
+                .AddressList
+                .Where(
+                    static address =>
+                        address.AddressFamily ==
+                            AddressFamily.InterNetwork &&
+                        !IPAddress.IsLoopback(
+                            address))
+                .OrderByDescending(
+                    static address =>
+                    {
+                        var bytes =
+                            address.GetAddressBytes();
+
+                        return bytes[0] ==
+                                   10 ||
+                               (
+                                   bytes[0] ==
+                                   172 &&
+                                   bytes[1] is >=
+                                       16 and <=
+                                       31
+                               ) ||
+                               (
+                                   bytes[0] ==
+                                   192 &&
+                                   bytes[1] ==
+                                   168
+                               );
+                    })
+                .FirstOrDefault() ??
+                IPAddress.Loopback;
+        }
+        catch
+        {
+            return IPAddress.Loopback;
+        }
     }
 
     private static Socket CreateSocket()
@@ -778,7 +889,10 @@ public sealed class OpenOmsiLanSession :
                 "HELLO",
                 OpenOmsiLanProtocol.ProtocolVersion.ToString(
                     CultureInfo.InvariantCulture),
-                "-",
+                _requestedSessionId.HasValue
+                    ? OpenOmsiLanProtocol.SessionHex(
+                        _requestedSessionId.Value)
+                    : "-",
                 PlayerName,
                 path,
                 OpenOmsiLanProtocol.EncodeWorld(
@@ -1236,6 +1350,20 @@ public sealed class OpenOmsiLanSession :
 
         Connected =
             true;
+        _hostLostAt =
+            null;
+
+        if (string.IsNullOrWhiteSpace(
+                _sessionCode))
+        {
+            _sessionCode =
+                new OpenOmsiLanSessionCode(
+                    OpenOmsiLanProtocol.ProtocolVersion,
+                    [endpoint.Address],
+                    (ushort)endpoint.Port,
+                    session)
+                .Encode();
+        }
 
         RejectionReason =
             null;
