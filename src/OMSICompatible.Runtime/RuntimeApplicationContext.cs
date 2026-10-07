@@ -4886,14 +4886,64 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
-        // The runtime does not yet own a local human/passenger simulator.
-        // Client-owned people are mirrored only and therefore cannot be handed
-        // to another bus. Explicit DENY matches openOMSI's ownership rule and
-        // prevents a client from waiting forever for an answer.
+        var granted =
+            _hostWorldPassengers.HandOver(
+                request.People);
+
+        var grantedSet =
+            granted.ToHashSet();
+
+        var denied =
+            request.People
+                .Where(
+                    id =>
+                        !grantedSet.Contains(
+                            id))
+                .Distinct()
+                .ToArray();
+
+        foreach (var id in
+                 granted)
+        {
+            var key =
+                (
+                    PeerId:
+                        request.PlayerId,
+                    PersonId:
+                        id
+                );
+
+            if (_relayedWorldPersonIds.TryGetValue(
+                    key,
+                    out var previousMappedId) &&
+                previousMappedId !=
+                    id)
+            {
+                _relayedWorldPersonIdsInUse.Remove(
+                    previousMappedId);
+            }
+
+            _relayedWorldPersonIds[
+                key] =
+                id;
+
+            _relayedWorldPersonIdsInUse.Add(
+                id);
+        }
+
         session.SendWorldClaimResult(
             request.PlayerId,
-            Array.Empty<uint>(),
-            request.People);
+            granted,
+            denied);
+
+        if (granted.Count >
+                0 ||
+            denied.Length >
+                0)
+        {
+            Console.WriteLine(
+                $"[multiplayer-world] host claim player={request.PlayerId}; granted={string.Join(",", granted)}; denied={string.Join(",", denied)}");
+        }
     }
 
     private void OnMultiplayerWorldClaimResult(
