@@ -567,7 +567,8 @@ public static class OpenOmsiLanWorldPeopleCodec
             (ulong)Math.Round(
                 normalized /
                 360.0 *
-                256.0) &
+                256.0,
+                MidpointRounding.AwayFromZero) &
             0xFFUL;
     }
 
@@ -577,7 +578,8 @@ public static class OpenOmsiLanWorldPeopleCodec
             value)
             ? (int)Math.Clamp(
                 Math.Round(
-                    value),
+                    value,
+                    MidpointRounding.AwayFromZero),
                 int.MinValue,
                 int.MaxValue)
             : 0;
