@@ -162,6 +162,9 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<uint, string>
         _multiplayerScriptPaths =
             [];
+    private readonly Dictionary<uint, bool>
+        _multiplayerHornStates =
+            [];
     private readonly HashSet<uint>
         _multiplayerActivePeerIds =
             [];
@@ -5755,6 +5758,7 @@ internal sealed class RuntimeApplicationContext :
         _multiplayerRemoteStates.Clear();
         _multiplayerScriptRuntimes.Clear();
         _multiplayerScriptPaths.Clear();
+        _multiplayerHornStates.Clear();
         _multiplayerActivePeerIds.Clear();
         _multiplayerVehicleLengthMeters =
             0.0f;
@@ -7681,6 +7685,8 @@ internal sealed class RuntimeApplicationContext :
                     staleId);
                 _multiplayerScriptPaths.Remove(
                     staleId);
+                _multiplayerHornStates.Remove(
+                    staleId);
             }
         }
 
@@ -7779,12 +7785,19 @@ internal sealed class RuntimeApplicationContext :
             _multiplayerScriptPaths[
                 peer.Id] =
                 vehiclePath;
+            _multiplayerHornStates.Remove(
+                peer.Id);
         }
 
         SeedMultiplayerScriptRuntime(
             runtime,
             peer.Pose,
             deltaSeconds);
+
+        ApplyMultiplayerHornState(
+            peer.Id,
+            runtime,
+            peer.Pose.Flags);
 
         runtime.ExecuteFrameAi();
 
@@ -7811,6 +7824,42 @@ internal sealed class RuntimeApplicationContext :
         }
 
         return runtime;
+    }
+
+    private void ApplyMultiplayerHornState(
+        uint peerId,
+        OmsiScriptRuntime runtime,
+        uint flags)
+    {
+        var horn =
+            (flags &
+             OpenOmsiLanProtocol.FlagHorn) !=
+            0;
+
+        if (_multiplayerHornStates.TryGetValue(
+                peerId,
+                out var previous) &&
+            previous ==
+                horn)
+        {
+            return;
+        }
+
+        _multiplayerHornStates[
+            peerId] =
+            horn;
+
+        var trigger =
+            horn
+                ? "horn"
+                : "horn_off";
+
+        if (runtime.HasTrigger(
+                trigger))
+        {
+            runtime.ExecuteTrigger(
+                trigger);
+        }
     }
 
     private static List<string> ResolveVehicleDisplayTextValues(
