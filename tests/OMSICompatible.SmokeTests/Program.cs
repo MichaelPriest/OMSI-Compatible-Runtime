@@ -8736,6 +8736,160 @@ try
         sessionCodeAddressesMatch,
         $"openOMSI LAN session-code round-trip failed: code={sessionCodeText}; decoded={sessionCodeDecoded}; error={sessionCodeError ?? "-"}; protocol={decodedSessionCode.Protocol}/{sessionCode.Protocol}; port={decodedSessionCode.Port}/{sessionCode.Port}; session={decodedSessionCode.SessionId:X12}/{sessionCode.SessionId:X12}; ips={string.Join(",", decodedSessionCode.Addresses)} / {string.Join(",", sessionCode.Addresses)}.");
 
+    var peopleFrame =
+        new OpenOmsiLanWorldPeopleFrame(
+            88,
+            654321,
+            [
+                new OpenOmsiLanWorldPersonState(
+                    21,
+                    OpenOmsiLanWorldPersonActivity.Walk,
+                    false,
+                    false,
+                    0,
+                    892250.25,
+                    4196464.50,
+                    33.10,
+                    180.0f,
+                    1.45f,
+                    3_000_123_456,
+                    4,
+                    null),
+                new OpenOmsiLanWorldPersonState(
+                    22,
+                    OpenOmsiLanWorldPersonActivity.Sit,
+                    true,
+                    true,
+                    9,
+                    0.35,
+                    1.75,
+                    1.10,
+                    90.0f,
+                    0.0f,
+                    null,
+                    null,
+                    7)
+            ]);
+
+    var peoplePackets =
+        OpenOmsiLanWorldPeopleCodec.Encode(
+            peopleFrame);
+
+    Require(
+        peoplePackets.Count ==
+            1 &&
+        OpenOmsiLanWorldPeopleCodec.TryDecode(
+            peoplePackets[0],
+            out var decodedPeopleFrame) &&
+        decodedPeopleFrame.Sequence ==
+            peopleFrame.Sequence &&
+        decodedPeopleFrame.People.Count ==
+            2 &&
+        decodedPeopleFrame.People[0].WaitingStopObjectId ==
+            peopleFrame.People[0].WaitingStopObjectId &&
+        decodedPeopleFrame.People[0].WaitingSpot ==
+            peopleFrame.People[0].WaitingSpot &&
+        decodedPeopleFrame.People[1].Aboard &&
+        decodedPeopleFrame.People[1].PlayerBus &&
+        decodedPeopleFrame.People[1].BusId ==
+            peopleFrame.People[1].BusId &&
+        decodedPeopleFrame.People[1].SeatIndex ==
+            peopleFrame.People[1].SeatIndex,
+        "openOMSI WORLD people encode/decode round-trip failed.");
+
+    var personDescription =
+        new OpenOmsiLanWorldPersonDescription(
+            21,
+            "Humans/Man01.hum");
+
+    Require(
+        OpenOmsiLanWorldPeopleCodec.TryDecodeDescription(
+            OpenOmsiLanWorldPeopleCodec.EncodeDescription(
+                personDescription),
+            out var decodedPersonDescription) &&
+        decodedPersonDescription ==
+            personDescription,
+        "openOMSI DESC p round-trip failed.");
+
+    var wantText =
+        OpenOmsiLanWorldControlCodec.EncodeWant(
+            7,
+            [
+                new OpenOmsiLanWorldEntityRef(
+                    false,
+                    10),
+                new OpenOmsiLanWorldEntityRef(
+                    true,
+                    21)
+            ]);
+
+    Require(
+        OpenOmsiLanWorldControlCodec.TryDecodeWant(
+            wantText,
+            out var wantRequest) &&
+        wantRequest.PlayerId ==
+            7 &&
+        wantRequest.Entities.SequenceEqual(
+            [
+                new OpenOmsiLanWorldEntityRef(
+                    false,
+                    10),
+                new OpenOmsiLanWorldEntityRef(
+                    true,
+                    21)
+            ]),
+        "openOMSI WANT round-trip failed.");
+
+    var claimText =
+        OpenOmsiLanWorldControlCodec.EncodeClaim(
+            7,
+            [
+                21u,
+                22u
+            ]);
+
+    Require(
+        OpenOmsiLanWorldControlCodec.TryDecodeClaim(
+            claimText,
+            out var claimRequest) &&
+        claimRequest.PlayerId ==
+            7 &&
+        claimRequest.People.SequenceEqual(
+            [
+                21u,
+                22u
+            ]),
+        "openOMSI CLAIM round-trip failed.");
+
+    foreach (var granted in
+             new[]
+             {
+                 true,
+                 false
+             })
+    {
+        var resultText =
+            OpenOmsiLanWorldControlCodec.EncodeClaimResult(
+                granted,
+                [
+                    21u,
+                    22u
+                ]);
+
+        Require(
+            OpenOmsiLanWorldControlCodec.TryDecodeClaimResult(
+                resultText,
+                out var claimResult) &&
+            claimResult.Granted ==
+                granted &&
+            claimResult.People.SequenceEqual(
+                [
+                    21u,
+                    22u
+                ]),
+            $"openOMSI {(granted ? "GRANT" : "DENY")} round-trip failed.");
+    }
+
     var sharedWorldFrame =
         new OpenOmsiLanWorldFrame(
             77,
