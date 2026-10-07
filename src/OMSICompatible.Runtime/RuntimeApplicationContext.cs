@@ -5911,37 +5911,100 @@ internal sealed class RuntimeApplicationContext :
                 0.0f,
                 1.0f);
 
+        pose.Rpm =
+            (float)ReadFirstPlayerLocal(
+                "engine_n",
+                "n_engine",
+                "engine_rpm");
+
         var flags =
             OpenOmsiLanProtocol.FlagVehicle;
 
-        if (state.EngineRunning)
+        if (state.EngineRunning ||
+            pose.Rpm >
+                100.0f ||
+            ReadFirstPlayerLocal(
+                "engine_on") >
+                0.5)
         {
             flags |=
                 OpenOmsiLanProtocol.FlagEngine;
         }
 
-        if (state.ElectricalSystemEnabled)
+        if (state.ElectricalSystemEnabled ||
+            ReadFirstPlayerLocal(
+                "elec_busbar_main",
+                "elec_busbar_avail") >
+                0.5)
         {
             flags |=
                 OpenOmsiLanProtocol.FlagElectrics;
         }
 
+        if (ReadFirstPlayerLocal(
+                "cockpit_hupe",
+                "cockpit_hupe_swheel",
+                "horn",
+                "cockpit_hupe_volume") >
+            0.5)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagHorn;
+        }
+
         if (state.BrakeLevel >
-            0.05f)
+                0.05f ||
+            ReadFirstPlayerLocal(
+                "lights_brems") >
+                0.5)
         {
             flags |=
                 OpenOmsiLanProtocol.FlagBrake;
         }
 
         if (state.Gear <
-            0)
+                0 ||
+            ReadFirstPlayerLocal(
+                "lights_rueckfahr") >
+                0.5)
         {
             flags |=
                 OpenOmsiLanProtocol.FlagReverse;
         }
 
+        if (ReadFirstPlayerLocal(
+                "lights_nebelschluss") >
+            0.5)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagFog;
+        }
+
+        if (ReadFirstPlayerLocal(
+                "bremse_kneeling",
+                "vdv_kneel",
+                "ecas_kneel",
+                "kneeling") >
+            0.5)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagKneeling;
+        }
+
+        if (ReadFirstPlayerLocal(
+                "wiperrunning",
+                "wiper_running") >
+            0.5)
+        {
+            flags |=
+                OpenOmsiLanProtocol.FlagWipers;
+        }
+
         if (state.StopBrakeEngaged ||
-            state.ParkingBrakeEngaged)
+            state.ParkingBrakeEngaged ||
+            ReadFirstPlayerLocal(
+                "bremse_halte") >
+                0.5)
         {
             flags |=
                 OpenOmsiLanProtocol.FlagStopBrake;
@@ -5949,12 +6012,6 @@ internal sealed class RuntimeApplicationContext :
 
         pose.Flags =
             flags;
-
-        pose.Rpm =
-            (float)ReadFirstPlayerLocal(
-                "engine_n",
-                "n_engine",
-                "engine_rpm");
 
         var parkingLights =
             ReadFirstPlayerLocal(
