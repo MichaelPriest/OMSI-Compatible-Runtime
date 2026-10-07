@@ -11,6 +11,7 @@ internal sealed class RuntimeWorldPassengerSimulation
     private const float SeatFront = 0.55f;
 
     private int? _entry;
+    private int? _entryOrdinal;
     private OmsiPassengerCabinPosition? _place;
     private int[] _route = [];
     private int _routeIndex;
@@ -38,7 +39,8 @@ internal sealed class RuntimeWorldPassengerSimulation
         OpenOmsiLanPose bus,
         uint playerId,
         bool doorsOpen,
-        ISet<int> reserved)
+        ISet<int> reserved,
+        IReadOnlySet<int>? openEntries = null)
     {
         var dt = (float)Math.Clamp(deltaSeconds, 0.0, 0.1);
         if (_place is not null)
