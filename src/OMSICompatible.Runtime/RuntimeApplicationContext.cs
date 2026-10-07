@@ -4160,6 +4160,7 @@ internal sealed class RuntimeApplicationContext :
                             arrow.Position.Z,
                             RuntimeHeadingDegreesFromSource(
                                 arrow.HeadingDegrees),
+                            arrow.PitchDegrees,
                             arrow.DistanceAheadMeters,
                             arrow.Kind))
                 .ToArray();
