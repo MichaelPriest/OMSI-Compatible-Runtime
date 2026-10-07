@@ -149,6 +149,21 @@ public sealed class OpenOmsiLanSession :
     public event Action<OpenOmsiLanWorldPersonDescription>?
         WorldPersonDescriptionReceived;
 
+    public event Action<uint, OpenOmsiLanWorldPeopleFrame>?
+        WorldPeopleFrameUpReceived;
+
+    public event Action<uint, OpenOmsiLanWorldPersonDescription>?
+        WorldPersonDescriptionUpReceived;
+
+    public event Action<OpenOmsiLanWorldWantRequest>?
+        WorldWantRequested;
+
+    public event Action<OpenOmsiLanWorldClaimRequest>?
+        WorldClaimRequested;
+
+    public event Action<OpenOmsiLanWorldClaimResult>?
+        WorldClaimResultReceived;
+
     public static OpenOmsiLanSession Host(
         int port,
         string playerName,
@@ -611,6 +626,136 @@ public sealed class OpenOmsiLanSession :
                 description),
             except:
                 null);
+
+        return true;
+    }
+
+    public bool SendWorldWant(
+        IReadOnlyList<OpenOmsiLanWorldEntityRef> entities)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Client ||
+            _host is null ||
+            entities.Count ==
+                0)
+        {
+            return false;
+        }
+
+        foreach (var chunk in
+                 entities.Chunk(
+                     64))
+        {
+            SendText(
+                OpenOmsiLanWorldControlCodec.EncodeWant(
+                    PlayerId,
+                    chunk),
+                _host);
+        }
+
+        return true;
+    }
+
+    public bool SendWorldClaim(
+        IReadOnlyList<uint> people)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Client ||
+            _host is null ||
+            people.Count ==
+                0)
+        {
+            return false;
+        }
+
+        foreach (var chunk in
+                 people.Chunk(
+                     64))
+        {
+            SendText(
+                OpenOmsiLanWorldControlCodec.EncodeClaim(
+                    PlayerId,
+                    chunk),
+                _host);
+        }
+
+        return true;
+    }
+
+    public bool SendWorldClaimResult(
+        uint playerId,
+        IReadOnlyList<uint> granted,
+        IReadOnlyList<uint> denied)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host ||
+            !_peers.TryGetValue(
+                playerId,
+                out var peer))
+        {
+            return false;
+        }
+
+        foreach (var pair in
+                 new[]
+                 {
+                     (
+                         Granted: true,
+                         People: granted
+                     ),
+                     (
+                         Granted: false,
+                         People: denied
+                     )
+                 })
+        {
+            foreach (var chunk in
+                     pair.People.Chunk(
+                         64))
+            {
+                if (chunk.Length ==
+                    0)
+                {
+                    continue;
+                }
+
+                SendText(
+                    OpenOmsiLanWorldControlCodec.EncodeClaimResult(
+                        pair.Granted,
+                        chunk),
+                    peer.Endpoint);
+            }
+        }
+
+        return true;
+    }
+
+    public bool SendWorldPersonDescriptionUp(
+        OpenOmsiLanWorldPersonDescription description)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Client ||
+            _host is null)
+        {
+            return false;
+        }
+
+        SendText(
+            OpenOmsiLanWorldPeopleCodec.EncodeDescription(
+                description),
+            _host);
 
         return true;
     }
@@ -1308,6 +1453,25 @@ public sealed class OpenOmsiLanSession :
                     endpoint);
                 break;
 
+            case "WANT":
+                HandleWorldWant(
+                    text,
+                    endpoint);
+                break;
+
+            case "CLAIM":
+                HandleWorldClaim(
+                    text,
+                    endpoint);
+                break;
+
+            case "GRANT":
+            case "DENY":
+                HandleWorldClaimResult(
+                    text,
+                    endpoint);
+                break;
+
             case "CLOCK"
                 when Role ==
                      OpenOmsiLanRole.Client:
@@ -1600,6 +1764,76 @@ public sealed class OpenOmsiLanSession :
             WorldPersonDescriptionReceived?.Invoke(
                 person);
         }
+    }
+
+    private void HandleWorldWant(
+        string text,
+        IPEndPoint endpoint)
+    {
+        if (Role !=
+                OpenOmsiLanRole.Host ||
+            !OpenOmsiLanWorldControlCodec.TryDecodeWant(
+                text,
+                out var request) ||
+            !_peers.TryGetValue(
+                request.PlayerId,
+                out var peer) ||
+            !peer.Endpoint.Equals(
+                endpoint))
+        {
+            return;
+        }
+
+        peer.LastSeen =
+            DateTimeOffset.UtcNow;
+
+        WorldWantRequested?.Invoke(
+            request);
+    }
+
+    private void HandleWorldClaim(
+        string text,
+        IPEndPoint endpoint)
+    {
+        if (Role !=
+                OpenOmsiLanRole.Host ||
+            !OpenOmsiLanWorldControlCodec.TryDecodeClaim(
+                text,
+                out var request) ||
+            !_peers.TryGetValue(
+                request.PlayerId,
+                out var peer) ||
+            !peer.Endpoint.Equals(
+                endpoint))
+        {
+            return;
+        }
+
+        peer.LastSeen =
+            DateTimeOffset.UtcNow;
+
+        WorldClaimRequested?.Invoke(
+            request);
+    }
+
+    private void HandleWorldClaimResult(
+        string text,
+        IPEndPoint endpoint)
+    {
+        if (Role !=
+                OpenOmsiLanRole.Client ||
+            _host is null ||
+            !endpoint.Equals(
+                _host) ||
+            !OpenOmsiLanWorldControlCodec.TryDecodeClaimResult(
+                text,
+                out var result))
+        {
+            return;
+        }
+
+        WorldClaimResultReceived?.Invoke(
+            result);
     }
 
     private void HandleClock(
