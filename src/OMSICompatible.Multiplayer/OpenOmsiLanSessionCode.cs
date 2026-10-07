@@ -306,6 +306,7 @@ public sealed record OpenOmsiLanSessionCode(
 
         Span<byte> mixedSession =
             stackalloc byte[8];
+        mixedSession.Clear();
 
         body[
             ..6]
@@ -365,6 +366,7 @@ public sealed record OpenOmsiLanSessionCode(
         {
             Span<byte> oldSession =
                 stackalloc byte[8];
+            oldSession.Clear();
 
             body[
                 7..13]
