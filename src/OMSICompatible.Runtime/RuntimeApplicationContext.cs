@@ -6036,6 +6036,32 @@ internal sealed class RuntimeApplicationContext :
                         index!.Value)
                 .ToHashSet();
 
+        if (_vehicleAsset?.PassengerCabin is
+                { } passengerCabin &&
+            _playerScriptRuntime is
+                { } scriptRuntime)
+        {
+            foreach (var place in
+                     passengerCabin.PassengerPositions)
+            {
+                if (string.IsNullOrWhiteSpace(
+                        place.SwitchVariable) ||
+                    !scriptRuntime.HasLocalVariable(
+                        place.SwitchVariable))
+                {
+                    continue;
+                }
+
+                if (scriptRuntime.GetLocal(
+                        place.SwitchVariable) <=
+                    0.5)
+                {
+                    reserved.Add(
+                        place.FileIndex);
+                }
+            }
+        }
+
         var openEntries =
             GetOpenPassengerEntries(
                 localPose);
