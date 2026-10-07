@@ -10,7 +10,7 @@ namespace OMSICompatible.Multiplayer;
 /// </summary>
 public static class OpenOmsiLanProtocol
 {
-    public const byte ProtocolVersion = 5;
+    public const byte ProtocolVersion = 6;
     public const int DefaultPort = 27015;
     public const int PortRange = 10;
     public const double StateRateHz = 20.0;
@@ -43,7 +43,7 @@ public static class OpenOmsiLanProtocol
     public const int MaximumRearSections = 3;
     public const int MaximumLamps = 127;
     public const int MaximumSwitches = 31;
-    public const int MaximumValues = 31;
+    public const int MaximumValues = 63;
     public const int MaximumDisplayTexts = 12;
 
     public static string CleanText(string? value, int maximumCharacters)
