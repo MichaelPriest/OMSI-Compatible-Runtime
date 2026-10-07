@@ -98,6 +98,9 @@ internal sealed class RuntimeApplicationContext :
         DateTimeOffset LastSeen)>
         _sharedWorldLights =
             [];
+    private readonly HashSet<uint>
+        _sharedWorldDepartedParkingObjectIds =
+            [];
     private readonly List<RuntimeTrafficSignalStateInfo>
         _sharedWorldSignalStateBuffer =
             [];
@@ -4312,6 +4315,41 @@ internal sealed class RuntimeApplicationContext :
                     now
                 );
         }
+
+        foreach (var removed in
+                 frame.Gone ??
+                 Array.Empty<
+                     OpenOmsiLanWorldGoneEntity>())
+        {
+            if (removed.Person)
+            {
+                _sharedWorldPeople.Remove(
+                    removed.Id);
+                _sharedWorldPersonDescriptions.Remove(
+                    removed.Id);
+            }
+            else
+            {
+                _sharedWorldCars.Remove(
+                    removed.Id);
+            }
+        }
+
+        if (frame.Parked is
+            { } parked)
+        {
+            if (parked.Complete)
+            {
+                _sharedWorldDepartedParkingObjectIds.Clear();
+            }
+
+            foreach (var objectId in
+                     parked.ParkingObjectIds)
+            {
+                _sharedWorldDepartedParkingObjectIds.Add(
+                    objectId);
+            }
+        }
     }
 
     private void OnMultiplayerWorldPeopleFrame(
@@ -4814,6 +4852,7 @@ internal sealed class RuntimeApplicationContext :
         _nextRelayedWorldPersonId =
             0x00C00000u;
         _sharedWorldLights.Clear();
+        _sharedWorldDepartedParkingObjectIds.Clear();
         _sharedWorldSignalStateBuffer.Clear();
         _sharedWorldSendAccumulator =
             0.0;
