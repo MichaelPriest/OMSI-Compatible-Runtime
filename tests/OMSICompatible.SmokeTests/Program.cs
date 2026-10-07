@@ -9585,6 +9585,94 @@ try
         observerConnected,
         "openOMSI LAN second client did not join the loopback host.");
 
+    var hostPeopleAtClient =
+        false;
+
+    var hostPeopleAtObserver =
+        false;
+
+    lanClient.WorldPeopleFrameReceived +=
+        frame =>
+        {
+            hostPeopleAtClient |=
+                frame.People.Any(
+                    static person =>
+                        person.Id ==
+                            0x00400042u &&
+                        person.WaitingStopObjectId ==
+                            7001 &&
+                        person.WaitingSpot ==
+                            2);
+        };
+
+    lanObserver.WorldPeopleFrameReceived +=
+        frame =>
+        {
+            hostPeopleAtObserver |=
+                frame.People.Any(
+                    static person =>
+                        person.Id ==
+                            0x00400042u &&
+                        person.WaitingStopObjectId ==
+                            7001 &&
+                        person.WaitingSpot ==
+                            2);
+        };
+
+    lanHost.SendWorldPersonDescription(
+        new OpenOmsiLanWorldPersonDescription(
+            0x00400042u,
+            "Humans/Man01.hum"));
+
+    lanHost.SendWorldPeopleFrame(
+        new OpenOmsiLanWorldPeopleFrame(
+            0,
+            0,
+            [
+                new OpenOmsiLanWorldPersonState(
+                    0x00400042u,
+                    OpenOmsiLanWorldPersonActivity.Stand,
+                    false,
+                    false,
+                    0,
+                    hostPose.X +
+                        4.0,
+                    hostPose.Y +
+                        1.0,
+                    hostPose.Z,
+                    90.0f,
+                    0.0f,
+                    7001,
+                    2,
+                    null)
+            ]));
+
+    for (var hostPeopleStep = 0;
+         hostPeopleStep <
+             120 &&
+         (!hostPeopleAtClient ||
+          !hostPeopleAtObserver);
+         hostPeopleStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        lanObserver.Tick(
+            0.02,
+            observerPose);
+
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        hostPeopleAtClient &&
+        hostPeopleAtObserver,
+        "openOMSI WORLD host people broadcast did not reach every client.");
+
     OpenOmsiLanWorldPersonDescription?
         observerRelayedDescription =
             null;
