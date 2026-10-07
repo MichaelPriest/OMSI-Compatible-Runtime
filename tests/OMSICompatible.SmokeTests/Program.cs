@@ -8551,6 +8551,47 @@ try
             ushort.MaxValue),
         "openOMSI LAN binary STATE round-trip/sequence wrap failed.");
 
+    var midpointStatePose =
+        new OpenOmsiLanPose
+        {
+            Id =
+                9,
+            X =
+                0.005,
+            Y =
+                -0.005,
+            Z =
+                0.005,
+            Flags =
+                OpenOmsiLanProtocol.FlagVehicle
+        };
+
+    var midpointStatePacket =
+        OpenOmsiLanStateCodec.Encode(
+            midpointStatePose,
+            17);
+
+    Require(
+        OpenOmsiLanStateCodec.TryDecode(
+            midpointStatePacket,
+            out var midpointSequence,
+            out var midpointStateDecoded) &&
+        midpointSequence ==
+            17 &&
+        Math.Abs(
+            midpointStateDecoded.X -
+            0.01) <
+            0.000001 &&
+        Math.Abs(
+            midpointStateDecoded.Y +
+            0.01) <
+            0.000001 &&
+        Math.Abs(
+            midpointStateDecoded.Z -
+            0.01) <
+            0.000001,
+        "Runtime STATE midpoint quantization no longer matches Rust f64::round/openOMSI.");
+
     var opsMessage =
         new OpenOmsiLanOperationalMessage(
             2,
