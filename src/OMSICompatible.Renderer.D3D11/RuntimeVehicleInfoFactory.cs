@@ -294,6 +294,8 @@ public static class RuntimeVehicleInfoFactory
                                     section.Physics)))
                 .ToArray(),
             BuildPassengerEntries(
+                vehicle),
+            BuildPassengerPlaces(
                 vehicle));
     }
 
@@ -353,6 +355,35 @@ public static class RuntimeVehicleInfoFactory
         }
 
         return entries.ToArray();
+    }
+
+    private static RuntimeVehiclePassengerPlaceInfo[]
+        BuildPassengerPlaces(
+            OmsiVehicleAsset vehicle)
+    {
+        var cabin =
+            vehicle.PassengerCabin;
+
+        if (cabin is null ||
+            cabin.PassengerPositions.Count ==
+                0)
+        {
+            return [];
+        }
+
+        return cabin.PassengerPositions
+            .Select(
+                static place =>
+                    new RuntimeVehiclePassengerPlaceInfo(
+                        place.FileIndex,
+                        -place.X,
+                        place.Z,
+                        place.Y,
+                        place.Height,
+                        -place.RotationDegrees,
+                        place.SwitchVariable,
+                        place.TakenVariable))
+            .ToArray();
     }
 
     private static RuntimeVehiclePhysicsInfo ConvertPhysics(
