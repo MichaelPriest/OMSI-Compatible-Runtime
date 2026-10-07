@@ -57,7 +57,9 @@ public static class OpenOmsiLanStateCodec
         writer.PutUnsigned(pose.Blinker, 2);
         writer.PutUnsigned(
             float.IsFinite(pose.Rpm)
-                ? (long)Math.Round(pose.Rpm / 5.0f)
+                ? (long)Math.Round(
+                    pose.Rpm / 5.0f,
+                    MidpointRounding.AwayFromZero)
                 : 0,
             10);
         writer.PutUnit(pose.Throttle, 5);
@@ -578,13 +580,17 @@ public static class OpenOmsiLanStateCodec
             (ulong)Math.Round(
                 normalized /
                 360.0 *
-                65536.0) &
+                65536.0,
+                MidpointRounding.AwayFromZero) &
             0xFFFFUL;
     }
 
     private static double RoundCentimeters(double value) =>
         double.IsFinite(value)
-            ? Math.Round(value / 0.01) * 0.01
+            ? Math.Round(
+                value / 0.01,
+                MidpointRounding.AwayFromZero) *
+              0.01
             : 0.0;
 
     private static ushort ToHalfBits(float value)
@@ -697,7 +703,9 @@ public static class OpenOmsiLanStateCodec
         {
             var quantized =
                 double.IsFinite(value)
-                    ? Math.Round(value / step)
+                    ? Math.Round(
+                        value / step,
+                        MidpointRounding.AwayFromZero)
                     : 0.0;
 
             PutSigned(
@@ -722,7 +730,8 @@ public static class OpenOmsiLanStateCodec
             Put(
                 (ulong)Math.Round(
                     safe *
-                    maximum),
+                    maximum,
+                    MidpointRounding.AwayFromZero),
                 bits);
         }
 
