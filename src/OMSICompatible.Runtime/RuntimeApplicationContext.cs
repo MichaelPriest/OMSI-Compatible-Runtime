@@ -86,6 +86,7 @@ internal sealed class RuntimeApplicationContext :
     private double _sharedWorldSendAccumulator;
     private double _sharedWorldDescriptionAccumulator;
     private DateTimeOffset? _sharedWorldLastFrameAt;
+    private int _sharedWorldLastAdvertisedCarCount;
 
     private readonly Dictionary<uint, double>
         _multiplayerTravelMeters =
@@ -3344,6 +3345,14 @@ internal sealed class RuntimeApplicationContext :
                         : description.Destination));
         }
 
+        if (_sharedWorldLastAdvertisedCarCount >
+                0 &&
+            agents.Count ==
+                0)
+        {
+            return false;
+        }
+
         return true;
     }
 
@@ -4227,6 +4236,8 @@ internal sealed class RuntimeApplicationContext :
 
         _sharedWorldLastFrameAt =
             now;
+        _sharedWorldLastAdvertisedCarCount =
+            frame.Cars.Count;
 
         foreach (var car in
                  frame.Cars)
@@ -4484,6 +4495,8 @@ internal sealed class RuntimeApplicationContext :
             0.0;
         _sharedWorldLastFrameAt =
             null;
+        _sharedWorldLastAdvertisedCarCount =
+            0;
     }
 
     private OpenOmsiLanPose CreateLocalMultiplayerPose()
