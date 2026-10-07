@@ -3679,6 +3679,10 @@ internal sealed class RuntimeApplicationContext :
                 OnMultiplayerOperationalMessage;
             _multiplayerSession.VoiceFrameReceived +=
                 OnMultiplayerVoiceFrame;
+            _multiplayerSession.WorldFrameReceived +=
+                OnMultiplayerWorldFrame;
+            _multiplayerSession.WorldCarDescriptionReceived +=
+                OnMultiplayerWorldCarDescription;
 
             NotifyCommsLinkVoiceState(
                 "VOZ: PTT F10 · pronto");
@@ -3798,6 +3802,73 @@ internal sealed class RuntimeApplicationContext :
                 message.Text,
                 message.Target,
                 message.TimestampUnixMilliseconds));
+    }
+
+    private void OnMultiplayerWorldFrame(
+        OpenOmsiLanWorldFrame frame)
+    {
+        if (_multiplayerSession?.Role !=
+            OpenOmsiLanRole.Client)
+        {
+            return;
+        }
+
+        var now =
+            DateTimeOffset.UtcNow;
+
+        foreach (var car in
+                 frame.Cars)
+        {
+            _sharedWorldCars[
+                car.Id] =
+                (
+                    car,
+                    now
+                );
+        }
+
+        foreach (var light in
+                 frame.Lights)
+        {
+            _sharedWorldLights[
+                light.ObjectId] =
+                (
+                    light,
+                    now
+                );
+        }
+    }
+
+    private void OnMultiplayerWorldCarDescription(
+        OpenOmsiLanWorldCarDescription description)
+    {
+        _sharedWorldDescriptions[
+            description.Id] =
+            description;
+
+        var relative =
+            OpenOmsiLanProtocol.NormalizeVehiclePath(
+                description.VehiclePath);
+
+        if (relative is null)
+        {
+            return;
+        }
+
+        var fullPath =
+            Path.GetFullPath(
+                Path.Combine(
+                    _contentRoot.RootPath,
+                    relative.Replace(
+                        '/',
+                        Path.DirectorySeparatorChar)));
+
+        if (File.Exists(
+                fullPath))
+        {
+            QueueMultiplayerVehicleAsset(
+                fullPath);
+        }
     }
 
     private void OnCommsLinkTransmitRequested(
@@ -3958,6 +4029,10 @@ internal sealed class RuntimeApplicationContext :
             OnMultiplayerOperationalMessage;
         session.VoiceFrameReceived -=
             OnMultiplayerVoiceFrame;
+        session.WorldFrameReceived -=
+            OnMultiplayerWorldFrame;
+        session.WorldCarDescriptionReceived -=
+            OnMultiplayerWorldCarDescription;
 
         _commsLinkVoice.StopTransmit();
         _commsLinkLastRemoteVoiceAt =
@@ -3987,6 +4062,14 @@ internal sealed class RuntimeApplicationContext :
         _multiplayerScriptRuntimes.Clear();
         _multiplayerScriptPaths.Clear();
         _multiplayerActivePeerIds.Clear();
+        _sharedWorldCars.Clear();
+        _sharedWorldDescriptions.Clear();
+        _sharedWorldLights.Clear();
+        _sharedWorldSignalStateBuffer.Clear();
+        _sharedWorldSendAccumulator =
+            0.0;
+        _sharedWorldDescriptionAccumulator =
+            0.0;
     }
 
     private OpenOmsiLanPose CreateLocalMultiplayerPose()
