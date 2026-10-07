@@ -77,6 +77,14 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<uint, OpenOmsiLanWorldCarDescription>
         _sharedWorldDescriptions =
             [];
+    private readonly Dictionary<uint, (
+        OpenOmsiLanWorldPersonState State,
+        DateTimeOffset LastSeen)>
+        _sharedWorldPeople =
+            [];
+    private readonly Dictionary<uint, OpenOmsiLanWorldPersonDescription>
+        _sharedWorldPersonDescriptions =
+            [];
     private readonly Dictionary<long, (
         OpenOmsiLanWorldLightState State,
         DateTimeOffset LastSeen)>
@@ -4125,6 +4133,10 @@ internal sealed class RuntimeApplicationContext :
                 OnMultiplayerWorldFrame;
             _multiplayerSession.WorldCarDescriptionReceived +=
                 OnMultiplayerWorldCarDescription;
+            _multiplayerSession.WorldPeopleFrameReceived +=
+                OnMultiplayerWorldPeopleFrame;
+            _multiplayerSession.WorldPersonDescriptionReceived +=
+                OnMultiplayerWorldPersonDescription;
 
             NotifyCommsLinkVoiceState(
                 "VOZ: PTT F10 · pronto");
@@ -4284,6 +4296,38 @@ internal sealed class RuntimeApplicationContext :
                     now
                 );
         }
+    }
+
+    private void OnMultiplayerWorldPeopleFrame(
+        OpenOmsiLanWorldPeopleFrame frame)
+    {
+        if (_multiplayerSession?.Role !=
+            OpenOmsiLanRole.Client)
+        {
+            return;
+        }
+
+        var now =
+            DateTimeOffset.UtcNow;
+
+        foreach (var person in
+                 frame.People)
+        {
+            _sharedWorldPeople[
+                person.Id] =
+                (
+                    person,
+                    now
+                );
+        }
+    }
+
+    private void OnMultiplayerWorldPersonDescription(
+        OpenOmsiLanWorldPersonDescription description)
+    {
+        _sharedWorldPersonDescriptions[
+            description.Id] =
+            description;
     }
 
     private void OnMultiplayerWorldCarDescription(
@@ -4480,6 +4524,10 @@ internal sealed class RuntimeApplicationContext :
             OnMultiplayerWorldFrame;
         session.WorldCarDescriptionReceived -=
             OnMultiplayerWorldCarDescription;
+        session.WorldPeopleFrameReceived -=
+            OnMultiplayerWorldPeopleFrame;
+        session.WorldPersonDescriptionReceived -=
+            OnMultiplayerWorldPersonDescription;
 
         _commsLinkVoice.StopTransmit();
         _commsLinkLastRemoteVoiceAt =
@@ -4517,6 +4565,8 @@ internal sealed class RuntimeApplicationContext :
             0.0f;
         _sharedWorldCars.Clear();
         _sharedWorldDescriptions.Clear();
+        _sharedWorldPeople.Clear();
+        _sharedWorldPersonDescriptions.Clear();
         _sharedWorldLights.Clear();
         _sharedWorldSignalStateBuffer.Clear();
         _sharedWorldSendAccumulator =
@@ -4793,6 +4843,171 @@ internal sealed class RuntimeApplicationContext :
         return 0.0;
     }
 
+    private void AppendSharedWorldPeople(
+        ICollection<RuntimeRemoteWalkerInfo> target,
+        IReadOnlyList<OpenOmsiLanPeerSnapshot> peers)
+    {
+        var now =
+            DateTimeOffset.UtcNow;
+
+        foreach (var stale in
+                 _sharedWorldPeople
+                     .Where(
+                         pair =>
+                             now -
+                                 pair.Value.LastSeen >
+                             TimeSpan.FromSeconds(
+                                 3.5))
+                     .Select(
+                         static pair =>
+                             pair.Key)
+                     .ToArray())
+        {
+            _sharedWorldPeople.Remove(
+                stale);
+        }
+
+        foreach (var pair in
+                 _sharedWorldPeople
+                     .OrderBy(
+                         static pair =>
+                             pair.Key))
+        {
+            var person =
+                pair.Value.State;
+
+            double sourceX;
+            double sourceY;
+            double sourceZ;
+            float sourceHeading;
+            var seated =
+                person.Activity ==
+                    OpenOmsiLanWorldPersonActivity.Sit ||
+                person.SeatIndex.HasValue;
+
+            if (!person.Aboard)
+            {
+                sourceX =
+                    person.X;
+                sourceY =
+                    person.Y;
+                sourceZ =
+                    person.Z;
+                sourceHeading =
+                    person.HeadingDegrees;
+            }
+            else
+            {
+                double busX;
+                double busY;
+                double busZ;
+                float busHeading;
+
+                if (person.PlayerBus)
+                {
+                    var peer =
+                        peers.FirstOrDefault(
+                            candidate =>
+                                candidate.Id ==
+                                    person.BusId &&
+                                candidate.HasState &&
+                                candidate.Pose.HasVehicle);
+
+                    if (peer is null)
+                    {
+                        continue;
+                    }
+
+                    busX =
+                        peer.Pose.X;
+                    busY =
+                        peer.Pose.Y;
+                    busZ =
+                        peer.Pose.Z;
+                    busHeading =
+                        peer.Pose.HeadingDegrees;
+                }
+                else
+                {
+                    if (!_sharedWorldCars.TryGetValue(
+                            person.BusId,
+                            out var car))
+                    {
+                        continue;
+                    }
+
+                    busX =
+                        car.State.X;
+                    busY =
+                        car.State.Y;
+                    busZ =
+                        car.State.Z;
+                    busHeading =
+                        car.State.HeadingDegrees;
+                }
+
+                var headingRadians =
+                    busHeading *
+                    Math.PI /
+                    180.0;
+
+                var rightX =
+                    Math.Cos(
+                        headingRadians);
+                var rightY =
+                    -Math.Sin(
+                        headingRadians);
+                var forwardX =
+                    Math.Sin(
+                        headingRadians);
+                var forwardY =
+                    Math.Cos(
+                        headingRadians);
+
+                sourceX =
+                    busX +
+                    rightX *
+                        person.X +
+                    forwardX *
+                        person.Y;
+                sourceY =
+                    busY +
+                    rightY *
+                        person.X +
+                    forwardY *
+                        person.Y;
+                sourceZ =
+                    busZ +
+                    person.Z;
+                sourceHeading =
+                    busHeading +
+                    person.HeadingDegrees;
+            }
+
+            _sharedWorldPersonDescriptions.TryGetValue(
+                person.Id,
+                out var description);
+
+            target.Add(
+                new RuntimeRemoteWalkerInfo(
+                    0x80000000u |
+                    person.Id,
+                    $"P{person.Id}",
+                    description?.HumanPath ??
+                        string.Empty,
+                    RuntimeWorldXFromSource(
+                        sourceX),
+                    sourceZ,
+                    sourceY,
+                    (float)RuntimeHeadingDegreesFromSource(
+                        sourceHeading),
+                    person.SpeedMetersPerSecond,
+                    (float)RuntimeHeadingDegreesFromSource(
+                        sourceHeading),
+                    seated));
+        }
+    }
+
     private void AppendMultiplayerTrafficAgents(
         double deltaSeconds)
     {
@@ -4861,6 +5076,10 @@ internal sealed class RuntimeApplicationContext :
                         walker.CourseDegrees),
                     walker.Seated));
         }
+
+        AppendSharedWorldPeople(
+            remoteWalkers,
+            peers);
 
         _runtimeWindow?.SetRemoteWalkers(
             remoteWalkers);
