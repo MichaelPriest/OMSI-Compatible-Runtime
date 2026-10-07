@@ -133,7 +133,8 @@ public sealed record OmsiSceneryDefinition(
     bool Fixed = false,
     bool Surface = false,
     string? CollisionMeshSource = null,
-    OmsiSceneryBoundingBox? BoundingBox = null)
+    OmsiSceneryBoundingBox? BoundingBox = null,
+    bool IsCarPark = false)
 {
     public static OmsiSceneryDefinition Missing { get; } =
         new(

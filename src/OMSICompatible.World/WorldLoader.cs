@@ -1473,7 +1473,9 @@ public static class WorldLoader
                         definition.CollisionMeshSource,
                         definition.BoundingBox,
                         collisionGeometry?.Bounds,
-                        collisionGeometry?.Geometry);
+                        collisionGeometry?.Geometry,
+                        IsCarPark:
+                            definition.IsCarPark);
 
                 result[
                     declaredPath] =

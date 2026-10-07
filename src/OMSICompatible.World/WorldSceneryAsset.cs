@@ -131,7 +131,8 @@ public sealed record WorldSceneryAsset(
     string? CollisionMeshSource = null,
     OmsiSceneryBoundingBox? BoundingBox = null,
     WorldSceneryCollisionBounds? CollisionBounds = null,
-    WorldSceneryCollisionGeometry? CollisionGeometry = null)
+    WorldSceneryCollisionGeometry? CollisionGeometry = null,
+    bool IsCarPark = false)
 {
     public int RenderableMeshCount =>
         Meshes.Count(

@@ -303,7 +303,13 @@ public static class OmsiSceneryObjectReader
                     document),
             BoundingBox:
                 ReadBoundingBox(
-                    document));
+                    document),
+            IsCarPark:
+                document.Sections.Any(
+                    static section =>
+                        section.Name.Equals(
+                            "carpark_p",
+                            StringComparison.OrdinalIgnoreCase)));
     }
 
     private static string? ReadCollisionMeshSource(

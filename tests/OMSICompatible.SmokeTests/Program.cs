@@ -9233,6 +9233,30 @@ try
         passengerPathsSmoke.Links[1].OneWay,
         "OMSI paths.cfg passenger-network compatibility smoke failed.");
 
+    var carParkScenerySmokePath =
+        Path.Combine(
+            root,
+            "carpark-smoke.sco");
+
+    File.WriteAllText(
+        carParkScenerySmokePath,
+        """
+        [onlyeditor]
+
+        [carpark_p]
+        """,
+        Encoding.UTF8);
+
+    var carParkScenerySmoke =
+        OmsiSceneryObjectReader.ReadFile(
+            carParkScenerySmokePath);
+
+    Require(
+        carParkScenerySmoke.Exists &&
+        carParkScenerySmoke.OnlyEditor &&
+        carParkScenerySmoke.IsCarPark,
+        "OMSI [carpark_p] scenery marker was not preserved for parked-car WORLD state.");
+
     var worldPersonDescriptionVector =
         new OpenOmsiLanWorldPersonDescription(
             7,
