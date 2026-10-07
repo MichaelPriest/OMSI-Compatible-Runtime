@@ -8625,6 +8625,68 @@ try
             out _),
         "CommsLink voice frame codec accepted an invalid payload length.");
 
+    var walkerPose =
+        new OpenOmsiLanPose
+        {
+            Id =
+                9,
+            Name =
+                "Walker",
+            FigurePath =
+                "Humans/Man01.hum",
+            Flags =
+                0,
+            Walker =
+                new OpenOmsiLanWalker(
+                    123.45,
+                    678.90,
+                    12.34,
+                    205.0f,
+                    1.45f,
+                    210.0f,
+                    false,
+                    null)
+        };
+
+    var walkerState =
+        OpenOmsiLanStateCodec.Encode(
+            walkerPose,
+            OpenOmsiLanProtocol.ProtocolVersion,
+            44);
+
+    Require(
+        OpenOmsiLanStateCodec.TryDecode(
+            walkerState,
+            OpenOmsiLanProtocol.ProtocolVersion,
+            out var decodedWalkerPose,
+            out var decodedWalkerSequence) &&
+        decodedWalkerSequence ==
+            44 &&
+        !decodedWalkerPose.HasVehicle &&
+        decodedWalkerPose.Walker is
+            { } decodedWalker &&
+        Math.Abs(
+            decodedWalker.X -
+            walkerPose.Walker!.X) <
+            0.011 &&
+        Math.Abs(
+            decodedWalker.Y -
+            walkerPose.Walker.Y) <
+            0.011 &&
+        Math.Abs(
+            decodedWalker.Z -
+            walkerPose.Walker.Z) <
+            0.011 &&
+        Math.Abs(
+            decodedWalker.SpeedMetersPerSecond -
+            walkerPose.Walker.SpeedMetersPerSecond) <
+            0.02f &&
+        Math.Abs(
+            decodedWalker.CourseDegrees -
+            walkerPose.Walker.CourseDegrees) <
+            0.2f,
+        "openOMSI walker STATE round-trip failed.");
+
     var sessionCode =
         new OpenOmsiLanSessionCode(
             OpenOmsiLanProtocol.ProtocolVersion,
