@@ -127,6 +127,12 @@ internal sealed class RuntimeApplicationContext :
     private double _sharedWorldDescriptionAccumulator;
     private DateTimeOffset? _sharedWorldLastFrameAt;
     private int _sharedWorldLastAdvertisedCarCount;
+    private readonly HashSet<uint>
+        _sharedWorldPublishedCarIds =
+            [];
+    private readonly Dictionary<uint, double>
+        _sharedWorldGoneCarSeconds =
+            [];
 
     private readonly Dictionary<uint, double>
         _multiplayerTravelMeters =
@@ -3612,6 +3618,56 @@ internal sealed class RuntimeApplicationContext :
                             agent.AtStation))
                 .ToArray();
 
+        var currentCarIds =
+            cars
+                .Select(
+                    static car =>
+                        car.Id)
+                .ToHashSet();
+
+        foreach (var previousId in
+                 _sharedWorldPublishedCarIds)
+        {
+            if (!currentCarIds.Contains(
+                    previousId))
+            {
+                _sharedWorldGoneCarSeconds[
+                    previousId] =
+                    1.0;
+            }
+        }
+
+        foreach (var currentId in
+                 currentCarIds)
+        {
+            _sharedWorldGoneCarSeconds.Remove(
+                currentId);
+        }
+
+        _sharedWorldPublishedCarIds.Clear();
+
+        foreach (var currentId in
+                 currentCarIds)
+        {
+            _sharedWorldPublishedCarIds.Add(
+                currentId);
+        }
+
+        var gone =
+            _sharedWorldGoneCarSeconds
+                .Keys
+                .OrderBy(
+                    static id =>
+                        id)
+                .Take(
+                    63)
+                .Select(
+                    static id =>
+                        new OpenOmsiLanWorldGoneEntity(
+                            false,
+                            id))
+                .ToArray();
+
         _worldTrafficSignalStateBuffer.Clear();
         _trafficSimulation?
             .AppendTrafficSignalSnapshotTo(
@@ -3658,10 +3714,39 @@ internal sealed class RuntimeApplicationContext :
                 0,
                 cars,
                 lights,
+                Gone:
+                    gone,
                 Parked:
                     new OpenOmsiLanWorldParkedState(
                         true,
                         Array.Empty<uint>())));
+
+        foreach (var removed in
+                 gone)
+        {
+            if (!_sharedWorldGoneCarSeconds.TryGetValue(
+                    removed.Id,
+                    out var remaining))
+            {
+                continue;
+            }
+
+            remaining -=
+                0.1;
+
+            if (remaining <=
+                0.000001)
+            {
+                _sharedWorldGoneCarSeconds.Remove(
+                    removed.Id);
+            }
+            else
+            {
+                _sharedWorldGoneCarSeconds[
+                    removed.Id] =
+                    remaining;
+            }
+        }
     }
 
     private void UpdateNavigationGuidance(
@@ -5241,6 +5326,8 @@ internal sealed class RuntimeApplicationContext :
             null;
         _sharedWorldLastAdvertisedCarCount =
             0;
+        _sharedWorldPublishedCarIds.Clear();
+        _sharedWorldGoneCarSeconds.Clear();
     }
 
     private OpenOmsiLanPose CreateLocalMultiplayerPose()
