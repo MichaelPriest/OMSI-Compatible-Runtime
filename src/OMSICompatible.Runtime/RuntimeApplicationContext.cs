@@ -6543,6 +6543,89 @@ internal sealed class RuntimeApplicationContext :
             pose).Count >
         0;
 
+    private HashSet<int> GetOpenPassengerExits(
+        OpenOmsiLanPose pose)
+    {
+        var exits =
+            new HashSet<int>();
+
+        var cabin =
+            _vehicleAsset?
+                .PassengerCabin;
+
+        var exitCount =
+            cabin?
+                .Exits.Count ??
+            0;
+
+        if (exitCount <=
+            0)
+        {
+            return exits;
+        }
+
+        var runtime =
+            _playerScriptRuntime;
+
+        var hasPassengerExitVariable =
+            false;
+
+        if (runtime is not null)
+        {
+            for (var index = 0;
+                 index <
+                     Math.Min(
+                         16,
+                         exitCount);
+                 index++)
+            {
+                var name =
+                    $"PAX_Exit{index}_Open";
+
+                if (!runtime.HasLocalVariable(
+                        name))
+                {
+                    continue;
+                }
+
+                hasPassengerExitVariable =
+                    true;
+
+                if (runtime.GetLocal(
+                        name) >
+                    0.5)
+                {
+                    exits.Add(
+                        index);
+                }
+            }
+        }
+
+        if (hasPassengerExitVariable)
+        {
+            return exits;
+        }
+
+        if (!pose.Doors.Any(
+                static value =>
+                    value >
+                    0.75f))
+        {
+            return exits;
+        }
+
+        for (var index = 0;
+             index <
+                 exitCount;
+             index++)
+        {
+            exits.Add(
+                index);
+        }
+
+        return exits;
+    }
+
     private void UpdateOwnedWorldPassengers(
         OpenOmsiLanSession session,
         OpenOmsiLanPose localPose,
@@ -6601,9 +6684,15 @@ internal sealed class RuntimeApplicationContext :
             GetOpenPassengerEntries(
                 localPose);
 
+        var openExits =
+            GetOpenPassengerExits(
+                localPose);
+
         var doorsOpen =
             openEntries.Count >
-            0;
+                0 ||
+            openExits.Count >
+                0;
 
         foreach (var passenger in
                  _ownedWorldPassengers
@@ -6619,7 +6708,8 @@ internal sealed class RuntimeApplicationContext :
                 session.PlayerId,
                 doorsOpen,
                 reserved,
-                openEntries);
+                openEntries,
+                openExits);
 
             var world =
                 passenger.WorldPose(
