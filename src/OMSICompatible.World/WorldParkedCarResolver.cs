@@ -74,6 +74,23 @@ public static class WorldParkedCarResolver
         return carTypes[index];
     }
 
+    public static bool IsDeparted(
+        long parkingObjectId,
+        IReadOnlySet<uint>? departedParkingObjectIds)
+    {
+        if (departedParkingObjectIds is null ||
+            parkingObjectId <
+                0 ||
+            parkingObjectId >
+                uint.MaxValue)
+        {
+            return false;
+        }
+
+        return departedParkingObjectIds.Contains(
+            (uint)parkingObjectId);
+    }
+
     public static IReadOnlyList<WorldParkedCarPlacement> Build(
         string mapDirectory,
         IReadOnlyList<WorldObjectPlacement> objects,

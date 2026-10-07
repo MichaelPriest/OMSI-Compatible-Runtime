@@ -9301,6 +9301,29 @@ try
             parkedCarTypes[2],
         "OMSI parked-car deterministic selection diverged from openOMSI.");
 
+    var departedParkingSmoke =
+        new HashSet<uint>
+        {
+            2,
+            77
+        };
+
+    Require(
+        WorldParkedCarResolver.IsDeparted(
+            2,
+            departedParkingSmoke) &&
+        !WorldParkedCarResolver.IsDeparted(
+            3,
+            departedParkingSmoke) &&
+        !WorldParkedCarResolver.IsDeparted(
+            -1,
+            departedParkingSmoke) &&
+        !WorldParkedCarResolver.IsDeparted(
+            (long)uint.MaxValue +
+            1,
+            departedParkingSmoke),
+        "openOMSI parked-car departed-id filtering failed.");
+
     var worldPersonDescriptionVector =
         new OpenOmsiLanWorldPersonDescription(
             7,

@@ -116,6 +116,10 @@ internal sealed class RuntimeApplicationContext :
     private readonly HashSet<uint>
         _sharedWorldDepartedParkingObjectIds =
             [];
+    private readonly object _sharedWorldParkingGate =
+        new();
+    private int _sharedWorldParkingRevision;
+    private int _sharedWorldParkingAppliedRevision;
     private readonly List<RuntimeTrafficSignalStateInfo>
         _sharedWorldSignalStateBuffer =
             [];
@@ -673,7 +677,8 @@ internal sealed class RuntimeApplicationContext :
                             vehicle,
                             _entryPoint,
                             _contentRoot.RootPath,
-                            _trafficVehicleAssets));
+                            _trafficVehicleAssets,
+                                    SnapshotSharedWorldDepartedParkingIds()));
 
             Console.WriteLine(
                 $"[startup-perf] runtimeInfoMs={Stopwatch.GetElapsedTime(runtimeInfoStarted).TotalMilliseconds:0.0}");
@@ -1758,7 +1763,8 @@ internal sealed class RuntimeApplicationContext :
                                 _vehicleAsset,
                                 _entryPoint,
                                 _contentRoot.RootPath,
-                                _trafficVehicleAssets));
+                                _trafficVehicleAssets,
+                                    SnapshotSharedWorldDepartedParkingIds()));
 
                 Console.WriteLine(
                     $"[streaming-perf] runtimeInfoMs={Stopwatch.GetElapsedTime(runtimeInfoStarted).TotalMilliseconds:0.0}");
@@ -4361,16 +4367,48 @@ internal sealed class RuntimeApplicationContext :
         if (frame.Parked is
             { } parked)
         {
-            if (parked.Complete)
+            var parkingChanged =
+                false;
+
+            lock (_sharedWorldParkingGate)
             {
-                _sharedWorldDepartedParkingObjectIds.Clear();
+                if (parked.Complete)
+                {
+                    var next =
+                        parked.ParkingObjectIds
+                            .ToHashSet();
+
+                    if (!_sharedWorldDepartedParkingObjectIds.SetEquals(
+                            next))
+                    {
+                        _sharedWorldDepartedParkingObjectIds.Clear();
+
+                        foreach (var objectId in
+                                 next)
+                        {
+                            _sharedWorldDepartedParkingObjectIds.Add(
+                                objectId);
+                        }
+
+                        parkingChanged =
+                            true;
+                    }
+                }
+                else
+                {
+                    foreach (var objectId in
+                             parked.ParkingObjectIds)
+                    {
+                        parkingChanged |=
+                            _sharedWorldDepartedParkingObjectIds.Add(
+                                objectId);
+                    }
+                }
             }
 
-            foreach (var objectId in
-                     parked.ParkingObjectIds)
+            if (parkingChanged)
             {
-                _sharedWorldDepartedParkingObjectIds.Add(
-                    objectId);
+                QueueSharedWorldParkingRefresh();
             }
         }
     }
@@ -5028,7 +5066,23 @@ internal sealed class RuntimeApplicationContext :
         _nextRelayedWorldPersonId =
             0x00C00000u;
         _sharedWorldLights.Clear();
-        _sharedWorldDepartedParkingObjectIds.Clear();
+
+        bool restoreParkedCars;
+
+        lock (_sharedWorldParkingGate)
+        {
+            restoreParkedCars =
+                _sharedWorldDepartedParkingObjectIds.Count >
+                0;
+
+            _sharedWorldDepartedParkingObjectIds.Clear();
+        }
+
+        if (restoreParkedCars)
+        {
+            QueueSharedWorldParkingRefresh();
+        }
+
         _sharedWorldSignalStateBuffer.Clear();
         _sharedWorldSendAccumulator =
             0.0;
@@ -6427,6 +6481,108 @@ internal sealed class RuntimeApplicationContext :
         return candidate;
     }
 
+    private void QueueSharedWorldParkingRefresh()
+    {
+        Interlocked.Increment(
+            ref _sharedWorldParkingRevision);
+
+        _ =
+            RefreshSharedWorldParkingAsync();
+    }
+
+    private IReadOnlySet<uint>? SnapshotSharedWorldDepartedParkingIds()
+    {
+        if (_multiplayerSession?.Role !=
+                OpenOmsiLanRole.Client ||
+            !_sharedWorldLastFrameAt.HasValue ||
+            DateTimeOffset.UtcNow -
+                _sharedWorldLastFrameAt.Value >
+                TimeSpan.FromSeconds(
+                    3.5))
+        {
+            return null;
+        }
+
+        lock (_sharedWorldParkingGate)
+        {
+            return _sharedWorldDepartedParkingObjectIds.Count ==
+                    0
+                ? null
+                : _sharedWorldDepartedParkingObjectIds
+                    .ToHashSet();
+        }
+    }
+
+    private async Task RefreshSharedWorldParkingAsync()
+    {
+        await _multiplayerAssetGate.WaitAsync();
+
+        try
+        {
+            if (_closing)
+            {
+                return;
+            }
+
+            var parkingRevision =
+                Volatile.Read(
+                    ref _sharedWorldParkingRevision);
+
+            if (Volatile.Read(
+                    ref _sharedWorldParkingAppliedRevision) ==
+                parkingRevision)
+            {
+                return;
+            }
+
+            if (_currentWorld is
+                    { } currentWorld &&
+                _runtimeWindow is
+                    { IsDisposed: false } window)
+            {
+                var departedParkingObjectIds =
+                    SnapshotSharedWorldDepartedParkingIds();
+
+                var runtimeInfo =
+                    await Task.Run(
+                        () =>
+                            BuildRuntimeInfo(
+                                currentWorld,
+                                _vehicleAsset,
+                                _entryPoint,
+                                _contentRoot.RootPath,
+                                _trafficVehicleAssets,
+                                departedParkingObjectIds));
+
+                await window.ApplyStreamedWorldAsync(
+                    runtimeInfo);
+            }
+
+            Volatile.Write(
+                ref _sharedWorldParkingAppliedRevision,
+                parkingRevision);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"[multiplayer-world] parked-car refresh failed: {exception.Message}");
+        }
+        finally
+        {
+            _multiplayerAssetGate.Release();
+
+            if (!_closing &&
+                Volatile.Read(
+                    ref _sharedWorldParkingAppliedRevision) !=
+                Volatile.Read(
+                    ref _sharedWorldParkingRevision))
+            {
+                _ =
+                    RefreshSharedWorldParkingAsync();
+            }
+        }
+    }
+
     private void QueueMultiplayerVehicleAsset(
         string vehiclePath)
     {
@@ -6561,7 +6717,8 @@ internal sealed class RuntimeApplicationContext :
                                     _vehicleAsset,
                                     _entryPoint,
                                     _contentRoot.RootPath,
-                                    _trafficVehicleAssets));
+                                    _trafficVehicleAssets,
+                                    SnapshotSharedWorldDepartedParkingIds()));
 
                     await window.ApplyStreamedWorldAsync(
                         runtimeInfo);
@@ -7376,7 +7533,8 @@ internal sealed class RuntimeApplicationContext :
         OmsiVehicleAsset? vehicle,
         OmsiMapEntryPoint entryPoint,
         string contentRoot,
-        IReadOnlyDictionary<string, OmsiVehicleAsset> trafficVehicleAssets)
+        IReadOnlyDictionary<string, OmsiVehicleAsset> trafficVehicleAssets,
+        IReadOnlySet<uint>? departedParkingObjectIds = null)
     {
         var runtimeTiles =
             world.Tiles
@@ -7502,6 +7660,11 @@ internal sealed class RuntimeApplicationContext :
                 .Concat(
                     (world.ParkedCars ??
                      Array.Empty<WorldParkedCarPlacement>())
+                        .Where(
+                            item =>
+                                !WorldParkedCarResolver.IsDeparted(
+                                    item.ParkingObjectId,
+                                    departedParkingObjectIds))
                         .Select(
                             static item =>
                                 new RuntimeObjectInfo(
