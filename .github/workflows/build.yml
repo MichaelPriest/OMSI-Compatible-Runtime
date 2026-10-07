@@ -509,12 +509,6 @@ jobs:
           )
           cp "$numbered_archive" "$stable_archive"
 
-          git tag "$numbered_tag" "$HEAD_SHA"
-          git push origin "refs/tags/$numbered_tag"
-
-          git tag -f "$stable_tag" "$HEAD_SHA"
-          git push --force origin "refs/tags/$stable_tag"
-
           cat > numbered-release-notes.md <<EOF
           # OMSI Compatible Runtime $VERSION
 
@@ -537,7 +531,12 @@ jobs:
           v0.1.0-alpha.1-test.N
           EOF
 
-          gh release create "$numbered_tag" "$numbered_archive"             --title "OMSI Compatible Runtime $VERSION"             --notes-file numbered-release-notes.md             --prerelease
+          if gh release view "$numbered_tag" >/dev/null 2>&1; then
+            gh release upload "$numbered_tag" "$numbered_archive" --clobber
+            gh release edit "$numbered_tag"               --title "OMSI Compatible Runtime $VERSION"               --notes-file numbered-release-notes.md               --prerelease
+          else
+            gh release create "$numbered_tag" "$numbered_archive"               --target "$HEAD_SHA"               --title "OMSI Compatible Runtime $VERSION"               --notes-file numbered-release-notes.md               --prerelease
+          fi
 
           cat > stable-release-notes.md <<EOF
           # OMSI Compatible Runtime — PR #2 Test
@@ -560,5 +559,5 @@ jobs:
             gh release upload "$stable_tag" "$stable_archive" --clobber
             gh release edit "$stable_tag"               --title "OMSI Compatible Runtime — PR #2 Test ($VERSION)"               --notes-file stable-release-notes.md               --prerelease
           else
-            gh release create "$stable_tag" "$stable_archive"               --title "OMSI Compatible Runtime — PR #2 Test ($VERSION)"               --notes-file stable-release-notes.md               --prerelease
+            gh release create "$stable_tag" "$stable_archive"               --target "$HEAD_SHA"               --title "OMSI Compatible Runtime — PR #2 Test ($VERSION)"               --notes-file stable-release-notes.md               --prerelease
           fi
