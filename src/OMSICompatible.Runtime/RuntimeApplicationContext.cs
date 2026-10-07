@@ -2870,6 +2870,33 @@ internal sealed class RuntimeApplicationContext :
     private IReadOnlyList<RuntimeTrafficSignalStateInfo>
         GetTrafficSignalStates()
     {
+        _runtimeTrafficSignalStateBuffer.Clear();
+
+        if (_trafficSimulation is
+            { } roadSimulation)
+        {
+            _worldTrafficSignalStateBuffer.Clear();
+            roadSimulation.AppendTrafficSignalSnapshotTo(
+                _worldTrafficSignalStateBuffer);
+
+            if (_runtimeTrafficSignalStateBuffer.Capacity <
+                _worldTrafficSignalStateBuffer.Count)
+            {
+                _runtimeTrafficSignalStateBuffer.Capacity =
+                    _worldTrafficSignalStateBuffer.Count;
+            }
+
+            foreach (var state in
+                     _worldTrafficSignalStateBuffer)
+            {
+                _runtimeTrafficSignalStateBuffer.Add(
+                    new RuntimeTrafficSignalStateInfo(
+                        state.SegmentIndex,
+                        state.Phase,
+                        state.PositionSeconds));
+            }
+        }
+
         var sharedFrameFresh =
             _multiplayerSession is
                 {
@@ -2884,87 +2911,108 @@ internal sealed class RuntimeApplicationContext :
                 TimeSpan.FromSeconds(
                     3.5);
 
-        if (sharedFrameFresh &&
-            _currentWorld is
+        if (!sharedFrameFresh ||
+            _currentWorld is not
                 { } sharedWorld)
         {
-            var now =
-                DateTimeOffset.UtcNow;
+            return _runtimeTrafficSignalStateBuffer;
+        }
 
-            foreach (var stale in
-                     _sharedWorldLights
-                         .Where(
-                             pair =>
-                                 now -
-                                     pair.Value.LastSeen >
-                                 TimeSpan.FromSeconds(
-                                     3.5))
-                         .Select(
-                             static pair =>
-                                 pair.Key)
-                         .ToArray())
+        var now =
+            DateTimeOffset.UtcNow;
+
+        foreach (var stale in
+                 _sharedWorldLights
+                     .Where(
+                         pair =>
+                             now -
+                                 pair.Value.LastSeen >
+                             TimeSpan.FromSeconds(
+                                 3.5))
+                     .Select(
+                         static pair =>
+                             pair.Key)
+                     .ToArray())
+        {
+            _sharedWorldLights.Remove(
+                stale);
+        }
+
+        var remoteBySegment =
+            new Dictionary<int, RuntimeTrafficSignalStateInfo>();
+
+        foreach (var segment in
+                 sharedWorld.TrafficPaths.Segments)
+        {
+            if (!segment.SceneryObjectId.HasValue ||
+                segment.TrafficSignal is null ||
+                !_sharedWorldLights.TryGetValue(
+                    segment.SceneryObjectId.Value,
+                    out var remote))
             {
-                _sharedWorldLights.Remove(
-                    stale);
+                continue;
             }
 
-            _sharedWorldSignalStateBuffer.Clear();
+            var positionSeconds =
+                remote.State.PositionSeconds;
 
-            foreach (var segment in
-                     sharedWorld.TrafficPaths.Segments)
+            if (!remote.State.Held)
             {
-                if (!segment.SceneryObjectId.HasValue ||
-                    segment.TrafficSignal is null ||
-                    !_sharedWorldLights.TryGetValue(
-                        segment.SceneryObjectId.Value,
-                        out var remote))
-                {
-                    continue;
-                }
-
-                _sharedWorldSignalStateBuffer.Add(
-                    new RuntimeTrafficSignalStateInfo(
-                        segment.Index,
-                        ResolveSharedSignalPhase(
-                            segment.TrafficSignal,
-                            remote.State.PositionSeconds),
-                        remote.State.PositionSeconds));
+                positionSeconds +=
+                    Math.Max(
+                        0.0,
+                        (
+                            now -
+                            remote.LastSeen
+                        ).TotalSeconds);
             }
 
-            return _sharedWorldSignalStateBuffer;
-        }
-
-        if (_trafficSimulation is not
-                { } roadSimulation)
-        {
-            return Array.Empty<
-                RuntimeTrafficSignalStateInfo>();
-        }
-
-        _worldTrafficSignalStateBuffer.Clear();
-        roadSimulation.AppendTrafficSignalSnapshotTo(
-            _worldTrafficSignalStateBuffer);
-
-        _runtimeTrafficSignalStateBuffer.Clear();
-
-        if (_runtimeTrafficSignalStateBuffer.Capacity <
-            _worldTrafficSignalStateBuffer.Count)
-        {
-            _runtimeTrafficSignalStateBuffer.Capacity =
-                _worldTrafficSignalStateBuffer.Count;
-        }
-
-        foreach (var state in
-                 _worldTrafficSignalStateBuffer)
-        {
-            _runtimeTrafficSignalStateBuffer.Add(
+            remoteBySegment[
+                segment.Index] =
                 new RuntimeTrafficSignalStateInfo(
-                    state.SegmentIndex,
-                    state.Phase,
-                    state.PositionSeconds));
+                    segment.Index,
+                    ResolveSharedSignalPhase(
+                        segment.TrafficSignal,
+                        positionSeconds),
+                    positionSeconds);
         }
 
-        return _runtimeTrafficSignalStateBuffer;
+        if (remoteBySegment.Count ==
+            0)
+        {
+            return _runtimeTrafficSignalStateBuffer;
+        }
+
+        _sharedWorldSignalStateBuffer.Clear();
+
+        foreach (var local in
+                 _runtimeTrafficSignalStateBuffer)
+        {
+            if (remoteBySegment.Remove(
+                    local.SegmentIndex,
+                    out var remote))
+            {
+                _sharedWorldSignalStateBuffer.Add(
+                    remote);
+            }
+            else
+            {
+                _sharedWorldSignalStateBuffer.Add(
+                    local);
+            }
+        }
+
+        foreach (var remote in
+                 remoteBySegment.Values
+                     .OrderBy(
+                         static state =>
+                             state.SegmentIndex))
+        {
+            _sharedWorldSignalStateBuffer.Add(
+                remote);
+        }
+
+        return _sharedWorldSignalStateBuffer;
     }
 
     private static int? ResolveSharedSignalPhase(
