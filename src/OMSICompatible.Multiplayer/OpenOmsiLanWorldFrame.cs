@@ -125,24 +125,29 @@ public static class OpenOmsiLanWorldCodec
                 OpenOmsiLanProtocol.ProtocolVersion;
 
             BinaryPrimitives.WriteUInt16LittleEndian(
-                header[
-                    2..4],
+                header.AsSpan(
+                    2,
+                    2),
                 frame.Sequence);
             BinaryPrimitives.WriteUInt32LittleEndian(
-                header[
-                    4..8],
+                header.AsSpan(
+                    4,
+                    4),
                 frame.HostMilliseconds);
             BinaryPrimitives.WriteInt32LittleEndian(
-                header[
-                    8..12],
+                header.AsSpan(
+                    8,
+                    4),
                 anchor.X);
             BinaryPrimitives.WriteInt32LittleEndian(
-                header[
-                    12..16],
+                header.AsSpan(
+                    12,
+                    4),
                 anchor.Y);
             BinaryPrimitives.WriteInt16LittleEndian(
-                header[
-                    16..18],
+                header.AsSpan(
+                    16,
+                    2),
                 anchor.Z);
 
             var writer =
