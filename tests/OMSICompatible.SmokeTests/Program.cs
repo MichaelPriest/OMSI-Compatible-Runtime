@@ -4791,8 +4791,10 @@ try
             0.5 &&
         blockedLineAgents[0].SpeedMetersPerSecond <
             0.2 &&
-        blockedLineAgents[0].AiBrakeLight,
-        "LineAI did not hold safely for the player/external obstacle ahead.");
+        blockedLineAgents[0].AiBrakeLight &&
+        blockedLineAgents[0].AtStation ==
+            0,
+        "LineAI did not hold safely for the player/external obstacle ahead or confused an obstacle hold with station boarding.");
 
     var missingGroupSchedule =
         WorldLineAiScheduleResolver.Resolve(

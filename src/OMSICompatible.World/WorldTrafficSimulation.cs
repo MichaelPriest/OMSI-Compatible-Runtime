@@ -21,7 +21,8 @@ public sealed record WorldTrafficAgentState(
     string? ScheduledDestination = null,
     string? ScheduledTour = null,
     string? ScheduledTrip = null,
-    string? DepotHofName = null);
+    string? DepotHofName = null,
+    sbyte AtStation = 0);
 
 public sealed record WorldTrafficObstacleState(
     WorldVector3 Position,

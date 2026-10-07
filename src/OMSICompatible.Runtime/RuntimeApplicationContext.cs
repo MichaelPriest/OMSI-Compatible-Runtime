@@ -3157,7 +3157,9 @@ internal sealed class RuntimeApplicationContext :
                         lineAgent.Destination,
                         lineAgent.TourNumber,
                         lineAgent.TripName,
-                        lineAgent.DepotHofName));
+                        lineAgent.DepotHofName,
+                        AtStation:
+                            lineAgent.AtStation));
             }
         }
 
@@ -3483,7 +3485,9 @@ internal sealed class RuntimeApplicationContext :
                     string.IsNullOrWhiteSpace(
                         description.Destination)
                         ? null
-                        : description.Destination));
+                        : description.Destination,
+                    AtStation:
+                        car.AtStation));
         }
 
         if (_sharedWorldLastAdvertisedCarCount >
@@ -3605,7 +3609,7 @@ internal sealed class RuntimeApplicationContext :
                                         : (byte)0,
                             agent.AiBrakeLight,
                             true,
-                            0))
+                            agent.AtStation))
                 .ToArray();
 
         _worldTrafficSignalStateBuffer.Clear();

@@ -17,7 +17,8 @@ public sealed record WorldLineAiAgentState(
     double TraveledDistanceMeters,
     int RouteSegmentIndex,
     bool AiBrakeLight = false,
-    string? DepotHofName = null);
+    string? DepotHofName = null,
+    sbyte AtStation = 0);
 
 public sealed class WorldLineAiSimulation
 {
@@ -290,7 +291,11 @@ public sealed class WorldLineAiSimulation
                     service.TraveledDistanceMeters,
                     service.RouteSegmentIndex,
                     service.BrakeLight,
-                    service.Vehicle.DepotHofName));
+                    service.Vehicle.DepotHofName,
+                    double.IsFinite(
+                        service.HoldUntilTripSeconds)
+                        ? (sbyte)1
+                        : (sbyte)0));
         }
     }
 
