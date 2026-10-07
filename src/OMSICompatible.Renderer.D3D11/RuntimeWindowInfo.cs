@@ -107,6 +107,27 @@ public sealed record RuntimeTrafficPathSegmentInfo(
     RuntimeTrafficSignalProgramInfo? TrafficSignal = null,
     long? SceneryObjectId = null);
 
+public readonly record struct RuntimeLocalWalkerState(
+    bool Active,
+    Vector3 Position,
+    float HeadingDegrees,
+    float SpeedMetersPerSecond,
+    float CourseDegrees,
+    bool Seated,
+    bool Kneeling);
+
+public sealed record RuntimeRemoteWalkerInfo(
+    uint PlayerId,
+    string Name,
+    string FigurePath,
+    double X,
+    double Y,
+    double Z,
+    float HeadingDegrees,
+    float SpeedMetersPerSecond,
+    float CourseDegrees,
+    bool Seated);
+
 public sealed record RuntimeNavigationGuidancePointInfo(
     double X,
     double Y,
