@@ -888,11 +888,14 @@ public sealed class WorldTrafficSimulation
         foreach (var segment in
                  _trafficSignalSegments)
         {
+            TrafficSignalGroupState? group =
+                null;
+
             var hasGroup =
                 segment.SceneryObjectId.HasValue &&
                 _trafficSignalGroups.TryGetValue(
                     segment.SceneryObjectId.Value,
-                    out var group);
+                    out group);
 
             var positionSeconds =
                 hasGroup
