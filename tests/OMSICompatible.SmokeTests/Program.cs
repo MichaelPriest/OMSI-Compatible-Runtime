@@ -8929,7 +8929,21 @@ try
                     3_000_123_456,
                     63.45,
                     true)
-            ]);
+            ],
+            [
+                new OpenOmsiLanWorldGoneEntity(
+                    false,
+                    91),
+                new OpenOmsiLanWorldGoneEntity(
+                    true,
+                    92)
+            ],
+            new OpenOmsiLanWorldParkedState(
+                true,
+                [
+                    101u,
+                    102u
+                ]));
 
     var worldPackets =
         OpenOmsiLanWorldCodec.Encode(
@@ -8992,8 +9006,26 @@ try
         decodedFirstLight is not null &&
         decodedFirstLight.ObjectId ==
             sharedWorldFrame.Lights[0].ObjectId &&
-        decodedFirstLight.Held,
-        $"openOMSI WORLD car/signal codec round-trip failed: packets={worldPackets.Count}; bytes={(worldPackets.Count > 0 ? worldPackets[0].Length : 0)}; decoded={worldDecoded}; seq={(worldDecoded ? decodedWorldFrame.Sequence : 0)}/{sharedWorldFrame.Sequence}; cars={(worldDecoded ? decodedWorldFrame.Cars.Count : 0)}; lights={(worldDecoded ? decodedWorldFrame.Lights.Count : 0)}; car0={(decodedFirstCar is null ? "-" : $"{decodedFirstCar.X:0.000},{decodedFirstCar.Y:0.000},{decodedFirstCar.Z:0.000},brake={decodedFirstCar.Brake},station={decodedFirstCar.AtStation}")}; expectedCar0={sharedWorldFrame.Cars[0].X:0.000},{sharedWorldFrame.Cars[0].Y:0.000},{sharedWorldFrame.Cars[0].Z:0.000}; light0={(decodedFirstLight is null ? "-" : $"{decodedFirstLight.ObjectId},held={decodedFirstLight.Held},t={decodedFirstLight.PositionSeconds:0.00}")}; expectedLight0={sharedWorldFrame.Lights[0].ObjectId},held={sharedWorldFrame.Lights[0].Held},t={sharedWorldFrame.Lights[0].PositionSeconds:0.00}.");
+        decodedFirstLight.Held &&
+        decodedWorldFrame.Gone is
+            { Count: 2 } &&
+        !decodedWorldFrame.Gone[0].Person &&
+        decodedWorldFrame.Gone[0].Id ==
+            91 &&
+        decodedWorldFrame.Gone[1].Person &&
+        decodedWorldFrame.Gone[1].Id ==
+            92 &&
+        decodedWorldFrame.Parked is
+            {
+                Complete:
+                    true
+            } &&
+        decodedWorldFrame.Parked.ParkingObjectIds.SequenceEqual(
+            [
+                101u,
+                102u
+            ]),
+        $"openOMSI WORLD car/signal/gone/parked codec round-trip failed: packets={worldPackets.Count}; bytes={(worldPackets.Count > 0 ? worldPackets[0].Length : 0)}; decoded={worldDecoded}; seq={(worldDecoded ? decodedWorldFrame.Sequence : 0)}/{sharedWorldFrame.Sequence}; cars={(worldDecoded ? decodedWorldFrame.Cars.Count : 0)}; lights={(worldDecoded ? decodedWorldFrame.Lights.Count : 0)}; gone={(worldDecoded ? decodedWorldFrame.Gone?.Count ?? 0 : 0)}; parked={(worldDecoded ? decodedWorldFrame.Parked?.ParkingObjectIds.Count ?? 0 : 0)}; car0={(decodedFirstCar is null ? "-" : $"{decodedFirstCar.X:0.000},{decodedFirstCar.Y:0.000},{decodedFirstCar.Z:0.000},brake={decodedFirstCar.Brake},station={decodedFirstCar.AtStation}")}; expectedCar0={sharedWorldFrame.Cars[0].X:0.000},{sharedWorldFrame.Cars[0].Y:0.000},{sharedWorldFrame.Cars[0].Z:0.000}; light0={(decodedFirstLight is null ? "-" : $"{decodedFirstLight.ObjectId},held={decodedFirstLight.Held},t={decodedFirstLight.PositionSeconds:0.00}")}; expectedLight0={sharedWorldFrame.Lights[0].ObjectId},held={sharedWorldFrame.Lights[0].Held},t={sharedWorldFrame.Lights[0].PositionSeconds:0.00}.");
 
     var peopleWorldVector =
         Convert.FromHexString(
