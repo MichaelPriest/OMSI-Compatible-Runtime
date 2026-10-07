@@ -1920,11 +1920,30 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        var vertices =
-            RuntimeWalkerGeometry.Build(
-                walkers);
+        var fallbackFigurePath =
+            _windowInfo.AiCatalog
+                .Drivers
+                .Concat(
+                    _windowInfo.AiCatalog
+                        .Humans)
+                .Select(
+                    static figure =>
+                        !string.IsNullOrWhiteSpace(
+                            figure.ResolvedPath)
+                            ? figure.ResolvedPath
+                            : figure.DeclaredPath)
+                .FirstOrDefault(
+                    static path =>
+                        !string.IsNullOrWhiteSpace(
+                            path));
 
-        if (vertices.Length ==
+        var geometry =
+            RuntimeWalkerGeometry.Build(
+                _windowInfo.ContentRoot,
+                walkers,
+                fallbackFigurePath);
+
+        if (geometry.Vertices.Length ==
             0)
         {
             return;
@@ -1932,19 +1951,13 @@ public sealed class D3D11RenderWindow : Form
 
         _remoteWalkerVertexBuffer =
             _device.CreateBuffer(
-                vertices.AsSpan(),
+                geometry.Vertices.AsSpan(),
                 BindFlags.VertexBuffer);
         _remoteWalkerVertexCount =
-            (uint)vertices.Length;
+            (uint)geometry.Vertices.Length;
         _remoteWalkerBatches =
-            [
-                new RuntimeObjectBatch(
-                    0,
-                    _remoteWalkerVertexCount,
-                    null,
-                    false,
-                    false)
-            ];
+            geometry.Batches
+                .ToArray();
     }
 
     public void SetTeleMatrixState(
