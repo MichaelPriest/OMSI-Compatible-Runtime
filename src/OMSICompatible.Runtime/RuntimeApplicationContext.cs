@@ -4635,6 +4635,31 @@ internal sealed class RuntimeApplicationContext :
                 );
         }
 
+        foreach (var removed in
+                 frame.Gone ??
+                 Array.Empty<
+                     OpenOmsiLanWorldGoneEntity>())
+        {
+            if (!removed.Person)
+            {
+                continue;
+            }
+
+            _sharedWorldPeople.Remove(
+                removed.Id);
+            _sharedWorldPersonDescriptions.Remove(
+                removed.Id);
+            _pendingWorldPassengerClaims.Remove(
+                removed.Id);
+            _worldPassengerClaimAttemptedAt.Remove(
+                removed.Id);
+            _sharedWorldWantRequestedAt.Remove(
+                (
+                    true,
+                    removed.Id
+                ));
+        }
+
         RequestMissingWorldDescriptions(
             frame.People
                 .Select(
