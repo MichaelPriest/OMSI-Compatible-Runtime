@@ -6662,6 +6662,17 @@ internal sealed class RuntimeApplicationContext :
                 0.0,
                 0.1);
 
+        var completed =
+            _ownedWorldPassengers
+                .Values
+                .Where(
+                    static passenger =>
+                        passenger.Completed)
+                .Select(
+                    static passenger =>
+                        passenger.State.Id)
+                .ToArray();
+
         session.SendWorldPeopleFrameUp(
             new OpenOmsiLanWorldPeopleFrame(
                 0,
@@ -6669,10 +6680,27 @@ internal sealed class RuntimeApplicationContext :
                     (uint)Environment.TickCount64),
                 _ownedWorldPassengers
                     .Values
+                    .Where(
+                        static passenger =>
+                            !passenger.Completed)
                     .Select(
                         static passenger =>
                             passenger.State)
+                    .ToArray(),
+                completed
+                    .Select(
+                        static id =>
+                            new OpenOmsiLanWorldGoneEntity(
+                                true,
+                                id))
                     .ToArray()));
+
+        foreach (var id in
+                 completed)
+        {
+            _ownedWorldPassengers.Remove(
+                id);
+        }
     }
 
     private void UpdateHostWorldPassengers(
