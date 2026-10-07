@@ -116,6 +116,13 @@ internal sealed class RuntimeFreeCamera
         }
     }
 
+    public void SetPosition(
+        Vector3 position)
+    {
+        Position =
+            position;
+    }
+
     public void Rotate(
         float deltaX,
         float deltaY)
