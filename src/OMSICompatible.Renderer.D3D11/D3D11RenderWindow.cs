@@ -6885,6 +6885,7 @@ public sealed class D3D11RenderWindow : Form
             _navPulsePanel?.UpdateState(
                 _vehicle.Position,
                 _vehicle.HeadingRadians,
+                _vehicle.SpeedMetersPerSecond,
                 _trafficAgents,
                 fuelState);
 
