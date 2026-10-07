@@ -8781,35 +8781,56 @@ try
         OpenOmsiLanWorldCodec.Encode(
             sharedWorldFrame);
 
+    var worldDecoded =
+        worldPackets.Count >
+            0 &&
+        OpenOmsiLanWorldCodec.TryDecode(
+            worldPackets[0],
+            out var decodedWorldFrame);
+
+    var decodedFirstCar =
+        worldDecoded &&
+        decodedWorldFrame.Cars.Count >
+            0
+            ? decodedWorldFrame.Cars[0]
+            : null;
+
+    var decodedFirstLight =
+        worldDecoded &&
+        decodedWorldFrame.Lights.Count >
+            0
+            ? decodedWorldFrame.Lights[0]
+            : null;
+
     Require(
         worldPackets.Count ==
             1 &&
         worldPackets[0].Length <=
             OpenOmsiLanWorldCodec.MaximumDatagramBytes &&
-        OpenOmsiLanWorldCodec.TryDecode(
-            worldPackets[0],
-            out var decodedWorldFrame) &&
+        worldDecoded &&
         decodedWorldFrame.Sequence ==
             sharedWorldFrame.Sequence &&
         decodedWorldFrame.Cars.Count ==
             2 &&
         decodedWorldFrame.Lights.Count ==
             1 &&
+        decodedFirstCar is not null &&
         Math.Abs(
-            decodedWorldFrame.Cars[0].X -
+            decodedFirstCar.X -
             sharedWorldFrame.Cars[0].X) <
             0.011 &&
         Math.Abs(
-            decodedWorldFrame.Cars[0].Y -
+            decodedFirstCar.Y -
             sharedWorldFrame.Cars[0].Y) <
             0.011 &&
-        decodedWorldFrame.Cars[0].Brake &&
-        decodedWorldFrame.Cars[0].AtStation ==
+        decodedFirstCar.Brake &&
+        decodedFirstCar.AtStation ==
             1 &&
-        decodedWorldFrame.Lights[0].ObjectId ==
+        decodedFirstLight is not null &&
+        decodedFirstLight.ObjectId ==
             sharedWorldFrame.Lights[0].ObjectId &&
-        decodedWorldFrame.Lights[0].Held,
-        "openOMSI WORLD car/signal codec round-trip failed.");
+        decodedFirstLight.Held,
+        $"openOMSI WORLD car/signal codec round-trip failed: packets={worldPackets.Count}; bytes={(worldPackets.Count > 0 ? worldPackets[0].Length : 0)}; decoded={worldDecoded}; seq={(worldDecoded ? decodedWorldFrame.Sequence : 0)}/{sharedWorldFrame.Sequence}; cars={(worldDecoded ? decodedWorldFrame.Cars.Count : 0)}; lights={(worldDecoded ? decodedWorldFrame.Lights.Count : 0)}; car0={(decodedFirstCar is null ? "-" : $"{decodedFirstCar.X:0.000},{decodedFirstCar.Y:0.000},{decodedFirstCar.Z:0.000},brake={decodedFirstCar.Brake},station={decodedFirstCar.AtStation}")}; expectedCar0={sharedWorldFrame.Cars[0].X:0.000},{sharedWorldFrame.Cars[0].Y:0.000},{sharedWorldFrame.Cars[0].Z:0.000}; light0={(decodedFirstLight is null ? "-" : $"{decodedFirstLight.ObjectId},held={decodedFirstLight.Held},t={decodedFirstLight.PositionSeconds:0.00}")}; expectedLight0={sharedWorldFrame.Lights[0].ObjectId},held={sharedWorldFrame.Lights[0].Held},t={sharedWorldFrame.Lights[0].PositionSeconds:0.00}.");
 
     var worldDescription =
         new OpenOmsiLanWorldCarDescription(
