@@ -35,6 +35,123 @@ public static class OpenOmsiLanWorldPeopleCodec
     private const int CarBits = 132;
     private const uint MaxId = (1u << 24) - 1u;
 
+    public static IReadOnlyList<byte[]> Encode(
+        OpenOmsiLanWorldPeopleFrame frame)
+    {
+        var people =
+            frame.People
+                .Where(
+                    static person =>
+                        person.Id <=
+                        MaxId)
+                .ToArray();
+
+        var packets =
+            new List<byte[]>();
+
+        var index =
+            0;
+
+        do
+        {
+            var anchor =
+                ResolveAnchor(
+                    people,
+                    index);
+
+            var writer =
+                new Writer(
+                    BuildHeader(
+                        frame.Sequence,
+                        frame.HostMilliseconds,
+                        anchor));
+
+            writer.Put(
+                0,
+                7);
+
+            var selected =
+                new List<OpenOmsiLanWorldPersonState>();
+
+            var budgetBits =
+                (
+                    MaxBytes -
+                    HeaderBytes
+                ) *
+                8 -
+                7 -
+                8 -
+                6 -
+                6 -
+                1;
+
+            while (index <
+                       people.Length &&
+                   selected.Count <
+                       255)
+            {
+                var person =
+                    people[index];
+
+                var bits =
+                    EstimateBits(
+                        person);
+
+                if (selected.Count >
+                        0 &&
+                    bits >
+                        budgetBits)
+                {
+                    break;
+                }
+
+                if (!FitsAnchor(
+                        person,
+                        anchor))
+                {
+                    index++;
+                    continue;
+                }
+
+                selected.Add(
+                    person);
+                budgetBits -=
+                    bits;
+                index++;
+            }
+
+            writer.Put(
+                (ulong)selected.Count,
+                8);
+
+            foreach (var person in
+                     selected)
+            {
+                WritePerson(
+                    writer,
+                    person,
+                    anchor);
+            }
+
+            writer.Put(
+                0,
+                6);
+            writer.Put(
+                0,
+                6);
+            writer.Put(
+                0,
+                1);
+
+            packets.Add(
+                writer.Finish());
+        }
+        while (index <
+               people.Length);
+
+        return packets;
+    }
+
     public static bool TryDecode(
         ReadOnlySpan<byte> data,
         out OpenOmsiLanWorldPeopleFrame frame)
@@ -119,6 +236,270 @@ public static class OpenOmsiLanWorldPeopleCodec
         value = new(id, path);
         return true;
     }
+
+    private static (
+        int X,
+        int Y,
+        short Z)
+        ResolveAnchor(
+            IReadOnlyList<OpenOmsiLanWorldPersonState> people,
+            int start)
+    {
+        for (var index = start;
+             index <
+                 people.Count;
+             index++)
+        {
+            var person =
+                people[index];
+
+            if (person.Aboard)
+            {
+                continue;
+            }
+
+            return (
+                RoundInt32(
+                    person.X),
+                RoundInt32(
+                    person.Y),
+                (short)Math.Clamp(
+                    RoundInt32(
+                        person.Z),
+                    short.MinValue,
+                    short.MaxValue));
+        }
+
+        return (
+            0,
+            0,
+            0);
+    }
+
+    private static byte[] BuildHeader(
+        ushort sequence,
+        uint hostMilliseconds,
+        (
+            int X,
+            int Y,
+            short Z
+        ) anchor)
+    {
+        var header =
+            new byte[
+                HeaderBytes];
+
+        header[0] =
+            OpenOmsiLanWorldCodec.WorldMagic;
+        header[1] =
+            OpenOmsiLanProtocol.ProtocolVersion;
+
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            header.AsSpan(
+                2,
+                2),
+            sequence);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            header.AsSpan(
+                4,
+                4),
+            hostMilliseconds);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            header.AsSpan(
+                8,
+                4),
+            anchor.X);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            header.AsSpan(
+                12,
+                4),
+            anchor.Y);
+        BinaryPrimitives.WriteInt16LittleEndian(
+            header.AsSpan(
+                16,
+                2),
+            anchor.Z);
+
+        return header;
+    }
+
+    private static int EstimateBits(
+        OpenOmsiLanWorldPersonState person) =>
+        person.Aboard
+            ? 103
+            : 98 +
+              (
+                  person.WaitingStopObjectId.HasValue
+                      ? 40
+                      : 0
+              );
+
+    private static bool FitsAnchor(
+        OpenOmsiLanWorldPersonState person,
+        (
+            int X,
+            int Y,
+            short Z
+        ) anchor) =>
+        person.Aboard ||
+        (
+            Math.Abs(
+                person.X -
+                anchor.X) <
+            2600.0 &&
+            Math.Abs(
+                person.Y -
+                anchor.Y) <
+            2600.0 &&
+            Math.Abs(
+                person.Z -
+                anchor.Z) <
+            650.0
+        );
+
+    private static void WritePerson(
+        Writer writer,
+        OpenOmsiLanWorldPersonState person,
+        (
+            int X,
+            int Y,
+            short Z
+        ) anchor)
+    {
+        writer.Put(
+            Math.Min(
+                person.Id,
+                MaxId),
+            24);
+
+        writer.Put(
+            person.Aboard
+                ? person.PlayerBus
+                    ? 2UL
+                    : 1UL
+                : 0UL,
+            2);
+
+        writer.Put(
+            (ulong)Math.Min(
+                (byte)person.Activity,
+                (byte)3),
+            2);
+
+        if (!person.Aboard)
+        {
+            writer.Fixed(
+                person.X -
+                    anchor.X,
+                0.01,
+                19);
+            writer.Fixed(
+                person.Y -
+                    anchor.Y,
+                0.01,
+                19);
+            writer.Fixed(
+                person.Z -
+                    anchor.Z,
+                0.01,
+                17);
+
+            writer.Put(
+                QuantizeHeading8(
+                    person.HeadingDegrees),
+                8);
+
+            writer.UnsignedFixed(
+                person.SpeedMetersPerSecond,
+                0.05,
+                6);
+
+            var waiting =
+                person.WaitingStopObjectId.HasValue;
+
+            writer.Put(
+                waiting
+                    ? 1UL
+                    : 0UL,
+                1);
+
+            if (waiting)
+            {
+                writer.Put(
+                    unchecked(
+                        (uint)person.WaitingStopObjectId!.Value),
+                    32);
+                writer.Put(
+                    person.WaitingSpot ??
+                        0,
+                    8);
+            }
+
+            return;
+        }
+
+        writer.Put(
+            Math.Min(
+                person.BusId,
+                MaxId),
+            24);
+        writer.Fixed(
+            person.X,
+            0.01,
+            12);
+        writer.Fixed(
+            person.Y,
+            0.01,
+            13);
+        writer.Fixed(
+            person.Z,
+            0.01,
+            10);
+        writer.Put(
+            QuantizeHeading8(
+                person.HeadingDegrees),
+            8);
+        writer.Put(
+            person.SeatIndex ??
+                byte.MaxValue,
+            8);
+    }
+
+    private static ulong QuantizeHeading8(
+        float value)
+    {
+        var safe =
+            float.IsFinite(
+                value)
+                ? value
+                : 0.0f;
+
+        var normalized =
+            (
+                safe %
+                360.0f +
+                360.0f
+            ) %
+            360.0f;
+
+        return
+            (ulong)Math.Round(
+                normalized /
+                360.0 *
+                256.0) &
+            0xFFUL;
+    }
+
+    private static int RoundInt32(
+        double value) =>
+        double.IsFinite(
+            value)
+            ? (int)Math.Clamp(
+                Math.Round(
+                    value),
+                int.MinValue,
+                int.MaxValue)
+            : 0;
 
     private static bool ReadPerson(
         Bits r,
@@ -251,6 +632,145 @@ public static class OpenOmsiLanWorldPeopleCodec
             StringComparison.OrdinalIgnoreCase)
                 ? p
                 : null;
+    }
+
+    private sealed class Writer
+    {
+        private readonly List<byte>
+            _data;
+        private ulong _accumulator;
+        private int _bits;
+
+        public Writer(
+            ReadOnlySpan<byte> header)
+        {
+            _data =
+                new List<byte>(
+                    header.Length +
+                    256);
+
+            foreach (var value in
+                     header)
+            {
+                _data.Add(
+                    value);
+            }
+        }
+
+        public void Put(
+            ulong value,
+            int bits)
+        {
+            var mask =
+                bits ==
+                    64
+                    ? ulong.MaxValue
+                    : (
+                        1UL <<
+                        bits
+                      ) -
+                      1UL;
+
+            _accumulator |=
+                (
+                    value &
+                    mask
+                ) <<
+                _bits;
+
+            _bits +=
+                bits;
+
+            while (_bits >=
+                   8)
+            {
+                _data.Add(
+                    (byte)_accumulator);
+
+                _accumulator >>=
+                    8;
+                _bits -=
+                    8;
+            }
+        }
+
+        public void Fixed(
+            double value,
+            double step,
+            int bits)
+        {
+            var quantized =
+                double.IsFinite(
+                    value)
+                    ? Math.Round(
+                        value /
+                        step,
+                        MidpointRounding.AwayFromZero)
+                    : 0.0;
+
+            var maximum =
+                (
+                    1L <<
+                    (
+                        bits -
+                        1
+                    )
+                ) -
+                1L;
+
+            var signed =
+                (long)Math.Clamp(
+                    quantized,
+                    -maximum -
+                        1L,
+                    maximum);
+
+            Put(
+                unchecked(
+                    (ulong)signed),
+                bits);
+        }
+
+        public void UnsignedFixed(
+            float value,
+            double step,
+            int bits)
+        {
+            var maximum =
+                (
+                    1L <<
+                    bits
+                ) -
+                1L;
+
+            var quantized =
+                float.IsFinite(
+                    value)
+                    ? Math.Round(
+                        value /
+                        step,
+                        MidpointRounding.AwayFromZero)
+                    : 0.0;
+
+            Put(
+                (ulong)Math.Clamp(
+                    quantized,
+                    0.0,
+                    maximum),
+                bits);
+        }
+
+        public byte[] Finish()
+        {
+            if (_bits >
+                0)
+            {
+                _data.Add(
+                    (byte)_accumulator);
+            }
+
+            return _data.ToArray();
+        }
     }
 
     private sealed class Bits
