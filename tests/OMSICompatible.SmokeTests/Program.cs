@@ -9154,6 +9154,139 @@ try
             7,
         "openOMSI WORLD people gone entries are not interoperable with the full protocol-6 decoder.");
 
+    var humanSmokePath =
+        Path.Combine(
+            root,
+            "human-smoke.hum");
+
+    File.WriteAllText(
+        humanSmokePath,
+        """
+        [model]
+        human-model-smoke.cfg
+
+        [seatheight]
+        0.83
+
+        [humangeom]
+        0.04
+        1.77
+
+        [links]
+        0.09
+        0.00
+        0.92
+        0.09
+        -0.03
+        0.53
+        0.02
+        1.17
+        0.18
+        -0.05
+        1.43
+        0.44
+        -0.04
+        1.41
+        -0.02
+        1.55
+        0.69
+        -0.03
+        1.43
+        0.90
+        -0.03
+        1.43
+
+        [walk_param]
+        1.40
+        80
+        1
+        1
+        0
+
+        [voice]
+        Humans/Voice/Test
+
+        [mass]
+        75
+
+        [age]
+        40
+        """,
+        Encoding.UTF8);
+
+    var humanSmoke =
+        OmsiHumanDefinitionReader.ReadFile(
+            humanSmokePath);
+
+    Require(
+        humanSmoke.ModelPath ==
+            "human-model-smoke.cfg" &&
+        Math.Abs(
+            humanSmoke.SeatHeight -
+            0.83) <
+            0.0001 &&
+        Math.Abs(
+            humanSmoke.FeetDistance -
+            0.04) <
+            0.0001 &&
+        Math.Abs(
+            humanSmoke.Height -
+            1.77) <
+            0.0001 &&
+        humanSmoke.HasCompleteLinks &&
+        humanSmoke.Links.Count ==
+            22 &&
+        humanSmoke.WalkParameters.Count ==
+            5 &&
+        Math.Abs(
+            humanSmoke.WalkParameters[1] -
+            80.0) <
+            0.0001 &&
+        humanSmoke.Age ==
+            40,
+        "OMSI .hum rig metadata compatibility smoke failed.");
+
+    var humanModelSmokePath =
+        Path.Combine(
+            root,
+            "human-model-smoke.cfg");
+
+    File.WriteAllText(
+        humanModelSmokePath,
+        """
+        [mesh]
+        body.o3d
+
+        [smoothskin]
+
+        [setbone]
+        OS_L
+        -2
+
+        [setbone]
+        HEAD
+        -12
+        """,
+        Encoding.UTF8);
+
+    var humanModelSmoke =
+        OmsiVehicleModelReader.ReadFile(
+            humanModelSmokePath);
+
+    Require(
+        humanModelSmoke.Meshes.Count ==
+            1 &&
+        humanModelSmoke.Meshes[0].SmoothSkin &&
+        humanModelSmoke.Meshes[0].SkinBoneBindings is
+            { Count: 2 } &&
+        humanModelSmoke.Meshes[0].SkinBoneBindings![0]
+            .TargetMeshOrdinal ==
+            -2 &&
+        humanModelSmoke.Meshes[0].SkinBoneBindings![1]
+            .TargetMeshOrdinal ==
+            -12,
+        "OMSI human [setbone] negative engine ids were not preserved.");
+
     var passengerCabinSmokePath =
         Path.Combine(
             root,
