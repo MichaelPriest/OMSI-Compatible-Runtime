@@ -85,6 +85,18 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<uint, OpenOmsiLanWorldPersonDescription>
         _sharedWorldPersonDescriptions =
             [];
+    private readonly Dictionary<uint, (
+        OpenOmsiLanWorldPersonState State,
+        string HumanPath)>
+        _pendingWorldPassengerClaims =
+            [];
+    private readonly Dictionary<uint, DateTimeOffset>
+        _worldPassengerClaimAttemptedAt =
+            [];
+    private readonly Dictionary<uint, RuntimeWorldPassengerSimulation>
+        _ownedWorldPassengers =
+            [];
+    private double _worldPassengerUplinkAccumulator;
     private readonly Dictionary<(bool Person, uint Id), DateTimeOffset>
         _sharedWorldWantRequestedAt =
             [];
@@ -4609,20 +4621,79 @@ internal sealed class RuntimeApplicationContext :
     private void OnMultiplayerWorldClaimResult(
         OpenOmsiLanWorldClaimResult result)
     {
-        if (_multiplayerSession?.Role !=
+        var session =
+            _multiplayerSession;
+
+        if (session?.Role !=
             OpenOmsiLanRole.Client)
         {
             return;
         }
 
-        if (result.Granted)
+        foreach (var id in
+                 result.People)
         {
-            foreach (var id in
-                     result.People)
+            if (result.Granted)
             {
-                _sharedWorldPeople.Remove(
+                OpenOmsiLanWorldPersonState?
+                    state =
+                        null;
+
+                string humanPath =
+                    string.Empty;
+
+                if (_pendingWorldPassengerClaims.TryGetValue(
+                        id,
+                        out var pending))
+                {
+                    state =
+                        pending.State;
+                    humanPath =
+                        pending.HumanPath;
+                }
+                else if (_sharedWorldPeople.TryGetValue(
+                             id,
+                             out var shared))
+                {
+                    state =
+                        shared.State;
+
+                    if (_sharedWorldPersonDescriptions.TryGetValue(
+                            id,
+                            out var description))
+                    {
+                        humanPath =
+                            description.HumanPath;
+                    }
+                }
+
+                if (state is not null)
+                {
+                    _ownedWorldPassengers[
+                        id] =
+                        new RuntimeWorldPassengerSimulation(
+                            state,
+                            humanPath);
+
+                    _sharedWorldPeople.Remove(
+                        id);
+
+                    if (!string.IsNullOrWhiteSpace(
+                            humanPath))
+                    {
+                        session.SendWorldPersonDescriptionUp(
+                            new OpenOmsiLanWorldPersonDescription(
+                                id,
+                                humanPath));
+                    }
+                }
+
+                _worldPassengerClaimAttemptedAt.Remove(
                     id);
             }
+
+            _pendingWorldPassengerClaims.Remove(
+                id);
         }
 
         Console.WriteLine(
@@ -4946,6 +5017,11 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldDescriptions.Clear();
         _sharedWorldPeople.Clear();
         _sharedWorldPersonDescriptions.Clear();
+        _pendingWorldPassengerClaims.Clear();
+        _worldPassengerClaimAttemptedAt.Clear();
+        _ownedWorldPassengers.Clear();
+        _worldPassengerUplinkAccumulator =
+            0.0;
         _sharedWorldWantRequestedAt.Clear();
         _relayedWorldPersonIds.Clear();
         _relayedWorldPersonIdsInUse.Clear();
@@ -5393,6 +5469,309 @@ internal sealed class RuntimeApplicationContext :
         }
     }
 
+    private void TryClaimSharedWorldPassengers(
+        OpenOmsiLanSession session,
+        OpenOmsiLanPose localPose)
+    {
+        if (session.Role !=
+                OpenOmsiLanRole.Client ||
+            !session.Connected ||
+            _bus is null ||
+            _vehicleAsset?.PassengerCabin?.Entries.Count <=
+                0 ||
+            Math.Abs(
+                localPose.SpeedKph) >
+                1.5 ||
+            !IsPassengerEntryOpen(
+                localPose))
+        {
+            return;
+        }
+
+        var now =
+            DateTimeOffset.UtcNow;
+
+        foreach (var stale in
+                 _worldPassengerClaimAttemptedAt
+                     .Where(
+                         pair =>
+                             now -
+                                 pair.Value >
+                             TimeSpan.FromSeconds(
+                                 10))
+                     .Select(
+                         static pair =>
+                             pair.Key)
+                     .ToArray())
+        {
+            _worldPassengerClaimAttemptedAt.Remove(
+                stale);
+            _pendingWorldPassengerClaims.Remove(
+                stale);
+        }
+
+        var candidates =
+            _sharedWorldPeople
+                .Where(
+                    pair =>
+                        !pair.Value.State.Aboard &&
+                        pair.Value.State.WaitingStopObjectId.HasValue &&
+                        !_ownedWorldPassengers.ContainsKey(
+                            pair.Key) &&
+                        !_worldPassengerClaimAttemptedAt.ContainsKey(
+                            pair.Key))
+                .Select(
+                    pair =>
+                    {
+                        var dx =
+                            pair.Value.State.X -
+                            localPose.X;
+
+                        var dy =
+                            pair.Value.State.Y -
+                            localPose.Y;
+
+                        return new
+                        {
+                            Id =
+                                pair.Key,
+                            pair.Value.State,
+                            Stop =
+                                pair.Value.State.WaitingStopObjectId!.Value,
+                            DistanceSquared =
+                                dx *
+                                dx +
+                                dy *
+                                dy
+                        };
+                    })
+                .Where(
+                    static item =>
+                        item.DistanceSquared <=
+                        20.0 *
+                        20.0)
+                .OrderBy(
+                    static item =>
+                        item.DistanceSquared)
+                .ToArray();
+
+        if (candidates.Length ==
+            0)
+        {
+            return;
+        }
+
+        var stop =
+            candidates[0]
+                .Stop;
+
+        var selected =
+            candidates
+                .Where(
+                    item =>
+                        item.Stop ==
+                        stop)
+                .Take(
+                    32)
+                .ToArray();
+
+        var ids =
+            selected
+                .Select(
+                    static item =>
+                        item.Id)
+                .ToArray();
+
+        foreach (var item in
+                 selected)
+        {
+            var humanPath =
+                _sharedWorldPersonDescriptions.TryGetValue(
+                    item.Id,
+                    out var description)
+                    ? description.HumanPath
+                    : string.Empty;
+
+            _pendingWorldPassengerClaims[
+                item.Id] =
+                (
+                    item.State,
+                    humanPath
+                );
+
+            _worldPassengerClaimAttemptedAt[
+                item.Id] =
+                now;
+        }
+
+        if (!session.SendWorldClaim(
+                ids))
+        {
+            foreach (var id in
+                     ids)
+            {
+                _pendingWorldPassengerClaims.Remove(
+                    id);
+                _worldPassengerClaimAttemptedAt.Remove(
+                    id);
+            }
+
+            return;
+        }
+
+        Console.WriteLine(
+            $"[multiplayer-world] passenger claim requested: stop={stop}; people={string.Join(",", ids)}");
+    }
+
+    private bool IsPassengerEntryOpen(
+        OpenOmsiLanPose pose)
+    {
+        var runtime =
+            _playerScriptRuntime;
+
+        var hasPassengerDoorVariable =
+            false;
+
+        if (runtime is not null)
+        {
+            for (var index = 0;
+                 index <
+                     16;
+                 index++)
+            {
+                var name =
+                    $"PAX_Entry{index}_Open";
+
+                if (!runtime.HasLocalVariable(
+                        name))
+                {
+                    continue;
+                }
+
+                hasPassengerDoorVariable =
+                    true;
+
+                if (runtime.GetLocal(
+                        name) >
+                    0.5)
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (hasPassengerDoorVariable)
+        {
+            return false;
+        }
+
+        return pose.Doors.Any(
+            static value =>
+                value >
+                0.75f);
+    }
+
+    private void UpdateOwnedWorldPassengers(
+        OpenOmsiLanSession session,
+        OpenOmsiLanPose localPose,
+        double deltaSeconds,
+        ICollection<RuntimeRemoteWalkerInfo> target)
+    {
+        if (session.Role !=
+                OpenOmsiLanRole.Client ||
+            _ownedWorldPassengers.Count ==
+                0)
+        {
+            return;
+        }
+
+        var reserved =
+            _ownedWorldPassengers
+                .Values
+                .Select(
+                    static passenger =>
+                        passenger.ReservedPlaceIndex)
+                .Where(
+                    static index =>
+                        index.HasValue)
+                .Select(
+                    static index =>
+                        index!.Value)
+                .ToHashSet();
+
+        var doorsOpen =
+            IsPassengerEntryOpen(
+                localPose);
+
+        foreach (var passenger in
+                 _ownedWorldPassengers
+                     .Values
+                     .OrderBy(
+                         static passenger =>
+                             passenger.State.Id))
+        {
+            passenger.Update(
+                deltaSeconds,
+                _vehicleAsset,
+                localPose,
+                session.PlayerId,
+                doorsOpen,
+                reserved);
+
+            var world =
+                passenger.WorldPose(
+                    localPose);
+
+            target.Add(
+                new RuntimeRemoteWalkerInfo(
+                    passenger.State.Id,
+                    $"PAX {passenger.State.Id}",
+                    passenger.HumanPath,
+                    RuntimeWorldXFromSource(
+                        world.X),
+                    world.Z,
+                    world.Y,
+                    (float)RuntimeHeadingDegreesFromSource(
+                        world.Heading),
+                    passenger.State.SpeedMetersPerSecond,
+                    (float)RuntimeHeadingDegreesFromSource(
+                        world.Heading),
+                    passenger.State.Activity ==
+                        OpenOmsiLanWorldPersonActivity.Sit ||
+                    passenger.State.SeatIndex.HasValue));
+        }
+
+        _worldPassengerUplinkAccumulator +=
+            Math.Max(
+                0.0,
+                deltaSeconds);
+
+        if (_worldPassengerUplinkAccumulator <
+            0.1)
+        {
+            return;
+        }
+
+        _worldPassengerUplinkAccumulator =
+            Math.Clamp(
+                _worldPassengerUplinkAccumulator -
+                    0.1,
+                0.0,
+                0.1);
+
+        session.SendWorldPeopleFrameUp(
+            new OpenOmsiLanWorldPeopleFrame(
+                0,
+                unchecked(
+                    (uint)Environment.TickCount64),
+                _ownedWorldPassengers
+                    .Values
+                    .Select(
+                        static passenger =>
+                            passenger.State)
+                    .ToArray()));
+    }
+
     private void AppendMultiplayerTrafficAgents(
         double deltaSeconds)
     {
@@ -5404,11 +5783,14 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
+        var localPose =
+            CreateLocalMultiplayerPose();
+
         try
         {
             session.Tick(
                 deltaSeconds,
-                CreateLocalMultiplayerPose());
+                localPose);
 
             while (_commsLinkVoice.TryDequeueOutgoing(
                        out var voicePcm))
@@ -5462,9 +5844,19 @@ internal sealed class RuntimeApplicationContext :
                     walker.Seated));
         }
 
+        TryClaimSharedWorldPassengers(
+            session,
+            localPose);
+
         AppendSharedWorldPeople(
             remoteWalkers,
             peers);
+
+        UpdateOwnedWorldPassengers(
+            session,
+            localPose,
+            deltaSeconds,
+            remoteWalkers);
 
         _runtimeWindow?.SetRemoteWalkers(
             remoteWalkers);
