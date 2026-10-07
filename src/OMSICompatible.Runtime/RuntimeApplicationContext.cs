@@ -4821,10 +4821,10 @@ internal sealed class RuntimeApplicationContext :
                         walker.X),
                     walker.Z,
                     walker.Y,
-                    RuntimeHeadingDegreesFromSource(
+                    (float)RuntimeHeadingDegreesFromSource(
                         walker.HeadingDegrees),
                     walker.SpeedMetersPerSecond,
-                    RuntimeHeadingDegreesFromSource(
+                    (float)RuntimeHeadingDegreesFromSource(
                         walker.CourseDegrees),
                     walker.Seated));
         }
