@@ -3552,6 +3552,8 @@ internal sealed class RuntimeApplicationContext :
 
         var obstacle =
             window.PlayerTrafficObstacle;
+        var walker =
+            window.LocalWalkerState;
 
         var line =
             window.CurrentOperationLine
@@ -3560,7 +3562,8 @@ internal sealed class RuntimeApplicationContext :
             window.CurrentOperationDestination
                 .Trim();
 
-        if (obstacle is null ||
+        if ((obstacle is null &&
+             !walker.Active) ||
             string.IsNullOrWhiteSpace(
                 line))
         {
@@ -3679,20 +3682,39 @@ internal sealed class RuntimeApplicationContext :
                     .ToArray();
         }
 
+        var navigationPosition =
+            walker.Active
+                ? new WorldVector3(
+                    -walker.Position.X,
+                    walker.Position.Y,
+                    walker.Position.Z)
+                : new WorldVector3(
+                    -obstacle!.X,
+                    obstacle.Y,
+                    obstacle.Z);
+
+        var navigationHeadingDegrees =
+            walker.Active
+                ? -walker.HeadingDegrees
+                : -obstacle!.HeadingRadians *
+                  180.0 /
+                  Math.PI;
+
+        var navigationSpeedKph =
+            walker.Active
+                ? walker.SpeedMetersPerSecond *
+                  3.6
+                : Math.Abs(
+                      obstacle!.SpeedMetersPerSecond) *
+                  3.6;
+
         var navigation =
             _navigationAssist.Build(
-                new WorldVector3(
-                    -obstacle.X,
-                    obstacle.Y,
-                    obstacle.Z),
-                -obstacle.HeadingRadians *
-                    180.0 /
-                    Math.PI,
-                Math.Abs(
-                    obstacle.SpeedMetersPerSecond) *
-                    3.6,
+                navigationPosition,
+                navigationHeadingDegrees,
+                navigationSpeedKph,
                 onFoot:
-                    false,
+                    walker.Active,
                 traffic);
 
         var guidance =
