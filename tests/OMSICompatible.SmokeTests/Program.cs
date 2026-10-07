@@ -9066,6 +9066,173 @@ try
             3,
         "openOMSI WORLD people decode vector failed.");
 
+    var peopleInteropFrame =
+        new OpenOmsiLanWorldPeopleFrame(
+            55,
+            1234,
+            [
+                new OpenOmsiLanWorldPersonState(
+                    7,
+                    OpenOmsiLanWorldPersonActivity.Walk,
+                    false,
+                    false,
+                    0,
+                    100.25,
+                    200.40,
+                    10.0,
+                    90.0f,
+                    1.45f,
+                    3_000_123_456,
+                    4,
+                    null),
+                new OpenOmsiLanWorldPersonState(
+                    8,
+                    OpenOmsiLanWorldPersonActivity.Sit,
+                    true,
+                    true,
+                    9,
+                    0.50,
+                    1.20,
+                    0.40,
+                    180.0f,
+                    0.0f,
+                    null,
+                    null,
+                    3)
+            ]);
+
+    var peopleInteropPackets =
+        OpenOmsiLanWorldPeopleCodec.Encode(
+            peopleInteropFrame);
+
+    Require(
+        peopleInteropPackets.Count ==
+            1 &&
+        peopleInteropPackets[0].SequenceEqual(
+            peopleWorldVector),
+        "Runtime WORLD people encoder no longer matches the openOMSI protocol-6 golden packet.");
+
+    var passengerCabinSmokePath =
+        Path.Combine(
+            root,
+            "passengercabin-smoke.cfg");
+
+    File.WriteAllText(
+        passengerCabinSmokePath,
+        """
+        [entry]
+        0
+        {withbutton}
+
+        [entry]
+        2
+        {noticketsale}
+
+        [exit]
+        3
+
+        [passpos]
+        0.50
+        2.00
+        1.00
+        0.45
+        90
+        seat_enabled
+        seat_taken
+
+        [drivpos]
+        -0.80
+        4.50
+        1.10
+        0.50
+        0
+        """,
+        Encoding.UTF8);
+
+    var passengerCabinSmoke =
+        OmsiPassengerCabinReader.ReadFile(
+            passengerCabinSmokePath);
+
+    Require(
+        passengerCabinSmoke.Entries.Count ==
+            2 &&
+        passengerCabinSmoke.Entries[0].PathPoint ==
+            0 &&
+        passengerCabinSmoke.Entries[0].WithButton &&
+        passengerCabinSmoke.Entries[1].PathPoint ==
+            2 &&
+        passengerCabinSmoke.Entries[1].NoTicketSale &&
+        passengerCabinSmoke.Exits.SequenceEqual(
+            [
+                3
+            ]) &&
+        passengerCabinSmoke.PassengerPositions.Count ==
+            1 &&
+        passengerCabinSmoke.PassengerPositions[0].FileIndex ==
+            0 &&
+        passengerCabinSmoke.PassengerPositions[0].SwitchVariable ==
+            "seat_enabled" &&
+        passengerCabinSmoke.PassengerPositions[0].TakenVariable ==
+            "seat_taken" &&
+        passengerCabinSmoke.DriverPositions.Count ==
+            1 &&
+        passengerCabinSmoke.DriverPositions[0].FileIndex ==
+            1,
+        "OMSI passengercabin.cfg compatibility smoke failed.");
+
+    var passengerPathsSmokePath =
+        Path.Combine(
+            root,
+            "paths-smoke.cfg");
+
+    File.WriteAllText(
+        passengerPathsSmokePath,
+        """
+        [pathpnt]
+        0
+        0
+        0
+
+        [pathpnt]
+        0
+        2
+        0
+
+        [next_stepsound]
+        2
+
+        [next_roomheight]
+        2.4
+
+        [pathlink]
+        0
+        1
+
+        [pathlink_oneway]
+        1
+        0
+        """,
+        Encoding.UTF8);
+
+    var passengerPathsSmoke =
+        OmsiVehiclePathReader.ReadFile(
+            passengerPathsSmokePath);
+
+    Require(
+        passengerPathsSmoke.Points.Count ==
+            2 &&
+        passengerPathsSmoke.Links.Count ==
+            2 &&
+        !passengerPathsSmoke.Links[0].OneWay &&
+        passengerPathsSmoke.Links[0].StepSoundPack ==
+            2 &&
+        Math.Abs(
+            passengerPathsSmoke.Links[0].RoomHeight -
+            2.4) <
+            0.001 &&
+        passengerPathsSmoke.Links[1].OneWay,
+        "OMSI paths.cfg passenger-network compatibility smoke failed.");
+
     var worldPersonDescriptionVector =
         new OpenOmsiLanWorldPersonDescription(
             7,
