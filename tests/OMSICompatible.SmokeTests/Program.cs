@@ -9034,7 +9034,7 @@ try
             3,
         "openOMSI WORLD people decode vector failed.");
 
-    var personDescription =
+    var worldPersonDescriptionVector =
         new OpenOmsiLanWorldPersonDescription(
             7,
             "Humans/Man01.hum");
@@ -9042,10 +9042,10 @@ try
     Require(
         OpenOmsiLanWorldPeopleCodec.TryDecodeDescription(
             OpenOmsiLanWorldPeopleCodec.EncodeDescription(
-                personDescription),
-            out var decodedPersonDescription) &&
-        decodedPersonDescription ==
-            personDescription,
+                worldPersonDescriptionVector),
+            out var decodedWorldPersonDescriptionVector) &&
+        decodedWorldPersonDescriptionVector ==
+            worldPersonDescriptionVector,
         "openOMSI WORLD person DESC round-trip failed.");
 
     var worldDescription =
