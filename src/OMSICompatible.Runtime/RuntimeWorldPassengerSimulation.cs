@@ -62,7 +62,8 @@ internal sealed class RuntimeWorldPassengerSimulation
         uint playerId,
         bool doorsOpen,
         ISet<int> reserved,
-        IReadOnlySet<int>? openEntries = null)
+        IReadOnlySet<int>? openEntries = null,
+        IReadOnlySet<int>? openExits = null)
     {
         var dt = (float)Math.Clamp(deltaSeconds, 0.0, 0.1);
 
@@ -206,7 +207,8 @@ internal sealed class RuntimeWorldPassengerSimulation
             doorsOpen &&
             TryConfigureExit(
                 vehicle,
-                cabinPaths))
+                cabinPaths,
+                openExits))
         {
             _exiting =
                 true;
@@ -436,7 +438,8 @@ internal sealed class RuntimeWorldPassengerSimulation
 
     private bool TryConfigureExit(
         OmsiVehicleAsset vehicle,
-        OmsiVehiclePathNetwork paths)
+        OmsiVehiclePathNetwork paths,
+        IReadOnlySet<int>? openExits)
     {
         var cabin =
             vehicle.PassengerCabin;
@@ -466,24 +469,38 @@ internal sealed class RuntimeWorldPassengerSimulation
 
         var exit =
             cabin.Exits
-                .Where(
-                    point =>
-                        point >=
-                            0 &&
-                        point <
-                            paths.Points.Count)
                 .Select(
-                    point =>
+                    (point, index) =>
                         new
                         {
                             Point =
                                 point,
+                            Index =
+                                index
+                        })
+                .Where(
+                    item =>
+                        (
+                            openExits is null ||
+                            openExits.Contains(
+                                item.Index)
+                        ) &&
+                        item.Point >=
+                            0 &&
+                        item.Point <
+                            paths.Points.Count)
+                .Select(
+                    item =>
+                        new
+                        {
+                            item.Point,
+                            item.Index,
                             Distance =
                                 Vector3.DistanceSquared(
                                     _local,
                                     V(
                                         paths.Points[
-                                            point]))
+                                            item.Point]))
                         })
                 .OrderBy(
                     static item =>
