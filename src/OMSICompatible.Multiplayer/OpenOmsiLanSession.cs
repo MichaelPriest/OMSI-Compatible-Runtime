@@ -143,6 +143,12 @@ public sealed class OpenOmsiLanSession :
     public event Action<OpenOmsiLanWorldCarDescription>?
         WorldCarDescriptionReceived;
 
+    public event Action<OpenOmsiLanWorldPeopleFrame>?
+        WorldPeopleFrameReceived;
+
+    public event Action<OpenOmsiLanWorldPersonDescription>?
+        WorldPersonDescriptionReceived;
+
     public static OpenOmsiLanSession Host(
         int port,
         string playerName,
@@ -581,6 +587,27 @@ public sealed class OpenOmsiLanSession :
 
         BroadcastText(
             OpenOmsiLanWorldCodec.EncodeDescription(
+                description),
+            except:
+                null);
+
+        return true;
+    }
+
+    public bool SendWorldPersonDescription(
+        OpenOmsiLanWorldPersonDescription description)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host)
+        {
+            return false;
+        }
+
+        BroadcastText(
+            OpenOmsiLanWorldPeopleCodec.EncodeDescription(
                 description),
             except:
                 null);
@@ -1136,6 +1163,14 @@ public sealed class OpenOmsiLanSession :
 
         WorldFrameReceived?.Invoke(
             frame);
+
+        if (OpenOmsiLanWorldPeopleCodec.TryDecode(
+                data,
+                out var peopleFrame))
+        {
+            WorldPeopleFrameReceived?.Invoke(
+                peopleFrame);
+        }
     }
 
     private void HandleVoiceFrame(
@@ -1544,16 +1579,27 @@ public sealed class OpenOmsiLanSession :
             !Connected ||
             _host is null ||
             !endpoint.Equals(
-                _host) ||
-            !OpenOmsiLanWorldCodec.TryDecodeDescription(
-                text,
-                out var description))
+                _host))
         {
             return;
         }
 
-        WorldCarDescriptionReceived?.Invoke(
-            description);
+        if (OpenOmsiLanWorldCodec.TryDecodeDescription(
+                text,
+                out var car))
+        {
+            WorldCarDescriptionReceived?.Invoke(
+                car);
+            return;
+        }
+
+        if (OpenOmsiLanWorldPeopleCodec.TryDecodeDescription(
+                text,
+                out var person))
+        {
+            WorldPersonDescriptionReceived?.Invoke(
+                person);
+        }
     }
 
     private void HandleClock(
