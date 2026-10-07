@@ -150,6 +150,121 @@ public static class OpenOmsiLanProtocol
             CleanText(Field(fields, first + 4), 16));
     }
 
+    public static string EncodeFootprint(
+        OpenOmsiLanFootprint footprint) =>
+        string.Join(
+            ",",
+            SafeCoordinate(footprint.X, 100_000_000.0)
+                .ToString("0.00", CultureInfo.InvariantCulture),
+            SafeCoordinate(footprint.Y, 100_000_000.0)
+                .ToString("0.00", CultureInfo.InvariantCulture),
+            SafeCoordinate(footprint.Z, 100_000.0)
+                .ToString("0.00", CultureInfo.InvariantCulture),
+            NormalizeDegrees(footprint.HeadingDegrees)
+                .ToString("0.0", CultureInfo.InvariantCulture),
+            ClampFinite(footprint.LengthMeters, 0.0f, 60.0f)
+                .ToString("0.0", CultureInfo.InvariantCulture),
+            ClampFinite(footprint.WidthMeters, 0.0f, 8.0f)
+                .ToString("0.0", CultureInfo.InvariantCulture));
+
+    public static bool TryDecodeFootprint(
+        string text,
+        out OpenOmsiLanFootprint footprint)
+    {
+        footprint = new(0, 0, 0, 0, 0, 0);
+        var fields = text.Split(',');
+
+        if (fields.Length != 6 ||
+            !double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ||
+            !double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y) ||
+            !double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var z) ||
+            !double.TryParse(fields[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var heading) ||
+            !double.TryParse(fields[4], NumberStyles.Float, CultureInfo.InvariantCulture, out var length) ||
+            !double.TryParse(fields[5], NumberStyles.Float, CultureInfo.InvariantCulture, out var width) ||
+            !double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(z) ||
+            !double.IsFinite(heading) || !double.IsFinite(length) || !double.IsFinite(width) ||
+            Math.Abs(x) > 100_000_000.0 ||
+            Math.Abs(y) > 100_000_000.0 ||
+            Math.Abs(z) > 100_000.0)
+        {
+            return false;
+        }
+
+        footprint = new OpenOmsiLanFootprint(
+            x,
+            y,
+            z,
+            (float)NormalizeDegrees(heading),
+            (float)Math.Clamp(length, 0.0, 60.0),
+            (float)Math.Clamp(width, 0.0, 8.0));
+
+        return true;
+    }
+
+    public static string EncodePlace(
+        uint playerId,
+        OpenOmsiLanFootprint footprint) =>
+        $"PLACE|{playerId.ToString(CultureInfo.InvariantCulture)}|{EncodeFootprint(footprint).Replace(',', '|')}";
+
+    public static bool TryDecodePlace(
+        string text,
+        out uint playerId,
+        out OpenOmsiLanFootprint footprint)
+    {
+        playerId = 0;
+        footprint = new(0, 0, 0, 0, 0, 0);
+        var fields = text.Split('|');
+
+        return fields.Length >= 8 &&
+               fields[0].Equals("PLACE", StringComparison.Ordinal) &&
+               uint.TryParse(fields[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out playerId) &&
+               TryDecodeFootprint(
+                   string.Join(",", fields.Skip(2).Take(6)),
+                   out footprint);
+    }
+
+    public static string EncodeNear(
+        uint playerId,
+        IReadOnlyList<OpenOmsiLanFootprint> footprints) =>
+        $"NEAR|{playerId.ToString(CultureInfo.InvariantCulture)}|" +
+        string.Join(
+            ";",
+            footprints
+                .Take(MaximumNearFootprints)
+                .Select(EncodeFootprint));
+
+    public static bool TryDecodeNear(
+        string text,
+        out uint playerId,
+        out List<OpenOmsiLanFootprint> footprints)
+    {
+        playerId = 0;
+        footprints = [];
+        var fields = text.Split('|', 3);
+
+        if (fields.Length < 2 ||
+            !fields[0].Equals("NEAR", StringComparison.Ordinal) ||
+            !uint.TryParse(fields[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out playerId))
+        {
+            return false;
+        }
+
+        if (fields.Length < 3 || string.IsNullOrWhiteSpace(fields[2]))
+        {
+            return true;
+        }
+
+        foreach (var encoded in fields[2].Split(';').Take(MaximumNearFootprints))
+        {
+            if (TryDecodeFootprint(encoded, out var footprint))
+            {
+                footprints.Add(footprint);
+            }
+        }
+
+        return true;
+    }
+
     public static string EncodeInfo(OpenOmsiLanPose pose)
     {
         var path =
@@ -478,6 +593,27 @@ public static class OpenOmsiLanProtocol
             out var value)
             ? value
             : double.NaN;
+
+    private static double SafeCoordinate(
+        double value,
+        double maximumAbsolute) =>
+        double.IsFinite(value)
+            ? Math.Clamp(value, -maximumAbsolute, maximumAbsolute)
+            : 0.0;
+
+    private static double NormalizeDegrees(
+        double value)
+    {
+        if (!double.IsFinite(value))
+        {
+            return 0.0;
+        }
+
+        var normalized = value % 360.0;
+        return normalized < 0.0
+            ? normalized + 360.0
+            : normalized;
+    }
 
     private static float ClampFinite(
         float value,
