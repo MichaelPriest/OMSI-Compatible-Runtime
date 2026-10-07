@@ -67,6 +67,25 @@ internal sealed class RuntimeApplicationContext :
         _pendingMultiplayerVehiclePaths =
             new(
                 StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<uint, (
+        OpenOmsiLanWorldCarState State,
+        DateTimeOffset LastSeen)>
+        _sharedWorldCars =
+            [];
+    private readonly Dictionary<uint, OpenOmsiLanWorldCarDescription>
+        _sharedWorldDescriptions =
+            [];
+    private readonly Dictionary<long, (
+        OpenOmsiLanWorldLightState State,
+        DateTimeOffset LastSeen)>
+        _sharedWorldLights =
+            [];
+    private readonly List<RuntimeTrafficSignalStateInfo>
+        _sharedWorldSignalStateBuffer =
+            [];
+    private double _sharedWorldSendAccumulator;
+    private double _sharedWorldDescriptionAccumulator;
+
     private readonly Dictionary<uint, double>
         _multiplayerTravelMeters =
             [];
