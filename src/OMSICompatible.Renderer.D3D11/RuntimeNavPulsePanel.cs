@@ -35,6 +35,8 @@ internal sealed class RuntimeNavPulsePanel : Panel
     private float _headingRadians;
     private Vector2[] _remoteVehicles =
         Array.Empty<Vector2>();
+    private Vector2[] _route =
+        Array.Empty<Vector2>();
     private RuntimeFuelTrackState _fuel =
         RuntimeFuelTrackState.Unknown;
     private bool _circleMode;
@@ -199,6 +201,24 @@ internal sealed class RuntimeNavPulsePanel : Panel
         if (Visible)
         {
             BringToFront();
+            Invalidate();
+        }
+    }
+
+    public void SetRoute(
+        IReadOnlyList<RuntimeTrafficPathPointInfo> points)
+    {
+        _route =
+            points
+                .Select(
+                    static point =>
+                        new Vector2(
+                            (float)point.X,
+                            (float)point.Z))
+                .ToArray();
+
+        if (Visible)
+        {
             Invalidate();
         }
     }
@@ -395,6 +415,64 @@ internal sealed class RuntimeNavPulsePanel : Panel
                 roadPen,
                 a,
                 b);
+        }
+
+        if (_route.Length >
+            1)
+        {
+            using var routePen =
+                new Pen(
+                    Color.FromArgb(
+                        205,
+                        35,
+                        190,
+                        245),
+                    3.0f);
+
+            for (var index = 1;
+                 index <
+                     _route.Length;
+                 index++)
+            {
+                var aWorld =
+                    _route[
+                        index -
+                        1];
+                var bWorld =
+                    _route[
+                        index];
+
+                var midpoint =
+                    (
+                        aWorld +
+                        bWorld
+                    ) /
+                    2.0f;
+
+                var delta =
+                    midpoint -
+                    new Vector2(
+                        _position.X,
+                        _position.Z);
+
+                if (delta.LengthSquared() >
+                    (_rangeMeters + 120.0f) *
+                    (_rangeMeters + 120.0f))
+                {
+                    continue;
+                }
+
+                graphics.DrawLine(
+                    routePen,
+                    ToScreen(
+                        aWorld,
+                        center,
+                        scale),
+                    ToScreen(
+                        bWorld,
+                        center,
+                        scale));
+            }
         }
 
         using var peerBrush =
