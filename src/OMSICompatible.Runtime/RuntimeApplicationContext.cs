@@ -5415,6 +5415,20 @@ internal sealed class RuntimeApplicationContext :
                     string.Empty,
                 Destination =
                     _runtimeWindow?.CurrentOperationDestination ??
+                    string.Empty,
+                FigurePath =
+                    _currentWorld?
+                        .AiCatalog
+                        .Drivers
+                        .Concat(
+                            _currentWorld.AiCatalog.Humans)
+                        .FirstOrDefault(
+                            static figure =>
+                                figure.Exists)?
+                        .DeclaredPath
+                        .Replace(
+                            '\\',
+                            '/') ??
                     string.Empty
             };
 
