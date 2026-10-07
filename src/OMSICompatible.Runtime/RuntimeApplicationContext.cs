@@ -4032,6 +4032,10 @@ internal sealed class RuntimeApplicationContext :
         DisposeMultiplayerSession();
         _multiplayerStatusAccumulator =
             1.0;
+        _sharedWorldDescriptionAccumulator =
+            2.0;
+        _sharedWorldSendAccumulator =
+            0.1;
 
         var mode =
             (_options.MultiplayerMode ??
