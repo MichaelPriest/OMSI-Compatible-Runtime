@@ -755,6 +755,41 @@ public sealed class OpenOmsiLanSession :
         return true;
     }
 
+    public bool SendWorldPeopleFrame(
+        OpenOmsiLanWorldPeopleFrame frame)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host)
+        {
+            return false;
+        }
+
+        var outbound =
+            frame with
+            {
+                Sequence =
+                    _worldSequence++,
+                HostMilliseconds =
+                    unchecked(
+                        (uint)Environment.TickCount64)
+            };
+
+        foreach (var packet in
+                 OpenOmsiLanWorldPeopleCodec.Encode(
+                     outbound))
+        {
+            Broadcast(
+                packet,
+                except:
+                    null);
+        }
+
+        return true;
+    }
+
     public bool RelayWorldPeopleFrame(
         uint sourcePlayerId,
         OpenOmsiLanWorldPeopleFrame frame)
