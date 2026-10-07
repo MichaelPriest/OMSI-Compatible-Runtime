@@ -6352,6 +6352,32 @@ internal sealed class RuntimeApplicationContext :
         var localPose =
             CreateLocalMultiplayerPose();
 
+        if (session.Role ==
+            OpenOmsiLanRole.Host)
+        {
+            session.SetLocalNearFootprints(
+                _trafficAgentStateBuffer
+                    .Select(
+                        static agent =>
+                            new OpenOmsiLanFootprint(
+                                agent.Position.X,
+                                agent.Position.Z,
+                                agent.Position.Y,
+                                (float)(
+                                    agent.HeadingRadians *
+                                    180.0 /
+                                    Math.PI),
+                                (float)Math.Max(
+                                    agent.HalfLengthMeters *
+                                    2.0,
+                                    1.0),
+                                (float)Math.Max(
+                                    agent.HalfWidthMeters *
+                                    2.0,
+                                    1.0)))
+                    .ToArray());
+        }
+
         try
         {
             session.Tick(
