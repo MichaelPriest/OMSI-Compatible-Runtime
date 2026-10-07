@@ -2873,6 +2873,10 @@ internal sealed class RuntimeApplicationContext :
             _runtimeWindow?
                 .PlayerTrafficObstacle;
 
+        var usingSharedWorld =
+            TryAppendSharedWorldAgents(
+                agents);
+
         var worldPlayerObstacle =
             playerObstacle is null
                 ? null
@@ -2886,6 +2890,8 @@ internal sealed class RuntimeApplicationContext :
                     playerObstacle.HalfLengthMeters,
                     playerObstacle.HalfWidthMeters);
 
+        if (!usingSharedWorld)
+        {
         if (_trafficSimulation is
             { } roadSimulation)
         {
@@ -3046,6 +3052,12 @@ internal sealed class RuntimeApplicationContext :
             }
         }
 
+        }
+
+        PublishSharedWorld(
+            deltaSeconds,
+            agents);
+
         if (agents.Count ==
             0)
         {
@@ -3100,6 +3112,284 @@ internal sealed class RuntimeApplicationContext :
             agents);
 
         return _runtimeTrafficAgentBuffer;
+    }
+
+    private bool TryAppendSharedWorldAgents(
+        ICollection<WorldTrafficAgentState> agents)
+    {
+        var session =
+            _multiplayerSession;
+
+        var lastFrame =
+            _sharedWorldLastFrameAt;
+
+        if (session is null ||
+            session.Role !=
+                OpenOmsiLanRole.Client ||
+            !session.Connected ||
+            !lastFrame.HasValue ||
+            DateTimeOffset.UtcNow -
+                lastFrame.Value >
+                TimeSpan.FromSeconds(
+                    3.5))
+        {
+            return false;
+        }
+
+        var now =
+            DateTimeOffset.UtcNow;
+
+        foreach (var stale in
+                 _sharedWorldCars
+                     .Where(
+                         pair =>
+                             now -
+                                 pair.Value.LastSeen >
+                             TimeSpan.FromSeconds(
+                                 3.5))
+                     .Select(
+                         static pair =>
+                             pair.Key)
+                     .ToArray())
+        {
+            _sharedWorldCars.Remove(
+                stale);
+        }
+
+        foreach (var pair in
+                 _sharedWorldCars
+                     .OrderBy(
+                         static pair =>
+                             pair.Key))
+        {
+            if (!_sharedWorldDescriptions.TryGetValue(
+                    pair.Key,
+                    out var description))
+            {
+                continue;
+            }
+
+            var relative =
+                OpenOmsiLanProtocol.NormalizeVehiclePath(
+                    description.VehiclePath);
+
+            if (relative is null)
+            {
+                continue;
+            }
+
+            var vehiclePath =
+                Path.GetFullPath(
+                    Path.Combine(
+                        _contentRoot.RootPath,
+                        relative.Replace(
+                            '/',
+                            Path.DirectorySeparatorChar)));
+
+            if (!File.Exists(
+                    vehiclePath))
+            {
+                continue;
+            }
+
+            var car =
+                pair.Value.State;
+
+            agents.Add(
+                new WorldTrafficAgentState(
+                    (int)Math.Min(
+                        car.Id,
+                        int.MaxValue),
+                    -1,
+                    0.0,
+                    car.SpeedMetersPerSecond,
+                    vehiclePath,
+                    new WorldVector3(
+                        car.X,
+                        car.Z,
+                        car.Y),
+                    car.HeadingDegrees *
+                        Math.PI /
+                        180.0,
+                    null,
+                    "SharedWorld",
+                    car.Brake,
+                    car.Blinker is
+                        1 or 3,
+                    car.Blinker is
+                        2 or 3,
+                    0.0,
+                    0.0,
+                    string.IsNullOrWhiteSpace(
+                        description.Line)
+                        ? null
+                        : description.Line,
+                    string.IsNullOrWhiteSpace(
+                        description.Destination)
+                        ? null
+                        : description.Destination));
+        }
+
+        return true;
+    }
+
+    private void PublishSharedWorld(
+        double deltaSeconds,
+        IReadOnlyList<WorldTrafficAgentState> agents)
+    {
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            session.Role !=
+                OpenOmsiLanRole.Host ||
+            !session.Connected)
+        {
+            return;
+        }
+
+        var dt =
+            double.IsFinite(
+                deltaSeconds)
+                ? Math.Max(
+                    deltaSeconds,
+                    0.0)
+                : 0.0;
+
+        _sharedWorldSendAccumulator +=
+            dt;
+        _sharedWorldDescriptionAccumulator +=
+            dt;
+
+        if (_sharedWorldDescriptionAccumulator >=
+            2.0)
+        {
+            _sharedWorldDescriptionAccumulator =
+                0.0;
+
+            foreach (var agent in
+                     agents)
+            {
+                var relative =
+                    Path.GetRelativePath(
+                            _contentRoot.RootPath,
+                            agent.VehiclePath)
+                        .Replace(
+                            '\\',
+                            '/');
+
+                if (OpenOmsiLanProtocol.NormalizeVehiclePath(
+                        relative) is null)
+                {
+                    continue;
+                }
+
+                session.SendWorldCarDescription(
+                    new OpenOmsiLanWorldCarDescription(
+                        (uint)Math.Clamp(
+                            agent.AgentIndex,
+                            0,
+                            (int)OpenOmsiLanWorldCodec.MaximumEntityId),
+                        relative,
+                        null,
+                        agent.ScheduledLine ??
+                            string.Empty,
+                        agent.ScheduledDestination ??
+                            string.Empty));
+            }
+        }
+
+        if (_sharedWorldSendAccumulator <
+            0.1)
+        {
+            return;
+        }
+
+        _sharedWorldSendAccumulator =
+            0.0;
+
+        var cars =
+            agents
+                .Where(
+                    static agent =>
+                        agent.AgentIndex >=
+                            0 &&
+                        agent.AgentIndex <=
+                            (int)OpenOmsiLanWorldCodec.MaximumEntityId)
+                .Select(
+                    static agent =>
+                        new OpenOmsiLanWorldCarState(
+                            (uint)agent.AgentIndex,
+                            agent.Position.X,
+                            agent.Position.Z,
+                            agent.Position.Y,
+                            (float)(
+                                agent.HeadingRadians *
+                                180.0 /
+                                Math.PI),
+                            0.0f,
+                            0.0f,
+                            (float)agent.SpeedMetersPerSecond,
+                            0.0f,
+                            agent.AiBlinkerLeft &&
+                            agent.AiBlinkerRight
+                                ? (byte)3
+                                : agent.AiBlinkerLeft
+                                    ? (byte)1
+                                    : agent.AiBlinkerRight
+                                        ? (byte)2
+                                        : (byte)0,
+                            agent.AiBrakeLight,
+                            true,
+                            0))
+                .ToArray();
+
+        _worldTrafficSignalStateBuffer.Clear();
+        _trafficSimulation?
+            .AppendTrafficSignalSnapshotTo(
+                _worldTrafficSignalStateBuffer);
+
+        var segmentByIndex =
+            _currentWorld?.TrafficPaths.Segments
+                .ToDictionary(
+                    static segment =>
+                        segment.Index);
+
+        var lights =
+            segmentByIndex is null
+                ? Array.Empty<
+                    OpenOmsiLanWorldLightState>()
+                : _worldTrafficSignalStateBuffer
+                    .Select(
+                        state =>
+                        {
+                            if (!segmentByIndex.TryGetValue(
+                                    state.SegmentIndex,
+                                    out var segment) ||
+                                !segment.SceneryObjectId.HasValue)
+                            {
+                                return null;
+                            }
+
+                            return new OpenOmsiLanWorldLightState(
+                                segment.SceneryObjectId.Value,
+                                state.PositionSeconds,
+                                false);
+                        })
+                    .Where(
+                        static state =>
+                            state is not null)
+                    .Select(
+                        static state =>
+                            state!)
+                    .ToArray();
+
+        session.SendWorldFrame(
+            new OpenOmsiLanWorldFrame(
+                0,
+                0,
+                cars,
+                lights));
     }
 
     private void UpdateNavigationGuidance(
