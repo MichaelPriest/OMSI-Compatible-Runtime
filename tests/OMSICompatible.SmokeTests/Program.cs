@@ -8889,6 +8889,11 @@ try
                     null,
                     null,
                     7)
+            ],
+            [
+                new OpenOmsiLanWorldGoneEntity(
+                    true,
+                    23)
             ]);
 
     var peoplePackets =
@@ -8914,7 +8919,12 @@ try
         decodedPeopleFrame.People[1].BusId ==
             peopleFrame.People[1].BusId &&
         decodedPeopleFrame.People[1].SeatIndex ==
-            peopleFrame.People[1].SeatIndex,
+            peopleFrame.People[1].SeatIndex &&
+        decodedPeopleFrame.Gone is
+            { Count: 1 } decodedPeopleGone &&
+        decodedPeopleGone[0].Person &&
+        decodedPeopleGone[0].Id ==
+            23,
         "openOMSI WORLD people encode/decode round-trip failed.");
 
     var personDescription =
