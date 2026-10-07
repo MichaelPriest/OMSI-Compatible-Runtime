@@ -7083,15 +7083,101 @@ internal sealed class RuntimeApplicationContext :
                 continue;
             }
 
+            var walkerSourceX =
+                walker.X;
+            var walkerSourceY =
+                walker.Y;
+            var walkerSourceZ =
+                walker.Z;
+
+            if (walker.Aboard is
+                { } aboard)
+            {
+                OpenOmsiLanPose?
+                    ownerPose =
+                        null;
+
+                if (aboard.OwnerId ==
+                        session.PlayerId &&
+                    localPose.HasVehicle)
+                {
+                    ownerPose =
+                        localPose;
+                }
+                else
+                {
+                    ownerPose =
+                        peers
+                            .FirstOrDefault(
+                                candidate =>
+                                    candidate.Id ==
+                                        aboard.OwnerId &&
+                                    candidate.HasState &&
+                                    candidate.Pose.HasVehicle)?
+                            .Pose;
+                }
+
+                if (ownerPose is null)
+                {
+                    // openOMSI also suppresses a seated avatar when the
+                    // player bus named by Aboard is not known locally.
+                    if (walker.Seated)
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    var busHeadingRadians =
+                        ownerPose.HeadingDegrees *
+                        Math.PI /
+                        180.0;
+
+                    var rightX =
+                        Math.Cos(
+                            busHeadingRadians);
+
+                    var rightY =
+                        -Math.Sin(
+                            busHeadingRadians);
+
+                    var forwardX =
+                        Math.Sin(
+                            busHeadingRadians);
+
+                    var forwardY =
+                        Math.Cos(
+                            busHeadingRadians);
+
+                    walkerSourceX =
+                        ownerPose.X +
+                        rightX *
+                            aboard.LocalX +
+                        forwardX *
+                            aboard.LocalY;
+
+                    walkerSourceY =
+                        ownerPose.Y +
+                        rightY *
+                            aboard.LocalX +
+                        forwardY *
+                            aboard.LocalY;
+
+                    walkerSourceZ =
+                        ownerPose.Z +
+                        aboard.LocalZ;
+                }
+            }
+
             remoteWalkers.Add(
                 new RuntimeRemoteWalkerInfo(
                     peer.Id,
                     peer.Name,
                     peer.Pose.FigurePath,
                     RuntimeWorldXFromSource(
-                        walker.X),
-                    walker.Z,
-                    walker.Y,
+                        walkerSourceX),
+                    walkerSourceZ,
+                    walkerSourceY,
                     (float)RuntimeHeadingDegreesFromSource(
                         walker.HeadingDegrees),
                     walker.SpeedMetersPerSecond,
