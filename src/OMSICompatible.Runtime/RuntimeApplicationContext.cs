@@ -5919,9 +5919,27 @@ internal sealed class RuntimeApplicationContext :
             $"[multiplayer-world] passenger claim requested: stop={stop}; people={string.Join(",", ids)}");
     }
 
-    private bool IsPassengerEntryOpen(
+    private HashSet<int> GetOpenPassengerEntries(
         OpenOmsiLanPose pose)
     {
+        var entries =
+            new HashSet<int>();
+
+        var cabin =
+            _vehicleAsset?
+                .PassengerCabin;
+
+        var entryCount =
+            cabin?
+                .Entries.Count ??
+            0;
+
+        if (entryCount <=
+            0)
+        {
+            return entries;
+        }
+
         var runtime =
             _playerScriptRuntime;
 
@@ -5932,7 +5950,9 @@ internal sealed class RuntimeApplicationContext :
         {
             for (var index = 0;
                  index <
-                     16;
+                     Math.Min(
+                         16,
+                         entryCount);
                  index++)
             {
                 var name =
@@ -5951,21 +5971,42 @@ internal sealed class RuntimeApplicationContext :
                         name) >
                     0.5)
                 {
-                    return true;
+                    entries.Add(
+                        index);
                 }
             }
         }
 
         if (hasPassengerDoorVariable)
         {
-            return false;
+            return entries;
         }
 
-        return pose.Doors.Any(
-            static value =>
-                value >
-                0.75f);
+        if (!pose.Doors.Any(
+                static value =>
+                    value >
+                    0.75f))
+        {
+            return entries;
+        }
+
+        for (var index = 0;
+             index <
+                 entryCount;
+             index++)
+        {
+            entries.Add(
+                index);
+        }
+
+        return entries;
     }
+
+    private bool IsPassengerEntryOpen(
+        OpenOmsiLanPose pose) =>
+        GetOpenPassengerEntries(
+            pose).Count >
+        0;
 
     private void UpdateOwnedWorldPassengers(
         OpenOmsiLanSession session,
