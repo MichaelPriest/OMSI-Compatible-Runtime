@@ -8648,6 +8648,9 @@ try
                     null)
         };
 
+    var expectedWalker =
+        walkerPose.Walker!;
+
     var walkerState =
         OpenOmsiLanStateCodec.Encode(
             walkerPose,
@@ -8665,23 +8668,23 @@ try
             { } decodedWalker &&
         Math.Abs(
             decodedWalker.X -
-            walkerPose.Walker!.X) <
+            expectedWalker.X) <
             0.011 &&
         Math.Abs(
             decodedWalker.Y -
-            walkerPose.Walker.Y) <
+            expectedWalker.Y) <
             0.011 &&
         Math.Abs(
             decodedWalker.Z -
-            walkerPose.Walker.Z) <
+            expectedWalker.Z) <
             0.011 &&
         Math.Abs(
             decodedWalker.SpeedMetersPerSecond -
-            walkerPose.Walker.SpeedMetersPerSecond) <
+            expectedWalker.SpeedMetersPerSecond) <
             0.02f &&
         Math.Abs(
             decodedWalker.CourseDegrees -
-            walkerPose.Walker.CourseDegrees) <
+            expectedWalker.CourseDegrees) <
             0.2f,
         "openOMSI walker STATE round-trip failed.");
 
