@@ -61,6 +61,8 @@ internal sealed class RuntimeApplicationContext :
         _commsLinkVoice =
             new();
     private double _multiplayerStatusAccumulator;
+    private float _multiplayerVehicleLengthMeters;
+    private float _multiplayerVehicleWidthMeters;
     private DateTimeOffset? _commsLinkLastRemoteVoiceAt;
     private uint _commsLinkLastRemoteSpeakerId;
     private readonly HashSet<string>
@@ -4487,6 +4489,10 @@ internal sealed class RuntimeApplicationContext :
         _multiplayerScriptRuntimes.Clear();
         _multiplayerScriptPaths.Clear();
         _multiplayerActivePeerIds.Clear();
+        _multiplayerVehicleLengthMeters =
+            0.0f;
+        _multiplayerVehicleWidthMeters =
+            0.0f;
         _sharedWorldCars.Clear();
         _sharedWorldDescriptions.Clear();
         _sharedWorldLights.Clear();
@@ -4519,6 +4525,12 @@ internal sealed class RuntimeApplicationContext :
                     string.Empty,
                 Paint =
                     _repaintName ??
+                    string.Empty,
+                Line =
+                    _runtimeWindow?.CurrentOperationLine ??
+                    string.Empty,
+                Destination =
+                    _runtimeWindow?.CurrentOperationDestination ??
                     string.Empty
             };
 
@@ -4531,26 +4543,6 @@ internal sealed class RuntimeApplicationContext :
 
         var walker =
             window.LocalWalkerState;
-
-        if (walker.Active)
-        {
-            pose.VehiclePath =
-                string.Empty;
-            pose.Flags =
-                0;
-            pose.Walker =
-                new OpenOmsiLanWalker(
-                    -walker.Position.X,
-                    walker.Position.Z,
-                    walker.Position.Y,
-                    -walker.HeadingDegrees,
-                    walker.SpeedMetersPerSecond,
-                    -walker.CourseDegrees,
-                    walker.Seated,
-                    null);
-
-            return pose;
-        }
 
         var state =
             window.LocalVehicleState;
@@ -4715,14 +4707,33 @@ internal sealed class RuntimeApplicationContext :
         if (window.PlayerTrafficObstacle is
             { } obstacle)
         {
-            pose.LengthMeters =
+            _multiplayerVehicleLengthMeters =
                 (float)(
                     obstacle.HalfLengthMeters *
                     2.0);
-            pose.WidthMeters =
+            _multiplayerVehicleWidthMeters =
                 (float)(
                     obstacle.HalfWidthMeters *
                     2.0);
+        }
+
+        pose.LengthMeters =
+            _multiplayerVehicleLengthMeters;
+        pose.WidthMeters =
+            _multiplayerVehicleWidthMeters;
+
+        if (walker.Active)
+        {
+            pose.Walker =
+                new OpenOmsiLanWalker(
+                    -walker.Position.X,
+                    walker.Position.Z,
+                    walker.Position.Y,
+                    -walker.HeadingDegrees,
+                    walker.SpeedMetersPerSecond,
+                    -walker.CourseDegrees,
+                    walker.Seated,
+                    null);
         }
 
         return pose;
