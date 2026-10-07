@@ -39,6 +39,11 @@ public sealed class WorldLineAiSimulation
         public double DistanceMeters { get; set; }
         public double SpeedMetersPerSecond { get; set; }
         public double TraveledDistanceMeters { get; set; }
+        public int NextStopIndex { get; set; }
+        public double HoldUntilTripSeconds { get; set; } =
+            double.NaN;
+        public double TimingDistanceScale { get; set; } =
+            1.0;
         public bool BrakeLight { get; set; }
         public bool Active { get; set; }
         public bool Completed { get; set; }
@@ -52,6 +57,11 @@ public sealed class WorldLineAiSimulation
     private const double TrafficLookAheadMeters = 100.0;
     private const double DefaultBusCruiseMetersPerSecond = 11.1111111111;
     private const double DepartureGraceMinutes = 10.0;
+    private const double ScheduledStopReachMeters = 80.0;
+    private const double ScheduledStopArrivalToleranceMeters = 0.35;
+    private const double ScheduledStopMissToleranceMeters = 2.0;
+    private const double ScheduledStopBoardingSeconds = 7.0;
+    private const double ScheduledStopEarlyLeaveSeconds = 20.0;
 
     private readonly IReadOnlyDictionary<int, WorldTrafficPathSegment>
         _segmentsByIndex;
@@ -119,6 +129,34 @@ public sealed class WorldLineAiSimulation
                     trip,
                     vehicle,
                     trip.Route.SegmentIndices);
+
+            var authoredRouteDistance =
+                trip.Timing?.Stops
+                    .LastOrDefault()?
+                    .RouteDistanceMeters ??
+                0.0;
+
+            if (authoredRouteDistance >
+                0.001)
+            {
+                var actualRouteDistance =
+                    trip.Route.SegmentIndices
+                        .Where(
+                            _segmentsByIndex.ContainsKey)
+                        .Sum(
+                            segmentIndex =>
+                                SegmentLength(
+                                    _segmentsByIndex[
+                                        segmentIndex]));
+
+                if (actualRouteDistance >
+                    0.001)
+                {
+                    agent.TimingDistanceScale =
+                        actualRouteDistance /
+                        authoredRouteDistance;
+                }
+            }
 
             if (trip.DepartureMinutes <
                 _serviceMinutes - DepartureGraceMinutes)
@@ -340,6 +378,12 @@ public sealed class WorldLineAiSimulation
                 : SegmentLength(first);
         service.SpeedMetersPerSecond = 0.0;
         service.TraveledDistanceMeters = 0.0;
+        service.NextStopIndex = 0;
+        service.HoldUntilTripSeconds =
+            double.NaN;
+
+        AdvanceNonBlockingStops(
+            service);
 
         return true;
     }
@@ -385,6 +429,57 @@ public sealed class WorldLineAiSimulation
                 segment,
                 leading);
 
+        var tripSeconds =
+            ResolveTripElapsedSeconds(
+                service);
+
+        if (double.IsFinite(
+                service.HoldUntilTripSeconds))
+        {
+            if (tripSeconds <
+                service.HoldUntilTripSeconds)
+            {
+                service.SpeedMetersPerSecond =
+                    0.0;
+                service.BrakeLight =
+                    true;
+                return;
+            }
+
+            service.HoldUntilTripSeconds =
+                double.NaN;
+            service.NextStopIndex++;
+            AdvanceNonBlockingStops(
+                service);
+        }
+
+        var scheduledStopDistance =
+            ResolveScheduledStopDistance(
+                service,
+                tripSeconds);
+
+        if (scheduledStopDistance.HasValue &&
+            scheduledStopDistance.Value <=
+                ScheduledStopReachMeters)
+        {
+            var brakingDistance =
+                Math.Max(
+                    scheduledStopDistance.Value -
+                        ScheduledStopArrivalToleranceMeters,
+                    0.0);
+
+            var scheduledTargetSpeed =
+                Math.Sqrt(
+                    2.0 *
+                    BusBrakingMetersPerSecondSquared *
+                    brakingDistance);
+
+            targetSpeed =
+                Math.Min(
+                    targetSpeed,
+                    scheduledTargetSpeed);
+        }
+
         var previousSpeed =
             service.SpeedMetersPerSecond;
 
@@ -417,6 +512,30 @@ public sealed class WorldLineAiSimulation
                         0.0));
         }
 
+        if (scheduledStopDistance.HasValue &&
+            scheduledStopDistance.Value <=
+                ScheduledStopReachMeters)
+        {
+            remaining =
+                Math.Min(
+                    remaining,
+                    Math.Max(
+                        scheduledStopDistance.Value,
+                        0.0));
+        }
+
+        if (scheduledStopDistance.HasValue &&
+            scheduledStopDistance.Value <=
+                ScheduledStopMissToleranceMeters &&
+            service.SpeedMetersPerSecond <
+                0.35)
+        {
+            ArriveAtScheduledStop(
+                service,
+                tripSeconds);
+            return;
+        }
+
         while (remaining > 0.000001)
         {
             var length =
@@ -440,6 +559,25 @@ public sealed class WorldLineAiSimulation
                         : -remaining;
                 service.TraveledDistanceMeters +=
                     remaining;
+
+                var remainingStopDistance =
+                    ResolveScheduledStopDistance(
+                        service,
+                        ResolveTripElapsedSeconds(
+                            service));
+
+                if (remainingStopDistance.HasValue &&
+                    remainingStopDistance.Value <=
+                        ScheduledStopArrivalToleranceMeters)
+                {
+                    service.SpeedMetersPerSecond =
+                        0.0;
+                    ArriveAtScheduledStop(
+                        service,
+                        ResolveTripElapsedSeconds(
+                            service));
+                }
+
                 return;
             }
 
@@ -487,6 +625,194 @@ public sealed class WorldLineAiSimulation
                     service.SpeedMetersPerSecond,
                     targetSpeed);
         }
+    }
+
+    private double ResolveTripElapsedSeconds(
+        ServiceAgent service)
+    {
+        var elapsedMinutes =
+            _serviceMinutes -
+            service.Service.DepartureMinutes;
+
+        if (elapsedMinutes <
+            -720.0)
+        {
+            elapsedMinutes +=
+                1440.0;
+        }
+        else if (elapsedMinutes >
+                 720.0)
+        {
+            elapsedMinutes -=
+                1440.0;
+        }
+
+        return Math.Max(
+            elapsedMinutes *
+                60.0,
+            0.0);
+    }
+
+    private void AdvanceNonBlockingStops(
+        ServiceAgent service)
+    {
+        var stops =
+            service.Service.Timing?.Stops;
+
+        if (stops is null)
+        {
+            return;
+        }
+
+        var tripSeconds =
+            ResolveTripElapsedSeconds(
+                service);
+
+        while (service.NextStopIndex <
+               stops.Count)
+        {
+            var stop =
+                stops[
+                    service.NextStopIndex];
+            var routeDistance =
+                stop.RouteDistanceMeters *
+                service.TimingDistanceScale;
+            var passed =
+                routeDistance <
+                service.TraveledDistanceMeters -
+                    ScheduledStopMissToleranceMeters;
+
+            if (stop.StopIndex ==
+                    0 &&
+                routeDistance <=
+                    ScheduledStopArrivalToleranceMeters &&
+                stop.DepartureSeconds <=
+                    tripSeconds +
+                        ScheduledStopEarlyLeaveSeconds)
+            {
+                service.NextStopIndex++;
+                continue;
+            }
+
+            if (!ShouldServeScheduledStop(
+                    stop,
+                    tripSeconds) ||
+                passed)
+            {
+                service.NextStopIndex++;
+                continue;
+            }
+
+            break;
+        }
+    }
+
+    private double? ResolveScheduledStopDistance(
+        ServiceAgent service,
+        double tripSeconds)
+    {
+        AdvanceNonBlockingStops(
+            service);
+
+        var stops =
+            service.Service.Timing?.Stops;
+
+        if (stops is null ||
+            service.NextStopIndex < 0 ||
+            service.NextStopIndex >=
+                stops.Count)
+        {
+            return null;
+        }
+
+        var stop =
+            stops[
+                service.NextStopIndex];
+
+        if (!ShouldServeScheduledStop(
+                stop,
+                tripSeconds))
+        {
+            service.NextStopIndex++;
+            return ResolveScheduledStopDistance(
+                service,
+                tripSeconds);
+        }
+
+        return
+            stop.RouteDistanceMeters *
+                service.TimingDistanceScale -
+            service.TraveledDistanceMeters;
+    }
+
+    private static bool ShouldServeScheduledStop(
+        WorldLineAiStopTiming stop,
+        double tripSeconds)
+    {
+        if (!stop.Stops ||
+            stop.StoppingMode ==
+                2)
+        {
+            return false;
+        }
+
+        if (stop.StoppingMode ==
+            3)
+        {
+            return
+                stop.DepartureSeconds -
+                tripSeconds >
+                ScheduledStopEarlyLeaveSeconds;
+        }
+
+        return true;
+    }
+
+    private void ArriveAtScheduledStop(
+        ServiceAgent service,
+        double tripSeconds)
+    {
+        var stops =
+            service.Service.Timing?.Stops;
+
+        if (stops is null ||
+            service.NextStopIndex < 0 ||
+            service.NextStopIndex >=
+                stops.Count)
+        {
+            return;
+        }
+
+        var stop =
+            stops[
+                service.NextStopIndex];
+
+        if (!ShouldServeScheduledStop(
+                stop,
+                tripSeconds))
+        {
+            service.NextStopIndex++;
+            AdvanceNonBlockingStops(
+                service);
+            return;
+        }
+
+        service.SpeedMetersPerSecond =
+            0.0;
+        service.BrakeLight =
+            true;
+
+        var earliestDeparture =
+            Math.Max(
+                stop.DepartureSeconds -
+                    ScheduledStopEarlyLeaveSeconds,
+                tripSeconds);
+
+        service.HoldUntilTripSeconds =
+            Math.Max(
+                earliestDeparture,
+                tripSeconds +
+                    ScheduledStopBoardingSeconds);
     }
 
     private bool CanOccupyRouteStart(
