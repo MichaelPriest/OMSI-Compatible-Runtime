@@ -1702,13 +1702,142 @@ public sealed class D3D11RenderWindow : Form
         ClientSizeChanged += OnClientSizeChanged;
     }
 
-    public string CurrentOperationLine =>
-        _driveOpsPanel?.CurrentLine ??
-        string.Empty;
+    public string CurrentOperationLine
+    {
+        get
+        {
+            var configured =
+                _driveOpsPanel?.CurrentLine ??
+                string.Empty;
 
-    public string CurrentOperationDestination =>
-        _driveOpsPanel?.CurrentDestination ??
-        string.Empty;
+            return string.IsNullOrWhiteSpace(
+                    configured)
+                ? ResolveDetectedOperationLine()
+                : configured;
+        }
+    }
+
+    public string CurrentOperationDestination
+    {
+        get
+        {
+            var configured =
+                _driveOpsPanel?.CurrentDestination ??
+                string.Empty;
+
+            return string.IsNullOrWhiteSpace(
+                    configured)
+                ? ResolveDetectedOperationDestination()
+                : configured;
+        }
+    }
+
+    private string ResolveDetectedOperationLine()
+    {
+        var text =
+            ReadFirstStringLocal(
+                "IBIS_Linie",
+                "IBIS_line",
+                "IBIS_Line",
+                "IBIS_linie");
+
+        if (!string.IsNullOrWhiteSpace(
+                text))
+        {
+            return text;
+        }
+
+        var numeric =
+            ReadFirstNumericLocal(
+                "IBIS_Linie",
+                "IBIS_line",
+                "IBIS_Line");
+
+        return numeric.HasValue &&
+               numeric.Value >
+                   0.0
+            ? Math.Round(
+                    numeric.Value)
+                .ToString(
+                    System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty;
+    }
+
+    private string ResolveDetectedOperationDestination() =>
+        ReadFirstStringLocal(
+            "IBIS_Terminus",
+            "IBIS_TerminusName",
+            "IBIS_Destination",
+            "IBIS_Ziel",
+            "IBIS_ziel");
+
+    private string ReadFirstStringLocal(
+        params string[] names)
+    {
+        var runtime =
+            _scriptRuntime;
+
+        if (runtime is null)
+        {
+            return string.Empty;
+        }
+
+        foreach (var name in
+                 names)
+        {
+            if (!runtime.HasStringLocalVariable(
+                    name))
+            {
+                continue;
+            }
+
+            var value =
+                runtime.GetStringLocal(
+                    name);
+
+            if (!string.IsNullOrWhiteSpace(
+                    value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private double? ReadFirstNumericLocal(
+        params string[] names)
+    {
+        var runtime =
+            _scriptRuntime;
+
+        if (runtime is null)
+        {
+            return null;
+        }
+
+        foreach (var name in
+                 names)
+        {
+            if (!runtime.HasLocalVariable(
+                    name))
+            {
+                continue;
+            }
+
+            var value =
+                runtime.GetLocal(
+                    name);
+
+            if (double.IsFinite(
+                    value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
 
     public void SetNavigationGuidance(
         IReadOnlyList<RuntimeTrafficPathPointInfo> route,
