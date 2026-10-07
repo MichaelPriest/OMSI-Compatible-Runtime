@@ -85,6 +85,9 @@ internal sealed class RuntimeApplicationContext :
     private readonly Dictionary<uint, OpenOmsiLanWorldPersonDescription>
         _sharedWorldPersonDescriptions =
             [];
+    private readonly Dictionary<(bool Person, uint Id), DateTimeOffset>
+        _sharedWorldWantRequestedAt =
+            [];
     private readonly Dictionary<(uint PeerId, uint PersonId), uint>
         _relayedWorldPersonIds =
             [];
@@ -4305,6 +4308,14 @@ internal sealed class RuntimeApplicationContext :
                 );
         }
 
+        RequestMissingWorldDescriptions(
+            frame.Cars
+                .Select(
+                    static car =>
+                        new OpenOmsiLanWorldEntityRef(
+                            false,
+                            car.Id)));
+
         foreach (var light in
                  frame.Lights)
         {
@@ -4374,6 +4385,14 @@ internal sealed class RuntimeApplicationContext :
                     now
                 );
         }
+
+        RequestMissingWorldDescriptions(
+            frame.People
+                .Select(
+                    static person =>
+                        new OpenOmsiLanWorldEntityRef(
+                            true,
+                            person.Id)));
     }
 
     private void OnMultiplayerWorldPersonDescription(
@@ -4382,6 +4401,80 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldPersonDescriptions[
             description.Id] =
             description;
+
+        _sharedWorldWantRequestedAt.Remove(
+            (
+                true,
+                description.Id
+            ));
+    }
+
+    private void RequestMissingWorldDescriptions(
+        IEnumerable<OpenOmsiLanWorldEntityRef> entities)
+    {
+        var session =
+            _multiplayerSession;
+
+        if (session is null ||
+            session.Role !=
+                OpenOmsiLanRole.Client ||
+            !session.Connected)
+        {
+            return;
+        }
+
+        var now =
+            DateTimeOffset.UtcNow;
+
+        var missing =
+            entities
+                .Distinct()
+                .Where(
+                    entity =>
+                        entity.Person
+                            ? !_sharedWorldPersonDescriptions.ContainsKey(
+                                entity.Id)
+                            : !_sharedWorldDescriptions.ContainsKey(
+                                entity.Id))
+                .Where(
+                    entity =>
+                    {
+                        var key =
+                            (
+                                entity.Person,
+                                entity.Id
+                            );
+
+                        return !_sharedWorldWantRequestedAt.TryGetValue(
+                                   key,
+                                   out var last) ||
+                               now -
+                                   last >=
+                               TimeSpan.FromSeconds(
+                                   2.0);
+                    })
+                .Take(
+                    64)
+                .ToArray();
+
+        if (missing.Length ==
+                0 ||
+            !session.SendWorldWant(
+                missing))
+        {
+            return;
+        }
+
+        foreach (var entity in
+                 missing)
+        {
+            _sharedWorldWantRequestedAt[
+                (
+                    entity.Person,
+                    entity.Id
+                )] =
+                now;
+        }
     }
 
     private void OnMultiplayerWorldPersonDescriptionUp(
@@ -4608,6 +4701,12 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldDescriptions[
             description.Id] =
             description;
+
+        _sharedWorldWantRequestedAt.Remove(
+            (
+                false,
+                description.Id
+            ));
 
         var relative =
             OpenOmsiLanProtocol.NormalizeVehiclePath(
@@ -4847,6 +4946,7 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldDescriptions.Clear();
         _sharedWorldPeople.Clear();
         _sharedWorldPersonDescriptions.Clear();
+        _sharedWorldWantRequestedAt.Clear();
         _relayedWorldPersonIds.Clear();
         _relayedWorldPersonIdsInUse.Clear();
         _nextRelayedWorldPersonId =
