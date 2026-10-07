@@ -8069,6 +8069,103 @@ internal sealed class RuntimeApplicationContext :
             "bremse",
             pose.Brake);
 
+        var brakeLamp =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagBrake) !=
+                0 ||
+            pose.Brake >
+                0.1f
+                ? 1.0
+                : 0.0;
+
+        var reverse =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagReverse) !=
+                0
+                ? 1.0
+                : 0.0;
+
+        var fog =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagFog) !=
+                0
+                ? 1.0
+                : 0.0;
+
+        var kneeling =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagKneeling) !=
+                0
+                ? 1.0
+                : 0.0;
+
+        var wipers =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagWipers) !=
+                0
+                ? 1.0
+                : 0.0;
+
+        var stopBrake =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagStopBrake) !=
+                0
+                ? 1.0
+                : 0.0;
+
+        var horn =
+            (pose.Flags &
+             OpenOmsiLanProtocol.FlagHorn) !=
+                0
+                ? 1.0
+                : 0.0;
+
+        runtime.SetLocal(
+            "lights_brems",
+            brakeLamp);
+        runtime.SetLocal(
+            "lights_rueckfahr",
+            reverse);
+        runtime.SetLocal(
+            "lights_nebelschluss",
+            fog);
+        runtime.SetLocal(
+            "bremse_kneeling",
+            kneeling);
+        runtime.SetLocal(
+            "vdv_kneel",
+            kneeling);
+        runtime.SetLocal(
+            "ecas_kneel",
+            kneeling);
+        runtime.SetLocal(
+            "kneeling",
+            kneeling);
+        runtime.SetLocal(
+            "wiperrunning",
+            wipers);
+        runtime.SetLocal(
+            "wiper_running",
+            wipers);
+        runtime.SetLocal(
+            "bremse_halte",
+            stopBrake);
+        runtime.SetLocal(
+            "bremse_halte_sw",
+            stopBrake);
+        runtime.SetLocal(
+            "bus_stop_brake",
+            stopBrake);
+        runtime.SetLocal(
+            "cockpit_hupe",
+            horn);
+        runtime.SetLocal(
+            "cockpit_hupe_swheel",
+            horn);
+        runtime.SetLocal(
+            "horn",
+            horn);
+
         runtime.SetLocal(
             "ai_engine",
             engine
