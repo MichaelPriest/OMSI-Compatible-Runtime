@@ -8658,6 +8658,98 @@ try
             sessionCode.Addresses),
         "openOMSI LAN session-code round-trip failed.");
 
+    var sharedWorldFrame =
+        new OpenOmsiLanWorldFrame(
+            77,
+            123456,
+            [
+                new OpenOmsiLanWorldCarState(
+                    10,
+                    892248.18,
+                    4196461.37,
+                    33.21,
+                    271.3f,
+                    -1.2f,
+                    0.4f,
+                    13.85f,
+                    -7.5f,
+                    2,
+                    true,
+                    true,
+                    1),
+                new OpenOmsiLanWorldCarState(
+                    11,
+                    892260.25,
+                    4196470.5,
+                    33.4,
+                    90.0f,
+                    0.0f,
+                    0.0f,
+                    5.5f,
+                    3.0f,
+                    0,
+                    false,
+                    true,
+                    0)
+            ],
+            [
+                new OpenOmsiLanWorldLightState(
+                    3_000_123_456,
+                    63.45,
+                    true)
+            ]);
+
+    var worldPackets =
+        OpenOmsiLanWorldCodec.Encode(
+            sharedWorldFrame);
+
+    Require(
+        worldPackets.Count ==
+            1 &&
+        worldPackets[0].Length <=
+            OpenOmsiLanWorldCodec.MaximumDatagramBytes &&
+        OpenOmsiLanWorldCodec.TryDecode(
+            worldPackets[0],
+            out var decodedWorldFrame) &&
+        decodedWorldFrame.Sequence ==
+            sharedWorldFrame.Sequence &&
+        decodedWorldFrame.Cars.Count ==
+            2 &&
+        decodedWorldFrame.Lights.Count ==
+            1 &&
+        Math.Abs(
+            decodedWorldFrame.Cars[0].X -
+            sharedWorldFrame.Cars[0].X) <
+            0.011 &&
+        Math.Abs(
+            decodedWorldFrame.Cars[0].Y -
+            sharedWorldFrame.Cars[0].Y) <
+            0.011 &&
+        decodedWorldFrame.Cars[0].Brake &&
+        decodedWorldFrame.Cars[0].AtStation ==
+            1 &&
+        decodedWorldFrame.Lights[0].ObjectId ==
+            sharedWorldFrame.Lights[0].ObjectId &&
+        decodedWorldFrame.Lights[0].Held,
+        "openOMSI WORLD car/signal codec round-trip failed.");
+
+    var worldDescription =
+        new OpenOmsiLanWorldCarDescription(
+            10,
+            "Vehicles/Synthetic/Synthetic.bus",
+            2,
+            "76",
+            "Bahnhof");
+
+    Require(
+        OpenOmsiLanWorldCodec.TryDecodeDescription(
+            OpenOmsiLanWorldCodec.EncodeDescription(
+                worldDescription),
+            out var decodedWorldDescription) &&
+        decodedWorldDescription ==
+            worldDescription,
+        "openOMSI WORLD DESC round-trip failed.");
+
     var lanWorld =
         new OpenOmsiLanWorld(
             "maps/SyntheticMap/global.cfg",
