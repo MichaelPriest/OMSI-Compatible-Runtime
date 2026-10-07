@@ -1364,7 +1364,10 @@ public sealed class OpenOmsiLanSession :
                 when (exception.SocketErrorCode is
                       SocketError.WouldBlock or
                       SocketError.IOPending or
-                      SocketError.NoBufferSpaceAvailable)
+                      SocketError.NoBufferSpaceAvailable or
+                      SocketError.ConnectionReset or
+                      SocketError.ConnectionRefused or
+                      SocketError.TimedOut)
             {
                 break;
             }
