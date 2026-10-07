@@ -4895,21 +4895,210 @@ internal sealed class RuntimeApplicationContext :
                     })
                 .ToArray();
 
-        if (mappedPeople.Length ==
-                0 &&
-            mappedGone.Length ==
-                0)
-        {
-            return;
-        }
+        const double personRadiusMeters =
+            260.0;
+        const double busRadiusMeters =
+            650.0;
 
-        session.RelayWorldPeopleFrame(
-            peerId,
-            new OpenOmsiLanWorldPeopleFrame(
-                frame.Sequence,
-                frame.HostMilliseconds,
-                mappedPeople,
-                mappedGone));
+        var personRadiusSquared =
+            personRadiusMeters *
+            personRadiusMeters;
+
+        var busRadiusSquared =
+            busRadiusMeters *
+            busRadiusMeters;
+
+        var peers =
+            session.SnapshotPeers();
+
+        var sourcePeer =
+            peers.FirstOrDefault(
+                peer =>
+                    peer.Id ==
+                        peerId &&
+                    peer.HasState &&
+                    peer.Pose.HasVehicle);
+
+        foreach (var observer in
+                 peers.Where(
+                     peer =>
+                         peer.Id !=
+                             peerId &&
+                         peer.HasState &&
+                         peer.Pose.HasVehicle))
+        {
+            var viewKey =
+                (
+                    ObserverPeerId:
+                        observer.Id,
+                    SourcePeerId:
+                        peerId
+                );
+
+            if (!_relayedWorldPassengerPeerViews.TryGetValue(
+                    viewKey,
+                    out var view))
+            {
+                view =
+                    new HostWorldPassengerPeerView();
+
+                _relayedWorldPassengerPeerViews[
+                    viewKey] =
+                    view;
+            }
+
+            var sourceBusNear =
+                sourcePeer is not null &&
+                (
+                    sourcePeer.Pose.X -
+                    observer.Pose.X
+                ) *
+                (
+                    sourcePeer.Pose.X -
+                    observer.Pose.X
+                ) +
+                (
+                    sourcePeer.Pose.Y -
+                    observer.Pose.Y
+                ) *
+                (
+                    sourcePeer.Pose.Y -
+                    observer.Pose.Y
+                ) <=
+                busRadiusSquared;
+
+            var visiblePeople =
+                mappedPeople
+                    .Where(
+                        person =>
+                        {
+                            if (person.Aboard)
+                            {
+                                return sourceBusNear;
+                            }
+
+                            var dx =
+                                person.X -
+                                observer.Pose.X;
+
+                            var dy =
+                                person.Y -
+                                observer.Pose.Y;
+
+                            return dx *
+                                       dx +
+                                   dy *
+                                       dy <=
+                                   personRadiusSquared;
+                        })
+                    .OrderBy(
+                        static person =>
+                            person.Id)
+                    .ToArray();
+
+            var visibleIds =
+                visiblePeople
+                    .Select(
+                        static person =>
+                            person.Id)
+                    .ToHashSet();
+
+            foreach (var previousId in
+                     view.VisibleIds)
+            {
+                if (!visibleIds.Contains(
+                        previousId))
+                {
+                    view.GoneSeconds[
+                        previousId] =
+                        1.0;
+                }
+            }
+
+            foreach (var removed in
+                     mappedGone)
+            {
+                if (view.VisibleIds.Contains(
+                        removed.Id))
+                {
+                    view.GoneSeconds[
+                        removed.Id] =
+                        1.0;
+                }
+            }
+
+            foreach (var visibleId in
+                     visibleIds)
+            {
+                view.GoneSeconds.Remove(
+                    visibleId);
+            }
+
+            view.VisibleIds.Clear();
+
+            foreach (var visibleId in
+                     visibleIds)
+            {
+                view.VisibleIds.Add(
+                    visibleId);
+            }
+
+            var gone =
+                view.GoneSeconds
+                    .Keys
+                    .OrderBy(
+                        static id =>
+                            id)
+                    .Take(
+                        63)
+                    .Select(
+                        static id =>
+                            new OpenOmsiLanWorldGoneEntity(
+                                true,
+                                id))
+                    .ToArray();
+
+            if (visiblePeople.Length >
+                    0 ||
+                gone.Length >
+                    0)
+            {
+                session.SendWorldPeopleFrameTo(
+                    observer.Id,
+                    new OpenOmsiLanWorldPeopleFrame(
+                        frame.Sequence,
+                        frame.HostMilliseconds,
+                        visiblePeople,
+                        gone));
+            }
+
+            foreach (var removed in
+                     gone)
+            {
+                if (!view.GoneSeconds.TryGetValue(
+                        removed.Id,
+                        out var remaining))
+                {
+                    continue;
+                }
+
+                remaining -=
+                    0.1;
+
+                if (remaining <=
+                    0.000001)
+                {
+                    view.GoneSeconds.Remove(
+                        removed.Id);
+                }
+                else
+                {
+                    view.GoneSeconds[
+                        removed.Id] =
+                        remaining;
+                }
+            }
+        }
     }
 
     private void OnMultiplayerWorldClaimRequested(
