@@ -217,9 +217,12 @@ internal sealed class RuntimeWorldPassengerSimulation
 
         var here = new Vector2((float)State.X, (float)State.Y);
         var entry = cabin.Entries
-            .Select((value, index) => (Value: value, Index: index))
+            .Select((value, index) =>
+                new KeyValuePair<int, OmsiPassengerCabinEntry>(
+                    index,
+                    value))
             .Where(item =>
-                (openEntries is null || openEntries.Contains(item.Index)) &&
+                (openEntries is null || openEntries.Contains(item.Key)) &&
                 item.Value.PathPoint >= 0 &&
                 item.Value.PathPoint < paths.Points.Count)
             .OrderBy(item =>
@@ -231,9 +234,8 @@ internal sealed class RuntimeWorldPassengerSimulation
                     here,
                     new Vector2(w.X, w.Y));
             })
-            .Cast<(OmsiPassengerCabinEntry Value, int Index)?>()
             .FirstOrDefault();
-        if (!entry.HasValue)
+        if (entry.Value is null)
         {
             return false;
         }
@@ -254,14 +256,14 @@ internal sealed class RuntimeWorldPassengerSimulation
         {
             return false;
         }
-        var route = Route(paths, entry.Value.Value.PathPoint, target);
+        var route = Route(paths, entry.Value.PathPoint, target);
         if (route.Length == 0)
         {
             return false;
         }
 
-        _entry = entry.Value.Value.PathPoint;
-        _entryOrdinal = entry.Value.Index;
+        _entry = entry.Value.PathPoint;
+        _entryOrdinal = entry.Key;
         _place = place;
         _route = route;
         reserved.Add(place.FileIndex);
