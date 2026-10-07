@@ -5615,6 +5615,38 @@ internal sealed class RuntimeApplicationContext :
                     staleId);
             }
         }
+
+        if (session.Role ==
+            OpenOmsiLanRole.Host)
+        {
+            CleanupRelayedWorldPeople();
+        }
+    }
+
+    private void CleanupRelayedWorldPeople()
+    {
+        foreach (var key in
+                 _relayedWorldPersonIds.Keys
+                     .Where(
+                         key =>
+                             !_multiplayerActivePeerIds.Contains(
+                                 key.PeerId))
+                     .ToArray())
+        {
+            if (!_relayedWorldPersonIds.Remove(
+                    key,
+                    out var mappedId))
+            {
+                continue;
+            }
+
+            _relayedWorldPersonIdsInUse.Remove(
+                mappedId);
+            _sharedWorldPeople.Remove(
+                mappedId);
+            _sharedWorldPersonDescriptions.Remove(
+                mappedId);
+        }
     }
 
     private OmsiScriptRuntime? ResolveMultiplayerScriptRuntime(
