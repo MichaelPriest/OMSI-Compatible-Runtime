@@ -9309,6 +9309,93 @@ try
             peopleWorldVector),
         "Runtime WORLD people encoder no longer matches the openOMSI protocol-6 golden packet.");
 
+    // Mixed datagram generated independently from the current openOMSI
+    // protocol-6 world.rs layout. openOMSI normally packs cars, people,
+    // lights, removals and parked state into the same WORLD datagram.
+    // The Runtime intentionally has separate car/world and people decoders,
+    // so both must be able to consume the same packet without disagreeing
+    // about the shared bitstream offsets.
+    var openOmsiMixedWorldVector =
+        Convert.FromHexString(
+            "B40668248877665564000000C80000000A00819100800C00A00000000000D113B8C1A00B380000203200200380020020976846244220389300004006409000005001006041FA000080FA000000");
+
+    Require(
+        OpenOmsiLanWorldCodec.TryDecode(
+            openOmsiMixedWorldVector,
+            out var decodedMixedWorld) &&
+        decodedMixedWorld.Sequence ==
+            0x2468 &&
+        decodedMixedWorld.HostMilliseconds ==
+            0x55667788 &&
+        decodedMixedWorld.Cars is
+            { Count: 1 } &&
+        decodedMixedWorld.Cars[0].Id ==
+            0x123 &&
+        Math.Abs(
+            decodedMixedWorld.Cars[0].X -
+            100.25) <
+            0.011 &&
+        decodedMixedWorld.Lights is
+            { Count: 1 } &&
+        decodedMixedWorld.Lights[0].ObjectId ==
+            4711 &&
+        decodedMixedWorld.Gone is
+            { Count: 2 } &&
+        !decodedMixedWorld.Gone[0].Person &&
+        decodedMixedWorld.Gone[0].Id ==
+            9 &&
+        decodedMixedWorld.Gone[1].Person &&
+        decodedMixedWorld.Gone[1].Id ==
+            10 &&
+        decodedMixedWorld.Parked is
+            {
+                Complete:
+                    true
+            } &&
+        decodedMixedWorld.Parked.ParkingObjectIds.SequenceEqual(
+            [
+                1001u,
+                1002u
+            ]),
+        "Runtime WORLD car decoder cannot consume a mixed openOMSI protocol-6 datagram.");
+
+    Require(
+        OpenOmsiLanWorldPeopleCodec.TryDecode(
+            openOmsiMixedWorldVector,
+            out var decodedMixedPeople) &&
+        decodedMixedPeople.Sequence ==
+            0x2468 &&
+        decodedMixedPeople.HostMilliseconds ==
+            0x55667788 &&
+        decodedMixedPeople.People is
+            { Count: 1 } &&
+        decodedMixedPeople.People[0].Id ==
+            7 &&
+        decodedMixedPeople.People[0].Activity ==
+            OpenOmsiLanWorldPersonActivity.Walk &&
+        !decodedMixedPeople.People[0].Aboard &&
+        Math.Abs(
+            decodedMixedPeople.People[0].X -
+            101.0) <
+            0.011 &&
+        Math.Abs(
+            decodedMixedPeople.People[0].Y -
+            202.0) <
+            0.011 &&
+        decodedMixedPeople.People[0].WaitingStopObjectId ==
+            0x11223344 &&
+        decodedMixedPeople.People[0].WaitingSpot ==
+            2 &&
+        decodedMixedPeople.Gone is
+            { Count: 2 } &&
+        !decodedMixedPeople.Gone[0].Person &&
+        decodedMixedPeople.Gone[0].Id ==
+            9 &&
+        decodedMixedPeople.Gone[1].Person &&
+        decodedMixedPeople.Gone[1].Id ==
+            10,
+        "Runtime WORLD people decoder cannot consume a mixed openOMSI protocol-6 datagram.");
+
     var peopleGoneFrame =
         new OpenOmsiLanWorldPeopleFrame(
             89,
