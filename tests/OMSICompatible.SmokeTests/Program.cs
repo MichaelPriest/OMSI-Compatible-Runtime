@@ -9965,6 +9965,22 @@ try
             2,
         "openOMSI NEAR codec round-trip failed.");
 
+    var hostAiNearFootprint =
+        new OpenOmsiLanFootprint(
+            hostPose.X +
+                7.0,
+            hostPose.Y +
+                2.0,
+            hostPose.Z,
+            hostPose.HeadingDegrees,
+            4.5f,
+            2.0f);
+
+    lanHost.SetLocalNearFootprints(
+        [
+            hostAiNearFootprint
+        ]);
+
     Require(
         lanClient.RequestNear(
             placeVector),
@@ -9989,7 +10005,7 @@ try
 
     Require(
         lanClient.NearFootprints is
-            { Count: > 0 } nearFootprints &&
+            { Count: >= 2 } nearFootprints &&
         nearFootprints.Any(
             footprint =>
                 Math.Abs(
@@ -10003,8 +10019,22 @@ try
                     Math.Max(
                         hostPose.WidthMeters,
                         1.0f)) <
+                    0.11f) &&
+        nearFootprints.Any(
+            footprint =>
+                Math.Abs(
+                    footprint.X -
+                    hostAiNearFootprint.X) <
+                    0.011 &&
+                Math.Abs(
+                    footprint.Y -
+                    hostAiNearFootprint.Y) <
+                    0.011 &&
+                Math.Abs(
+                    footprint.LengthMeters -
+                    hostAiNearFootprint.LengthMeters) <
                     0.11f),
-        "openOMSI PLACE/NEAR loopback did not return the nearby host vehicle.");
+        "openOMSI PLACE/NEAR loopback did not return host and AI footprints.");
 
     using var lanObserver =
         OpenOmsiLanSession.Join(
