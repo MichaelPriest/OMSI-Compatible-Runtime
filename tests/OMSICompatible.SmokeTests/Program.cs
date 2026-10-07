@@ -9152,7 +9152,7 @@ try
     // cases where Rust f64::round is away from zero.
     var openOmsiWorldMidpointVector =
         Convert.FromHexString(
-            "B406341240302010E90300002FF8FFFF1F00012B1A09E7FFCB00C0F97F00CC1764C0DF050000");
+            "B406341240302010E90300002FF8FFFF1F00012B1A09E7FFCB00C0F97F00CC1364C0DF050000");
 
     var midpointWorldFrame =
         new OpenOmsiLanWorldFrame(
