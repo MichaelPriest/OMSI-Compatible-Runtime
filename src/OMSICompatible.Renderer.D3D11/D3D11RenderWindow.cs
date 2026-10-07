@@ -22333,11 +22333,20 @@ public sealed class D3D11RenderWindow : Form
 
         Vector3 position;
 
+        var wasSeated =
+            _walkerSeated;
+
+        if (wasSeated)
+        {
+            ReleaseWalkerPassengerSeat();
+        }
+
         var authoredEntries =
             _windowInfo.Vehicle
                 .PassengerEntries;
 
-        if (authoredEntries is
+        if (!wasSeated &&
+            authoredEntries is
                 { Count: > 0 })
         {
             var openEntries =
@@ -22396,6 +22405,8 @@ public sealed class D3D11RenderWindow : Form
                     0.02f;
             }
         }
+
+        ReleaseWalkerPassengerSeat();
 
         _walkerPosition =
             position;
@@ -22492,7 +22503,7 @@ public sealed class D3D11RenderWindow : Form
                 return;
             }
         }
-        else
+        else if (!wasSeated)
         {
             var delta =
                 _walkerPosition -
@@ -22537,6 +22548,24 @@ public sealed class D3D11RenderWindow : Form
             deltaSeconds <=
                 0.0f)
         {
+            return;
+        }
+
+        if (_walkerSeated &&
+            _walkerPassengerPlace is
+                { } seatedPlace)
+        {
+            _walkerPosition =
+                PassengerPlaceWorldPosition(
+                    seatedPlace);
+            _walkerVelocity =
+                Vector2.Zero;
+            _walkerVerticalSpeed =
+                0.0f;
+            _walkerGrounded =
+                false;
+
+            SnapCameraToWalker();
             return;
         }
 
@@ -22850,9 +22879,11 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var eyeHeight =
-            _walkerKneeling
-                ? 1.02f
-                : 1.62f;
+            _walkerSeated
+                ? 0.72f
+                : _walkerKneeling
+                    ? 1.02f
+                    : 1.62f;
 
         _camera.SetPosition(
             _walkerPosition +
