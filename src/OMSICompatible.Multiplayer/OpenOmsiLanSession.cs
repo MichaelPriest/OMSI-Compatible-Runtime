@@ -75,6 +75,8 @@ public sealed class OpenOmsiLanSession :
     private ushort _worldSequence;
     private double _sendAccumulator;
     private double _helloAccumulator = 1.0;
+    private double _joinWaitSeconds;
+    private double _reconnectWaitSeconds;
     private double _infoAccumulator =
         OpenOmsiLanProtocol.InfoEverySeconds;
     private double _clockAccumulator =
@@ -980,6 +982,37 @@ public sealed class OpenOmsiLanSession :
 
         ReceiveAvailable();
 
+        if (Role ==
+                OpenOmsiLanRole.Client &&
+            !Connected &&
+            RejectionReason is null)
+        {
+            if (_hostLostAt.HasValue)
+            {
+                _reconnectWaitSeconds +=
+                    dt;
+
+                if (_reconnectWaitSeconds >=
+                    OpenOmsiLanProtocol.ReconnectTimeoutSeconds)
+                {
+                    RejectionReason =
+                        "The host did not return within 60 seconds. The session was left.";
+                }
+            }
+            else
+            {
+                _joinWaitSeconds +=
+                    dt;
+
+                if (_joinWaitSeconds >=
+                    OpenOmsiLanProtocol.JoinTimeoutSeconds)
+                {
+                    RejectionReason =
+                        "No host answered within 10 seconds. Check the session code, address, VPN or firewall.";
+                }
+            }
+        }
+
         var now =
             DateTimeOffset.UtcNow;
 
@@ -1010,6 +1043,8 @@ public sealed class OpenOmsiLanSession :
                     false;
                 _hostLostAt ??=
                     now;
+                _reconnectWaitSeconds =
+                    0.0;
                 _helloAccumulator =
                     1.0;
             }
@@ -1857,6 +1892,10 @@ public sealed class OpenOmsiLanSession :
             true;
         _hostLostAt =
             null;
+        _joinWaitSeconds =
+            0.0;
+        _reconnectWaitSeconds =
+            0.0;
 
         if (string.IsNullOrWhiteSpace(
                 _sessionCode))
