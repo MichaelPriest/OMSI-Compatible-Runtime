@@ -116,6 +116,9 @@ internal sealed class RuntimeApplicationContext :
     private readonly HashSet<uint>
         _relayedWorldPersonIdsInUse =
             [];
+    private readonly Dictionary<(uint ObserverPeerId, uint SourcePeerId), HostWorldPassengerPeerView>
+        _relayedWorldPassengerPeerViews =
+            [];
     private uint _nextRelayedWorldPersonId =
         0x00C00000u;
     private readonly Dictionary<long, (
@@ -5399,6 +5402,7 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldWantRequestedAt.Clear();
         _relayedWorldPersonIds.Clear();
         _relayedWorldPersonIdsInUse.Clear();
+        _relayedWorldPassengerPeerViews.Clear();
         _nextRelayedWorldPersonId =
             0x00C00000u;
         _sharedWorldLights.Clear();
