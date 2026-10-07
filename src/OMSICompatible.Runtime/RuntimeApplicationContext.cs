@@ -5434,6 +5434,11 @@ internal sealed class RuntimeApplicationContext :
                     _commsLinkVoice.IsTransmitting
             };
 
+        pose.FreeTexturePaths =
+            ResolveVehicleFreeTextureValues(
+                _vehicleAsset,
+                _playerScriptRuntime);
+
         if (_runtimeWindow is not
             { IsDisposed: false } window ||
             _bus is null)
@@ -6801,7 +6806,122 @@ internal sealed class RuntimeApplicationContext :
             peer.Pose,
             0.0);
 
+        if (_trafficVehicleAssets.TryGetValue(
+                vehiclePath,
+                out var remoteAsset))
+        {
+            ApplyVehicleFreeTextureValues(
+                remoteAsset,
+                runtime,
+                peer.Pose.FreeTexturePaths);
+        }
+
         return runtime;
+    }
+
+    private static List<string> ResolveVehicleFreeTextureValues(
+        OmsiVehicleAsset? asset,
+        OmsiScriptRuntime? runtime)
+    {
+        if (asset is null ||
+            runtime is null)
+        {
+            return [];
+        }
+
+        return GetVehicleFreeTextureVariableNames(
+                asset)
+            .Select(
+                name =>
+                    runtime.HasStringLocalVariable(
+                        name)
+                        ? runtime.GetStringLocal(
+                            name)
+                        : string.Empty)
+            .ToList();
+    }
+
+    private static void ApplyVehicleFreeTextureValues(
+        OmsiVehicleAsset asset,
+        OmsiScriptRuntime runtime,
+        IReadOnlyList<string> values)
+    {
+        if (values.Count ==
+            0)
+        {
+            return;
+        }
+
+        var names =
+            GetVehicleFreeTextureVariableNames(
+                asset);
+
+        for (var index = 0;
+             index <
+                 Math.Min(
+                     names.Count,
+                     values.Count);
+             index++)
+        {
+            runtime.SetStringLocal(
+                names[index],
+                values[index]);
+        }
+    }
+
+    private static List<string> GetVehicleFreeTextureVariableNames(
+        OmsiVehicleAsset asset)
+    {
+        var names =
+            new List<string>();
+
+        foreach (var material in
+                 asset.Meshes.SelectMany(
+                     static mesh =>
+                         mesh.Materials))
+        {
+            foreach (var freeTexture in
+                     material.FreeTextures)
+            {
+                if (!string.IsNullOrWhiteSpace(
+                        freeTexture.VariableName))
+                {
+                    names.Add(
+                        freeTexture.VariableName.Trim());
+                }
+            }
+
+            foreach (var item in
+                     material.MaterialChangeSets?
+                         .SelectMany(
+                             static set =>
+                                 set.Items) ??
+                     Array.Empty<
+                         OmsiVehicleMaterialChangeItem>())
+            {
+                foreach (var freeTexture in
+                         item.FreeTextures)
+                {
+                    if (!string.IsNullOrWhiteSpace(
+                            freeTexture.VariableName))
+                    {
+                        names.Add(
+                            freeTexture.VariableName.Trim());
+                    }
+                }
+            }
+        }
+
+        return names
+            .Distinct(
+                StringComparer.OrdinalIgnoreCase)
+            .OrderBy(
+                static name =>
+                    name,
+                StringComparer.OrdinalIgnoreCase)
+            .Take(
+                OpenOmsiLanProtocol.MaximumFreeTextures)
+            .ToList();
     }
 
     private static void SeedMultiplayerScriptRuntime(
