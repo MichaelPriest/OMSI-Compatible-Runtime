@@ -9812,12 +9812,16 @@ try
             deniedClaim =
                 result;
 
+    Action<OpenOmsiLanWorldClaimRequest>
+        denyWorldClaim =
+            request =>
+                lanHost.SendWorldClaimResult(
+                    request.PlayerId,
+                    Array.Empty<uint>(),
+                    request.People);
+
     lanHost.WorldClaimRequested +=
-        request =>
-            lanHost.SendWorldClaimResult(
-                request.PlayerId,
-                Array.Empty<uint>(),
-                request.People);
+        denyWorldClaim;
 
     lanClient.SendWorldClaim(
         [
@@ -9855,6 +9859,74 @@ try
                 77u
             ]),
         "openOMSI WORLD passenger CLAIM/DENY loopback flow failed.");
+
+    lanHost.WorldClaimRequested -=
+        denyWorldClaim;
+
+    OpenOmsiLanWorldClaimResult?
+        grantedClaim =
+            null;
+
+    lanClient.WorldClaimResultReceived +=
+        result =>
+        {
+            if (result.Granted)
+            {
+                grantedClaim =
+                    result;
+            }
+        };
+
+    Action<OpenOmsiLanWorldClaimRequest>
+        grantWorldClaim =
+            request =>
+                lanHost.SendWorldClaimResult(
+                    request.PlayerId,
+                    request.People,
+                    Array.Empty<uint>());
+
+    lanHost.WorldClaimRequested +=
+        grantWorldClaim;
+
+    lanClient.SendWorldClaim(
+        [
+            0x00400042u
+        ]);
+
+    for (var grantStep = 0;
+         grantStep <
+             120 &&
+         grantedClaim is null;
+         grantStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        lanObserver.Tick(
+            0.02,
+            observerPose);
+
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        grantedClaim is
+            {
+                Granted:
+                    true
+            } &&
+        grantedClaim.People.SequenceEqual(
+            [
+                0x00400042u
+            ]),
+        "openOMSI WORLD passenger CLAIM/GRANT loopback flow failed.");
+
+    lanHost.WorldClaimRequested -=
+        grantWorldClaim;
 
     var synchronizedWorld =
         new OpenOmsiLanWorld(
