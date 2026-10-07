@@ -107,7 +107,7 @@ public static class OpenOmsiLanStateCodec
         var values =
             pose.Values.Take(OpenOmsiLanProtocol.MaximumValues).ToArray();
 
-        writer.Put((ulong)values.Length, 5);
+        writer.Put((ulong)values.Length, 6);
 
         foreach (var value in values)
         {
@@ -247,7 +247,7 @@ public static class OpenOmsiLanStateCodec
 
         if (!TryGetUnitList(reader, 7, OpenOmsiLanProtocol.MaximumLamps, 2, pose.Lamps) ||
             !TryGetFixedList(reader, 5, OpenOmsiLanProtocol.MaximumSwitches, 1.0, 4, pose.Switches) ||
-            !reader.TryGet(5, out var valueCount))
+            !reader.TryGet(6, out var valueCount))
         {
             return false;
         }
