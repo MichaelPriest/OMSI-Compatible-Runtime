@@ -21582,7 +21582,8 @@ public sealed class D3D11RenderWindow : Form
                     _walkerVerticalSpeed =
                         0.0f;
 
-                    if (_terrainSurfaceSampler.TrySample(
+                    if (!_walkerSeated &&
+                        _terrainSurfaceSampler.TrySample(
                             _walkerPosition.X,
                             _walkerPosition.Z,
                             out var freeCameraGround))
@@ -21594,6 +21595,14 @@ public sealed class D3D11RenderWindow : Form
                             true;
                     }
 
+                    e.SuppressKeyPress =
+                        true;
+                    e.Handled =
+                        true;
+                    return;
+
+                case Keys.E:
+                    TryTogglePassengerSeat();
                     e.SuppressKeyPress =
                         true;
                     e.Handled =
