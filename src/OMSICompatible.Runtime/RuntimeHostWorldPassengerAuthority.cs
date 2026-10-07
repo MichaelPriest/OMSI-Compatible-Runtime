@@ -27,6 +27,11 @@ internal sealed class RuntimeHostWorldPassengerAuthority
         [];
     private readonly Dictionary<uint, double> _goneSeconds =
         [];
+    private readonly Dictionary<uint, (
+        string HumanPath,
+        DateTimeOffset ExpiresAt)>
+        _transferredDescriptions =
+            [];
 
     private uint _nextPersonId =
         FirstPersonId;
@@ -44,6 +49,21 @@ internal sealed class RuntimeHostWorldPassengerAuthority
     {
         var now =
             DateTimeOffset.UtcNow;
+
+        foreach (var staleDescription in
+                 _transferredDescriptions
+                     .Where(
+                         pair =>
+                             pair.Value.ExpiresAt <=
+                             now)
+                     .Select(
+                         static pair =>
+                             pair.Key)
+                     .ToArray())
+        {
+            _transferredDescriptions.Remove(
+                staleDescription);
+        }
 
         foreach (var stale in
                  _handedOver
@@ -533,9 +553,25 @@ internal sealed class RuntimeHostWorldPassengerAuthority
                 continue;
             }
 
+            var transferredAt =
+                DateTimeOffset.UtcNow;
+
             _handedOver[
                 passenger.Key] =
-                DateTimeOffset.UtcNow;
+                transferredAt;
+
+            if (!string.IsNullOrWhiteSpace(
+                    passenger.HumanPath))
+            {
+                _transferredDescriptions[
+                    id] =
+                    (
+                        passenger.HumanPath,
+                        transferredAt +
+                        TimeSpan.FromSeconds(
+                            30)
+                    );
+            }
 
             _people.Remove(
                 id);
@@ -552,12 +588,23 @@ internal sealed class RuntimeHostWorldPassengerAuthority
     }
 
     public string? HumanPath(
-        uint id) =>
-        _people.TryGetValue(
-            id,
-            out var passenger)
-            ? passenger.HumanPath
+        uint id)
+    {
+        if (_people.TryGetValue(
+                id,
+                out var passenger))
+        {
+            return passenger.HumanPath;
+        }
+
+        return _transferredDescriptions.TryGetValue(
+                   id,
+                   out var transferred) &&
+               transferred.ExpiresAt >
+                   DateTimeOffset.UtcNow
+            ? transferred.HumanPath
             : null;
+    }
 
     private void RemoveAllVisible()
     {
