@@ -3319,6 +3319,54 @@ internal sealed class RuntimeApplicationContext :
         return _runtimeTrafficAgentBuffer;
     }
 
+    private static OpenOmsiLanWorldCarState
+        ProjectSharedWorldCarState(
+            OpenOmsiLanWorldCarState state,
+            DateTimeOffset lastSeen,
+            DateTimeOffset now)
+    {
+        var ageSeconds =
+            Math.Clamp(
+                (
+                    now -
+                    lastSeen
+                ).TotalSeconds,
+                0.0,
+                0.20);
+
+        if (ageSeconds <=
+                0.000001 ||
+            Math.Abs(
+                state.SpeedMetersPerSecond) <
+                0.01)
+        {
+            return state;
+        }
+
+        var headingRadians =
+            state.HeadingDegrees *
+            Math.PI /
+            180.0;
+
+        var travelMeters =
+            state.SpeedMetersPerSecond *
+            ageSeconds;
+
+        return state with
+        {
+            X =
+                state.X +
+                Math.Sin(
+                    headingRadians) *
+                travelMeters,
+            Y =
+                state.Y +
+                Math.Cos(
+                    headingRadians) *
+                travelMeters
+        };
+    }
+
     private bool TryAppendSharedWorldAgents(
         ICollection<WorldTrafficAgentState> agents)
     {
@@ -3398,7 +3446,10 @@ internal sealed class RuntimeApplicationContext :
             }
 
             var car =
-                pair.Value.State;
+                ProjectSharedWorldCarState(
+                    pair.Value.State,
+                    pair.Value.LastSeen,
+                    now);
 
             agents.Add(
                 new WorldTrafficAgentState(
@@ -5503,14 +5554,20 @@ internal sealed class RuntimeApplicationContext :
                         continue;
                     }
 
+                    var projectedCar =
+                        ProjectSharedWorldCarState(
+                            car.State,
+                            car.LastSeen,
+                            now);
+
                     busX =
-                        car.State.X;
+                        projectedCar.X;
                     busY =
-                        car.State.Y;
+                        projectedCar.Y;
                     busZ =
-                        car.State.Z;
+                        projectedCar.Z;
                     busHeading =
-                        car.State.HeadingDegrees;
+                        projectedCar.HeadingDegrees;
                 }
 
                 var headingRadians =
