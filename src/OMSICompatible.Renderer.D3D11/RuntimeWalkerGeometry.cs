@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 using OmsiCompat.Models;
 using OmsiCompat.Vehicles;
@@ -14,10 +15,39 @@ internal static class RuntimeWalkerGeometry
     private static readonly object HumanAssetCacheGate =
         new();
 
-    private static readonly Dictionary<string, RuntimeSceneryAssetInfo?>
+    private static readonly Dictionary<string, RuntimeHumanAsset?>
         HumanAssetCache =
             new(
                 StringComparer.OrdinalIgnoreCase);
+
+    private static readonly Dictionary<string, RuntimeHumanAnimationState>
+        HumanAnimationStates =
+            new(
+                StringComparer.OrdinalIgnoreCase);
+
+    private sealed record RuntimeHumanMeshSkin(
+        byte[] Slots,
+        float[] Weights);
+
+    private sealed record RuntimeHumanAsset(
+        string SourcePath,
+        OmsiHumanDefinition Definition,
+        OmsiHumanRig? Rig,
+        RuntimeSceneryAssetInfo Scenery,
+        IReadOnlyList<RuntimeHumanMeshSkin?> Skins);
+
+    private sealed class RuntimeHumanAnimationState(
+        OmsiHumanAnimator animator)
+    {
+        public OmsiHumanAnimator Animator { get; } =
+            animator;
+
+        public long LastTick { get; set; } =
+            Stopwatch.GetTimestamp();
+
+        public long LastSeen { get; set; } =
+            Stopwatch.GetTimestamp();
+    }
 
     private static readonly string[] TextureFallbackExtensions =
     [
@@ -52,33 +82,62 @@ internal static class RuntimeWalkerGeometry
         var fallback =
             new List<RuntimeRemoteWalkerInfo>();
 
+        var now =
+            Stopwatch.GetTimestamp();
+
+        foreach (var stale in
+                 HumanAnimationStates
+                     .Where(
+                         pair =>
+                             Stopwatch.GetElapsedTime(
+                                 pair.Value.LastSeen,
+                                 now) >
+                             TimeSpan.FromSeconds(
+                                 30))
+                     .Select(
+                         static pair =>
+                             pair.Key)
+                     .ToArray())
+        {
+            HumanAnimationStates.Remove(
+                stale);
+        }
+
         foreach (var walker in walkers)
         {
-            // Seated WORLD passengers are intentionally left on the old
-            // compact representation until the passenger-cabin pose pass.
-            // Rendering the raw OMSI human mesh here would leave a seated
-            // passenger in its authoring T-pose.
+            // Seated people still use the compact fallback until the WORLD
+            // seat origin is converted from [passpos] hip height to the
+            // human's visual feet origin.
             if (walker.Seated ||
                 !TryResolveHumanAsset(
                     contentRoot,
                     walker.FigurePath,
                     fallbackFigurePath,
                     out var assetKey,
-                    out var asset))
+                    out var human))
             {
                 fallback.Add(
                     walker);
                 continue;
             }
 
-            assets[assetKey] =
-                asset;
+            var posedKey =
+                string.Concat(
+                    assetKey,
+                    "#",
+                    walker.PlayerId);
+
+            assets[posedKey] =
+                PoseHumanAsset(
+                    walker,
+                    human,
+                    now);
 
             instances.Add(
                 new RuntimeObjectInfo(
                     0,
                     0,
-                    assetKey,
+                    posedKey,
                     walker.X,
                     walker.Y,
                     walker.Z,
@@ -176,7 +235,7 @@ internal static class RuntimeWalkerGeometry
         string? figurePath,
         string? fallbackFigurePath,
         out string assetKey,
-        out RuntimeSceneryAssetInfo asset)
+        out RuntimeHumanAsset asset)
     {
         assetKey =
             string.Empty;
@@ -197,7 +256,7 @@ internal static class RuntimeWalkerGeometry
             return false;
         }
 
-        RuntimeSceneryAssetInfo?
+        RuntimeHumanAsset?
             cached;
 
         lock (HumanAssetCacheGate)
