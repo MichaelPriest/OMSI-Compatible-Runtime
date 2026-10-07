@@ -1,10 +1,11 @@
 using System.Globalization;
 using System.Numerics;
+using OMSICompatible.Renderer.Common;
 using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
-internal sealed record RuntimeObjectBatch(
+public sealed record RuntimeObjectBatch(
     uint StartVertex,
     uint VertexCount,
     string? TexturePath,
@@ -35,9 +36,19 @@ internal sealed record RuntimeObjectBatch(
     bool HasTransMapDirective = false,
     string? MeshIdentifier = null,
     string? AnimationParent = null,
-    int SectionIndex = 0);
+    int SectionIndex = 0,
+    int ModelOrdinal = -1,
+    IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
+    string? MouseEventTrigger = null,
+    bool MaterialChangeIsNightMap = false,
+    long ObjectId = -1,
+    string? RenderType = null,
+    bool RequiresExternalTransMap = false,
+    bool Surface = false,
+    Vector3? BoundsCenter = null,
+    float BoundsRadius = 0.0f);
 
-internal sealed record RuntimeObjectGeometry(
+public sealed record RuntimeObjectGeometry(
     RuntimeObjectVertex[] Vertices,
     IReadOnlyList<RuntimeObjectBatch> Batches,
     int RenderedObjectCount,
@@ -61,7 +72,7 @@ internal sealed record RuntimeObjectGeometry(
             false);
 }
 
-internal static class RuntimeObjectGeometryBuilder
+public static class RuntimeObjectGeometryBuilder
 {
     private const int MaximumVertices = 4_000_000;
     private const double TileSizeMeters = 300.0;
@@ -95,13 +106,25 @@ internal static class RuntimeObjectGeometryBuilder
         bool HasTransMapDirective = false,
         string? MeshIdentifier = null,
         string? AnimationParent = null,
-        int SectionIndex = 0);
+        int SectionIndex = 0,
+        int ModelOrdinal = -1,
+        IReadOnlyList<int>? SkinBoneMeshOrdinals = null,
+        string? MouseEventTrigger = null,
+        bool MaterialChangeIsNightMap = false,
+        long ObjectId = -1,
+        string? RenderType = null,
+        bool RequiresExternalTransMap = false,
+        bool Surface = false,
+        int StaticGroupTileX = int.MinValue,
+        int StaticGroupTileY = int.MinValue);
 
     public static RuntimeObjectGeometry Build(
         IReadOnlyList<RuntimeTileInfo> tiles,
         IReadOnlyList<RuntimeObjectInfo> objects,
         IReadOnlyDictionary<string, RuntimeSceneryAssetInfo> assets,
-        bool useNativeOmsiModelSpace = false)
+        bool useNativeOmsiModelSpace = false,
+        IReadOnlySet<long>? isolatedObjectIds = null,
+        bool forceMaterialAlphaOpaque = false)
     {
         if (objects.Count == 0 ||
             assets.Count == 0)
@@ -214,6 +237,13 @@ internal static class RuntimeObjectGeometryBuilder
 
             var objectContributed = false;
 
+            var batchObjectId =
+                isolatedObjectIds?.Contains(
+                    instance.ObjectId) ==
+                true
+                    ? instance.ObjectId
+                    : -1;
+
             if (!asset.OnlyEditor)
             {
                 foreach (var mesh in asset.Meshes)
@@ -239,8 +269,29 @@ internal static class RuntimeObjectGeometryBuilder
                             mesh.Transform,
                             useNativeOmsiModelSpace);
 
+                    // The runtime world mirrors OMSI source X to preserve a
+                    // right-handed X/Z ground plane. Reflect the complete
+                    // local scenery result as well; otherwise asymmetric
+                    // objects (lamp arms, signs, shelters) keep their source
+                    // handedness and point to the wrong side of the road.
+                    var localWorldMirror =
+                        useNativeOmsiModelSpace
+                            ? Matrix4x4.CreateScale(
+                                -1.0f,
+                                1.0f,
+                                1.0f)
+                            : Matrix4x4.Identity;
+
+                    var sourceTransform =
+                        useNativeOmsiModelSpace
+                            ? mesh.SourceTransform ??
+                              Matrix4x4.Identity
+                            : Matrix4x4.Identity;
+
                     var worldTransform =
+                        sourceTransform *
                         localTransform *
+                        localWorldMirror *
                         objectTransform;
 
                     var appended =
@@ -248,6 +299,16 @@ internal static class RuntimeObjectGeometryBuilder
                             mesh,
                             worldTransform,
                             useNativeOmsiModelSpace,
+                            batchObjectId,
+                            asset.RenderType,
+                            asset.Surface &&
+                                !asset.NoCollision,
+                            forceMaterialAlphaOpaque,
+                            allowStaticSceneryGrouping:
+                                useNativeOmsiModelSpace &&
+                                isolatedObjectIds is not null,
+                            instance.TileX,
+                            instance.TileY,
                             batches,
                             batchOrder,
                             ref totalVertices);
@@ -275,11 +336,13 @@ internal static class RuntimeObjectGeometryBuilder
                 else if (AppendTree(
                     instance,
                     asset.Tree,
+                    asset.RenderType,
                     worldX,
                     worldZ,
                     (float)instance.Y +
                     terrainOffset +
                     renderLift,
+                    batchObjectId,
                     batches,
                     batchOrder,
                     ref totalVertices))
@@ -321,6 +384,10 @@ internal static class RuntimeObjectGeometryBuilder
             var start =
                 (uint)vertices.Count;
 
+            var bounds =
+                CalculateBatchBounds(
+                    batchVertices);
+
             vertices.AddRange(
                 batchVertices);
 
@@ -356,7 +423,17 @@ internal static class RuntimeObjectGeometryBuilder
                     key.HasTransMapDirective,
                     key.MeshIdentifier,
                     key.AnimationParent,
-                    key.SectionIndex));
+                    key.SectionIndex,
+                    key.ModelOrdinal,
+                    key.SkinBoneMeshOrdinals,
+                    key.MouseEventTrigger,
+                    key.MaterialChangeIsNightMap,
+                    key.ObjectId,
+                    key.RenderType,
+                    key.RequiresExternalTransMap,
+                    key.Surface,
+                    bounds.Center,
+                    bounds.Radius));
         }
 
         return new RuntimeObjectGeometry(
@@ -374,10 +451,75 @@ internal static class RuntimeObjectGeometryBuilder
             hitBudget);
     }
 
+    private static (
+        Vector3 Center,
+        float Radius)
+        CalculateBatchBounds(
+            IReadOnlyList<RuntimeObjectVertex> vertices)
+    {
+        if (vertices.Count ==
+            0)
+        {
+            return (
+                Vector3.Zero,
+                0.0f);
+        }
+
+        var minimum =
+            new Vector3(
+                float.PositiveInfinity);
+        var maximum =
+            new Vector3(
+                float.NegativeInfinity);
+
+        foreach (var vertex in
+                 vertices)
+        {
+            minimum =
+                Vector3.Min(
+                    minimum,
+                    vertex.Position);
+            maximum =
+                Vector3.Max(
+                    maximum,
+                    vertex.Position);
+        }
+
+        var center =
+            (minimum +
+             maximum) *
+            0.5f;
+        var radiusSquared =
+            0.0f;
+
+        foreach (var vertex in
+                 vertices)
+        {
+            radiusSquared =
+                MathF.Max(
+                    radiusSquared,
+                    Vector3.DistanceSquared(
+                        center,
+                        vertex.Position));
+        }
+
+        return (
+            center,
+            MathF.Sqrt(
+                radiusSquared));
+    }
+
     private static bool AppendMesh(
         RuntimeObjectMeshInfo mesh,
         Matrix4x4 worldTransform,
         bool useNativeOmsiModelSpace,
+        long objectId,
+        string? renderType,
+        bool surface,
+        bool forceMaterialAlphaOpaque,
+        bool allowStaticSceneryGrouping,
+        int tileX,
+        int tileY,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
         ref int totalVertices)
@@ -428,7 +570,43 @@ internal static class RuntimeObjectGeometryBuilder
                     triangle);
 
             var color =
-                MaterialColor(material);
+                MaterialColor(
+                    material,
+                    forceMaterialAlphaOpaque);
+
+            var canGroupStaticScenery =
+                allowStaticSceneryGrouping &&
+                objectId <
+                    0 &&
+                material?.AlphaMode !=
+                    2 &&
+                !(material?.NoZWrite ??
+                  false) &&
+                !(material?.NoZCheck ??
+                  false) &&
+                (mesh.VisibilityConditions is null ||
+                 mesh.VisibilityConditions.Count ==
+                     0) &&
+                (mesh.Animations is null ||
+                 mesh.Animations.Count ==
+                     0) &&
+                string.IsNullOrWhiteSpace(
+                    mesh.AnimationParent) &&
+                string.IsNullOrWhiteSpace(
+                    mesh.MouseEventTrigger) &&
+                string.IsNullOrWhiteSpace(
+                    material?.AlphaScaleVariable) &&
+                string.IsNullOrWhiteSpace(
+                    material?.LightMapVariable) &&
+                string.IsNullOrWhiteSpace(
+                    material?.MaterialChangeVariable) &&
+                material?.MaterialChangeSets is not
+                    { Count: > 0 } &&
+                material?.FreeTextures is not
+                    { Count: > 0 } &&
+                material?.TextTextureIndex is null &&
+                mesh.SkinBoneMeshOrdinals is not
+                    { Count: > 0 };
 
             var key =
                 new BatchKey(
@@ -438,10 +616,18 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.TransMapTexturePath,
                     material?.NoZWrite ?? false,
                     material?.NoZCheck ?? false,
-                    mesh.VisibilityConditions,
-                    mesh.Animations,
-                    mesh.SourceTransform,
-                    worldTransform,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.VisibilityConditions,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.Animations,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.SourceTransform,
+                    canGroupStaticScenery
+                        ? null
+                        : worldTransform,
                     material?.AlphaScaleVariable,
                     material?.LightMapTexturePath,
                     material?.LightMapVariable,
@@ -458,9 +644,37 @@ internal static class RuntimeObjectGeometryBuilder
                     material?.TextTextureIndex,
                     material?.MaterialChangeSets,
                     material?.HasTransMapDirective ?? false,
-                    mesh.MeshIdentifier,
-                    mesh.AnimationParent,
-                    mesh.SectionIndex);
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.MeshIdentifier,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.AnimationParent,
+                    canGroupStaticScenery
+                        ? 0
+                        : mesh.SectionIndex,
+                    canGroupStaticScenery
+                        ? -1
+                        : mesh.ModelOrdinal,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.SkinBoneMeshOrdinals,
+                    canGroupStaticScenery
+                        ? null
+                        : mesh.MouseEventTrigger,
+                    material?.MaterialChangeIsNightMap ?? false,
+                    canGroupStaticScenery
+                        ? -1
+                        : objectId,
+                    renderType,
+                    material?.RequiresExternalTransMap ?? false,
+                    surface,
+                    canGroupStaticScenery
+                        ? tileX
+                        : int.MinValue,
+                    canGroupStaticScenery
+                        ? tileY
+                        : int.MinValue);
 
             var output =
                 GetBatch(
@@ -522,7 +736,8 @@ internal static class RuntimeObjectGeometryBuilder
     }
 
     private static Color4 MaterialColor(
-        RuntimeO3dMaterialInfo? material)
+        RuntimeO3dMaterialInfo? material,
+        bool forceAlphaOpaque)
     {
         if (material is null)
         {
@@ -552,11 +767,13 @@ internal static class RuntimeObjectGeometryBuilder
                     material.DiffuseB),
                 0.0f,
                 1.0f),
-            Math.Clamp(
-                (float)(allColor?.DiffuseA ??
-                    material.DiffuseA),
-                0.0f,
-                1.0f));
+            forceAlphaOpaque
+                ? 1.0f
+                : Math.Clamp(
+                    (float)(allColor?.DiffuseA ??
+                        material.DiffuseA),
+                    0.0f,
+                    1.0f));
     }
 
     private static void AddVertex(
@@ -663,20 +880,44 @@ internal static class RuntimeObjectGeometryBuilder
                     mesh.Uvs[uvOffset + 1]);
         }
 
+        var skinWeights =
+            Vector4.Zero;
+
+        var skinOffset =
+            vertexIndex *
+            4;
+
+        if (mesh.SkinWeights is
+                { Length: > 0 } &&
+            skinOffset >= 0 &&
+            skinOffset + 3 <
+                mesh.SkinWeights.Length)
+        {
+            skinWeights =
+                new Vector4(
+                    mesh.SkinWeights[skinOffset],
+                    mesh.SkinWeights[skinOffset + 1],
+                    mesh.SkinWeights[skinOffset + 2],
+                    mesh.SkinWeights[skinOffset + 3]);
+        }
+
         output.Add(
             new RuntimeObjectVertex(
                 world,
                 color,
                 uv,
-                worldNormal));
+                worldNormal,
+                skinWeights));
     }
 
     private static bool AppendTree(
         RuntimeObjectInfo instance,
         RuntimeTreeInfo tree,
+        string? renderType,
         double worldX,
         double worldZ,
         float baseY,
+        long objectId,
         IDictionary<BatchKey, List<RuntimeObjectVertex>> batches,
         ICollection<BatchKey> batchOrder,
         ref int totalVertices)
@@ -745,7 +986,11 @@ internal static class RuntimeObjectGeometryBuilder
         var key =
             new BatchKey(
                 tree.TexturePath,
-                hasTexture);
+                hasTexture,
+                ObjectId:
+                    objectId,
+                RenderType:
+                    renderType);
 
         var output =
             GetBatch(
@@ -940,38 +1185,4 @@ internal static class RuntimeObjectGeometryBuilder
             value *
             Math.PI /
             180.0);
-}
-
-internal readonly struct RuntimeObjectVertex
-{
-    public const uint SizeInBytes = 48;
-
-    public RuntimeObjectVertex(
-        Vector3 position,
-        Color4 color,
-        Vector2 uv,
-        Vector3 normal)
-    {
-        Position = position;
-        Color = color;
-        Uv = uv;
-        Normal = normal;
-    }
-
-    public RuntimeObjectVertex(
-        Vector3 position,
-        Color4 color,
-        Vector2 uv)
-        : this(
-            position,
-            color,
-            uv,
-            Vector3.UnitY)
-    {
-    }
-
-    public readonly Vector3 Position;
-    public readonly Color4 Color;
-    public readonly Vector2 Uv;
-    public readonly Vector3 Normal;
 }

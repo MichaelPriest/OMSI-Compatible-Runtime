@@ -3,14 +3,15 @@ using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
-internal static class RuntimeVehicleGeometry
+public static class RuntimeVehicleGeometry
 {
     private const string VehicleAssetKey =
         "__runtime_player_vehicle__";
 
     public static RuntimeObjectGeometry Build(
         RuntimeVehicleInfo? vehicle,
-        int viewpointBit)
+        int viewpointBit,
+        bool forceMaterialAlphaOpaque = false)
     {
         if (vehicle is null)
         {
@@ -105,7 +106,9 @@ internal static class RuntimeVehicleGeometry
                     StringComparer.OrdinalIgnoreCase)
                 {
                     [VehicleAssetKey] = asset
-                });
+                },
+                forceMaterialAlphaOpaque:
+                    forceMaterialAlphaOpaque);
 
         if (geometry.Vertices.Length > 0)
         {

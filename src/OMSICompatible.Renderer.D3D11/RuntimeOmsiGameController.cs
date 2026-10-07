@@ -89,15 +89,49 @@ internal sealed class RuntimeOmsiGameControllerHost :
 
     private readonly IDirectInput8 _directInput;
     private readonly List<DeviceBinding> _devices;
+    private readonly List<string> _pressedBuffer =
+        [];
+    private readonly List<string> _triggeredBuffer =
+        [];
+    private readonly List<string> _releasedBuffer =
+        [];
+    private readonly float _deadZone;
+    private readonly float _throttleResponse;
+    private readonly float _brakeResponse;
+    private readonly float _steeringGain;
 
     private RuntimeOmsiGameControllerHost(
         IDirectInput8 directInput,
-        List<DeviceBinding> devices)
+        List<DeviceBinding> devices,
+        float deadZone,
+        float throttleResponse,
+        float brakeResponse,
+        float steeringGain)
     {
         _directInput =
             directInput;
         _devices =
             devices;
+        _deadZone =
+            Math.Clamp(
+                deadZone,
+                0.0f,
+                0.30f);
+        _throttleResponse =
+            Math.Clamp(
+                throttleResponse,
+                0.25f,
+                4.0f);
+        _brakeResponse =
+            Math.Clamp(
+                brakeResponse,
+                0.25f,
+                4.0f);
+        _steeringGain =
+            Math.Clamp(
+                steeringGain,
+                0.1f,
+                20.0f);
     }
 
     public int ConnectedDeviceCount =>
@@ -106,7 +140,11 @@ internal sealed class RuntimeOmsiGameControllerHost :
     public static RuntimeOmsiGameControllerHost?
         TryCreate(
             string contentRoot,
-            IntPtr windowHandle)
+            IntPtr windowHandle,
+            float deadZone = 0.0f,
+            float throttleResponse = 1.0f,
+            float brakeResponse = 1.0f,
+            float steeringGain = 1.0f)
     {
         var configs =
             LoadConfiguration(
@@ -222,7 +260,11 @@ internal sealed class RuntimeOmsiGameControllerHost :
 
             return new RuntimeOmsiGameControllerHost(
                 directInput,
-                devices);
+                devices,
+                deadZone,
+                throttleResponse,
+                brakeResponse,
+                steeringGain);
         }
         catch (Exception ex)
         {
@@ -252,14 +294,18 @@ internal sealed class RuntimeOmsiGameControllerHost :
         float? clutch =
             null;
 
+        _pressedBuffer.Clear();
+        _triggeredBuffer.Clear();
+        _releasedBuffer.Clear();
+
         var pressed =
-            new List<string>();
+            _pressedBuffer;
 
         var triggered =
-            new List<string>();
+            _triggeredBuffer;
 
         var released =
-            new List<string>();
+            _releasedBuffer;
 
         foreach (var binding in
                  _devices)
@@ -295,29 +341,52 @@ internal sealed class RuntimeOmsiGameControllerHost :
                 {
                     case 0:
                         steering =
-                            value;
+                            Math.Clamp(
+                                ApplySignedDeadZone(
+                                    value,
+                                    _deadZone) *
+                                _steeringGain,
+                                -1.0f,
+                                1.0f);
                         break;
 
                     case 1:
                         brake =
-                            value;
+                            ApplyPedalResponse(
+                                ApplyUnsignedDeadZone(
+                                    value,
+                                    _deadZone),
+                                _brakeResponse);
                         break;
 
                     case 2:
                         accelerator =
-                            value;
+                            ApplyPedalResponse(
+                                ApplyUnsignedDeadZone(
+                                    value,
+                                    _deadZone),
+                                _throttleResponse);
                         break;
 
                     case 3:
                         clutch =
-                            value;
+                            ApplyUnsignedDeadZone(
+                                value,
+                                _deadZone);
                         break;
 
                     case 4:
-                        if (value >= 0.0f)
+                        var combined =
+                            ApplySignedDeadZone(
+                                value,
+                                _deadZone);
+
+                        if (combined >= 0.0f)
                         {
                             accelerator =
-                                value;
+                                ApplyPedalResponse(
+                                    combined,
+                                    _throttleResponse);
                             brake =
                                 0.0f;
                         }
@@ -326,7 +395,9 @@ internal sealed class RuntimeOmsiGameControllerHost :
                             accelerator =
                                 0.0f;
                             brake =
-                                -value;
+                                ApplyPedalResponse(
+                                    -combined,
+                                    _brakeResponse);
                         }
 
                         break;
@@ -566,6 +637,69 @@ internal sealed class RuntimeOmsiGameControllerHost :
             _ =>
                 unit
         };
+    }
+
+    private static float ApplySignedDeadZone(
+        float value,
+        float deadZone)
+    {
+        var magnitude =
+            Math.Abs(
+                value);
+
+        if (magnitude <=
+            deadZone)
+        {
+            return 0.0f;
+        }
+
+        return MathF.CopySign(
+            Math.Clamp(
+                (magnitude - deadZone) /
+                Math.Max(
+                    1.0f - deadZone,
+                    0.0001f),
+                0.0f,
+                1.0f),
+            value);
+    }
+
+    private static float ApplyUnsignedDeadZone(
+        float value,
+        float deadZone)
+    {
+        if (value <=
+            deadZone)
+        {
+            return 0.0f;
+        }
+
+        return Math.Clamp(
+            (value - deadZone) /
+            Math.Max(
+                1.0f - deadZone,
+                0.0001f),
+            0.0f,
+            1.0f);
+    }
+
+    private static float ApplyPedalResponse(
+        float value,
+        float strength)
+    {
+        var safeStrength =
+            Math.Clamp(
+                strength,
+                0.25f,
+                4.0f);
+
+        return MathF.Pow(
+            Math.Clamp(
+                value,
+                0.0f,
+                1.0f),
+            1.0f /
+            safeStrength);
     }
 
     private static DeviceInstance? FindMatchingDevice(

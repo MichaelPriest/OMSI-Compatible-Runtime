@@ -27,6 +27,14 @@ cbuffer RuntimeMaterial : register(b2)
     float4 MaterialChangeEmissive;
 };
 
+cbuffer RuntimeSkin : register(b3)
+{
+    row_major float4x4 SkinBone0;
+    row_major float4x4 SkinBone1;
+    row_major float4x4 SkinBone2;
+    row_major float4x4 SkinBone3;
+};
+
 Texture2D DiffuseTexture : register(t0);
 Texture2D TransMapTexture : register(t1);
 Texture2D LightMapTexture : register(t2);
@@ -42,6 +50,21 @@ struct VertexInput
     float4 Color : COLOR;
     float2 Uv : TEXCOORD;
     float3 Normal : NORMAL;
+    float4 SkinWeights : BLENDWEIGHT;
+};
+
+struct VertexInputInstanced
+{
+    float3 Position : POSITION;
+    float4 Color : COLOR;
+    float2 Uv : TEXCOORD;
+    float3 Normal : NORMAL;
+    float4 SkinWeights : BLENDWEIGHT;
+
+    float4 InstanceWorld0 : INSTANCEWORLD0;
+    float4 InstanceWorld1 : INSTANCEWORLD1;
+    float4 InstanceWorld2 : INSTANCEWORLD2;
+    float4 InstanceWorld3 : INSTANCEWORLD3;
 };
 
 struct VertexOutput
@@ -53,15 +76,86 @@ struct VertexOutput
     float3 WorldPosition : TEXCOORD2;
 };
 
+struct LightVertexInputInstanced
+{
+    float3 Position : POSITION;
+    float2 Uv : TEXCOORD;
+
+    float4 InstanceWorld0 : INSTANCEWORLD0;
+    float4 InstanceWorld1 : INSTANCEWORLD1;
+    float4 InstanceWorld2 : INSTANCEWORLD2;
+    float4 InstanceWorld3 : INSTANCEWORLD3;
+    float4 InstanceColor : INSTANCECOLOR;
+};
+
 VertexOutput VSMain(VertexInput input)
 {
     VertexOutput output;
 
+    float4 sourcePosition =
+        float4(
+            input.Position,
+            1.0f);
+
+    float4 weights =
+        max(
+            input.SkinWeights,
+            0.0f);
+
+    float skinSum =
+        saturate(
+            weights.x +
+            weights.y +
+            weights.z +
+            weights.w);
+
+    float baseWeight =
+        1.0f -
+        skinSum;
+
+    float4 skinnedPosition =
+        sourcePosition *
+            baseWeight +
+        mul(
+            sourcePosition,
+            SkinBone0) *
+            weights.x +
+        mul(
+            sourcePosition,
+            SkinBone1) *
+            weights.y +
+        mul(
+            sourcePosition,
+            SkinBone2) *
+            weights.z +
+        mul(
+            sourcePosition,
+            SkinBone3) *
+            weights.w;
+
+    float3 skinnedNormal =
+        input.Normal *
+            baseWeight +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone0) *
+            weights.x +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone1) *
+            weights.y +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone2) *
+            weights.z +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone3) *
+            weights.w;
+
     float4 worldPosition =
         mul(
-            float4(
-                input.Position,
-                1.0f),
+            skinnedPosition,
             World);
 
     output.Position =
@@ -78,9 +172,149 @@ VertexOutput VSMain(VertexInput input)
     output.WorldNormal =
         normalize(
             mul(
-                input.Normal,
+                skinnedNormal,
                 (float3x3)World));
 
+    output.WorldPosition =
+        worldPosition.xyz;
+
+    return output;
+}
+
+VertexOutput VSMainInstanced(
+    VertexInputInstanced input)
+{
+    VertexOutput output;
+
+    float4 sourcePosition =
+        float4(
+            input.Position,
+            1.0f);
+
+    float4 weights =
+        max(
+            input.SkinWeights,
+            0.0f);
+
+    float skinSum =
+        saturate(
+            weights.x +
+            weights.y +
+            weights.z +
+            weights.w);
+
+    float baseWeight =
+        1.0f -
+        skinSum;
+
+    float4 skinnedPosition =
+        sourcePosition *
+            baseWeight +
+        mul(
+            sourcePosition,
+            SkinBone0) *
+            weights.x +
+        mul(
+            sourcePosition,
+            SkinBone1) *
+            weights.y +
+        mul(
+            sourcePosition,
+            SkinBone2) *
+            weights.z +
+        mul(
+            sourcePosition,
+            SkinBone3) *
+            weights.w;
+
+    float3 skinnedNormal =
+        input.Normal *
+            baseWeight +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone0) *
+            weights.x +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone1) *
+            weights.y +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone2) *
+            weights.z +
+        mul(
+            input.Normal,
+            (float3x3)SkinBone3) *
+            weights.w;
+
+    row_major float4x4 instanceWorld =
+        float4x4(
+            input.InstanceWorld0,
+            input.InstanceWorld1,
+            input.InstanceWorld2,
+            input.InstanceWorld3);
+
+    float4 worldPosition =
+        mul(
+            skinnedPosition,
+            instanceWorld);
+
+    output.Position =
+        mul(
+            worldPosition,
+            ViewProjection);
+
+    output.Color =
+        input.Color;
+
+    output.Uv =
+        input.Uv;
+
+    output.WorldNormal =
+        normalize(
+            mul(
+                skinnedNormal,
+                (float3x3)instanceWorld));
+
+    output.WorldPosition =
+        worldPosition.xyz;
+
+    return output;
+}
+
+VertexOutput VSMainLightInstanced(
+    LightVertexInputInstanced input)
+{
+    VertexOutput output;
+
+    row_major float4x4 instanceWorld =
+        float4x4(
+            input.InstanceWorld0,
+            input.InstanceWorld1,
+            input.InstanceWorld2,
+            input.InstanceWorld3);
+
+    float4 worldPosition =
+        mul(
+            float4(
+                input.Position,
+                1.0f),
+            instanceWorld);
+
+    output.Position =
+        mul(
+            worldPosition,
+            ViewProjection);
+
+    output.Color =
+        input.InstanceColor;
+    output.Uv =
+        input.Uv;
+    output.WorldNormal =
+        float3(
+            0.0f,
+            0.0f,
+            1.0f);
     output.WorldPosition =
         worldPosition.xyz;
 
@@ -263,10 +497,36 @@ float4 ApplyEnvMap(
         ResolveEnvMapMask(
             input);
 
+    float3 toCamera =
+        normalize(
+            CameraPosition -
+            input.WorldPosition);
+
+    float normalFacing =
+        saturate(
+            abs(
+                dot(
+                    normal,
+                    toCamera)));
+
+    // OMSI's static envmaps are authored as a subtle material reflection,
+    // including glass strengths up to 1. A straight lerp at strength=1
+    // turns the glass into a flat mirror. Preserve the authored strength
+    // but apply a view-angle response: modest head-on reflection and
+    // stronger reflection toward grazing angles.
+    float fresnel =
+        0.15f +
+        0.75f *
+        pow(
+            1.0f -
+            normalFacing,
+            3.0f);
+
     float strength =
         saturate(
             EnvMapStrength *
-            mask);
+            mask *
+            fresnel);
 
     color.rgb =
         lerp(
@@ -438,6 +698,36 @@ float4 PSLightEffect(
         falloff);
 }
 
+
+float4 PSLightEffectInstanced(
+    VertexOutput input) : SV_TARGET
+{
+    float2 centered =
+        input.Uv * 2.0f - 1.0f;
+
+    float radiusSquared =
+        dot(
+            centered,
+            centered);
+
+    clip(
+        1.0f -
+        radiusSquared);
+
+    float falloff =
+        saturate(
+            1.0f -
+            radiusSquared);
+
+    falloff *=
+        falloff;
+
+    return float4(
+        input.Color.rgb *
+            falloff,
+        input.Color.a *
+            falloff);
+}
 
 float4 PSAlphaCutout(
     VertexOutput input) : SV_TARGET

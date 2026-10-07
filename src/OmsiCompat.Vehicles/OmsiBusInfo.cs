@@ -32,7 +32,8 @@ public sealed record OmsiReflectionCamera(
     double FieldOfViewDegrees,
     double HeadingDegrees,
     double PitchDegrees,
-    double? MaximumRenderDistanceMeters)
+    double? VisibilityThreshold,
+    bool ContinuousRendering)
 {
     public string RuntimeTextureName =>
         $"reflexion{Index}.bmp";
@@ -286,6 +287,10 @@ public sealed record OmsiBusInfo(
 
     private string? ResolvePreviewImagePath()
     {
+        var busStem =
+            Path.GetFileNameWithoutExtension(
+                FilePath);
+
         string[] preferredNames =
         [
             "Preview.png",
@@ -296,25 +301,116 @@ public sealed record OmsiBusInfo(
             "preview.jpeg",
             "Preview.bmp",
             "preview.bmp",
-            $"{Path.GetFileNameWithoutExtension(FilePath)}.png",
-            $"{Path.GetFileNameWithoutExtension(FilePath)}.jpg",
-            $"{Path.GetFileNameWithoutExtension(FilePath)}.jpeg",
-            $"{Path.GetFileNameWithoutExtension(FilePath)}.bmp"
+            "Picture.png",
+            "picture.png",
+            "Picture.jpg",
+            "picture.jpg",
+            "Thumbnail.png",
+            "thumbnail.png",
+            "Thumbnail.jpg",
+            "thumbnail.jpg",
+            $"{busStem}.png",
+            $"{busStem}.jpg",
+            $"{busStem}.jpeg",
+            $"{busStem}.bmp"
         ];
 
-        foreach (var name in preferredNames)
-        {
-            var candidate =
-                Path.Combine(
-                    DirectoryPath,
-                    name);
+        string[] candidateDirectories =
+        [
+            DirectoryPath,
+            Path.Combine(
+                DirectoryPath,
+                "Texture"),
+            Path.Combine(
+                DirectoryPath,
+                "texture")
+        ];
 
-            if (File.Exists(candidate))
+        foreach (var directory in
+                 candidateDirectories
+                     .Distinct(
+                         StringComparer.OrdinalIgnoreCase))
+        {
+            if (!Directory.Exists(
+                    directory))
             {
-                return candidate;
+                continue;
+            }
+
+            foreach (var name in
+                     preferredNames)
+            {
+                var candidate =
+                    Path.Combine(
+                        directory,
+                        name);
+
+                if (File.Exists(
+                        candidate))
+                {
+                    return candidate;
+                }
             }
         }
 
-        return null;
+        try
+        {
+            return Directory
+                .EnumerateFiles(
+                    DirectoryPath,
+                    "*",
+                    SearchOption.TopDirectoryOnly)
+                .Where(
+                    path =>
+                    {
+                        var extension =
+                            Path.GetExtension(
+                                path);
+
+                        if (!extension.Equals(
+                                ".png",
+                                StringComparison.OrdinalIgnoreCase) &&
+                            !extension.Equals(
+                                ".jpg",
+                                StringComparison.OrdinalIgnoreCase) &&
+                            !extension.Equals(
+                                ".jpeg",
+                                StringComparison.OrdinalIgnoreCase) &&
+                            !extension.Equals(
+                                ".bmp",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            return false;
+                        }
+
+                        var stem =
+                            Path.GetFileNameWithoutExtension(
+                                path);
+
+                        return
+                            stem.Contains(
+                                "preview",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            stem.Contains(
+                                "picture",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            stem.Contains(
+                                "thumb",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            stem.Equals(
+                                busStem,
+                                StringComparison.OrdinalIgnoreCase);
+                    })
+                .OrderBy(
+                    static path =>
+                        Path.GetFileName(
+                            path),
+                    StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

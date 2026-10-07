@@ -90,7 +90,7 @@ internal sealed class LauncherForm : Form
     private readonly RuntimeProcessHost _runtime =
         new();
 
-    private readonly LauncherSettings _settings;
+    private LauncherSettings _settings;
 
     private IReadOnlyList<OmsiMapInfo> _maps =
         Array.Empty<OmsiMapInfo>();
@@ -438,11 +438,11 @@ internal sealed class LauncherForm : Form
             };
 
         vehicleSpawnRow.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 48));
+            new ColumnStyle(SizeType.Percent, 40));
         vehicleSpawnRow.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 30));
+            new ColumnStyle(SizeType.Percent, 42));
         vehicleSpawnRow.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 22));
+            new ColumnStyle(SizeType.Percent, 18));
 
         var vehiclePanel =
             new TableLayoutPanel
@@ -621,7 +621,7 @@ internal sealed class LauncherForm : Form
         previewPanel.RowStyles.Add(
             new RowStyle(
                 SizeType.Absolute,
-                240));
+                300));
         previewPanel.RowStyles.Add(
             new RowStyle(
                 SizeType.AutoSize));
@@ -1208,7 +1208,7 @@ internal sealed class LauncherForm : Form
                 contentRoot);
 
         _buses =
-            BusDiscovery.Discover(
+            BusDiscovery.DiscoverPlayerSelectable(
                 contentRoot);
 
         var selectedBus =
@@ -1700,6 +1700,17 @@ internal sealed class LauncherForm : Form
             return;
         }
 
+        await Task.Delay(
+            120);
+
+        if (generation !=
+                _busPreviewGeneration ||
+            IsDisposed ||
+            !IsHandleCreated)
+        {
+            return;
+        }
+
         try
         {
             var repaint =
@@ -1708,7 +1719,7 @@ internal sealed class LauncherForm : Form
             var asset =
                 await Task.Run(
                     () =>
-                        OmsiVehicleAssetLoader.Load(
+                        OmsiArticulatedVehicleAssetLoader.Load(
                             contentRoot,
                             bus,
                             progress:
@@ -1752,7 +1763,7 @@ internal sealed class LauncherForm : Form
                     scriptRuntime:
                         previewScriptRuntime,
                     targetFps:
-                        30,
+                        60,
                     vsync:
                         true,
                     vehiclePreviewMode:
@@ -1972,6 +1983,33 @@ internal sealed class LauncherForm : Form
                     "O runtime não pôde ser iniciado.");
             }
 
+            _settings =
+                _settings with
+                {
+                    LastSessionMapName =
+                        map.FolderName,
+                    LastSessionBusRelativePath =
+                        noBus
+                            ? null
+                            : bus?.RelativePath,
+                    LastSessionSkin =
+                        noBus
+                            ? null
+                            : bus?.Skin,
+                    LastSessionRepaintName =
+                        repaint?.Name,
+                    LastSessionRepaintCtiRelativePath =
+                        repaint?.RelativeCtiPath,
+                    LastSessionEntryPointName =
+                        entryPoint.Name,
+                    LastSessionWithoutBus =
+                        noBus,
+                    LastSessionStartedAt =
+                        DateTimeOffset.Now
+                };
+
+            SaveSettings();
+
             _statusValue.Text =
                 "Em execução";
         }
@@ -2076,16 +2114,27 @@ internal sealed class LauncherForm : Form
         var repaint =
             SelectedRepaint();
 
-        new LauncherSettings(
-            _contentPathBox.Text,
-            _mapBox.SelectedItem
-                ?.ToString(),
-            SelectedBus()?.RelativePath,
-            SelectedEntryPoint()?.Name,
-            _noBusCheckBox.Checked,
-            repaint?.Name,
-            repaint?.RelativeCtiPath)
-            .Save();
+        _settings =
+            _settings with
+            {
+                ContentPath =
+                    _contentPathBox.Text,
+                MapName =
+                    _mapBox.SelectedItem
+                        ?.ToString(),
+                BusRelativePath =
+                    SelectedBus()?.RelativePath,
+                EntryPointName =
+                    SelectedEntryPoint()?.Name,
+                StartWithoutBus =
+                    _noBusCheckBox.Checked,
+                RepaintName =
+                    repaint?.Name,
+                RepaintCtiRelativePath =
+                    repaint?.RelativeCtiPath
+            };
+
+        _settings.Save();
     }
 
     private void ShowError(

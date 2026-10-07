@@ -57,7 +57,8 @@ public sealed record OmsiVehicleMaterialOverride(
     string? TextureCoordinateXVariable,
     string? TextureCoordinateYVariable,
     int MaterialChangeGroupIndex = -1,
-    int MaterialChangeItemIndex = 0);
+    int MaterialChangeItemIndex = 0,
+    bool MaterialChangeMapIsNightMap = false);
 
 public sealed record OmsiVehicleMeshTransform(
     double PositionX,
@@ -129,6 +130,10 @@ public sealed record OmsiVehicleAnimation(
     double? MaxSpeed,
     double? Delay);
 
+public sealed record OmsiVehicleSkinBoneBinding(
+    string BoneName,
+    int TargetMeshOrdinal);
+
 public sealed record OmsiVehicleMeshReference(
     int Ordinal,
     string DeclaredPath,
@@ -140,7 +145,10 @@ public sealed record OmsiVehicleMeshReference(
     IReadOnlyList<OmsiVehicleMaterialOverride> MaterialOverrides,
     IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
     string? MeshIdentifier = null,
-    string? AnimationParent = null);
+    string? AnimationParent = null,
+    bool SmoothSkin = false,
+    IReadOnlyList<OmsiVehicleSkinBoneBinding>? SkinBoneBindings = null,
+    string? MouseEventTrigger = null);
 
 public sealed record OmsiVehicleModel(
     string SourcePath,

@@ -1,3 +1,7 @@
+using System.Numerics;
+using OmsiCompat.Scenery;
+using OmsiCompat.Vehicles;
+
 namespace OMSICompatible.World;
 
 public sealed record WorldO3dMaterial(
@@ -10,7 +14,8 @@ public sealed record WorldO3dMaterial(
     int AlphaMode,
     string? TransMapTexturePath,
     bool NoZWrite,
-    bool NoZCheck);
+    bool NoZCheck,
+    bool RequiresExternalTransMap = false);
 
 public sealed record WorldSceneryMeshTransform(
     double PositionX,
@@ -34,7 +39,14 @@ public sealed record WorldSceneryMeshAsset(
     float[] Uvs,
     uint[] Indices,
     ushort[] TriangleMaterialIndices,
-    IReadOnlyList<WorldO3dMaterial> Materials)
+    IReadOnlyList<WorldO3dMaterial> Materials,
+    IReadOnlyList<OmsiVehicleVisibilityCondition>? VisibilityConditions = null,
+    IReadOnlyList<OmsiVehicleAnimation>? Animations = null,
+    IReadOnlyList<OmsiVehicleLightEffect>? LightEffects = null,
+    string? MeshIdentifier = null,
+    string? AnimationParent = null,
+    int ModelOrdinal = -1,
+    Matrix4x4? SourceTransform = null)
 {
     public bool IsRenderable =>
         Exists &&
@@ -42,6 +54,18 @@ public sealed record WorldSceneryMeshAsset(
         Positions.Length >= 3 &&
         Indices.Length >= 3;
 }
+
+public sealed record WorldSceneryCollisionBounds(
+    double MinimumX,
+    double MaximumX,
+    double MinimumY,
+    double MaximumY,
+    double MinimumZ,
+    double MaximumZ);
+
+public sealed record WorldSceneryCollisionGeometry(
+    float[] Positions,
+    uint[] Indices);
 
 public sealed record WorldSceneryTreeDefinition(
     string TextureName,
@@ -51,6 +75,41 @@ public sealed record WorldSceneryTreeDefinition(
     double MinimumAspect,
     double MaximumAspect);
 
+public sealed record WorldTrafficLightPhase(
+    int Phase,
+    double DurationSeconds);
+
+public sealed record WorldTrafficLightProgram(
+    string Name,
+    IReadOnlyList<WorldTrafficLightPhase> Phases,
+    double ApproachDistanceMeters);
+
+public sealed record WorldTrafficLightJump(
+    int CheckTrafficLightIndex,
+    double TriggerTimeSeconds,
+    bool JumpIfNoApproach,
+    double TargetTimeSeconds);
+
+public sealed record WorldTrafficLightStop(
+    int CheckTrafficLightIndex,
+    double TriggerTimeSeconds,
+    bool StopIfNoApproach);
+
+public sealed record WorldSceneryPath(
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees,
+    double RadiusMeters,
+    double LengthMeters,
+    double GradientStart,
+    double GradientEnd,
+    int Type,
+    double WidthMeters,
+    int Direction,
+    IReadOnlyList<string> ExtraValues,
+    int? TrafficLightIndex = null);
+
 public sealed record WorldSceneryAsset(
     string DeclaredPath,
     string? ResolvedPath,
@@ -59,7 +118,20 @@ public sealed record WorldSceneryAsset(
     bool OnlyEditor,
     string? RenderType,
     IReadOnlyList<WorldSceneryMeshAsset> Meshes,
-    WorldSceneryTreeDefinition? Tree)
+    WorldSceneryTreeDefinition? Tree,
+    IReadOnlyList<WorldSceneryPath> Paths,
+    double? TrafficLightCycleSeconds = null,
+    IReadOnlyList<WorldTrafficLightProgram>? TrafficLights = null,
+    IReadOnlyList<WorldTrafficLightJump>? TrafficLightJumps = null,
+    IReadOnlyList<WorldTrafficLightStop>? TrafficLightStops = null,
+    OmsiSceneryScriptManifest? ScriptManifest = null,
+    bool NoCollision = false,
+    bool Fixed = false,
+    bool Surface = false,
+    string? CollisionMeshSource = null,
+    OmsiSceneryBoundingBox? BoundingBox = null,
+    WorldSceneryCollisionBounds? CollisionBounds = null,
+    WorldSceneryCollisionGeometry? CollisionGeometry = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(

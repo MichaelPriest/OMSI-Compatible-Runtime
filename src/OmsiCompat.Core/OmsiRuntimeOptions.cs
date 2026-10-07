@@ -28,6 +28,18 @@ public sealed class OmsiRuntimeOptions
     public bool ShowVehiclePreview { get; set; } = true;
     public string TypewriterFont { get; set; } = "Courier New";
     public bool GameControllerEnabled { get; set; }
+    public double ControllerDeadZone { get; set; }
+    public double MouseSteeringSensitivity { get; set; } = 1.0;
+    public double ThrottlePedalResponse { get; set; } = 1.0;
+    public double BrakePedalResponse { get; set; } = 1.0;
+    public double WheelRangeDegrees { get; set; } = 900.0;
+    public double WheelLockDegrees { get; set; }
+    public double FieldOfViewDegrees { get; set; }
+
+    public string MultiplayerMode { get; set; } = "off";
+    public string MultiplayerPlayerName { get; set; } = "Driver";
+    public string MultiplayerTarget { get; set; } = "";
+    public int MultiplayerPort { get; set; } = 27015;
 
     public bool ReducedMultithreading { get; set; }
     public bool LoadWholeMapAtStart { get; set; }
@@ -88,11 +100,14 @@ public sealed class OmsiRuntimeOptions
     public int ScheduledTrafficPriority { get; set; } = 2;
     public bool UseReducedAiList { get; set; }
 
+    public string RuntimeGraphicsBackend { get; set; } = "Auto";
     public bool RuntimeVSync { get; set; } = true;
     public bool RuntimeBorderlessFullscreen { get; set; }
     public int RuntimeStreamingRadius { get; set; } = 2;
     public bool RuntimePreferHardwareGpu { get; set; } = true;
-    public bool RuntimeShowFps { get; set; }
+    public bool RuntimeShowFps { get; set; } = true;
+    public int RuntimeMsaaSamples { get; set; } = 4;
+    public double RuntimeSharpenStrength { get; set; } = 0.15;
     public bool RuntimeDiagnostics { get; set; } = true;
 
     public static string SettingsDirectory =>

@@ -1,9 +1,10 @@
 using System.Numerics;
+using OMSICompatible.Renderer.Common;
 using Vortice.Mathematics;
 
 namespace OMSICompatible.Renderer.D3D11;
 
-internal sealed record RuntimeSplineGeometry(
+public sealed record RuntimeSplineGeometry(
     RuntimeObjectVertex[] Vertices,
     IReadOnlyList<RuntimeObjectBatch> Batches,
     int RenderedSplineCount,
@@ -17,7 +18,7 @@ internal sealed record RuntimeSplineGeometry(
             0);
 }
 
-internal static class RuntimeSplineGeometryBuilder
+public static class RuntimeSplineGeometryBuilder
 {
     private readonly record struct BatchKey(
         string? TexturePath,
@@ -120,21 +121,29 @@ internal static class RuntimeSplineGeometryBuilder
 
                     var left0 =
                         Transform(
+                            spline,
+                            distance0,
                             frame0,
                             surface.From);
 
                     var left1 =
                         Transform(
+                            spline,
+                            distance1,
                             frame1,
                             surface.From);
 
                     var right1 =
                         Transform(
+                            spline,
+                            distance1,
                             frame1,
                             surface.To);
 
                     var right0 =
                         Transform(
+                            spline,
+                            distance0,
                             frame0,
                             surface.To);
 
@@ -354,9 +363,7 @@ internal static class RuntimeSplineGeometryBuilder
         var worldY =
             spline.Y +
             GradientRise(
-                spline.GradientStartPercent,
-                spline.GradientEndPercent,
-                spline.LengthMeters,
+                spline,
                 clamped) +
             0.025;
 
@@ -370,6 +377,8 @@ internal static class RuntimeSplineGeometryBuilder
     }
 
     private static Vector3 Transform(
+        RuntimeSplineInfo spline,
+        double distance,
         (
             Vector3 Center,
             Vector3 Lateral,
@@ -377,19 +386,68 @@ internal static class RuntimeSplineGeometryBuilder
         ) frame,
         RuntimeSplineProfilePointInfo point)
     {
+        var normalized =
+            spline.LengthMeters <= 0.0
+                ? 0.0
+                : Math.Clamp(
+                    distance /
+                    spline.LengthMeters,
+                    0.0,
+                    1.0);
+
+        var sourceX =
+            point.X;
+
+        var lateralX =
+            spline.Mirror
+                ? -sourceX
+                : sourceX;
+
+        var skew =
+            spline.SkewStart +
+            (spline.SkewEnd -
+             spline.SkewStart) *
+            normalized;
+
+        if (spline.Mirror)
+        {
+            skew =
+                -skew;
+        }
+
+        var cantPercent =
+            spline.CantStartPercent +
+            (spline.CantEndPercent -
+             spline.CantStartPercent) *
+            normalized;
+
+        var forwardOffset =
+            skew *
+            sourceX;
+
+        var cantHeightOffset =
+            -sourceX *
+            cantPercent /
+            100.0;
+
         return frame.Center +
                frame.Lateral *
-               (float)point.X +
+               (float)lateralX +
+               frame.Forward *
+               (float)forwardOffset +
                Vector3.UnitY *
-               (float)point.Z;
+               (float)(
+                   point.Z +
+                   cantHeightOffset);
     }
 
     private static double GradientRise(
-        double start,
-        double end,
-        double length,
+        RuntimeSplineInfo spline,
         double distance)
     {
+        var length =
+            spline.LengthMeters;
+
         if (length <= 0.0)
         {
             return 0.0;
@@ -401,11 +459,53 @@ internal static class RuntimeSplineGeometryBuilder
             length);
 
         var startSlope =
-            start /
+            spline.GradientStartPercent /
             100.0;
 
+        if (spline.UsesHeightProfile)
+        {
+            var endSlope =
+                spline.GradientEndPercent /
+                100.0;
+
+            var heightResidual =
+                spline.DeltaHeightMeters -
+                startSlope *
+                length;
+
+            var c =
+                ((endSlope -
+                  startSlope) *
+                 length -
+                 2.0 *
+                 heightResidual) /
+                (length *
+                 length *
+                 length);
+
+            var a =
+                (-(endSlope -
+                   startSlope) *
+                  length +
+                 3.0 *
+                 heightResidual) /
+                (length *
+                 length);
+
+            return c *
+                       clamped *
+                       clamped *
+                       clamped +
+                   a *
+                       clamped *
+                       clamped +
+                   startSlope *
+                       clamped;
+        }
+
         var slopeDelta =
-            (end - start) /
+            (spline.GradientEndPercent -
+             spline.GradientStartPercent) /
             100.0;
 
         return startSlope *
@@ -446,6 +546,30 @@ internal static class RuntimeSplineGeometryBuilder
             leftUv0,
             rightUv1,
             rightUv0,
+            color,
+            output);
+
+        // OMSI add-on splines are not always authored with a consistent
+        // profile point order. Render the road surface from both sides so a
+        // reversed profile winding cannot make the complete street disappear
+        // or look upside-down when back-face culling is active.
+        AppendTriangle(
+            right1,
+            left1,
+            left0,
+            rightUv1,
+            leftUv1,
+            leftUv0,
+            color,
+            output);
+
+        AppendTriangle(
+            right0,
+            right1,
+            left0,
+            rightUv0,
+            rightUv1,
+            leftUv0,
             color,
             output);
     }

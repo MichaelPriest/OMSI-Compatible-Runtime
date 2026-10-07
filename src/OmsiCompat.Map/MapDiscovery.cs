@@ -42,10 +42,35 @@ public static class MapDiscovery
             .FirstOrDefault(map => string.Equals(map.FolderName, folderName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string? FindFileCaseInsensitive(string directory, string fileName)
+    private static string? FindFileCaseInsensitive(
+        string directory,
+        string fileName)
     {
+        var direct =
+            Path.Combine(
+                directory,
+                fileName);
+
+        if (File.Exists(
+                direct))
+        {
+            return direct;
+        }
+
+        // Fallback for content copied from case-sensitive file systems or
+        // unusual casing. The common OMSI layout avoids enumerating every
+        // file in each map directory.
         return Directory
-            .EnumerateFiles(directory)
-            .FirstOrDefault(path => string.Equals(Path.GetFileName(path), fileName, StringComparison.OrdinalIgnoreCase));
+            .EnumerateFiles(
+                directory,
+                "*",
+                SearchOption.TopDirectoryOnly)
+            .FirstOrDefault(
+                path =>
+                    string.Equals(
+                        Path.GetFileName(
+                            path),
+                        fileName,
+                        StringComparison.OrdinalIgnoreCase));
     }
 }
