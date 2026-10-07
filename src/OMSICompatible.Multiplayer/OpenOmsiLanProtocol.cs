@@ -49,6 +49,8 @@ public static class OpenOmsiLanProtocol
     public const int MaximumValues = 63;
     public const int MaximumDisplayTexts = 12;
     public const int MaximumFreeTextures = 8;
+    public const int MaximumNearFootprints = 28;
+    public const double FootprintRadiusMeters = 250.0;
 
     public static string CleanText(string? value, int maximumCharacters)
     {
@@ -496,6 +498,14 @@ public sealed record OpenOmsiLanWorld(
     public static OpenOmsiLanWorld Empty { get; } =
         new(string.Empty, string.Empty, 0.0, string.Empty, string.Empty);
 }
+
+public sealed record OpenOmsiLanFootprint(
+    double X,
+    double Y,
+    double Z,
+    float HeadingDegrees,
+    float LengthMeters,
+    float WidthMeters);
 
 public sealed record OpenOmsiLanPartPose(
     double X,
