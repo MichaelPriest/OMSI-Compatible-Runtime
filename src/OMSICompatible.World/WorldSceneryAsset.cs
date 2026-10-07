@@ -141,7 +141,8 @@ public sealed record WorldSceneryAsset(
     WorldSceneryCollisionBounds? CollisionBounds = null,
     WorldSceneryCollisionGeometry? CollisionGeometry = null,
     bool IsCarPark = false,
-    IReadOnlyList<WorldPassengerWaitingPosition>? PassengerWaitingPositions = null)
+    IReadOnlyList<WorldPassengerWaitingPosition>? PassengerWaitingPositions = null,
+    string? PassengerCabinPath = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(
