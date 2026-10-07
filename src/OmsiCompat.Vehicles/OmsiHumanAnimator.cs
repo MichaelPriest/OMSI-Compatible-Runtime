@@ -1,7 +1,13 @@
 using System.Numerics;
-using OMSICompatible.Multiplayer;
-
 namespace OmsiCompat.Vehicles;
+
+public enum OmsiHumanActivity
+{
+    Stand,
+    Walk,
+    Sit,
+    Run
+}
 
 public sealed class OmsiHumanRig
 {
@@ -268,7 +274,7 @@ public sealed class OmsiHumanAnimator
         _angles;
 
     public Matrix4x4[] Advance(
-        OpenOmsiLanWorldPersonActivity activity,
+        OmsiHumanActivity activity,
         float speedMetersPerSecond,
         float movedMeters,
         float deltaSeconds,
@@ -279,11 +285,11 @@ public sealed class OmsiHumanAnimator
         var kind =
             activity switch
             {
-                OpenOmsiLanWorldPersonActivity.Walk =>
+                OmsiHumanActivity.Walk =>
                     1,
-                OpenOmsiLanWorldPersonActivity.Run =>
+                OmsiHumanActivity.Run =>
                     1,
-                OpenOmsiLanWorldPersonActivity.Sit =>
+                OmsiHumanActivity.Sit =>
                     2,
                 _ =>
                     0
