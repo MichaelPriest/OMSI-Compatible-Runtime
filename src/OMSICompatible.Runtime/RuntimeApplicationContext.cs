@@ -104,7 +104,7 @@ internal sealed class RuntimeApplicationContext :
     private double _hostWorldPassengerRefreshAccumulator =
         1.0;
     private double _hostWorldPassengerSendAccumulator;
-    private readonly Dictionary<uint, HostWorldPassengerPeerView>
+    private readonly Dictionary<uint, WorldPeerVisibilityView>
         _hostWorldPassengerPeerViews =
             [];
     private readonly Dictionary<(bool Person, uint Id), DateTimeOffset>
@@ -116,7 +116,7 @@ internal sealed class RuntimeApplicationContext :
     private readonly HashSet<uint>
         _relayedWorldPersonIdsInUse =
             [];
-    private readonly Dictionary<(uint ObserverPeerId, uint SourcePeerId), HostWorldPassengerPeerView>
+    private readonly Dictionary<(uint ObserverPeerId, uint SourcePeerId), WorldPeerVisibilityView>
         _relayedWorldPassengerPeerViews =
             [];
     private uint _nextRelayedWorldPersonId =
@@ -145,6 +145,9 @@ internal sealed class RuntimeApplicationContext :
             [];
     private readonly Dictionary<uint, double>
         _sharedWorldGoneCarSeconds =
+            [];
+    private readonly Dictionary<uint, WorldPeerVisibilityView>
+        _sharedWorldCarPeerViews =
             [];
 
     private readonly Dictionary<uint, double>
@@ -246,7 +249,7 @@ internal sealed class RuntimeApplicationContext :
         public double HeadingDegrees { get; set; }
     }
 
-    private sealed class HostWorldPassengerPeerView
+    private sealed class WorldPeerVisibilityView
     {
         public HashSet<uint> VisibleIds { get; } =
             [];
@@ -4940,7 +4943,7 @@ internal sealed class RuntimeApplicationContext :
                     out var view))
             {
                 view =
-                    new HostWorldPassengerPeerView();
+                    new WorldPeerVisibilityView();
 
                 _relayedWorldPassengerPeerViews[
                     viewKey] =
@@ -5621,6 +5624,7 @@ internal sealed class RuntimeApplicationContext :
             null;
         _sharedWorldLastAdvertisedCarCount =
             0;
+        _sharedWorldCarPeerViews.Clear();
         _sharedWorldPublishedCarIds.Clear();
         _sharedWorldGoneCarSeconds.Clear();
     }
@@ -6606,7 +6610,7 @@ internal sealed class RuntimeApplicationContext :
                     out var view))
             {
                 view =
-                    new HostWorldPassengerPeerView();
+                    new WorldPeerVisibilityView();
 
                 _hostWorldPassengerPeerViews[
                     peer.Id] =
