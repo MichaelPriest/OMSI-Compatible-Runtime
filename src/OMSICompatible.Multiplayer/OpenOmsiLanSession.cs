@@ -654,6 +654,44 @@ public sealed class OpenOmsiLanSession :
         return true;
     }
 
+    public bool SendWorldFrameTo(
+        uint playerId,
+        OpenOmsiLanWorldFrame frame)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host ||
+            !_peers.TryGetValue(
+                playerId,
+                out var peer))
+        {
+            return false;
+        }
+
+        var outbound =
+            frame with
+            {
+                Sequence =
+                    _worldSequence++,
+                HostMilliseconds =
+                    unchecked(
+                        (uint)Environment.TickCount64)
+            };
+
+        foreach (var packet in
+                 OpenOmsiLanWorldCodec.Encode(
+                     outbound))
+        {
+            Send(
+                packet,
+                peer.Endpoint);
+        }
+
+        return true;
+    }
+
     public bool SendWorldCarDescription(
         OpenOmsiLanWorldCarDescription description)
     {
