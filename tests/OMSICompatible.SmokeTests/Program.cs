@@ -8563,7 +8563,9 @@ try
             Z =
                 0.005,
             Flags =
-                OpenOmsiLanProtocol.FlagVehicle
+                OpenOmsiLanProtocol.FlagVehicle,
+            RadioKeyed =
+                true
         };
 
     var midpointStatePacket =
@@ -8589,8 +8591,9 @@ try
         Math.Abs(
             midpointStateDecoded.Z -
             0.01) <
-            0.000001,
-        "Runtime STATE midpoint quantization no longer matches Rust f64::round/openOMSI.");
+            0.000001 &&
+        midpointStateDecoded.RadioKeyed,
+        "Runtime STATE midpoint/radio tail no longer matches openOMSI protocol 6.");
 
     var opsMessage =
         new OpenOmsiLanOperationalMessage(
