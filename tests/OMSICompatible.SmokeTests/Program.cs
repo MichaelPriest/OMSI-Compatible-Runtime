@@ -4255,6 +4255,116 @@ try
             secondRoadPath.Index,
         "Forward road path did not connect across linked OMSI splines.");
 
+    var navigationRoute =
+        firstRoadPath.Points
+            .Concat(
+                secondRoadPath.Points.Skip(
+                    1))
+            .ToArray();
+
+    var navigationAssist =
+        new WorldNavigationAssist();
+
+    navigationAssist.SetRoute(
+        navigationRoute);
+
+    var navigationStart =
+        navigationRoute[0];
+
+    var navigationHeading =
+        navigationRoute.Length >
+                1
+            ? Math.Atan2(
+                navigationRoute[1].X -
+                    navigationStart.X,
+                navigationRoute[1].Z -
+                    navigationStart.Z) *
+              180.0 /
+              Math.PI
+            : 0.0;
+
+    var navigationState =
+        navigationAssist.Build(
+            navigationStart,
+            navigationHeading,
+            50.0,
+            onFoot:
+                false,
+            [
+                new WorldTrafficAgentState(
+                    9001,
+                    firstRoadPath.Index,
+                    0.0,
+                    0.0,
+                    "Vehicles/Synthetic/car.bus",
+                    new WorldVector3(
+                        navigationStart.X +
+                            2.0,
+                        navigationStart.Y,
+                        navigationStart.Z +
+                            2.0),
+                    0.0),
+                new WorldTrafficAgentState(
+                    9002,
+                    firstRoadPath.Index,
+                    1.0,
+                    2.0,
+                    "Vehicles/Synthetic/car.bus",
+                    new WorldVector3(
+                        navigationStart.X +
+                            4.0,
+                        navigationStart.Y,
+                        navigationStart.Z +
+                            4.0),
+                    0.0),
+                new WorldTrafficAgentState(
+                    9003,
+                    firstRoadPath.Index,
+                    2.0,
+                    3.0,
+                    "Vehicles/Synthetic/car.bus",
+                    new WorldVector3(
+                        navigationStart.X +
+                            6.0,
+                        navigationStart.Y,
+                        navigationStart.Z +
+                            6.0),
+                    0.0)
+            ]);
+
+    Require(
+        navigationState.RouteLoaded &&
+        !navigationState.OffRoute &&
+        navigationState.SuggestedMapRadiusMeters ==
+            1250.0 &&
+        navigationState.CongestionLevel ==
+            "heavy" &&
+        navigationState.GuidanceWaypoints.Count >
+            0 &&
+        navigationState.GroundArrows.Count >
+            0,
+        "NavBR navigation core did not preserve adaptive zoom, congestion, route waypoints and ground guidance.");
+
+    var navigationOffRoute =
+        navigationAssist.Build(
+            new WorldVector3(
+                navigationStart.X +
+                    1000.0,
+                navigationStart.Y,
+                navigationStart.Z +
+                    1000.0),
+            navigationHeading,
+            25.0,
+            onFoot:
+                false);
+
+    Require(
+        navigationOffRoute.OffRoute &&
+        navigationOffRoute.DistanceFromRouteMeters >
+            45.0 &&
+        navigationOffRoute.RejoinTarget.HasValue,
+        "NavBR route projection did not detect off-route state or produce a rejoin target.");
+
     var syntheticLineTrack =
         new OmsiTimetableTrack(
             "SyntheticLineTrack",
