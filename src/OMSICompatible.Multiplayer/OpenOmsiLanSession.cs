@@ -67,6 +67,8 @@ public sealed class OpenOmsiLanSession :
     private double _helloAccumulator = 1.0;
     private double _infoAccumulator =
         OpenOmsiLanProtocol.InfoEverySeconds;
+    private double _clockAccumulator =
+        OpenOmsiLanProtocol.ClockEverySeconds;
     private double _unchangedSeconds;
     private byte[] _lastStateBody = [];
     private string _lastInfo = string.Empty;
@@ -501,6 +503,7 @@ public sealed class OpenOmsiLanSession :
         _sendAccumulator += dt;
         _helloAccumulator += dt;
         _infoAccumulator += dt;
+        _clockAccumulator += dt;
 
         if (Role == OpenOmsiLanRole.Client &&
             !Connected &&
@@ -519,6 +522,20 @@ public sealed class OpenOmsiLanSession :
             SendOwn(
                 dt,
                 localPose);
+
+            if (Role ==
+                    OpenOmsiLanRole.Host &&
+                _clockAccumulator >=
+                    OpenOmsiLanProtocol.ClockEverySeconds)
+            {
+                _clockAccumulator =
+                    0.0;
+
+                BroadcastText(
+                    $"CLOCK|{OpenOmsiLanProtocol.EncodeWorld(World)}",
+                    except:
+                        null);
+            }
         }
 
         ReceiveAvailable();
@@ -988,6 +1005,14 @@ public sealed class OpenOmsiLanSession :
                     endpoint);
                 break;
 
+            case "CLOCK"
+                when Role ==
+                     OpenOmsiLanRole.Client:
+                HandleClock(
+                    fields,
+                    endpoint);
+                break;
+
             case OpenOmsiLanOperationalCodec.Prefix:
                 HandleOperationalMessage(
                     text,
@@ -1214,6 +1239,26 @@ public sealed class OpenOmsiLanSession :
 
         RejectionReason =
             null;
+    }
+
+    private void HandleClock(
+        IReadOnlyList<string> fields,
+        IPEndPoint endpoint)
+    {
+        if (!Connected ||
+            _host is null ||
+            !endpoint.Equals(
+                _host) ||
+            fields.Count <
+                6)
+        {
+            return;
+        }
+
+        World =
+            OpenOmsiLanProtocol.DecodeWorld(
+                fields,
+                1);
     }
 
     private void HandleInfo(
