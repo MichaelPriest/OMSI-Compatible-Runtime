@@ -1339,6 +1339,8 @@ public sealed class OpenOmsiLanSession :
 
         SessionId =
             session;
+        _requestedSessionId ??=
+            session;
 
         _host =
             endpoint;
