@@ -359,9 +359,8 @@ public static class OpenOmsiLanWorldCodec
 
             lights.Add(
                 new OpenOmsiLanWorldLightState(
-                    unchecked(
-                        (int)(
-                            uint)objectId),
+                    (long)(
+                        uint)objectId,
                     position *
                         0.05,
                     held ==
