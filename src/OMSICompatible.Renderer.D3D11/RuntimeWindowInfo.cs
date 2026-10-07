@@ -485,6 +485,16 @@ public sealed record RuntimeVehicleEntryInfo(
     double Y,
     double Z);
 
+public sealed record RuntimeVehiclePassengerPlaceInfo(
+    int Index,
+    double X,
+    double Y,
+    double Z,
+    double Height,
+    double HeadingDegrees,
+    string? SwitchVariable,
+    string? TakenVariable);
+
 public sealed record RuntimeReflectionCameraInfo(
     int Index,
     double X,
@@ -583,7 +593,8 @@ public sealed record RuntimeVehicleInfo(
     int ProtectedMeshCount,
     IReadOnlyList<RuntimeVehicleTextTextureInfo> TextTextures,
     IReadOnlyList<RuntimeVehicleSectionInfo>? Sections = null,
-    IReadOnlyList<RuntimeVehicleEntryInfo>? PassengerEntries = null);
+    IReadOnlyList<RuntimeVehicleEntryInfo>? PassengerEntries = null,
+    IReadOnlyList<RuntimeVehiclePassengerPlaceInfo>? PassengerPlaces = null);
 
 public sealed record RuntimeWindowInfo(
     string WorldName,
