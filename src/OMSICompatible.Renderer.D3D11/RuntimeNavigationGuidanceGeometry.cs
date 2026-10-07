@@ -33,32 +33,51 @@ internal static class RuntimeNavigationGuidanceGeometry
         RuntimeNavigationGuidancePointInfo point,
         ICollection<RuntimeObjectVertex> output)
     {
-        var radians =
+        var headingRadians =
             point.HeadingDegrees *
             Math.PI /
             180.0;
+        var pitchRadians =
+            point.PitchDegrees *
+            Math.PI /
+            180.0;
+
+        var horizontalScale =
+            (float)Math.Cos(
+                pitchRadians);
 
         var forward =
             Vector3.Normalize(
                 new Vector3(
                     (float)Math.Sin(
-                        radians),
-                    0.0f,
+                        headingRadians) *
+                    horizontalScale,
+                    (float)Math.Sin(
+                        pitchRadians),
                     (float)Math.Cos(
-                        radians)));
+                        headingRadians) *
+                    horizontalScale));
 
         var right =
-            new Vector3(
-                forward.Z,
-                0.0f,
-                -forward.X);
+            Vector3.Normalize(
+                new Vector3(
+                    forward.Z,
+                    0.0f,
+                    -forward.X));
+
+        var surfaceNormal =
+            Vector3.Normalize(
+                Vector3.Cross(
+                    forward,
+                    right));
 
         var center =
             new Vector3(
                 (float)point.X,
-                (float)point.Y +
-                    0.07f,
-                (float)point.Z);
+                (float)point.Y,
+                (float)point.Z) +
+            surfaceNormal *
+            0.07f;
 
         var color =
             point.Kind.Equals(
