@@ -85,6 +85,7 @@ internal sealed class RuntimeApplicationContext :
             [];
     private double _sharedWorldSendAccumulator;
     private double _sharedWorldDescriptionAccumulator;
+    private DateTimeOffset? _sharedWorldLastFrameAt;
 
     private readonly Dictionary<uint, double>
         _multiplayerTravelMeters =
@@ -3816,6 +3817,9 @@ internal sealed class RuntimeApplicationContext :
         var now =
             DateTimeOffset.UtcNow;
 
+        _sharedWorldLastFrameAt =
+            now;
+
         foreach (var car in
                  frame.Cars)
         {
@@ -4070,6 +4074,8 @@ internal sealed class RuntimeApplicationContext :
             0.0;
         _sharedWorldDescriptionAccumulator =
             0.0;
+        _sharedWorldLastFrameAt =
+            null;
     }
 
     private OpenOmsiLanPose CreateLocalMultiplayerPose()
