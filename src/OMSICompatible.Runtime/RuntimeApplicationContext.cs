@@ -5429,7 +5429,9 @@ internal sealed class RuntimeApplicationContext :
                         .Replace(
                             '\\',
                             '/') ??
-                    string.Empty
+                    string.Empty,
+                RadioKeyed =
+                    _commsLinkVoice.IsTransmitting
             };
 
         if (_runtimeWindow is not
