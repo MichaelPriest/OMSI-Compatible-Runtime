@@ -8356,7 +8356,14 @@ try
             Switches =
                 [1.0f, -2.0f],
             Values =
-                [0.25f, 1375.0f]
+                Enumerable
+                    .Range(
+                        0,
+                        OpenOmsiLanProtocol.MaximumValues)
+                    .Select(
+                        static value =>
+                            (float)value)
+                    .ToList()
         };
 
     var lanInfo =
@@ -8417,6 +8424,13 @@ try
             lanPose.Doors.Count &&
         decodedLanState.RearSections.Count ==
             1 &&
+        OpenOmsiLanProtocol.ProtocolVersion ==
+            6 &&
+        decodedLanState.Values.Count ==
+            OpenOmsiLanProtocol.MaximumValues &&
+        decodedLanState.Values[^1] ==
+            OpenOmsiLanProtocol.MaximumValues -
+                1 &&
         OpenOmsiLanProtocol.SequenceIsNewer(
             2,
             ushort.MaxValue),
