@@ -479,6 +479,12 @@ public sealed record RuntimeOutsideCameraCenterInfo(
     double Y,
     double Z);
 
+public sealed record RuntimeVehicleEntryInfo(
+    int Index,
+    double X,
+    double Y,
+    double Z);
+
 public sealed record RuntimeReflectionCameraInfo(
     int Index,
     double X,
@@ -576,7 +582,8 @@ public sealed record RuntimeVehicleInfo(
     RuntimeDriverPositionInfo? DriverPosition,
     int ProtectedMeshCount,
     IReadOnlyList<RuntimeVehicleTextTextureInfo> TextTextures,
-    IReadOnlyList<RuntimeVehicleSectionInfo>? Sections = null);
+    IReadOnlyList<RuntimeVehicleSectionInfo>? Sections = null,
+    IReadOnlyList<RuntimeVehicleEntryInfo>? PassengerEntries = null);
 
 public sealed record RuntimeWindowInfo(
     string WorldName,
