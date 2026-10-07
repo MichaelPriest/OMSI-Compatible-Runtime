@@ -21517,12 +21517,14 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        if (e.Control &&
+        if (!_onFootMode &&
+            _driveMode &&
+            e.Control &&
             e.Shift &&
             e.KeyCode ==
                 Keys.G)
         {
-            ToggleOnFootMode();
+            EnterOnFootMode();
             e.SuppressKeyPress =
                 true;
             e.Handled =
@@ -21547,6 +21549,31 @@ public sealed class D3D11RenderWindow : Form
                 case Keys.F4:
                     _onFootFreeCamera =
                         true;
+                    _walkerVelocity =
+                        Vector2.Zero;
+                    _walkerVerticalSpeed =
+                        0.0f;
+
+                    if (_terrainSurfaceSampler.TrySample(
+                            _walkerPosition.X,
+                            _walkerPosition.Z,
+                            out var freeCameraGround))
+                    {
+                        _walkerPosition.Y =
+                            freeCameraGround +
+                            0.02f;
+                        _walkerGrounded =
+                            true;
+                    }
+
+                    e.SuppressKeyPress =
+                        true;
+                    e.Handled =
+                        true;
+                    return;
+
+                case Keys.G:
+                    TryReturnToVehicle();
                     e.SuppressKeyPress =
                         true;
                     e.Handled =
@@ -21678,32 +21705,14 @@ public sealed class D3D11RenderWindow : Form
             e);
     }
 
-    private void ToggleOnFootMode()
+    private void EnterOnFootMode()
     {
-        if (_vehiclePreviewMode ||
+        if (_onFootMode ||
+            !_driveMode ||
+            _vehiclePreviewMode ||
             _windowInfo.Vehicle is null ||
             _vehicleRemoved)
         {
-            return;
-        }
-
-        if (_onFootMode)
-        {
-            _onFootMode =
-                false;
-            _onFootFreeCamera =
-                false;
-            _walkerVelocity =
-                Vector2.Zero;
-            _walkerVerticalSpeed =
-                0.0f;
-            _walkerKneeling =
-                false;
-            _driveMode =
-                true;
-            _vehicleViewMode =
-                RuntimeVehicleViewMode.Driver;
-            UpdateCaption();
             return;
         }
 
@@ -21779,6 +21788,50 @@ public sealed class D3D11RenderWindow : Form
                 forward,
             moveSpeed:
                 4.3f);
+
+        UpdateCaption();
+    }
+
+    private void TryReturnToVehicle()
+    {
+        if (!_onFootMode ||
+            _windowInfo.Vehicle is null ||
+            _vehicleRemoved)
+        {
+            return;
+        }
+
+        var delta =
+            _walkerPosition -
+            _vehicle.Position;
+
+        var planarDistance =
+            MathF.Sqrt(
+                delta.X *
+                    delta.X +
+                delta.Z *
+                    delta.Z);
+
+        if (planarDistance >
+            5.0f)
+        {
+            return;
+        }
+
+        _onFootMode =
+            false;
+        _onFootFreeCamera =
+            false;
+        _walkerVelocity =
+            Vector2.Zero;
+        _walkerVerticalSpeed =
+            0.0f;
+        _walkerKneeling =
+            false;
+        _driveMode =
+            true;
+        _vehicleViewMode =
+            RuntimeVehicleViewMode.Driver;
 
         UpdateCaption();
     }
