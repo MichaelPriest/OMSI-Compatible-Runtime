@@ -133,4 +133,5 @@ public sealed record WorldDefinition(
     int PlacementParseIssueCount,
     int TerrainParseIssueCount,
     WorldBounds? Bounds,
-    OmsiCompat.Map.OmsiSignalRoutesFile? SignalRoutes = null);
+    OmsiCompat.Map.OmsiSignalRoutesFile? SignalRoutes = null,
+    IReadOnlyList<WorldParkedCarPlacement>? ParkedCars = null);

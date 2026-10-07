@@ -134,6 +134,19 @@ public static class WorldLoader
                 allObjects,
                 dependencies);
 
+        var parkedResult =
+            IncludeParkedCars(
+                contentRoot,
+                map.DirectoryPath,
+                allObjects,
+                dependencies,
+                sceneryAssets);
+
+        dependencies =
+            parkedResult.Dependencies;
+        sceneryAssets =
+            parkedResult.SceneryAssets;
+
         var texturePaths =
             new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
@@ -353,6 +366,22 @@ public static class WorldLoader
             allObjects,
             dependencies);
 
+        var parkedResult =
+            IncludeParkedCars(
+                contentRoot,
+                map.DirectoryPath,
+                allObjects,
+                dependencies,
+                sceneryAssets);
+
+        dependencies =
+            parkedResult.Dependencies;
+        sceneryAssets =
+            parkedResult.SceneryAssets;
+
+        var parkedCars =
+            parkedResult.ParkedCars;
+
         progress?.Report(
             new WorldLoadProgress(
                 86,
@@ -407,7 +436,9 @@ public static class WorldLoader
             tiles.Sum(static tile => tile.PlacementParseIssueCount),
             tiles.Count(static tile => tile.TerrainErrorCode is not null),
             bounds,
-            signalRoutes);
+            signalRoutes,
+            ParkedCars:
+                parkedCars);
     }
 
     private static WorldTile LoadWorldTileCached(
@@ -1018,6 +1049,103 @@ public static class WorldLoader
         {
             return SplineCache.Count;
         }
+    }
+
+    private sealed record ParkedCarLoadResult(
+        WorldDependencyReport Dependencies,
+        IReadOnlyDictionary<string, WorldSceneryAsset> SceneryAssets,
+        IReadOnlyList<WorldParkedCarPlacement> ParkedCars);
+
+    private static ParkedCarLoadResult IncludeParkedCars(
+        OmsiContentRoot contentRoot,
+        string mapDirectory,
+        IReadOnlyList<WorldObjectPlacement> objects,
+        WorldDependencyReport dependencies,
+        IReadOnlyDictionary<string, WorldSceneryAsset> sceneryAssets)
+    {
+        var parkedCars =
+            WorldParkedCarResolver.Build(
+                mapDirectory,
+                objects,
+                sceneryAssets);
+
+        if (parkedCars.Count ==
+            0)
+        {
+            return new ParkedCarLoadResult(
+                dependencies,
+                sceneryAssets,
+                parkedCars);
+        }
+
+        var parkedObjects =
+            parkedCars
+                .Select(
+                    static parked =>
+                        new WorldObjectPlacement(
+                            parked.Tile,
+                            parked.ParkingObjectId,
+                            parked.AssetPath,
+                            parked.Position,
+                            parked.HeadingDegrees,
+                            parked.PitchDegrees,
+                            parked.BankDegrees,
+                            Array.Empty<string>(),
+                            0))
+                .ToArray();
+
+        var parkedDependencies =
+            WorldAssetResolver.ResolvePrimaryDependencies(
+                contentRoot,
+                parkedObjects,
+                Array.Empty<WorldSplinePlacement>());
+
+        var parkedAssets =
+            LoadSceneryAssets(
+                contentRoot,
+                parkedObjects,
+                parkedDependencies);
+
+        var mergedAssets =
+            sceneryAssets.ToDictionary(
+                static pair =>
+                    pair.Key,
+                static pair =>
+                    pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in
+                 parkedAssets)
+        {
+            mergedAssets[
+                pair.Key] =
+                pair.Value;
+        }
+
+        var mergedDependencies =
+            dependencies.Dependencies
+                .Concat(
+                    parkedDependencies.Dependencies)
+                .GroupBy(
+                    static item =>
+                        (
+                            item.Kind,
+                            item.SourcePath
+                        ),
+                    AssetKeyComparer.Instance)
+                .Select(
+                    static group =>
+                        group.First())
+                .ToArray();
+
+        Console.WriteLine(
+            $"[parked-cars] spaces={objects.Count(item => sceneryAssets.TryGetValue(item.AssetPath, out var asset) && asset.IsCarPark)}; placed={parkedCars.Count}; types={parkedCars.Select(static item => item.AssetPath).Distinct(StringComparer.OrdinalIgnoreCase).Count()}");
+
+        return new ParkedCarLoadResult(
+            new WorldDependencyReport(
+                mergedDependencies),
+            mergedAssets,
+            parkedCars);
     }
 
     private static IReadOnlyDictionary<string, WorldSceneryAsset>

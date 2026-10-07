@@ -9257,6 +9257,50 @@ try
         carParkScenerySmoke.IsCarPark,
         "OMSI [carpark_p] scenery marker was not preserved for parked-car WORLD state.");
 
+    Require(
+        WorldParkedCarResolver.ResolveParkListIndex(
+            Array.Empty<string>()) ==
+            0 &&
+        WorldParkedCarResolver.ResolveParkListIndex(
+            [
+                " 2 ",
+                "ignored"
+            ]) ==
+            2 &&
+        WorldParkedCarResolver.ResolveParkListIndex(
+            [
+                "Taxi"
+            ]) ==
+            0,
+        "OMSI parked-car parklist caption selection diverged from openOMSI.");
+
+    var parkedCarTypes =
+        new[]
+        {
+            "Vehicles/Test/parked_a.sco",
+            "Vehicles/Test/parked_b.sco",
+            "Vehicles/Test/parked_c.sco"
+        };
+
+    Require(
+        WorldParkedCarResolver.SelectParkedCar(
+            1,
+            parkedCarTypes) is
+            null &&
+        WorldParkedCarResolver.SelectParkedCar(
+            2,
+            parkedCarTypes) ==
+            parkedCarTypes[0] &&
+        WorldParkedCarResolver.SelectParkedCar(
+            3,
+            parkedCarTypes) ==
+            parkedCarTypes[1] &&
+        WorldParkedCarResolver.SelectParkedCar(
+            5,
+            parkedCarTypes) ==
+            parkedCarTypes[2],
+        "OMSI parked-car deterministic selection diverged from openOMSI.");
+
     var worldPersonDescriptionVector =
         new OpenOmsiLanWorldPersonDescription(
             7,

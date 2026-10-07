@@ -7499,6 +7499,26 @@ internal sealed class RuntimeApplicationContext :
                             -item.BankDegrees,
                             item.ExtraValues,
                             item.Id))
+                .Concat(
+                    (world.ParkedCars ??
+                     Array.Empty<WorldParkedCarPlacement>())
+                        .Select(
+                            static item =>
+                                new RuntimeObjectInfo(
+                                    RuntimeTileXFromSourceTileX(
+                                        item.Tile.X),
+                                    item.Tile.Y,
+                                    item.AssetPath,
+                                    RuntimeLocalXFromSourceLocalX(
+                                        item.Position.X),
+                                    item.Position.Y,
+                                    item.Position.Z,
+                                    RuntimeHeadingDegreesFromSource(
+                                        item.HeadingDegrees),
+                                    item.PitchDegrees,
+                                    -item.BankDegrees,
+                                    Array.Empty<string>(),
+                                    item.ParkingObjectId)))
                 .ToArray();
 
         var runtimeSceneryAssets =
