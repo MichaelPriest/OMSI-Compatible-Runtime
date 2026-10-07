@@ -21955,6 +21955,360 @@ public sealed class D3D11RenderWindow : Form
         return position;
     }
 
+    private Vector3 PassengerPlaceWorldPosition(
+        RuntimeVehiclePassengerPlaceInfo place)
+    {
+        var heading =
+            _vehicle.HeadingRadians;
+
+        var forward =
+            new Vector3(
+                MathF.Sin(
+                    heading),
+                0.0f,
+                MathF.Cos(
+                    heading));
+
+        var right =
+            new Vector3(
+                forward.Z,
+                0.0f,
+                -forward.X);
+
+        return _vehicle.Position +
+               right *
+                   (float)place.X +
+               Vector3.UnitY *
+                   (float)place.Y +
+               forward *
+                   (float)place.Z;
+    }
+
+    private bool IsPassengerPlaceAvailable(
+        RuntimeVehiclePassengerPlaceInfo place)
+    {
+        if (place.Height <=
+            0.01)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                place.SwitchVariable) &&
+            _scriptRuntime?.HasLocalVariable(
+                place.SwitchVariable) ==
+            true)
+        {
+            var enabled =
+                _scriptRuntime.GetLocal(
+                    place.SwitchVariable);
+
+            if (!double.IsFinite(
+                    enabled) ||
+                enabled <=
+                    0.5)
+            {
+                return false;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                place.TakenVariable) &&
+            _scriptRuntime?.HasLocalVariable(
+                place.TakenVariable) ==
+            true)
+        {
+            var taken =
+                _scriptRuntime.GetLocal(
+                    place.TakenVariable);
+
+            if (double.IsFinite(
+                    taken) &&
+                taken >
+                    0.5)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void SetPassengerPlaceTaken(
+        RuntimeVehiclePassengerPlaceInfo? place,
+        bool taken)
+    {
+        if (place is null ||
+            string.IsNullOrWhiteSpace(
+                place.TakenVariable) ||
+            _scriptRuntime?.HasLocalVariable(
+                place.TakenVariable) !=
+            true)
+        {
+            return;
+        }
+
+        _scriptRuntime.SetLocal(
+            place.TakenVariable,
+            taken
+                ? 1.0
+                : 0.0);
+    }
+
+    private void TryTogglePassengerSeat()
+    {
+        if (!_onFootMode ||
+            _windowInfo.Vehicle is null ||
+            _vehicleRemoved)
+        {
+            return;
+        }
+
+        if (_walkerSeated)
+        {
+            TryLeavePassengerSeat();
+            return;
+        }
+
+        var places =
+            _windowInfo.Vehicle
+                .PassengerPlaces;
+
+        if (places is not
+            { Count: > 0 })
+        {
+            return;
+        }
+
+        var openEntries =
+            ResolveOpenPassengerEntries();
+
+        if (openEntries.Length ==
+            0)
+        {
+            return;
+        }
+
+        RuntimeVehicleEntryInfo?
+            closestEntry =
+                null;
+
+        var closestEntryDistanceSquared =
+            float.PositiveInfinity;
+
+        foreach (var entry in
+                 openEntries)
+        {
+            var outside =
+                PassengerEntryWorldPosition(
+                    entry,
+                    outside:
+                        true);
+
+            var dx =
+                _walkerPosition.X -
+                outside.X;
+
+            var dz =
+                _walkerPosition.Z -
+                outside.Z;
+
+            var distanceSquared =
+                dx *
+                    dx +
+                dz *
+                    dz;
+
+            if (distanceSquared <
+                closestEntryDistanceSquared)
+            {
+                closestEntryDistanceSquared =
+                    distanceSquared;
+                closestEntry =
+                    entry;
+            }
+        }
+
+        const float interactionReachMeters =
+            1.75f;
+
+        if (closestEntry is null ||
+            closestEntryDistanceSquared >
+                interactionReachMeters *
+                interactionReachMeters)
+        {
+            return;
+        }
+
+        var place =
+            places
+                .Where(
+                    IsPassengerPlaceAvailable)
+                .OrderBy(
+                    candidate =>
+                    {
+                        var dx =
+                            candidate.X -
+                            closestEntry.X;
+
+                        var dz =
+                            candidate.Z -
+                            closestEntry.Z;
+
+                        return dx *
+                                   dx +
+                               dz *
+                                   dz;
+                    })
+                .ThenBy(
+                    static candidate =>
+                        candidate.Index)
+                .FirstOrDefault();
+
+        if (place is null)
+        {
+            return;
+        }
+
+        _walkerPassengerPlace =
+            place;
+        _walkerSeated =
+            true;
+        _walkerKneeling =
+            false;
+        _walkerVelocity =
+            Vector2.Zero;
+        _walkerVerticalSpeed =
+            0.0f;
+        _walkerGrounded =
+            false;
+        _onFootFreeCamera =
+            false;
+
+        SetPassengerPlaceTaken(
+            place,
+            true);
+
+        _walkerPosition =
+            PassengerPlaceWorldPosition(
+                place);
+
+        var seatHeading =
+            _vehicle.HeadingRadians +
+            (float)(
+                place.HeadingDegrees *
+                Math.PI /
+                180.0);
+
+        var seatForward =
+            new Vector3(
+                MathF.Sin(
+                    seatHeading),
+                0.0f,
+                MathF.Cos(
+                    seatHeading));
+
+        var eye =
+            _walkerPosition +
+            Vector3.UnitY *
+                0.72f;
+
+        _camera.SetLookAt(
+            eye,
+            eye +
+                seatForward,
+            moveSpeed:
+                1.45f);
+
+        UpdateCaption();
+    }
+
+    private void TryLeavePassengerSeat()
+    {
+        if (!_walkerSeated ||
+            _walkerPassengerPlace is not
+                { } place)
+        {
+            return;
+        }
+
+        var openEntries =
+            ResolveOpenPassengerEntries();
+
+        if (openEntries.Length ==
+            0)
+        {
+            return;
+        }
+
+        var exit =
+            openEntries
+                .OrderBy(
+                    entry =>
+                    {
+                        var dx =
+                            entry.X -
+                            place.X;
+
+                        var dz =
+                            entry.Z -
+                            place.Z;
+
+                        return dx *
+                                   dx +
+                               dz *
+                                   dz;
+                    })
+                .ThenBy(
+                    static entry =>
+                        entry.Index)
+                .First();
+
+        SetPassengerPlaceTaken(
+            place,
+            false);
+
+        _walkerPassengerPlace =
+            null;
+        _walkerSeated =
+            false;
+        _walkerKneeling =
+            false;
+        _walkerVelocity =
+            Vector2.Zero;
+        _walkerVerticalSpeed =
+            0.0f;
+        _walkerGrounded =
+            true;
+        _onFootFreeCamera =
+            false;
+
+        _walkerPosition =
+            PassengerEntryWorldPosition(
+                exit,
+                outside:
+                    true);
+
+        SnapCameraToWalker();
+        UpdateCaption();
+    }
+
+    private void ReleaseWalkerPassengerSeat()
+    {
+        if (_walkerPassengerPlace is
+            { } place)
+        {
+            SetPassengerPlaceTaken(
+                place,
+                false);
+        }
+
+        _walkerPassengerPlace =
+            null;
+        _walkerSeated =
+            false;
+    }
+
     private void EnterOnFootMode()
     {
         if (_onFootMode ||
