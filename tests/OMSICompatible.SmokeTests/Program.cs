@@ -9032,6 +9032,49 @@ try
             ]),
         $"openOMSI WORLD car/signal/gone/parked codec round-trip failed: packets={worldPackets.Count}; bytes={(worldPackets.Count > 0 ? worldPackets[0].Length : 0)}; decoded={worldDecoded}; seq={(worldDecoded ? decodedWorldFrame.Sequence : 0)}/{sharedWorldFrame.Sequence}; cars={(worldDecoded ? decodedWorldFrame.Cars.Count : 0)}; lights={(worldDecoded ? decodedWorldFrame.Lights.Count : 0)}; gone={(worldDecoded ? decodedWorldFrame.Gone?.Count ?? 0 : 0)}; parked={(worldDecoded ? decodedWorldFrame.Parked?.ParkingObjectIds.Count ?? 0 : 0)}; car0={(decodedFirstCar is null ? "-" : $"{decodedFirstCar.X:0.000},{decodedFirstCar.Y:0.000},{decodedFirstCar.Z:0.000},brake={decodedFirstCar.Brake},station={decodedFirstCar.AtStation}")}; expectedCar0={sharedWorldFrame.Cars[0].X:0.000},{sharedWorldFrame.Cars[0].Y:0.000},{sharedWorldFrame.Cars[0].Z:0.000}; light0={(decodedFirstLight is null ? "-" : $"{decodedFirstLight.ObjectId},held={decodedFirstLight.Held},t={decodedFirstLight.PositionSeconds:0.00}")}; expectedLight0={sharedWorldFrame.Lights[0].ObjectId},held={sharedWorldFrame.Lights[0].Held},t={sharedWorldFrame.Lights[0].PositionSeconds:0.00}.");
 
+    // Golden packet generated from openOMSI 0.2.16
+    // (openOMSI-Project/openOMSI c85b2e0d), including exact .5
+    // cases where Rust f64::round is away from zero.
+    var openOmsiWorldMidpointVector =
+        Convert.FromHexString(
+            "B406341240302010E90300002FF8FFFF1F00012B1A09E7FFCB00C0F97F00CC1764C0DF050000");
+
+    var midpointWorldFrame =
+        new OpenOmsiLanWorldFrame(
+            0x1234,
+            0x10203040,
+            [
+                new OpenOmsiLanWorldCarState(
+                    0x123456,
+                    1000.5,
+                    -2000.5,
+                    30.5,
+                    360.0f /
+                        4096.0f /
+                        2.0f,
+                    -1.25f,
+                    0.45f,
+                    1.225f,
+                    -0.75f,
+                    2,
+                    true,
+                    true,
+                    -1)
+            ],
+            Array.Empty<
+                OpenOmsiLanWorldLightState>());
+
+    var midpointWorldPackets =
+        OpenOmsiLanWorldCodec.Encode(
+            midpointWorldFrame);
+
+    Require(
+        midpointWorldPackets.Count ==
+            1 &&
+        midpointWorldPackets[0].SequenceEqual(
+            openOmsiWorldMidpointVector),
+        "Runtime WORLD encoder differs from openOMSI 0.2.16 on midpoint rounding.");
+
     var peopleWorldVector =
         Convert.FromHexString(
             "B4063700D204000064000000C80000000A000081030000CA00000A00000000758180A465091000003401004006F0000A80030000");
