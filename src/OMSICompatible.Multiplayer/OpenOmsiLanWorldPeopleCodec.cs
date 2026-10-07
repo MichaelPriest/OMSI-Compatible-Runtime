@@ -22,7 +22,8 @@ public sealed record OpenOmsiLanWorldPersonState(
 public sealed record OpenOmsiLanWorldPeopleFrame(
     ushort Sequence,
     uint HostMilliseconds,
-    IReadOnlyList<OpenOmsiLanWorldPersonState> People);
+    IReadOnlyList<OpenOmsiLanWorldPersonState> People,
+    IReadOnlyList<OpenOmsiLanWorldGoneEntity>? Gone = null);
 
 public sealed record OpenOmsiLanWorldPersonDescription(
     uint Id,
@@ -33,6 +34,8 @@ public static class OpenOmsiLanWorldPeopleCodec
     private const int HeaderBytes = 18;
     private const int MaxBytes = 1180;
     private const int CarBits = 132;
+    private const int LightBits = 50;
+    private const int GoneBits = 25;
     private const uint MaxId = (1u << 24) - 1u;
 
     public static IReadOnlyList<byte[]> Encode(
@@ -44,6 +47,18 @@ public static class OpenOmsiLanWorldPeopleCodec
                     static person =>
                         person.Id <=
                         MaxId)
+                .ToArray();
+
+        var gone =
+            (frame.Gone ??
+             Array.Empty<OpenOmsiLanWorldGoneEntity>())
+                .Where(
+                    static removed =>
+                        removed.Person &&
+                        removed.Id <=
+                            MaxId)
+                .Take(
+                    63)
                 .ToArray();
 
         var packets =
@@ -73,6 +88,13 @@ public static class OpenOmsiLanWorldPeopleCodec
             var selected =
                 new List<OpenOmsiLanWorldPersonState>();
 
+            var packetGone =
+                packets.Count ==
+                    0
+                    ? gone
+                    : Array.Empty<
+                        OpenOmsiLanWorldGoneEntity>();
+
             var budgetBits =
                 (
                     MaxBytes -
@@ -83,7 +105,9 @@ public static class OpenOmsiLanWorldPeopleCodec
                 8 -
                 6 -
                 6 -
-                1;
+                1 -
+                packetGone.Length *
+                    GoneBits;
 
             while (index <
                        people.Length &&
@@ -137,8 +161,20 @@ public static class OpenOmsiLanWorldPeopleCodec
                 0,
                 6);
             writer.Put(
-                0,
+                (ulong)packetGone.Length,
                 6);
+
+            foreach (var removed in
+                     packetGone)
+            {
+                writer.Put(
+                    1,
+                    1);
+                writer.Put(
+                    removed.Id,
+                    24);
+            }
+
             writer.Put(
                 0,
                 1);
@@ -192,7 +228,52 @@ public static class OpenOmsiLanWorldPeopleCodec
             people.Add(person);
         }
 
-        frame = new(seq, hostMs, people);
+        if (!r.Get(
+                6,
+                out var lightCount) ||
+            !r.Skip(
+                checked(
+                    (int)lightCount *
+                    LightBits)) ||
+            !r.Get(
+                6,
+                out var goneCount))
+        {
+            return false;
+        }
+
+        var gone =
+            new List<OpenOmsiLanWorldGoneEntity>(
+                (int)goneCount);
+
+        for (var i = 0;
+             i < (int)goneCount;
+             i++)
+        {
+            if (!r.Get(
+                    1,
+                    out var person) ||
+                !r.Get(
+                    24,
+                    out var id))
+            {
+                return false;
+            }
+
+            gone.Add(
+                new OpenOmsiLanWorldGoneEntity(
+                    person ==
+                        1,
+                    (uint)id));
+        }
+
+        frame =
+            new OpenOmsiLanWorldPeopleFrame(
+                seq,
+                hostMs,
+                people,
+                gone);
+
         return true;
     }
 

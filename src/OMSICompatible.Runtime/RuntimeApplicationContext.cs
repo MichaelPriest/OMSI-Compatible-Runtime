@@ -4686,6 +4686,45 @@ internal sealed class RuntimeApplicationContext :
         var now =
             DateTimeOffset.UtcNow;
 
+        var mappedGone =
+            (frame.Gone ??
+             Array.Empty<OpenOmsiLanWorldGoneEntity>())
+                .Where(
+                    static removed =>
+                        removed.Person)
+                .Select(
+                    removed =>
+                    {
+                        var key =
+                            (
+                                PeerId:
+                                    peerId,
+                                PersonId:
+                                    removed.Id
+                            );
+
+                        if (!_relayedWorldPersonIds.TryGetValue(
+                                key,
+                                out var mappedId))
+                        {
+                            return null;
+                        }
+
+                        _sharedWorldPeople.Remove(
+                            mappedId);
+
+                        return new OpenOmsiLanWorldGoneEntity(
+                            true,
+                            mappedId);
+                    })
+                .Where(
+                    static removed =>
+                        removed is not null)
+                .Select(
+                    static removed =>
+                        removed!)
+                .ToArray();
+
         var mappedPeople =
             frame.People
                 .Select(
@@ -4725,7 +4764,9 @@ internal sealed class RuntimeApplicationContext :
                 .ToArray();
 
         if (mappedPeople.Length ==
-            0)
+                0 &&
+            mappedGone.Length ==
+                0)
         {
             return;
         }
@@ -4735,7 +4776,8 @@ internal sealed class RuntimeApplicationContext :
             new OpenOmsiLanWorldPeopleFrame(
                 frame.Sequence,
                 frame.HostMilliseconds,
-                mappedPeople));
+                mappedPeople,
+                mappedGone));
     }
 
     private void OnMultiplayerWorldClaimRequested(

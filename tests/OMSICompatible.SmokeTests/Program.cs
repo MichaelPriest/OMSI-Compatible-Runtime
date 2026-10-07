@@ -9117,6 +9117,43 @@ try
             peopleWorldVector),
         "Runtime WORLD people encoder no longer matches the openOMSI protocol-6 golden packet.");
 
+    var peopleGoneFrame =
+        new OpenOmsiLanWorldPeopleFrame(
+            89,
+            2345,
+            Array.Empty<
+                OpenOmsiLanWorldPersonState>(),
+            [
+                new OpenOmsiLanWorldGoneEntity(
+                    true,
+                    7)
+            ]);
+
+    var peopleGonePackets =
+        OpenOmsiLanWorldPeopleCodec.Encode(
+            peopleGoneFrame);
+
+    Require(
+        peopleGonePackets.Count ==
+            1 &&
+        OpenOmsiLanWorldPeopleCodec.TryDecode(
+            peopleGonePackets[0],
+            out var decodedPeopleGone) &&
+        decodedPeopleGone.Gone is
+            { Count: 1 } &&
+        decodedPeopleGone.Gone[0].Person &&
+        decodedPeopleGone.Gone[0].Id ==
+            7 &&
+        OpenOmsiLanWorldCodec.TryDecode(
+            peopleGonePackets[0],
+            out var decodedWorldGone) &&
+        decodedWorldGone.Gone is
+            { Count: 1 } &&
+        decodedWorldGone.Gone[0].Person &&
+        decodedWorldGone.Gone[0].Id ==
+            7,
+        "openOMSI WORLD people gone entries are not interoperable with the full protocol-6 decoder.");
+
     var passengerCabinSmokePath =
         Path.Combine(
             root,
