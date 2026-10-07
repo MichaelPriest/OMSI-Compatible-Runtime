@@ -2099,6 +2099,21 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    public (Vector3 LocalPosition, int SeatIndex)?
+        LocalWalkerAboardState =>
+        _onFootMode &&
+        _walkerSeated &&
+        _walkerPassengerPlace is
+            { } place
+            ? (
+                new Vector3(
+                    (float)place.X,
+                    (float)place.Y,
+                    (float)place.Z),
+                place.Index
+            )
+            : null;
+
     public RuntimeTrafficObstacleInfo?
         PlayerTrafficObstacle
     {
