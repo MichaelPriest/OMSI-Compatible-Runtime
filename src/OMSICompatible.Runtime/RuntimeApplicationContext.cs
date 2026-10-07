@@ -5310,6 +5310,20 @@ internal sealed class RuntimeApplicationContext :
         foreach (var id in
                  granted)
         {
+            var humanPath =
+                _hostWorldPassengers.HumanPath(
+                    id);
+
+            if (!string.IsNullOrWhiteSpace(
+                    humanPath))
+            {
+                session.SendWorldPersonDescriptionTo(
+                    request.PlayerId,
+                    new OpenOmsiLanWorldPersonDescription(
+                        id,
+                        humanPath));
+            }
+
             var key =
                 (
                     PeerId:
