@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/runtime-visual-controls-pass
   pull_request:
 
 concurrency:
