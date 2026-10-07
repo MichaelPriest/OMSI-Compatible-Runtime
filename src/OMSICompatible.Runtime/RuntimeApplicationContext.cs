@@ -3547,6 +3547,19 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
+        const double carRadiusMeters =
+            650.0;
+        const double lightRadiusMeters =
+            450.0;
+
+        var carRadiusSquared =
+            carRadiusMeters *
+            carRadiusMeters;
+
+        var lightRadiusSquared =
+            lightRadiusMeters *
+            lightRadiusMeters;
+
         var dt =
             double.IsFinite(
                 deltaSeconds)
@@ -3560,42 +3573,18 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldDescriptionAccumulator +=
             dt;
 
-        if (_sharedWorldDescriptionAccumulator >=
-            2.0)
+        var refreshDescriptions =
+            _sharedWorldDescriptionAccumulator >=
+            2.0;
+
+        if (refreshDescriptions)
         {
             _sharedWorldDescriptionAccumulator =
-                0.0;
-
-            foreach (var agent in
-                     agents)
-            {
-                var relative =
-                    Path.GetRelativePath(
-                            _contentRoot.RootPath,
-                            agent.VehiclePath)
-                        .Replace(
-                            '\\',
-                            '/');
-
-                if (OpenOmsiLanProtocol.NormalizeVehiclePath(
-                        relative) is null)
-                {
-                    continue;
-                }
-
-                session.SendWorldCarDescription(
-                    new OpenOmsiLanWorldCarDescription(
-                        (uint)Math.Clamp(
-                            agent.AgentIndex,
-                            0,
-                            (int)OpenOmsiLanWorldCodec.MaximumEntityId),
-                        relative,
-                        null,
-                        agent.ScheduledLine ??
-                            string.Empty,
-                        agent.ScheduledDestination ??
-                            string.Empty));
-            }
+                Math.Clamp(
+                    _sharedWorldDescriptionAccumulator -
+                        2.0,
+                    0.0,
+                    2.0);
         }
 
         if (_sharedWorldSendAccumulator <
@@ -3604,8 +3593,60 @@ internal sealed class RuntimeApplicationContext :
             return;
         }
 
+        var elapsed =
+            _sharedWorldSendAccumulator;
+
         _sharedWorldSendAccumulator =
-            0.0;
+            Math.Clamp(
+                _sharedWorldSendAccumulator -
+                    0.1,
+                0.0,
+                0.1);
+
+        var carDescriptions =
+            new Dictionary<
+                uint,
+                OpenOmsiLanWorldCarDescription>();
+
+        foreach (var agent in
+                 agents)
+        {
+            if (agent.AgentIndex <
+                    0 ||
+                agent.AgentIndex >
+                    (int)OpenOmsiLanWorldCodec.MaximumEntityId)
+            {
+                continue;
+            }
+
+            var relative =
+                Path.GetRelativePath(
+                        _contentRoot.RootPath,
+                        agent.VehiclePath)
+                    .Replace(
+                        '\\',
+                        '/');
+
+            if (OpenOmsiLanProtocol.NormalizeVehiclePath(
+                    relative) is null)
+            {
+                continue;
+            }
+
+            var id =
+                (uint)agent.AgentIndex;
+
+            carDescriptions[
+                id] =
+                new OpenOmsiLanWorldCarDescription(
+                    id,
+                    relative,
+                    null,
+                    agent.ScheduledLine ??
+                        string.Empty,
+                    agent.ScheduledDestination ??
+                        string.Empty);
+        }
 
         var cars =
             agents
@@ -3643,133 +3684,264 @@ internal sealed class RuntimeApplicationContext :
                             agent.AtStation))
                 .ToArray();
 
-        var currentCarIds =
-            cars
-                .Select(
-                    static car =>
-                        car.Id)
-                .ToHashSet();
-
-        foreach (var previousId in
-                 _sharedWorldPublishedCarIds)
-        {
-            if (!currentCarIds.Contains(
-                    previousId))
-            {
-                _sharedWorldGoneCarSeconds[
-                    previousId] =
-                    1.0;
-            }
-        }
-
-        foreach (var currentId in
-                 currentCarIds)
-        {
-            _sharedWorldGoneCarSeconds.Remove(
-                currentId);
-        }
-
-        _sharedWorldPublishedCarIds.Clear();
-
-        foreach (var currentId in
-                 currentCarIds)
-        {
-            _sharedWorldPublishedCarIds.Add(
-                currentId);
-        }
-
-        var gone =
-            _sharedWorldGoneCarSeconds
-                .Keys
-                .OrderBy(
-                    static id =>
-                        id)
-                .Take(
-                    63)
-                .Select(
-                    static id =>
-                        new OpenOmsiLanWorldGoneEntity(
-                            false,
-                            id))
-                .ToArray();
-
         _worldTrafficSignalStateBuffer.Clear();
         _trafficSimulation?
             .AppendTrafficSignalSnapshotTo(
                 _worldTrafficSignalStateBuffer);
 
         var segmentByIndex =
-            _currentWorld?.TrafficPaths.Segments
+            _currentWorld?
+                .TrafficPaths
+                .Segments
                 .ToDictionary(
                     static segment =>
                         segment.Index);
 
         var lights =
-            segmentByIndex is null
-                ? Array.Empty<
-                    OpenOmsiLanWorldLightState>()
-                : _worldTrafficSignalStateBuffer
-                    .Select(
-                        state =>
-                        {
-                            if (!segmentByIndex.TryGetValue(
-                                    state.SegmentIndex,
-                                    out var segment) ||
-                                !segment.SceneryObjectId.HasValue)
-                            {
-                                return null;
-                            }
+            new List<(
+                OpenOmsiLanWorldLightState State,
+                double X,
+                double Y)>();
 
-                            return new OpenOmsiLanWorldLightState(
-                                segment.SceneryObjectId.Value,
-                                state.PositionSeconds,
-                                state.Held);
-                        })
+        if (segmentByIndex is not null)
+        {
+            foreach (var signal in
+                     _worldTrafficSignalStateBuffer)
+            {
+                if (!segmentByIndex.TryGetValue(
+                        signal.SegmentIndex,
+                        out var segment) ||
+                    !segment.SceneryObjectId.HasValue ||
+                    segment.SceneryObjectId.Value <
+                        0 ||
+                    segment.SceneryObjectId.Value >
+                        uint.MaxValue ||
+                    segment.Points.Count ==
+                        0)
+                {
+                    continue;
+                }
+
+                lights.Add(
+                    (
+                        new OpenOmsiLanWorldLightState(
+                            segment.SceneryObjectId.Value,
+                            signal.PositionSeconds,
+                            signal.Held),
+                        segment.Start.X,
+                        segment.Start.Z
+                    ));
+            }
+        }
+
+        var activePeers =
+            session.SnapshotPeers()
+                .Where(
+                    static peer =>
+                        peer.HasState &&
+                        peer.Pose.HasVehicle)
+                .ToArray();
+
+        var activePeerIds =
+            activePeers
+                .Select(
+                    static peer =>
+                        peer.Id)
+                .ToHashSet();
+
+        foreach (var stalePeerId in
+                 _sharedWorldCarPeerViews
+                     .Keys
+                     .Where(
+                         id =>
+                             !activePeerIds.Contains(
+                                 id))
+                     .ToArray())
+        {
+            _sharedWorldCarPeerViews.Remove(
+                stalePeerId);
+        }
+
+        foreach (var peer in
+                 activePeers)
+        {
+            if (!_sharedWorldCarPeerViews.TryGetValue(
+                    peer.Id,
+                    out var view))
+            {
+                view =
+                    new WorldPeerVisibilityView();
+
+                _sharedWorldCarPeerViews[
+                    peer.Id] =
+                    view;
+            }
+
+            var visibleCars =
+                cars
                     .Where(
-                        static state =>
-                            state is not null)
-                    .Select(
-                        static state =>
-                            state!)
+                        car =>
+                        {
+                            var dx =
+                                car.X -
+                                peer.Pose.X;
+
+                            var dy =
+                                car.Y -
+                                peer.Pose.Y;
+
+                            return dx *
+                                       dx +
+                                   dy *
+                                       dy <=
+                                   carRadiusSquared;
+                        })
+                    .OrderBy(
+                        static car =>
+                            car.Id)
                     .ToArray();
 
-        session.SendWorldFrame(
-            new OpenOmsiLanWorldFrame(
-                0,
-                0,
-                cars,
-                lights,
-                Gone:
-                    gone,
-                Parked:
-                    new OpenOmsiLanWorldParkedState(
-                        true,
-                        Array.Empty<uint>())));
+            var visibleIds =
+                visibleCars
+                    .Select(
+                        static car =>
+                            car.Id)
+                    .ToHashSet();
 
-        foreach (var removed in
-                 gone)
-        {
-            if (!_sharedWorldGoneCarSeconds.TryGetValue(
-                    removed.Id,
-                    out var remaining))
+            foreach (var previousId in
+                     view.VisibleIds)
             {
-                continue;
+                if (!visibleIds.Contains(
+                        previousId))
+                {
+                    view.GoneSeconds[
+                        previousId] =
+                        1.0;
+                }
             }
 
-            remaining -=
-                0.1;
-
-            if (remaining <=
-                0.000001)
+            foreach (var visibleId in
+                     visibleIds)
             {
-                _sharedWorldGoneCarSeconds.Remove(
-                    removed.Id);
+                view.GoneSeconds.Remove(
+                    visibleId);
             }
-            else
+
+            foreach (var car in
+                     visibleCars)
             {
-                _sharedWorldGoneCarSeconds[
-                    removed.Id] =
-                    remaining;
+                if (!carDescriptions.TryGetValue(
+                        car.Id,
+                        out var description))
+                {
+                    continue;
+                }
+
+                if (refreshDescriptions ||
+                    !view.VisibleIds.Contains(
+                        car.Id))
+                {
+                    session.SendWorldCarDescriptionTo(
+                        peer.Id,
+                        description);
+                }
+            }
+
+            view.VisibleIds.Clear();
+
+            foreach (var visibleId in
+                     visibleIds)
+            {
+                view.VisibleIds.Add(
+                    visibleId);
+            }
+
+            var gone =
+                view.GoneSeconds
+                    .Keys
+                    .OrderBy(
+                        static id =>
+                            id)
+                    .Take(
+                        63)
+                    .Select(
+                        static id =>
+                            new OpenOmsiLanWorldGoneEntity(
+                                false,
+                                id))
+                    .ToArray();
+
+            var visibleLights =
+                lights
+                    .Where(
+                        light =>
+                        {
+                            var dx =
+                                light.X -
+                                peer.Pose.X;
+
+                            var dy =
+                                light.Y -
+                                peer.Pose.Y;
+
+                            return dx *
+                                       dx +
+                                   dy *
+                                       dy <=
+                                   lightRadiusSquared;
+                        })
+                    .Select(
+                        static light =>
+                            light.State)
+                    .Take(
+                        63)
+                    .ToArray();
+
+            session.SendWorldFrameTo(
+                peer.Id,
+                new OpenOmsiLanWorldFrame(
+                    0,
+                    0,
+                    visibleCars,
+                    visibleLights,
+                    Gone:
+                        gone,
+                    Parked:
+                        new OpenOmsiLanWorldParkedState(
+                            true,
+                            Array.Empty<uint>())));
+
+            var goneStep =
+                Math.Clamp(
+                    elapsed,
+                    0.0,
+                    0.25);
+
+            foreach (var removed in
+                     gone)
+            {
+                if (!view.GoneSeconds.TryGetValue(
+                        removed.Id,
+                        out var remaining))
+                {
+                    continue;
+                }
+
+                remaining -=
+                    goneStep;
+
+                if (remaining <=
+                    0.000001)
+                {
+                    view.GoneSeconds.Remove(
+                        removed.Id);
+                }
+                else
+                {
+                    view.GoneSeconds[
+                        removed.Id] =
+                        remaining;
+                }
             }
         }
     }
