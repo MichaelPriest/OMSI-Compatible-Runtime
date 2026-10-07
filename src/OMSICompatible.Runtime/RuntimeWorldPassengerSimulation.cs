@@ -54,7 +54,7 @@ internal sealed class RuntimeWorldPassengerSimulation
             {
                 if (!doorsOpen ||
                     vehicle is null ||
-                    !Configure(vehicle, bus, reserved))
+                    !Configure(vehicle, bus, reserved, openEntries))
                 {
                     State = State with
                     {
@@ -202,7 +202,8 @@ internal sealed class RuntimeWorldPassengerSimulation
     private bool Configure(
         OmsiVehicleAsset vehicle,
         OpenOmsiLanPose bus,
-        ISet<int> reserved)
+        ISet<int> reserved,
+        IReadOnlySet<int>? openEntries)
     {
         var cabin = vehicle.PassengerCabin;
         var paths = vehicle.PassengerPaths;
