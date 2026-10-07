@@ -560,6 +560,13 @@ internal sealed class RuntimeHostWorldPassengerAuthority
                 passenger.Key] =
                 transferredAt;
 
+            // The transferred WORLD id remains owned by the client from
+            // this point on. Detach the stop slot from that id so a later
+            // repopulation allocates a fresh id instead of colliding with
+            // a passenger that may still be riding remotely.
+            _idsBySpot.Remove(
+                passenger.Key);
+
             if (!string.IsNullOrWhiteSpace(
                     passenger.HumanPath))
             {
