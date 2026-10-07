@@ -133,6 +133,7 @@ public sealed record RuntimeNavigationGuidancePointInfo(
     double Y,
     double Z,
     double HeadingDegrees,
+    double PitchDegrees,
     double DistanceAheadMeters,
     string Kind);
 
