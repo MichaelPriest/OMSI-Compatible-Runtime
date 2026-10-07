@@ -1019,6 +1019,9 @@ public sealed class OpenOmsiLanSession :
         _helloAccumulator += dt;
         _infoAccumulator += dt;
         _clockAccumulator += dt;
+        _nearAccumulator += dt;
+        _currentLocalPose =
+            localPose.Clone();
 
         var helloIntervalSeconds =
             _hostLostAt.HasValue
@@ -1043,6 +1046,25 @@ public sealed class OpenOmsiLanSession :
             SendOwn(
                 dt,
                 localPose);
+
+            if (Role ==
+                    OpenOmsiLanRole.Client &&
+                _host is not null &&
+                _requestedNearFootprint is
+                    { } requestedNear &&
+                _nearFootprints is null &&
+                _nearAccumulator >=
+                    1.0)
+            {
+                _nearAccumulator =
+                    0.0;
+
+                SendText(
+                    OpenOmsiLanProtocol.EncodePlace(
+                        PlayerId,
+                        requestedNear),
+                    _host);
+            }
 
             if (Role ==
                     OpenOmsiLanRole.Host &&
@@ -1704,6 +1726,22 @@ public sealed class OpenOmsiLanSession :
                     endpoint);
                 break;
 
+            case "PLACE"
+                when Role ==
+                     OpenOmsiLanRole.Host:
+                HandlePlace(
+                    text,
+                    endpoint);
+                break;
+
+            case "NEAR"
+                when Role ==
+                     OpenOmsiLanRole.Client:
+                HandleNear(
+                    text,
+                    endpoint);
+                break;
+
             case "DESC":
                 HandleWorldDescription(
                     text,
@@ -1749,6 +1787,150 @@ public sealed class OpenOmsiLanSession :
                     endpoint);
                 break;
         }
+    }
+
+    private void HandlePlace(
+        string text,
+        IPEndPoint endpoint)
+    {
+        if (!OpenOmsiLanProtocol.TryDecodePlace(
+                text,
+                out var playerId,
+                out var requested) ||
+            !_peers.TryGetValue(
+                playerId,
+                out var requester) ||
+            !requester.Endpoint.Equals(
+                endpoint))
+        {
+            return;
+        }
+
+        requester.LastSeen =
+            DateTimeOffset.UtcNow;
+
+        var near =
+            new List<OpenOmsiLanFootprint>();
+
+        if (_currentLocalPose.HasVehicle)
+        {
+            near.Add(
+                FootprintFromPose(
+                    _currentLocalPose));
+        }
+
+        foreach (var pair in
+                 _peers)
+        {
+            if (pair.Key ==
+                    playerId ||
+                !pair.Value.HasInfo ||
+                !pair.Value.HasState ||
+                !pair.Value.Pose.HasVehicle)
+            {
+                continue;
+            }
+
+            near.Add(
+                FootprintFromPose(
+                    pair.Value.Pose));
+        }
+
+        var selected =
+            near
+                .Where(
+                    footprint =>
+                        FootprintDistanceSquared(
+                            footprint,
+                            requested) <
+                        OpenOmsiLanProtocol.FootprintRadiusMeters *
+                        OpenOmsiLanProtocol.FootprintRadiusMeters)
+                .OrderBy(
+                    footprint =>
+                        FootprintDistanceSquared(
+                            footprint,
+                            requested))
+                .Take(
+                    OpenOmsiLanProtocol.MaximumNearFootprints)
+                .ToArray();
+
+        SendText(
+            OpenOmsiLanProtocol.EncodeNear(
+                playerId,
+                selected),
+            endpoint);
+    }
+
+    private void HandleNear(
+        string text,
+        IPEndPoint endpoint)
+    {
+        if (_host is null ||
+            !endpoint.Equals(
+                _host) ||
+            _requestedNearFootprint is null ||
+            !OpenOmsiLanProtocol.TryDecodeNear(
+                text,
+                out var playerId,
+                out var footprints) ||
+            playerId !=
+                PlayerId)
+        {
+            return;
+        }
+
+        _nearFootprints =
+            footprints;
+
+        NearFootprintsReceived?.Invoke(
+            footprints);
+    }
+
+    private static OpenOmsiLanFootprint FootprintFromPose(
+        OpenOmsiLanPose pose)
+    {
+        var heading =
+            pose.HeadingDegrees *
+            Math.PI /
+            180.0;
+
+        var offset =
+            pose.BoxOffsetMeters;
+
+        return new OpenOmsiLanFootprint(
+            pose.X +
+                Math.Sin(
+                    heading) *
+                offset,
+            pose.Y +
+                Math.Cos(
+                    heading) *
+                offset,
+            pose.Z,
+            pose.HeadingDegrees,
+            Math.Max(
+                pose.LengthMeters,
+                1.0f),
+            Math.Max(
+                pose.WidthMeters,
+                1.0f));
+    }
+
+    private static double FootprintDistanceSquared(
+        OpenOmsiLanFootprint left,
+        OpenOmsiLanFootprint right)
+    {
+        var dx =
+            left.X -
+            right.X;
+        var dy =
+            left.Y -
+            right.Y;
+
+        return dx *
+               dx +
+               dy *
+               dy;
     }
 
     private void HandleOperationalMessage(
