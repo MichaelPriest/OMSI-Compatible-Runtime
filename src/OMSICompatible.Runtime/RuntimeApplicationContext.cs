@@ -2827,6 +2827,70 @@ internal sealed class RuntimeApplicationContext :
     private IReadOnlyList<RuntimeTrafficSignalStateInfo>
         GetTrafficSignalStates()
     {
+        var sharedFrameFresh =
+            _multiplayerSession is
+                {
+                    Role:
+                        OpenOmsiLanRole.Client,
+                    Connected:
+                        true
+                } &&
+            _sharedWorldLastFrameAt.HasValue &&
+            DateTimeOffset.UtcNow -
+                _sharedWorldLastFrameAt.Value <=
+                TimeSpan.FromSeconds(
+                    3.5);
+
+        if (sharedFrameFresh &&
+            _currentWorld is
+                { } sharedWorld)
+        {
+            var now =
+                DateTimeOffset.UtcNow;
+
+            foreach (var stale in
+                     _sharedWorldLights
+                         .Where(
+                             pair =>
+                                 now -
+                                     pair.Value.LastSeen >
+                                 TimeSpan.FromSeconds(
+                                     3.5))
+                         .Select(
+                             static pair =>
+                                 pair.Key)
+                         .ToArray())
+            {
+                _sharedWorldLights.Remove(
+                    stale);
+            }
+
+            _sharedWorldSignalStateBuffer.Clear();
+
+            foreach (var segment in
+                     sharedWorld.TrafficPaths.Segments)
+            {
+                if (!segment.SceneryObjectId.HasValue ||
+                    segment.TrafficSignal is null ||
+                    !_sharedWorldLights.TryGetValue(
+                        segment.SceneryObjectId.Value,
+                        out var remote))
+                {
+                    continue;
+                }
+
+                _sharedWorldSignalStateBuffer.Add(
+                    new RuntimeTrafficSignalStateInfo(
+                        segment.Index,
+                        ResolveSharedSignalPhase(
+                            segment.TrafficSignal,
+                            remote.State.PositionSeconds),
+                        remote.State.PositionSeconds));
+            }
+
+            return _sharedWorldSignalStateBuffer;
+        }
+
         if (_trafficSimulation is not
                 { } roadSimulation)
         {
@@ -2858,6 +2922,56 @@ internal sealed class RuntimeApplicationContext :
         }
 
         return _runtimeTrafficSignalStateBuffer;
+    }
+
+    private static int? ResolveSharedSignalPhase(
+        WorldTrafficSignalProgram program,
+        double positionSeconds)
+    {
+        if (program.Phases.Count ==
+            0)
+        {
+            return null;
+        }
+
+        var cycle =
+            program.CycleSeconds >
+                    0.001
+                ? program.CycleSeconds
+                : program.Phases.Sum(
+                    static phase =>
+                        phase.DurationSeconds);
+
+        if (cycle <=
+            0.001)
+        {
+            return program.Phases[
+                0].Phase;
+        }
+
+        var position =
+            (
+                positionSeconds %
+                cycle +
+                cycle
+            ) %
+            cycle;
+
+        foreach (var phase in
+                 program.Phases)
+        {
+            if (position <
+                phase.DurationSeconds)
+            {
+                return phase.Phase;
+            }
+
+            position -=
+                phase.DurationSeconds;
+        }
+
+        return program.Phases[
+            ^1].Phase;
     }
 
     private IReadOnlyList<RuntimeTrafficAgentInfo>
