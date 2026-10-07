@@ -8703,23 +8703,38 @@ try
     var sessionCodeText =
         sessionCode.Encode();
 
-    Require(
-        sessionCodeText.StartsWith(
-            "OMSI-",
-            StringComparison.Ordinal) &&
+    var sessionCodeDecoded =
         OpenOmsiLanSessionCode.TryDecode(
             sessionCodeText,
             out var decodedSessionCode,
-            out _) &&
+            out var sessionCodeError);
+
+    var sessionCodeAddressesMatch =
+        sessionCodeDecoded &&
+        decodedSessionCode.Addresses
+            .Select(
+                static address =>
+                    address.ToString())
+            .SequenceEqual(
+                sessionCode.Addresses
+                    .Select(
+                        static address =>
+                            address.ToString()),
+                StringComparer.Ordinal);
+
+    Require(
+        sessionCodeText.Equals(
+            "OMSI-YVD3-K2EX-GEG9-EWBY-6RVB-77NV-CBSX-XS2A",
+            StringComparison.Ordinal) &&
+        sessionCodeDecoded &&
         decodedSessionCode.Protocol ==
             sessionCode.Protocol &&
         decodedSessionCode.Port ==
             sessionCode.Port &&
         decodedSessionCode.SessionId ==
             sessionCode.SessionId &&
-        decodedSessionCode.Addresses.SequenceEqual(
-            sessionCode.Addresses),
-        "openOMSI LAN session-code round-trip failed.");
+        sessionCodeAddressesMatch,
+        $"openOMSI LAN session-code round-trip failed: code={sessionCodeText}; decoded={sessionCodeDecoded}; error={sessionCodeError ?? "-"}; protocol={decodedSessionCode.Protocol}/{sessionCode.Protocol}; port={decodedSessionCode.Port}/{sessionCode.Port}; session={decodedSessionCode.SessionId:X12}/{sessionCode.SessionId:X12}; ips={string.Join(",", decodedSessionCode.Addresses)} / {string.Join(",", sessionCode.Addresses)}.");
 
     var sharedWorldFrame =
         new OpenOmsiLanWorldFrame(
