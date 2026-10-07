@@ -6044,6 +6044,30 @@ internal sealed class RuntimeApplicationContext :
 
         if (walker.Active)
         {
+            OpenOmsiLanAboard?
+                aboard =
+                    null;
+
+            if (window.LocalWalkerAboardState is
+                { } aboardState)
+            {
+                ushort? seatIndex =
+                    aboardState.SeatIndex is
+                        >= 0 and <= 1023
+                        ? (ushort)aboardState.SeatIndex
+                        : null;
+
+                aboard =
+                    new OpenOmsiLanAboard(
+                        _multiplayerSession?
+                            .PlayerId ??
+                        0,
+                        -aboardState.LocalPosition.X,
+                        aboardState.LocalPosition.Z,
+                        aboardState.LocalPosition.Y,
+                        seatIndex);
+            }
+
             pose.Walker =
                 new OpenOmsiLanWalker(
                     -walker.Position.X,
@@ -6053,7 +6077,7 @@ internal sealed class RuntimeApplicationContext :
                     walker.SpeedMetersPerSecond,
                     -walker.CourseDegrees,
                     walker.Seated,
-                    null);
+                    aboard);
         }
 
         return pose;
