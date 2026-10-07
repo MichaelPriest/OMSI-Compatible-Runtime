@@ -6146,6 +6146,114 @@ internal sealed class RuntimeApplicationContext :
                     .ToArray()));
     }
 
+    private void UpdateHostWorldPassengers(
+        OpenOmsiLanSession session,
+        double deltaSeconds,
+        ICollection<RuntimeRemoteWalkerInfo> target)
+    {
+        if (session.Role !=
+            OpenOmsiLanRole.Host)
+        {
+            return;
+        }
+
+        _hostWorldPassengerRefreshAccumulator +=
+            Math.Max(
+                0.0,
+                deltaSeconds);
+
+        if (_hostWorldPassengerRefreshAccumulator >=
+            1.0)
+        {
+            _hostWorldPassengerRefreshAccumulator =
+                Math.Clamp(
+                    _hostWorldPassengerRefreshAccumulator -
+                        1.0,
+                    0.0,
+                    1.0);
+
+            try
+            {
+                _hostWorldPassengers.Refresh(
+                    _currentWorld,
+                    _timetableCatalog.Value);
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"[multiplayer-world] host passenger refresh failed: {exception.Message}");
+            }
+
+            foreach (var description in
+                     _hostWorldPassengers.TakePendingDescriptions())
+            {
+                session.SendWorldPersonDescription(
+                    description);
+            }
+        }
+
+        foreach (var person in
+                 _hostWorldPassengers.People)
+        {
+            var humanPath =
+                _hostWorldPassengers.HumanPath(
+                    person.Id) ??
+                string.Empty;
+
+            target.Add(
+                new RuntimeRemoteWalkerInfo(
+                    0x40000000u |
+                    person.Id,
+                    $"PAX {person.Id}",
+                    humanPath,
+                    RuntimeWorldXFromSource(
+                        person.X),
+                    person.Z,
+                    person.Y,
+                    (float)RuntimeHeadingDegreesFromSource(
+                        person.HeadingDegrees),
+                    person.SpeedMetersPerSecond,
+                    (float)RuntimeHeadingDegreesFromSource(
+                        person.HeadingDegrees),
+                    person.Activity ==
+                        OpenOmsiLanWorldPersonActivity.Sit));
+        }
+
+        _hostWorldPassengerSendAccumulator +=
+            Math.Max(
+                0.0,
+                deltaSeconds);
+
+        if (_hostWorldPassengerSendAccumulator <
+            0.1)
+        {
+            return;
+        }
+
+        var elapsed =
+            _hostWorldPassengerSendAccumulator;
+
+        _hostWorldPassengerSendAccumulator =
+            Math.Clamp(
+                _hostWorldPassengerSendAccumulator -
+                    0.1,
+                0.0,
+                0.1);
+
+        var frame =
+            _hostWorldPassengers.CreateFrame(
+                elapsed);
+
+        if (frame.People.Count >
+                0 ||
+            frame.Gone is
+                { Count: > 0 })
+        {
+            session.SendWorldPeopleFrame(
+                frame);
+        }
+    }
+
     private void AppendMultiplayerTrafficAgents(
         double deltaSeconds)
     {
