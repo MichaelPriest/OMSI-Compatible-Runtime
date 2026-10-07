@@ -9105,6 +9105,38 @@ try
             string.Empty,
             "autumn");
 
+    using (var missingHostClient =
+           OpenOmsiLanSession.Join(
+               "127.0.0.1:65534",
+               "Timeout Client",
+               lanWorld))
+    {
+        var timeoutPose =
+            lanPose.Clone();
+
+        timeoutPose.Name =
+            "Timeout Client";
+
+        for (var timeoutStep = 0;
+             timeoutStep <
+                 21 &&
+             missingHostClient.RejectionReason is null;
+             timeoutStep++)
+        {
+            missingHostClient.Tick(
+                0.5,
+                timeoutPose);
+        }
+
+        Require(
+            !missingHostClient.Connected &&
+            missingHostClient.RejectionReason?.Contains(
+                "10 seconds",
+                StringComparison.Ordinal) ==
+            true,
+            "openOMSI LAN join timeout did not stop an unreachable host after 10 seconds.");
+    }
+
     using var lanHost =
         OpenOmsiLanSession.Host(
             0,
