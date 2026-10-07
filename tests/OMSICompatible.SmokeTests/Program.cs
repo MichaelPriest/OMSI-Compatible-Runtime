@@ -8625,6 +8625,39 @@ try
             out _),
         "CommsLink voice frame codec accepted an invalid payload length.");
 
+    var sessionCode =
+        new OpenOmsiLanSessionCode(
+            OpenOmsiLanProtocol.ProtocolVersion,
+            [
+                System.Net.IPAddress.Parse(
+                    "192.168.10.25"),
+                System.Net.IPAddress.Parse(
+                    "10.20.30.40")
+            ],
+            27015,
+            0x1234ABCDEF12UL);
+
+    var sessionCodeText =
+        sessionCode.Encode();
+
+    Require(
+        sessionCodeText.StartsWith(
+            "OMSI-",
+            StringComparison.Ordinal) &&
+        OpenOmsiLanSessionCode.TryDecode(
+            sessionCodeText,
+            out var decodedSessionCode,
+            out _) &&
+        decodedSessionCode.Protocol ==
+            sessionCode.Protocol &&
+        decodedSessionCode.Port ==
+            sessionCode.Port &&
+        decodedSessionCode.SessionId ==
+            sessionCode.SessionId &&
+        decodedSessionCode.Addresses.SequenceEqual(
+            sessionCode.Addresses),
+        "openOMSI LAN session-code round-trip failed.");
+
     var lanWorld =
         new OpenOmsiLanWorld(
             "maps/SyntheticMap/global.cfg",
