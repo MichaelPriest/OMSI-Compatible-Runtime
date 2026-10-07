@@ -615,6 +615,13 @@ public sealed class D3D11RenderWindow : Form
             [];
     private bool _vehicleRemoved;
     private bool _driveMode = true;
+    private bool _onFootMode;
+    private bool _onFootFreeCamera;
+    private Vector3 _walkerPosition;
+    private Vector2 _walkerVelocity;
+    private float _walkerVerticalSpeed;
+    private bool _walkerGrounded = true;
+    private bool _walkerKneeling;
     private RuntimeVehicleViewMode _vehicleViewMode =
         RuntimeVehicleViewMode.Driver;
     private int _driverCameraIndex;
@@ -729,6 +736,11 @@ public sealed class D3D11RenderWindow : Form
     private ID3D11Buffer? _navigationGuidanceVertexBuffer;
     private uint _navigationGuidanceVertexCount;
     private RuntimeObjectBatch[] _navigationGuidanceBatches =
+        [];
+
+    private ID3D11Buffer? _remoteWalkerVertexBuffer;
+    private uint _remoteWalkerVertexCount;
+    private RuntimeObjectBatch[] _remoteWalkerBatches =
         [];
 
     private ID3D11Buffer? _objectVertexBuffer;
@@ -1890,6 +1902,51 @@ public sealed class D3D11RenderWindow : Form
             ];
     }
 
+    public void SetRemoteWalkers(
+        IReadOnlyList<RuntimeRemoteWalkerInfo> walkers)
+    {
+        _remoteWalkerVertexBuffer?.Dispose();
+        _remoteWalkerVertexBuffer =
+            null;
+        _remoteWalkerVertexCount =
+            0;
+        _remoteWalkerBatches =
+            [];
+
+        if (_device is null ||
+            walkers.Count ==
+                0)
+        {
+            return;
+        }
+
+        var vertices =
+            RuntimeWalkerGeometry.Build(
+                walkers);
+
+        if (vertices.Length ==
+            0)
+        {
+            return;
+        }
+
+        _remoteWalkerVertexBuffer =
+            _device.CreateBuffer(
+                vertices.AsSpan(),
+                BindFlags.VertexBuffer);
+        _remoteWalkerVertexCount =
+            (uint)vertices.Length;
+        _remoteWalkerBatches =
+            [
+                new RuntimeObjectBatch(
+                    0,
+                    _remoteWalkerVertexCount,
+                    null,
+                    false,
+                    false)
+            ];
+    }
+
     public void SetTeleMatrixState(
         RuntimeTeleMatrixState state)
     {
@@ -1976,6 +2033,43 @@ public sealed class D3D11RenderWindow : Form
             _vehicle.ParkingBrakeEngaged,
             _vehicle.StopBrakeEngaged,
             (int)_vehicle.Gear);
+
+    public bool OnFootMode =>
+        _onFootMode;
+
+    public RuntimeLocalWalkerState LocalWalkerState
+    {
+        get
+        {
+            var speed =
+                _walkerVelocity.Length();
+
+            var course =
+                speed >
+                    0.02f
+                    ? MathF.Atan2(
+                          _walkerVelocity.X,
+                          _walkerVelocity.Y) *
+                      180.0f /
+                      MathF.PI
+                    : _camera.Yaw *
+                      180.0f /
+                      MathF.PI;
+
+            return new RuntimeLocalWalkerState(
+                _onFootMode,
+                _walkerPosition,
+                NormalizeDegrees(
+                    _camera.Yaw *
+                    180.0f /
+                    MathF.PI),
+                speed,
+                NormalizeDegrees(
+                    course),
+                false,
+                _walkerKneeling);
+        }
+    }
 
     public RuntimeTrafficObstacleInfo?
         PlayerTrafficObstacle
@@ -7809,6 +7903,7 @@ public sealed class D3D11RenderWindow : Form
                 RuntimeSceneryRenderPass.Three);
 
             DrawNavigationGuidance();
+            DrawRemoteWalkers();
 
             DrawTrafficVehicles();
             DrawTrafficVehicleLights();
@@ -8636,6 +8731,22 @@ public sealed class D3D11RenderWindow : Form
             _navigationGuidanceVertexBuffer,
             _navigationGuidanceVertexCount,
             _navigationGuidanceBatches);
+    }
+
+    private void DrawRemoteWalkers()
+    {
+        if (_remoteWalkerVertexCount ==
+                0 ||
+            _remoteWalkerBatches.Length ==
+                0)
+        {
+            return;
+        }
+
+        DrawTexturedGeometry(
+            _remoteWalkerVertexBuffer,
+            _remoteWalkerVertexCount,
+            _remoteWalkerBatches);
     }
 
     private void DrawObjects(
@@ -25205,6 +25316,7 @@ public sealed class D3D11RenderWindow : Form
 
             _terrainVertexBuffer?.Dispose();
             _navigationGuidanceVertexBuffer?.Dispose();
+            _remoteWalkerVertexBuffer?.Dispose();
             _splineVertexBuffer?.Dispose();
 
             while (_retiredStreamingTextures.Count >
