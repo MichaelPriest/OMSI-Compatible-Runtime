@@ -22,11 +22,21 @@ public sealed record OpenOmsiLanWorldLightState(
     double PositionSeconds,
     bool Held);
 
+public sealed record OpenOmsiLanWorldGoneEntity(
+    bool Person,
+    uint Id);
+
+public sealed record OpenOmsiLanWorldParkedState(
+    bool Complete,
+    IReadOnlyList<uint> ParkingObjectIds);
+
 public sealed record OpenOmsiLanWorldFrame(
     ushort Sequence,
     uint HostMilliseconds,
     IReadOnlyList<OpenOmsiLanWorldCarState> Cars,
-    IReadOnlyList<OpenOmsiLanWorldLightState> Lights);
+    IReadOnlyList<OpenOmsiLanWorldLightState> Lights,
+    IReadOnlyList<OpenOmsiLanWorldGoneEntity>? Gone = null,
+    OpenOmsiLanWorldParkedState? Parked = null);
 
 public sealed record OpenOmsiLanWorldCarDescription(
     uint Id,
@@ -51,6 +61,8 @@ public static class OpenOmsiLanWorldCodec
         132;
     private const int LightBits =
         50;
+    private const int GoneBits =
+        25;
     private const int CountBits =
         27;
 
@@ -88,6 +100,28 @@ public static class OpenOmsiLanWorldCodec
                         .ToArray()
                     : [];
 
+            var gone =
+                first
+                    ? (frame.Gone ??
+                       Array.Empty<
+                           OpenOmsiLanWorldGoneEntity>())
+                        .Take(
+                            63)
+                        .ToArray()
+                    : [];
+
+            var parked =
+                first
+                    ? frame.Parked
+                    : null;
+
+            var parkedIds =
+                parked?.ParkingObjectIds
+                    .Take(
+                        127)
+                    .ToArray() ??
+                [];
+
             var budget =
                 (
                     MaximumDatagramBytes -
@@ -97,7 +131,17 @@ public static class OpenOmsiLanWorldCodec
                 CountBits -
                 1 -
                 lights.Length *
-                LightBits;
+                LightBits -
+                gone.Length *
+                GoneBits -
+                (
+                    parked is null
+                        ? 0
+                        : 1 +
+                          7 +
+                          parkedIds.Length *
+                          32
+                );
 
             var start =
                 carIndex;
@@ -200,11 +244,52 @@ public static class OpenOmsiLanWorldCodec
             }
 
             writer.Put(
-                0,
+                (ulong)gone.Length,
                 6);
-            writer.Put(
-                0,
-                1);
+
+            foreach (var removed in
+                     gone)
+            {
+                writer.Put(
+                    removed.Person
+                        ? 1UL
+                        : 0UL,
+                    1);
+                writer.Put(
+                    Math.Min(
+                        removed.Id,
+                        MaximumEntityId),
+                    24);
+            }
+
+            if (parked is null)
+            {
+                writer.Put(
+                    0,
+                    1);
+            }
+            else
+            {
+                writer.Put(
+                    1,
+                    1);
+                writer.Put(
+                    parked.Complete
+                        ? 1UL
+                        : 0UL,
+                    1);
+                writer.Put(
+                    (ulong)parkedIds.Length,
+                    7);
+
+                foreach (var parkingId in
+                         parkedIds)
+                {
+                    writer.Put(
+                        parkingId,
+                        32);
+                }
+            }
 
             packets.Add(
                 writer.Finish());
@@ -244,7 +329,10 @@ public static class OpenOmsiLanWorldCodec
                 Array.Empty<
                     OpenOmsiLanWorldCarState>(),
                 Array.Empty<
-                    OpenOmsiLanWorldLightState>());
+                    OpenOmsiLanWorldLightState>(),
+                Array.Empty<
+                    OpenOmsiLanWorldGoneEntity>(),
+                null);
 
         if (data.Length <
                 HeaderBytes ||
@@ -379,6 +467,10 @@ public static class OpenOmsiLanWorldCodec
             return false;
         }
 
+        var gone =
+            new List<OpenOmsiLanWorldGoneEntity>(
+                (int)goneCount);
+
         for (var index = 0;
              index <
                  (int)goneCount;
@@ -386,14 +478,24 @@ public static class OpenOmsiLanWorldCodec
         {
             if (!reader.TryGet(
                     1,
-                    out _) ||
+                    out var person) ||
                 !reader.TryGet(
                     24,
-                    out _))
+                    out var removedId))
             {
                 return false;
             }
+
+            gone.Add(
+                new OpenOmsiLanWorldGoneEntity(
+                    person ==
+                        1,
+                    (uint)removedId));
         }
+
+        OpenOmsiLanWorldParkedState?
+            parked =
+                null;
 
         if (reader.TryGet(
                 1,
@@ -403,13 +505,17 @@ public static class OpenOmsiLanWorldCodec
         {
             if (!reader.TryGet(
                     1,
-                    out _) ||
+                    out var complete) ||
                 !reader.TryGet(
                     7,
                     out var parkedCount))
             {
                 return false;
             }
+
+            var parkedIds =
+                new List<uint>(
+                    (int)parkedCount);
 
             for (var index = 0;
                  index <
@@ -418,11 +524,20 @@ public static class OpenOmsiLanWorldCodec
             {
                 if (!reader.TryGet(
                         32,
-                        out _))
+                        out var parkingId))
                 {
                     return false;
                 }
+
+                parkedIds.Add(
+                    (uint)parkingId);
             }
+
+            parked =
+                new OpenOmsiLanWorldParkedState(
+                    complete ==
+                        1,
+                    parkedIds);
         }
 
         frame =
@@ -430,7 +545,9 @@ public static class OpenOmsiLanWorldCodec
                 sequence,
                 hostMilliseconds,
                 cars,
-                lights);
+                lights,
+                gone,
+                parked);
 
         return true;
     }
