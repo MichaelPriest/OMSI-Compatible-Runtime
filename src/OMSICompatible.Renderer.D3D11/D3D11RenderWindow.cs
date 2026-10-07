@@ -1617,6 +1617,10 @@ public sealed class D3D11RenderWindow : Form
 
         if (_navPulsePanel is not null)
         {
+            _navPulsePanel.DisplayModeChanged +=
+                (_, _) =>
+                    LayoutNavPulsePanel();
+
             Controls.Add(
                 _navPulsePanel);
             LayoutNavPulsePanel();
@@ -6210,6 +6214,56 @@ public sealed class D3D11RenderWindow : Form
     {
         if (_navPulsePanel is null)
         {
+            return;
+        }
+
+        if (_navPulsePanel.Expanded)
+        {
+            var availableWidth =
+                Math.Max(
+                    260,
+                    ClientSize.Width -
+                        48);
+            var availableHeight =
+                Math.Max(
+                    220,
+                    ClientSize.Height -
+                        48);
+
+            _navPulsePanel.Width =
+                Math.Min(
+                    availableWidth,
+                    Math.Max(
+                        520,
+                        ClientSize.Width *
+                        3 /
+                        4));
+            _navPulsePanel.Height =
+                Math.Min(
+                    availableHeight,
+                    Math.Max(
+                        420,
+                        ClientSize.Height *
+                        3 /
+                        4));
+
+            _navPulsePanel.Left =
+                Math.Max(
+                    12,
+                    (
+                        ClientSize.Width -
+                        _navPulsePanel.Width
+                    ) /
+                    2);
+            _navPulsePanel.Top =
+                Math.Max(
+                    12,
+                    (
+                        ClientSize.Height -
+                        _navPulsePanel.Height
+                    ) /
+                    2);
+
             return;
         }
 
