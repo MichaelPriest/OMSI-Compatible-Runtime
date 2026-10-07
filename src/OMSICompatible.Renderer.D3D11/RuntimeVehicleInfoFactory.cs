@@ -292,7 +292,67 @@ public static class RuntimeVehicleInfoFactory
                                 ? null
                                 : ConvertPhysics(
                                     section.Physics)))
-                .ToArray());
+                .ToArray(),
+            BuildPassengerEntries(
+                vehicle));
+    }
+
+    private static RuntimeVehicleEntryInfo[] BuildPassengerEntries(
+        OmsiVehicleAsset vehicle)
+    {
+        var cabin =
+            vehicle.PassengerCabin;
+
+        var paths =
+            vehicle.PassengerPaths;
+
+        if (cabin is null ||
+            paths is null ||
+            cabin.Entries.Count ==
+                0 ||
+            paths.Points.Count ==
+                0)
+        {
+            return [];
+        }
+
+        var entries =
+            new List<RuntimeVehicleEntryInfo>(
+                cabin.Entries.Count);
+
+        for (var index = 0;
+             index <
+                 cabin.Entries.Count;
+             index++)
+        {
+            var pathPoint =
+                cabin.Entries[
+                    index]
+                    .PathPoint;
+
+            if (pathPoint <
+                    0 ||
+                pathPoint >=
+                    paths.Points.Count)
+            {
+                continue;
+            }
+
+            var point =
+                paths.Points[
+                    pathPoint];
+
+            // Vehicle source space is OMSI X=lateral, Y=forward, Z=up.
+            // The D3D runtime uses X=-OMSI X, Y=OMSI Z, Z=OMSI Y.
+            entries.Add(
+                new RuntimeVehicleEntryInfo(
+                    index,
+                    -point.X,
+                    point.Z,
+                    point.Y));
+        }
+
+        return entries.ToArray();
     }
 
     private static RuntimeVehiclePhysicsInfo ConvertPhysics(
