@@ -652,10 +652,16 @@ public sealed class OpenOmsiLanSession :
         _infoAccumulator += dt;
         _clockAccumulator += dt;
 
+        var helloIntervalSeconds =
+            _hostLostAt.HasValue
+                ? 0.5
+                : 1.0;
+
         if (Role == OpenOmsiLanRole.Client &&
             !Connected &&
             RejectionReason is null &&
-            _helloAccumulator >= 1.0)
+            _helloAccumulator >=
+                helloIntervalSeconds)
         {
             _helloAccumulator =
                 0.0;
