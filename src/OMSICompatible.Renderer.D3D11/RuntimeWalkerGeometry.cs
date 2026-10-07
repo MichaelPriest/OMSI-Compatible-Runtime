@@ -737,6 +737,321 @@ internal static class RuntimeWalkerGeometry
         };
     }
 
+    private static RuntimeSceneryAssetInfo PoseHumanAsset(
+        RuntimeRemoteWalkerInfo walker,
+        RuntimeHumanAsset human,
+        long now)
+    {
+        if (human.Rig is null ||
+            human.Skins.Count !=
+                human.Scenery.Meshes.Count ||
+            !human.Skins.Any(
+                static skin =>
+                    skin is not null))
+        {
+            return human.Scenery;
+        }
+
+        var animationKey =
+            string.Concat(
+                walker.PlayerId,
+                "|",
+                human.SourcePath);
+
+        if (!HumanAnimationStates.TryGetValue(
+                animationKey,
+                out var state))
+        {
+            state =
+                new RuntimeHumanAnimationState(
+                    new OmsiHumanAnimator(
+                        human.Rig));
+
+            state.LastTick =
+                now;
+
+            HumanAnimationStates[
+                animationKey] =
+                state;
+        }
+
+        var elapsed =
+            Stopwatch.GetElapsedTime(
+                state.LastTick,
+                now);
+
+        state.LastTick =
+            now;
+
+        state.LastSeen =
+            now;
+
+        var deltaSeconds =
+            (float)Math.Clamp(
+                elapsed.TotalSeconds >
+                    0.000001
+                    ? elapsed.TotalSeconds
+                    : 1.0 /
+                      60.0,
+                1.0 /
+                240.0,
+                0.1);
+
+        var speed =
+            float.IsFinite(
+                    walker.SpeedMetersPerSecond)
+                ? Math.Abs(
+                    walker.SpeedMetersPerSecond)
+                : 0.0f;
+
+        var activity =
+            speed >
+                0.05f
+                ? speed >
+                      2.2f
+                    ? OmsiHumanActivity.Run
+                    : OmsiHumanActivity.Walk
+                : OmsiHumanActivity.Stand;
+
+        var bones =
+            state.Animator.Advance(
+                activity,
+                speed,
+                speed *
+                deltaSeconds,
+                deltaSeconds);
+
+        var meshes =
+            new RuntimeObjectMeshInfo[
+                human.Scenery.Meshes.Count];
+
+        for (var meshIndex = 0;
+             meshIndex <
+                 meshes.Length;
+             meshIndex++)
+        {
+            var mesh =
+                human.Scenery.Meshes[
+                    meshIndex];
+
+            var skin =
+                human.Skins[
+                    meshIndex];
+
+            if (skin is null)
+            {
+                meshes[
+                    meshIndex] =
+                    mesh;
+                continue;
+            }
+
+            var vertexCount =
+                mesh.Positions.Length /
+                3;
+
+            if (skin.Slots.Length <
+                    vertexCount *
+                    4 ||
+                skin.Weights.Length <
+                    vertexCount *
+                    4)
+            {
+                meshes[
+                    meshIndex] =
+                    mesh;
+                continue;
+            }
+
+            var positions =
+                new float[
+                    mesh.Positions.Length];
+
+            var normals =
+                new float[
+                    mesh.Normals.Length];
+
+            for (var vertex = 0;
+                 vertex <
+                     vertexCount;
+                 vertex++)
+            {
+                var positionOffset =
+                    vertex *
+                    3;
+
+                var sourcePosition =
+                    new Vector3(
+                        mesh.Positions[
+                            positionOffset],
+                        mesh.Positions[
+                            positionOffset +
+                            1],
+                        mesh.Positions[
+                            positionOffset +
+                            2]);
+
+                var hasNormal =
+                    positionOffset +
+                        2 <
+                    mesh.Normals.Length;
+
+                var sourceNormal =
+                    hasNormal
+                        ? new Vector3(
+                            mesh.Normals[
+                                positionOffset],
+                            mesh.Normals[
+                                positionOffset +
+                                1],
+                            mesh.Normals[
+                                positionOffset +
+                                2])
+                        : Vector3.UnitY;
+
+                var posedPosition =
+                    Vector3.Zero;
+
+                var posedNormal =
+                    Vector3.Zero;
+
+                var total =
+                    0.0f;
+
+                for (var influence = 0;
+                     influence <
+                         4;
+                     influence++)
+                {
+                    var skinOffset =
+                        vertex *
+                        4 +
+                        influence;
+
+                    var weight =
+                        skin.Weights[
+                            skinOffset];
+
+                    if (!float.IsFinite(
+                            weight) ||
+                        weight <=
+                            0.0f)
+                    {
+                        continue;
+                    }
+
+                    var slot =
+                        skin.Slots[
+                            skinOffset];
+
+                    if (slot >=
+                        bones.Length)
+                    {
+                        continue;
+                    }
+
+                    posedPosition +=
+                        Vector3.Transform(
+                            sourcePosition,
+                            bones[
+                                slot]) *
+                        weight;
+
+                    posedNormal +=
+                        Vector3.TransformNormal(
+                            sourceNormal,
+                            bones[
+                                slot]) *
+                        weight;
+
+                    total +=
+                        weight;
+                }
+
+                if (total <
+                    0.0001f)
+                {
+                    posedPosition =
+                        sourcePosition;
+
+                    posedNormal =
+                        sourceNormal;
+                }
+                else if (Math.Abs(
+                             total -
+                             1.0f) >
+                         0.0001f)
+                {
+                    posedPosition /=
+                        total;
+
+                    posedNormal /=
+                        total;
+                }
+
+                positions[
+                    positionOffset] =
+                    posedPosition.X;
+
+                positions[
+                    positionOffset +
+                    1] =
+                    posedPosition.Y;
+
+                positions[
+                    positionOffset +
+                    2] =
+                    posedPosition.Z;
+
+                if (hasNormal)
+                {
+                    if (posedNormal.LengthSquared() >
+                        0.000001f)
+                    {
+                        posedNormal =
+                            Vector3.Normalize(
+                                posedNormal);
+                    }
+                    else
+                    {
+                        posedNormal =
+                            sourceNormal;
+                    }
+
+                    normals[
+                        positionOffset] =
+                        posedNormal.X;
+
+                    normals[
+                        positionOffset +
+                        1] =
+                        posedNormal.Y;
+
+                    normals[
+                        positionOffset +
+                        2] =
+                        posedNormal.Z;
+                }
+            }
+
+            meshes[
+                meshIndex] =
+                mesh with
+                {
+                    Positions =
+                        positions,
+                    Normals =
+                        normals
+                };
+        }
+
+        return human.Scenery with
+        {
+            Meshes =
+                meshes
+        };
+    }
+
     private static OmsiVehicleMeshReference[] SelectDetailedMeshes(
         IReadOnlyList<OmsiVehicleMeshReference> meshes)
     {
