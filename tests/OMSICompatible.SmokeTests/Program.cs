@@ -8762,10 +8762,15 @@ try
                     678.90,
                     12.34,
                     205.0f,
-                    1.45f,
-                    210.0f,
-                    false,
-                    null)
+                    0.0f,
+                    205.0f,
+                    true,
+                    new OpenOmsiLanAboard(
+                        2,
+                        -0.75f,
+                        4.20f,
+                        1.15f,
+                        7))
         };
 
     var expectedWalker =
@@ -8805,8 +8810,27 @@ try
         Math.Abs(
             decodedWalker.CourseDegrees -
             expectedWalker.CourseDegrees) <
-            0.2f,
-        "openOMSI walker STATE round-trip failed.");
+            0.2f &&
+        decodedWalker.Seated &&
+        decodedWalker.Aboard is
+            { } decodedAboard &&
+        decodedAboard.OwnerId ==
+            2 &&
+        Math.Abs(
+            decodedAboard.LocalX +
+            0.75f) <
+            0.006f &&
+        Math.Abs(
+            decodedAboard.LocalY -
+            4.20f) <
+            0.006f &&
+        Math.Abs(
+            decodedAboard.LocalZ -
+            1.15f) <
+            0.006f &&
+        decodedAboard.SeatIndex ==
+            7,
+        "openOMSI walker STATE/aboard round-trip failed.");
 
     var sessionCode =
         new OpenOmsiLanSessionCode(
