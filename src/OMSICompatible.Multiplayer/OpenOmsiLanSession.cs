@@ -739,6 +739,41 @@ public sealed class OpenOmsiLanSession :
         return true;
     }
 
+    public bool SendWorldPeopleFrameUp(
+        OpenOmsiLanWorldPeopleFrame frame)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Client ||
+            _host is null)
+        {
+            return false;
+        }
+
+        var outbound =
+            frame with
+            {
+                Sequence =
+                    _worldSequence++,
+                HostMilliseconds =
+                    unchecked(
+                        (uint)Environment.TickCount64)
+            };
+
+        foreach (var packet in
+                 OpenOmsiLanWorldPeopleCodec.Encode(
+                     outbound))
+        {
+            Send(
+                packet,
+                _host);
+        }
+
+        return true;
+    }
+
     public bool SendWorldPersonDescriptionUp(
         OpenOmsiLanWorldPersonDescription description)
     {
@@ -1293,9 +1328,34 @@ public sealed class OpenOmsiLanSession :
         ReadOnlySpan<byte> data,
         IPEndPoint endpoint)
     {
-        if (Role !=
-                OpenOmsiLanRole.Client ||
-            !Connected ||
+        if (Role ==
+            OpenOmsiLanRole.Host)
+        {
+            var peer =
+                _peers.Values.FirstOrDefault(
+                    candidate =>
+                        candidate.Endpoint.Equals(
+                            endpoint));
+
+            if (peer is null ||
+                !OpenOmsiLanWorldPeopleCodec.TryDecode(
+                    data,
+                    out var peopleUp))
+            {
+                return;
+            }
+
+            peer.LastSeen =
+                DateTimeOffset.UtcNow;
+
+            WorldPeopleFrameUpReceived?.Invoke(
+                peer.Id,
+                peopleUp);
+
+            return;
+        }
+
+        if (!Connected ||
             _host is null ||
             !endpoint.Equals(
                 _host) ||
@@ -1738,9 +1798,34 @@ public sealed class OpenOmsiLanSession :
         string text,
         IPEndPoint endpoint)
     {
-        if (Role !=
-                OpenOmsiLanRole.Client ||
-            !Connected ||
+        if (Role ==
+            OpenOmsiLanRole.Host)
+        {
+            var peer =
+                _peers.Values.FirstOrDefault(
+                    candidate =>
+                        candidate.Endpoint.Equals(
+                            endpoint));
+
+            if (peer is null ||
+                !OpenOmsiLanWorldPeopleCodec.TryDecodeDescription(
+                    text,
+                    out var personUp))
+            {
+                return;
+            }
+
+            peer.LastSeen =
+                DateTimeOffset.UtcNow;
+
+            WorldPersonDescriptionUpReceived?.Invoke(
+                peer.Id,
+                personUp);
+
+            return;
+        }
+
+        if (!Connected ||
             _host is null ||
             !endpoint.Equals(
                 _host))
