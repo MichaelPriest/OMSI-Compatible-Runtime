@@ -607,6 +607,10 @@ public static class OmsiVehicleAssetLoader
         // unmapped/base O3D bone remains the implicit identity weight.
         var bindings =
             mesh.SkinBoneBindings
+                .Where(
+                    static binding =>
+                        binding.TargetMeshOrdinal >=
+                        0)
                 .Take(4)
                 .ToArray();
 
