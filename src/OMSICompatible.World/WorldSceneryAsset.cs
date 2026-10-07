@@ -110,6 +110,14 @@ public sealed record WorldSceneryPath(
     IReadOnlyList<string> ExtraValues,
     int? TrafficLightIndex = null);
 
+public sealed record WorldPassengerWaitingPosition(
+    double X,
+    double Y,
+    double Z,
+    double HeadingDegrees,
+    double HeightMeters,
+    int FileIndex);
+
 public sealed record WorldSceneryAsset(
     string DeclaredPath,
     string? ResolvedPath,
@@ -132,7 +140,8 @@ public sealed record WorldSceneryAsset(
     OmsiSceneryBoundingBox? BoundingBox = null,
     WorldSceneryCollisionBounds? CollisionBounds = null,
     WorldSceneryCollisionGeometry? CollisionGeometry = null,
-    bool IsCarPark = false)
+    bool IsCarPark = false,
+    IReadOnlyList<WorldPassengerWaitingPosition>? PassengerWaitingPositions = null)
 {
     public int RenderableMeshCount =>
         Meshes.Count(
