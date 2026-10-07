@@ -6024,13 +6024,24 @@ internal sealed class RuntimeApplicationContext :
                 "lights_parking") >
             0.5;
 
+        var selectedSpotlight =
+            _playerScriptRuntime is
+                { } playerScript &&
+            playerScript.HasLocalVariable(
+                "Spot_Select") &&
+            playerScript.GetLocal(
+                "Spot_Select") >=
+                0.0;
+
         var dippedLights =
             ReadFirstPlayerLocal(
                 "lights_abbl",
                 "lights_abblend",
                 "lights_lowbeam",
+                "lights_main",
                 "ai_light") >
-            0.5;
+                0.5 ||
+            selectedSpotlight;
 
         var highLights =
             ReadFirstPlayerLocal(
