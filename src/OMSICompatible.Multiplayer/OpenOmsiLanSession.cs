@@ -717,6 +717,34 @@ public sealed class OpenOmsiLanSession :
         return true;
     }
 
+    public bool SendWorldCarDescriptionTo(
+        uint playerId,
+        OpenOmsiLanWorldCarDescription description)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host ||
+            !_peers.TryGetValue(
+                playerId,
+                out var peer))
+        {
+            return false;
+        }
+
+        _worldCarDescriptions[
+            description.Id] =
+            description;
+
+        SendText(
+            OpenOmsiLanWorldCodec.EncodeDescription(
+                description),
+            peer.Endpoint);
+
+        return true;
+    }
+
     public bool SendWorldPersonDescription(
         OpenOmsiLanWorldPersonDescription description)
     {
