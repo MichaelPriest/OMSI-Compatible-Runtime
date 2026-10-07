@@ -22518,7 +22518,7 @@ public sealed class D3D11RenderWindow : Form
                 return;
             }
         }
-        else if (!wasSeated)
+        else if (!_walkerSeated)
         {
             var delta =
                 _walkerPosition -
