@@ -7218,6 +7218,21 @@ internal sealed class RuntimeApplicationContext :
 
     private void CleanupRelayedWorldPeople()
     {
+        foreach (var viewKey in
+                 _relayedWorldPassengerPeerViews
+                     .Keys
+                     .Where(
+                         key =>
+                             !_multiplayerActivePeerIds.Contains(
+                                 key.ObserverPeerId) ||
+                             !_multiplayerActivePeerIds.Contains(
+                                 key.SourcePeerId))
+                     .ToArray())
+        {
+            _relayedWorldPassengerPeerViews.Remove(
+                viewKey);
+        }
+
         foreach (var key in
                  _relayedWorldPersonIds.Keys
                      .Where(
