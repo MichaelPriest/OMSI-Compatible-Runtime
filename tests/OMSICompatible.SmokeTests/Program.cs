@@ -9905,6 +9905,107 @@ try
                         hostPose.VehiclePath),
         "openOMSI LAN protocol-6 host/client loopback handshake, INFO or STATE relay failed.");
 
+    var placeVector =
+        new OpenOmsiLanFootprint(
+            clientPose.X,
+            clientPose.Y,
+            clientPose.Z,
+            clientPose.HeadingDegrees,
+            clientPose.LengthMeters,
+            clientPose.WidthMeters);
+
+    var placeText =
+        OpenOmsiLanProtocol.EncodePlace(
+            lanClient.PlayerId,
+            placeVector);
+
+    Require(
+        OpenOmsiLanProtocol.TryDecodePlace(
+            placeText,
+            out var decodedPlacePlayerId,
+            out var decodedPlace) &&
+        decodedPlacePlayerId ==
+            lanClient.PlayerId &&
+        Math.Abs(
+            decodedPlace.X -
+            placeVector.X) <
+            0.011 &&
+        Math.Abs(
+            decodedPlace.Y -
+            placeVector.Y) <
+            0.011 &&
+        Math.Abs(
+            decodedPlace.Z -
+            placeVector.Z) <
+            0.011,
+        "openOMSI PLACE codec round-trip failed.");
+
+    var nearCodecText =
+        OpenOmsiLanProtocol.EncodeNear(
+            lanClient.PlayerId,
+            [
+                placeVector,
+                new OpenOmsiLanFootprint(
+                    hostPose.X,
+                    hostPose.Y,
+                    hostPose.Z,
+                    hostPose.HeadingDegrees,
+                    hostPose.LengthMeters,
+                    hostPose.WidthMeters)
+            ]);
+
+    Require(
+        OpenOmsiLanProtocol.TryDecodeNear(
+            nearCodecText,
+            out var decodedNearPlayerId,
+            out var decodedNearCodec) &&
+        decodedNearPlayerId ==
+            lanClient.PlayerId &&
+        decodedNearCodec.Count ==
+            2,
+        "openOMSI NEAR codec round-trip failed.");
+
+    Require(
+        lanClient.RequestNear(
+            placeVector),
+        "openOMSI PLACE request could not be sent by connected client.");
+
+    for (var nearStep = 0;
+         nearStep <
+             120 &&
+         lanClient.NearFootprints is null;
+         nearStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        lanClient.NearFootprints is
+            { Count: > 0 } nearFootprints &&
+        nearFootprints.Any(
+            footprint =>
+                Math.Abs(
+                    footprint.LengthMeters -
+                    Math.Max(
+                        hostPose.LengthMeters,
+                        1.0f)) <
+                    0.11f &&
+                Math.Abs(
+                    footprint.WidthMeters -
+                    Math.Max(
+                        hostPose.WidthMeters,
+                        1.0f)) <
+                    0.11f),
+        "openOMSI PLACE/NEAR loopback did not return the nearby host vehicle.");
+
     using var lanObserver =
         OpenOmsiLanSession.Join(
             $"127.0.0.1:{lanHost.LocalPort}",
