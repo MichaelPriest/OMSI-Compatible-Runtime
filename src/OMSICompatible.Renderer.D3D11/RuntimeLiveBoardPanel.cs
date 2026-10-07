@@ -4,6 +4,28 @@ using System.Windows.Forms;
 
 namespace OMSICompatible.Renderer.D3D11;
 
+public readonly record struct RuntimeTeleMatrixState(
+    bool Available,
+    string Line,
+    string Destination,
+    string NextStop,
+    int? StopNumber,
+    int? StopCount,
+    int? DelaySeconds,
+    double? DistanceToStopMeters)
+{
+    public static RuntimeTeleMatrixState Unavailable { get; } =
+        new(
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            null,
+            null,
+            null,
+            null);
+}
+
 /// <summary>
 /// Compact OMSI-style operational HUD. It consumes the same vehicle,
 /// DriveOps and FuelTrack state used by the runtime instead of maintaining
@@ -16,6 +38,8 @@ internal sealed class RuntimeLiveBoardPanel : Panel
     private readonly Label _systems;
     private readonly Label _fuel;
     private readonly Label _network;
+    private readonly Label _nextStop;
+    private readonly Label _punctuality;
 
     public RuntimeLiveBoardPanel()
     {
@@ -142,7 +166,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                     true
             };
 
-        _fuel =
+        _nextStop =
             new Label
             {
                 AutoSize = false,
@@ -150,6 +174,60 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                     new Rectangle(
                         8,
                         76,
+                        300,
+                        20),
+                Text =
+                    "PRÓXIMA PARADA --",
+                ForeColor =
+                    Color.FromArgb(
+                        42,
+                        70,
+                        92),
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        8.5f,
+                        FontStyle.Bold),
+                AutoEllipsis =
+                    true
+            };
+
+        _punctuality =
+            new Label
+            {
+                AutoSize = false,
+                Bounds =
+                    new Rectangle(
+                        313,
+                        76,
+                        125,
+                        20),
+                Text =
+                    "HORÁRIO --",
+                ForeColor =
+                    Color.FromArgb(
+                        72,
+                        78,
+                        85),
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        8.0f,
+                        FontStyle.Bold),
+                TextAlign =
+                    ContentAlignment.MiddleRight,
+                AutoEllipsis =
+                    true
+            };
+
+        _fuel =
+            new Label
+            {
+                AutoSize = false,
+                Bounds =
+                    new Rectangle(
+                        8,
+                        101,
                         205,
                         22),
                 Text =
@@ -173,7 +251,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                 Bounds =
                     new Rectangle(
                         218,
-                        76,
+                        101,
                         220,
                         22),
                 Text =
@@ -194,6 +272,10 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                     true
             };
 
+        Controls.Add(
+            _nextStop);
+        Controls.Add(
+            _punctuality);
         Controls.Add(
             _speed);
         Controls.Add(
@@ -240,6 +322,81 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                     110,
                     45,
                     45);
+    }
+
+    public void UpdateTeleMatrix(
+        RuntimeTeleMatrixState state)
+    {
+        if (!state.Available)
+        {
+            _nextStop.Text =
+                "PRÓXIMA PARADA --";
+            _punctuality.Text =
+                "HORÁRIO --";
+            _punctuality.ForeColor =
+                Color.FromArgb(
+                    72,
+                    78,
+                    85);
+            return;
+        }
+
+        var position =
+            state.StopNumber.HasValue &&
+            state.StopCount.HasValue
+                ? $" {state.StopNumber.Value}/{state.StopCount.Value}"
+                : string.Empty;
+
+        var distance =
+            state.DistanceToStopMeters.HasValue
+                ? $" · {state.DistanceToStopMeters.Value:0} m"
+                : string.Empty;
+
+        _nextStop.Text =
+            $"PRÓXIMA {position} · {state.NextStop}{distance}";
+
+        if (!state.DelaySeconds.HasValue)
+        {
+            _punctuality.Text =
+                "HORÁRIO --";
+            _punctuality.ForeColor =
+                Color.FromArgb(
+                    72,
+                    78,
+                    85);
+            return;
+        }
+
+        var delay =
+            state.DelaySeconds.Value;
+
+        _punctuality.Text =
+            Math.Abs(
+                delay) <=
+                    30
+                ? "NO HORÁRIO"
+                : delay >
+                    0
+                    ? $"+{delay / 60}:{Math.Abs(delay % 60):00}"
+                    : $"-{Math.Abs(delay) / 60}:{Math.Abs(delay % 60):00}";
+
+        _punctuality.ForeColor =
+            delay >
+                120
+                ? Color.FromArgb(
+                    155,
+                    55,
+                    45)
+                : delay <
+                    -120
+                    ? Color.FromArgb(
+                        185,
+                        115,
+                        25)
+                    : Color.FromArgb(
+                        35,
+                        115,
+                        58);
     }
 
     public void UpdateState(
@@ -335,5 +492,19 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                 Width -
                 _network.Left -
                 10);
+
+        _nextStop.Width =
+            Math.Max(
+                180,
+                Width -
+                    158);
+
+        _punctuality.Left =
+            Math.Max(
+                190,
+                Width -
+                    135);
+        _punctuality.Width =
+            125;
     }
 }
