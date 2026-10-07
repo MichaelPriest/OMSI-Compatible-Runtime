@@ -8411,6 +8411,14 @@ try
                 "76/1",
             DisplayTexts =
                 ["76", "Bahnhof"],
+            FigurePath =
+                "Humans/Generic/m1.hum",
+            FreeTexturePaths =
+                [
+                    @"..\..\Anzeigen\Rollband_FC\Paris\76.tga",
+                    string.Empty,
+                    @"..\..\Anzeigen\Rollband_FC\Paris\176.tga"
+                ],
             LengthMeters =
                 18.0f,
             WidthMeters =
@@ -8500,8 +8508,71 @@ try
         decodedLanInfo.Tour ==
             lanPose.Tour &&
         decodedLanInfo.DisplayTexts.SequenceEqual(
-            lanPose.DisplayTexts),
-        "openOMSI LAN INFO round-trip failed.");
+            lanPose.DisplayTexts) &&
+        decodedLanInfo.FigurePath ==
+            lanPose.FigurePath &&
+        decodedLanInfo.FreeTexturePaths.SequenceEqual(
+            lanPose.FreeTexturePaths) &&
+        Encoding.UTF8.GetByteCount(
+            lanInfo) <=
+            OpenOmsiLanProtocol.MaximumDatagramBytes,
+        "openOMSI LAN INFO/freetex round-trip failed.");
+
+    var oversizedInfoPose =
+        lanPose.Clone();
+
+    oversizedInfoPose.VehiclePath =
+        "Vehicles/" +
+        new string(
+            'Ü',
+            60) +
+        "/" +
+        new string(
+            'b',
+            120) +
+        ".bus";
+
+    oversizedInfoPose.DisplayTexts =
+        Enumerable
+            .Range(
+                0,
+                OpenOmsiLanProtocol.MaximumDisplayTexts)
+            .Select(
+                index =>
+                    index +
+                    "ß" +
+                    new string(
+                        'ñ',
+                        40))
+            .ToList();
+
+    oversizedInfoPose.FreeTexturePaths =
+        Enumerable
+            .Range(
+                0,
+                OpenOmsiLanProtocol.MaximumFreeTextures)
+            .Select(
+                index =>
+                    index +
+                    new string(
+                        'é',
+                        200))
+            .ToList();
+
+    var boundedInfo =
+        OpenOmsiLanProtocol.EncodeInfo(
+            oversizedInfoPose);
+
+    Require(
+        Encoding.UTF8.GetByteCount(
+            boundedInfo) <=
+            OpenOmsiLanProtocol.MaximumDatagramBytes &&
+        OpenOmsiLanProtocol.TryDecodeInfo(
+            boundedInfo,
+            out var boundedInfoDecoded) &&
+        boundedInfoDecoded.DisplayTexts.Count <
+            OpenOmsiLanProtocol.MaximumDisplayTexts,
+        "openOMSI INFO datagram budget compatibility failed.");
 
     var lanState =
         OpenOmsiLanStateCodec.Encode(
