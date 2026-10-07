@@ -739,6 +739,8 @@ public sealed class D3D11RenderWindow : Form
     private uint _navigationGuidanceVertexCount;
     private RuntimeObjectBatch[] _navigationGuidanceBatches =
         [];
+    private bool _navigationGuidanceEnabled =
+        true;
 
     private ID3D11Buffer? _remoteWalkerVertexBuffer;
     private uint _remoteWalkerVertexCount;
@@ -1639,6 +1641,16 @@ public sealed class D3D11RenderWindow : Form
             _navPulsePanel.DisplayModeChanged +=
                 (_, _) =>
                     LayoutNavPulsePanel();
+            _navPulsePanel.GuidanceVisibilityChanged +=
+                (_, _) =>
+                {
+                    _navigationGuidanceEnabled =
+                        _navPulsePanel.GuidanceEnabled;
+                    Invalidate();
+                };
+
+            _navigationGuidanceEnabled =
+                _navPulsePanel.GuidanceEnabled;
 
             Controls.Add(
                 _navPulsePanel);
@@ -8762,7 +8774,8 @@ public sealed class D3D11RenderWindow : Form
 
     private void DrawNavigationGuidance()
     {
-        if (_navigationGuidanceVertexCount ==
+        if (!_navigationGuidanceEnabled ||
+            _navigationGuidanceVertexCount ==
                 0 ||
             _navigationGuidanceBatches.Length ==
                 0)
