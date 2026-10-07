@@ -848,6 +848,72 @@ public sealed class OpenOmsiLanSession :
         return true;
     }
 
+    public bool SendWorldPeopleFrameTo(
+        uint playerId,
+        OpenOmsiLanWorldPeopleFrame frame)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host ||
+            !_peers.TryGetValue(
+                playerId,
+                out var peer))
+        {
+            return false;
+        }
+
+        var outbound =
+            frame with
+            {
+                Sequence =
+                    _worldSequence++,
+                HostMilliseconds =
+                    unchecked(
+                        (uint)Environment.TickCount64)
+            };
+
+        foreach (var packet in
+                 OpenOmsiLanWorldPeopleCodec.Encode(
+                     outbound))
+        {
+            Send(
+                packet,
+                peer.Endpoint);
+        }
+
+        return true;
+    }
+
+    public bool SendWorldPersonDescriptionTo(
+        uint playerId,
+        OpenOmsiLanWorldPersonDescription description)
+    {
+        ThrowIfDisposed();
+
+        if (!Connected ||
+            Role !=
+                OpenOmsiLanRole.Host ||
+            !_peers.TryGetValue(
+                playerId,
+                out var peer))
+        {
+            return false;
+        }
+
+        _worldPersonDescriptions[
+            description.Id] =
+            description;
+
+        SendText(
+            OpenOmsiLanWorldPeopleCodec.EncodeDescription(
+                description),
+            peer.Endpoint);
+
+        return true;
+    }
+
     public bool RelayWorldPeopleFrame(
         uint sourcePlayerId,
         OpenOmsiLanWorldPeopleFrame frame)
