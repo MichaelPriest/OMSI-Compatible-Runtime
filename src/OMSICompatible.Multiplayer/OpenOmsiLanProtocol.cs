@@ -19,6 +19,8 @@ public static class OpenOmsiLanProtocol
     public const double InfoEverySeconds = 2.0;
     public const double ClockEverySeconds = 5.0;
     public const double PeerTimeoutSeconds = 15.0;
+    public const double JoinTimeoutSeconds = 10.0;
+    public const double ReconnectTimeoutSeconds = 60.0;
     public const int MaximumPeers = 32;
     public const int MaximumDatagramBytes = 1400;
     public const int MaximumNameCharacters = 32;
