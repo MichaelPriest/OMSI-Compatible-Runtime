@@ -20,10 +20,21 @@ internal readonly record struct RuntimeReflectionView(
 internal sealed class RuntimeDriveVehicle :
     IDisposable
 {
-    // OMSI vehicle meshes are authored against a ground plane: axle/wheel
-    // placement already carries the wheel-centre height and tyre radius.
-    // Adding a generic ride-height offset lifts every bus above the road.
-    private const float ModelGroundPlaneOffsetMeters = 0.0f;
+    // OMSI's vehicle origin is the unloaded tyre-contact plane. With the
+    // suspension carrying the vehicle, that origin stands above the road by
+    // the static spring compression (typically about 10-16 cm on stock buses).
+    // Use the suspension-derived equilibrium instead of pinning z=0 to the
+    // road; the wheel animation then cancels this offset and stays on the
+    // surface while the body sits at the correct ride height.
+    private float ModelGroundPlaneOffsetMeters =>
+        Math.Clamp(
+            -(
+                _frontStaticSuspensionMeters +
+                _rearStaticSuspensionMeters
+             ) *
+            0.5f,
+            0.0f,
+            0.25f);
     private const float Gravity = 9.80665f;
     private const float DefaultWheelBaseMeters = 5.8f;
     private const float DefaultMaximumSteeringDegrees = 32.0f;
