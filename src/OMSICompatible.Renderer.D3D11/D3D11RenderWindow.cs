@@ -21718,6 +21718,219 @@ public sealed class D3D11RenderWindow : Form
             e);
     }
 
+    private RuntimeVehicleEntryInfo[] ResolveOpenPassengerEntries()
+    {
+        var entries =
+            _windowInfo.Vehicle?
+                .PassengerEntries?
+                .ToArray() ??
+            [];
+
+        if (entries.Length ==
+            0)
+        {
+            return [];
+        }
+
+        var paxOpen =
+            new List<RuntimeVehicleEntryInfo>(
+                entries.Length);
+
+        var hasPaxEntryVariables =
+            false;
+
+        if (_scriptRuntime is not null)
+        {
+            foreach (var entry in
+                     entries)
+            {
+                var variable =
+                    $"PAX_Entry{entry.Index}_Open";
+
+                if (!_scriptRuntime.HasLocalVariable(
+                        variable))
+                {
+                    continue;
+                }
+
+                hasPaxEntryVariables =
+                    true;
+
+                var value =
+                    _scriptRuntime.GetLocal(
+                        variable);
+
+                if (double.IsFinite(
+                        value) &&
+                    value >
+                        0.5)
+                {
+                    paxOpen.Add(
+                        entry);
+                }
+            }
+        }
+
+        if (hasPaxEntryVariables)
+        {
+            return paxOpen.ToArray();
+        }
+
+        var knownDoor =
+            false;
+        var anyDoorOpen =
+            false;
+
+        if (_scriptRuntime is not null)
+        {
+            for (var doorIndex = 0;
+                 doorIndex <
+                     16;
+                 doorIndex++)
+            {
+                var variable =
+                    $"door_{doorIndex}";
+
+                if (!_scriptRuntime.HasLocalVariable(
+                        variable))
+                {
+                    continue;
+                }
+
+                knownDoor =
+                    true;
+
+                var value =
+                    _scriptRuntime.GetLocal(
+                        variable);
+
+                if (double.IsFinite(
+                        value) &&
+                    value >
+                        0.75)
+                {
+                    anyDoorOpen =
+                        true;
+                }
+            }
+        }
+
+        if (knownDoor &&
+            !anyDoorOpen)
+        {
+            return [];
+        }
+
+        // Some OMSI add-ons do not expose PAX_EntryN_Open or door_N.
+        // Keep their real passengercabin entry geometry usable rather
+        // than falling back to the old arbitrary five-metre radius.
+        return entries;
+    }
+
+    private RuntimeVehicleEntryInfo? SelectDriverExitEntry(
+        IReadOnlyList<RuntimeVehicleEntryInfo> entries)
+    {
+        if (entries.Count ==
+            0)
+        {
+            return null;
+        }
+
+        var driver =
+            _windowInfo.Vehicle?
+                .DriverPosition;
+
+        if (driver is null)
+        {
+            return entries
+                .OrderBy(
+                    static entry =>
+                        entry.Index)
+                .First();
+        }
+
+        return entries
+            .OrderBy(
+                entry =>
+                {
+                    var dx =
+                        entry.X -
+                        driver.X;
+
+                    var dz =
+                        entry.Z -
+                        driver.Z;
+
+                    return dx *
+                               dx +
+                           dz *
+                               dz;
+                })
+            .First();
+    }
+
+    private Vector3 PassengerEntryWorldPosition(
+        RuntimeVehicleEntryInfo entry,
+        bool outside)
+    {
+        var heading =
+            _vehicle.HeadingRadians;
+
+        var forward =
+            new Vector3(
+                MathF.Sin(
+                    heading),
+                0.0f,
+                MathF.Cos(
+                    heading));
+
+        var right =
+            new Vector3(
+                forward.Z,
+                0.0f,
+                -forward.X);
+
+        var lateral =
+            (float)entry.X;
+
+        if (outside)
+        {
+            var side =
+                Math.Abs(
+                    lateral) >
+                    0.20f
+                    ? MathF.Sign(
+                        lateral)
+                    : -1.0f;
+
+            lateral +=
+                side *
+                0.80f;
+        }
+
+        var position =
+            _vehicle.Position +
+            right *
+                lateral +
+            Vector3.UnitY *
+                (float)entry.Y +
+            forward *
+                (float)entry.Z;
+
+        if (outside &&
+            _terrainSurfaceSampler.TrySample(
+                position.X,
+                position.Z,
+                out var ground))
+        {
+            position.Y =
+                ground +
+                0.02f;
+        }
+
+        return position;
+    }
+
     private void EnterOnFootMode()
     {
         if (_onFootMode ||
@@ -21740,38 +21953,70 @@ public sealed class D3D11RenderWindow : Form
                 MathF.Cos(
                     heading));
 
-        var right =
-            new Vector3(
-                forward.Z,
-                0.0f,
-                -forward.X);
+        Vector3 position;
 
-        var trackWidth =
-            (float)(
-                _windowInfo.Vehicle
-                    .Physics
-                    .TrackWidthMeters ??
-                2.4);
+        var authoredEntries =
+            _windowInfo.Vehicle
+                .PassengerEntries;
 
-        var position =
-            _vehicle.Position +
-            right *
-            (
-                trackWidth *
-                0.5f +
-                0.8f
-            ) +
-            forward *
-            1.2f;
-
-        if (_terrainSurfaceSampler.TrySample(
-                position.X,
-                position.Z,
-                out var ground))
+        if (authoredEntries is
+                { Count: > 0 })
         {
-            position.Y =
-                ground +
-                0.02f;
+            var openEntries =
+                ResolveOpenPassengerEntries();
+
+            var selected =
+                SelectDriverExitEntry(
+                    openEntries);
+
+            if (selected is null)
+            {
+                // A real passenger cabin exists and all known doors are
+                // closed. Do not teleport the player through the body.
+                return;
+            }
+
+            position =
+                PassengerEntryWorldPosition(
+                    selected,
+                    outside:
+                        true);
+        }
+        else
+        {
+            var right =
+                new Vector3(
+                    forward.Z,
+                    0.0f,
+                    -forward.X);
+
+            var trackWidth =
+                (float)(
+                    _windowInfo.Vehicle
+                        .Physics
+                        .TrackWidthMeters ??
+                    2.4);
+
+            position =
+                _vehicle.Position +
+                right *
+                (
+                    trackWidth *
+                    0.5f +
+                    0.8f
+                ) +
+                forward *
+                1.2f;
+
+            if (_terrainSurfaceSampler.TrySample(
+                    position.X,
+                    position.Z,
+                    out var ground))
+            {
+                position.Y =
+                    ground +
+                    0.02f;
+            }
         }
 
         _walkerPosition =
@@ -21814,21 +22059,79 @@ public sealed class D3D11RenderWindow : Form
             return;
         }
 
-        var delta =
-            _walkerPosition -
-            _vehicle.Position;
+        var authoredEntries =
+            _windowInfo.Vehicle
+                .PassengerEntries;
 
-        var planarDistance =
-            MathF.Sqrt(
-                delta.X *
-                    delta.X +
-                delta.Z *
-                    delta.Z);
-
-        if (planarDistance >
-            5.0f)
+        if (authoredEntries is
+                { Count: > 0 })
         {
-            return;
+            var openEntries =
+                ResolveOpenPassengerEntries();
+
+            if (openEntries.Length ==
+                0)
+            {
+                return;
+            }
+
+            var closestDistanceSquared =
+                float.PositiveInfinity;
+
+            foreach (var entry in
+                     openEntries)
+            {
+                var door =
+                    PassengerEntryWorldPosition(
+                        entry,
+                        outside:
+                            true);
+
+                var dx =
+                    _walkerPosition.X -
+                    door.X;
+
+                var dz =
+                    _walkerPosition.Z -
+                    door.Z;
+
+                closestDistanceSquared =
+                    Math.Min(
+                        closestDistanceSquared,
+                        dx *
+                            dx +
+                        dz *
+                            dz);
+            }
+
+            const float entryReachMeters =
+                1.75f;
+
+            if (closestDistanceSquared >
+                entryReachMeters *
+                entryReachMeters)
+            {
+                return;
+            }
+        }
+        else
+        {
+            var delta =
+                _walkerPosition -
+                _vehicle.Position;
+
+            var planarDistance =
+                MathF.Sqrt(
+                    delta.X *
+                        delta.X +
+                    delta.Z *
+                        delta.Z);
+
+            if (planarDistance >
+                5.0f)
+            {
+                return;
+            }
         }
 
         _onFootMode =
