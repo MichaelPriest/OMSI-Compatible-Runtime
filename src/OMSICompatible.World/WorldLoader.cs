@@ -1623,7 +1623,10 @@ public static class WorldLoader
                         IsCarPark:
                             definition.IsCarPark,
                         PassengerWaitingPositions:
-                            passengerWaitingPositions);
+                            passengerWaitingPositions,
+                        PassengerCabinPath:
+                            definition.PassengerCabin?
+                                .ResolvedPath);
 
                 result[
                     declaredPath] =
@@ -1755,6 +1758,19 @@ public static class WorldLoader
                     static mesh =>
                         mesh.ResolvedPath!)
                 .ToList();
+
+        if (!string.IsNullOrWhiteSpace(
+                asset.PassengerCabinPath))
+        {
+            if (!File.Exists(
+                    asset.PassengerCabinPath))
+            {
+                return false;
+            }
+
+            paths.Add(
+                asset.PassengerCabinPath);
+        }
 
         if (!string.IsNullOrWhiteSpace(
                 asset.CollisionMeshSource))
