@@ -10296,6 +10296,145 @@ try
         !targetedDescriptionAtObserver,
         "openOMSI WORLD targeted people/description send leaked to another client.");
 
+    var targetedCarAtClient =
+        false;
+    var targetedCarAtObserver =
+        false;
+    var targetedLightAtClient =
+        false;
+    var targetedLightAtObserver =
+        false;
+    var targetedCarDescriptionAtClient =
+        false;
+    var targetedCarDescriptionAtObserver =
+        false;
+
+    const uint targetedCarId =
+        0x00400044u;
+    const long targetedLightId =
+        9_000_001;
+
+    lanClient.WorldFrameReceived +=
+        frame =>
+        {
+            targetedCarAtClient |=
+                frame.Cars.Any(
+                    static car =>
+                        car.Id ==
+                        targetedCarId);
+
+            targetedLightAtClient |=
+                frame.Lights.Any(
+                    static light =>
+                        light.ObjectId ==
+                        targetedLightId);
+        };
+
+    lanObserver.WorldFrameReceived +=
+        frame =>
+        {
+            targetedCarAtObserver |=
+                frame.Cars.Any(
+                    static car =>
+                        car.Id ==
+                        targetedCarId);
+
+            targetedLightAtObserver |=
+                frame.Lights.Any(
+                    static light =>
+                        light.ObjectId ==
+                        targetedLightId);
+        };
+
+    lanClient.WorldCarDescriptionReceived +=
+        description =>
+        {
+            targetedCarDescriptionAtClient |=
+                description.Id ==
+                targetedCarId;
+        };
+
+    lanObserver.WorldCarDescriptionReceived +=
+        description =>
+        {
+            targetedCarDescriptionAtObserver |=
+                description.Id ==
+                targetedCarId;
+        };
+
+    Require(
+        lanHost.SendWorldCarDescriptionTo(
+            lanClient.PlayerId,
+            new OpenOmsiLanWorldCarDescription(
+                targetedCarId,
+                "Vehicles/Test/Test.bus",
+                null,
+                "100",
+                "TARGET")) &&
+        lanHost.SendWorldFrameTo(
+            lanClient.PlayerId,
+            new OpenOmsiLanWorldFrame(
+                0,
+                0,
+                [
+                    new OpenOmsiLanWorldCarState(
+                        targetedCarId,
+                        hostPose.X +
+                            3.0,
+                        hostPose.Y +
+                            1.0,
+                        hostPose.Z,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        0,
+                        false,
+                        true,
+                        0)
+                ],
+                [
+                    new OpenOmsiLanWorldLightState(
+                        targetedLightId,
+                        1.25,
+                        false)
+                ])),
+        "openOMSI WORLD targeted car/light send could not be queued.");
+
+    for (var targetedWorldStep = 0;
+         targetedWorldStep <
+             120 &&
+         (
+             !targetedCarAtClient ||
+             !targetedLightAtClient ||
+             !targetedCarDescriptionAtClient
+         );
+         targetedWorldStep++)
+    {
+        lanHost.Tick(
+            0.02,
+            hostPose);
+        lanClient.Tick(
+            0.02,
+            clientPose);
+        lanObserver.Tick(
+            0.02,
+            observerPose);
+
+        Thread.Sleep(
+            1);
+    }
+
+    Require(
+        targetedCarAtClient &&
+        targetedLightAtClient &&
+        targetedCarDescriptionAtClient &&
+        !targetedCarAtObserver &&
+        !targetedLightAtObserver &&
+        !targetedCarDescriptionAtObserver,
+        "openOMSI WORLD targeted car/light/description send leaked to another client.");
+
     OpenOmsiLanWorldPersonDescription?
         observerRelayedDescription =
             null;
