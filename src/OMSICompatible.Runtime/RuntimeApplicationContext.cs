@@ -97,6 +97,12 @@ internal sealed class RuntimeApplicationContext :
         _ownedWorldPassengers =
             [];
     private double _worldPassengerUplinkAccumulator;
+    private readonly RuntimeHostWorldPassengerAuthority
+        _hostWorldPassengers =
+            new();
+    private double _hostWorldPassengerRefreshAccumulator =
+        1.0;
+    private double _hostWorldPassengerSendAccumulator;
     private readonly Dictionary<(bool Person, uint Id), DateTimeOffset>
         _sharedWorldWantRequestedAt =
             [];
@@ -6211,6 +6217,11 @@ internal sealed class RuntimeApplicationContext :
                         walker.CourseDegrees),
                     walker.Seated));
         }
+
+        UpdateHostWorldPassengers(
+            session,
+            deltaSeconds,
+            remoteWalkers);
 
         TryClaimSharedWorldPassengers(
             session,
