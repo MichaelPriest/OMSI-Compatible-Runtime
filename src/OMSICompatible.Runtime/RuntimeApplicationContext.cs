@@ -46,6 +46,15 @@ internal sealed class RuntimeApplicationContext :
     private WorldLineAiSchedule _lineAiSchedule =
         WorldLineAiSchedule.Empty;
     private double _lineAiServiceMinutes;
+    private readonly WorldNavigationAssist
+        _navigationAssist =
+            new();
+    private string _navigationRouteKey =
+        string.Empty;
+    private RuntimeTrafficPathPointInfo[]
+        _navigationRuntimeRoute =
+            [];
+    private double _navigationUpdateAccumulator;
     private WorldDefinition? _currentWorld;
     private OpenOmsiLanSession? _multiplayerSession;
     private readonly RuntimeCommsLinkVoiceService
@@ -3066,7 +3075,367 @@ internal sealed class RuntimeApplicationContext :
         AppendMultiplayerTrafficAgents(
             deltaSeconds);
 
+        UpdateNavigationGuidance(
+            deltaSeconds,
+            agents);
+
         return _runtimeTrafficAgentBuffer;
+    }
+
+    private void UpdateNavigationGuidance(
+        double deltaSeconds,
+        IReadOnlyList<WorldTrafficAgentState> traffic)
+    {
+        var window =
+            _runtimeWindow;
+
+        var world =
+            _currentWorld;
+
+        if (window is null ||
+            world is null)
+        {
+            return;
+        }
+
+        _navigationUpdateAccumulator +=
+            Math.Max(
+                0.0,
+                double.IsFinite(
+                    deltaSeconds)
+                    ? deltaSeconds
+                    : 0.0);
+
+        if (_navigationUpdateAccumulator <
+            0.15)
+        {
+            return;
+        }
+
+        _navigationUpdateAccumulator =
+            0.0;
+
+        var obstacle =
+            window.PlayerTrafficObstacle;
+
+        var line =
+            window.CurrentOperationLine
+                .Trim();
+        var destination =
+            window.CurrentOperationDestination
+                .Trim();
+
+        if (obstacle is null ||
+            string.IsNullOrWhiteSpace(
+                line))
+        {
+            if (_navigationRouteKey.Length >
+                0)
+            {
+                _navigationRouteKey =
+                    string.Empty;
+                _navigationRuntimeRoute =
+                    [];
+                _navigationAssist.ClearRoute();
+                window.SetNavigationGuidance(
+                    [],
+                    []);
+            }
+
+            return;
+        }
+
+        var candidates =
+            _lineAiSchedule.Trips
+                .Where(
+                    trip =>
+                        trip.Ready &&
+                        trip.Route is not null &&
+                        (
+                            trip.LineName.Equals(
+                                line,
+                                StringComparison.OrdinalIgnoreCase) ||
+                            trip.Trip?.Line.Equals(
+                                line,
+                                StringComparison.OrdinalIgnoreCase) ==
+                            true
+                        ))
+                .ToArray();
+
+        if (candidates.Length ==
+            0)
+        {
+            return;
+        }
+
+        var selected =
+            !string.IsNullOrWhiteSpace(
+                destination)
+                ? candidates.FirstOrDefault(
+                      trip =>
+                          trip.Trip?.Destination.Equals(
+                              destination,
+                              StringComparison.OrdinalIgnoreCase) ==
+                          true) ??
+                  candidates.FirstOrDefault(
+                      trip =>
+                          trip.Trip?.Destination.Contains(
+                              destination,
+                              StringComparison.OrdinalIgnoreCase) ==
+                          true)
+                : null;
+
+        selected ??=
+            candidates
+                .OrderBy(
+                    trip =>
+                        CircularMinuteDistance(
+                            trip.DepartureMinutes,
+                            _lineAiServiceMinutes))
+                .ThenBy(
+                    static trip =>
+                        trip.TripName,
+                    StringComparer.OrdinalIgnoreCase)
+                .First();
+
+        var routeKey =
+            string.Join(
+                "|",
+                selected.LineName,
+                selected.TripName,
+                selected.Route!.TrackName,
+                selected.Trip?.Destination ??
+                    string.Empty);
+
+        if (!_navigationRouteKey.Equals(
+                routeKey,
+                StringComparison.Ordinal))
+        {
+            var route =
+                BuildNavigationRoute(
+                    selected.Route,
+                    world.TrafficPaths);
+
+            if (route.Length <
+                2)
+            {
+                return;
+            }
+
+            _navigationRouteKey =
+                routeKey;
+
+            _navigationAssist.SetRoute(
+                route);
+
+            _navigationRuntimeRoute =
+                route
+                    .Select(
+                        static point =>
+                            new RuntimeTrafficPathPointInfo(
+                                RuntimeWorldXFromSource(
+                                    point.X),
+                                point.Y,
+                                point.Z))
+                    .ToArray();
+        }
+
+        var navigation =
+            _navigationAssist.Build(
+                new WorldVector3(
+                    -obstacle.X,
+                    obstacle.Y,
+                    obstacle.Z),
+                -obstacle.HeadingRadians *
+                    180.0 /
+                    Math.PI,
+                Math.Abs(
+                    obstacle.SpeedMetersPerSecond) *
+                    3.6,
+                onFoot:
+                    false,
+                traffic);
+
+        var guidance =
+            navigation.GroundArrows
+                .Select(
+                    static arrow =>
+                        new RuntimeNavigationGuidancePointInfo(
+                            RuntimeWorldXFromSource(
+                                arrow.Position.X),
+                            arrow.Position.Y,
+                            arrow.Position.Z,
+                            RuntimeHeadingDegreesFromSource(
+                                arrow.HeadingDegrees),
+                            arrow.DistanceAheadMeters,
+                            arrow.Kind))
+                .ToArray();
+
+        window.SetNavigationGuidance(
+            _navigationRuntimeRoute,
+            guidance);
+    }
+
+    private static WorldVector3[] BuildNavigationRoute(
+        WorldLineAiRoute route,
+        WorldTrafficPathNetwork network)
+    {
+        if (route.SegmentIndices.Count ==
+            0)
+        {
+            return [];
+        }
+
+        var segments =
+            network.Segments.ToDictionary(
+                static segment =>
+                    segment.Index);
+
+        var output =
+            new List<WorldVector3>();
+
+        for (var routeIndex = 0;
+             routeIndex <
+                 route.SegmentIndices.Count;
+             routeIndex++)
+        {
+            if (!segments.TryGetValue(
+                    route.SegmentIndices[
+                        routeIndex],
+                    out var segment) ||
+                segment.Points.Count <
+                    2)
+            {
+                continue;
+            }
+
+            var forward =
+                true;
+
+            if (output.Count >
+                0)
+            {
+                var previous =
+                    output[^1];
+
+                forward =
+                    DistanceSquared(
+                        previous,
+                        segment.Points[0]) <=
+                    DistanceSquared(
+                        previous,
+                        segment.Points[^1]);
+            }
+            else if (routeIndex +
+                         1 <
+                     route.SegmentIndices.Count &&
+                     segments.TryGetValue(
+                         route.SegmentIndices[
+                             routeIndex +
+                             1],
+                         out var next) &&
+                     next.Points.Count >
+                         1)
+            {
+                var fromStart =
+                    Math.Min(
+                        DistanceSquared(
+                            segment.Points[0],
+                            next.Points[0]),
+                        DistanceSquared(
+                            segment.Points[0],
+                            next.Points[^1]));
+                var fromEnd =
+                    Math.Min(
+                        DistanceSquared(
+                            segment.Points[^1],
+                            next.Points[0]),
+                        DistanceSquared(
+                            segment.Points[^1],
+                            next.Points[^1]));
+
+                forward =
+                    fromEnd <=
+                    fromStart;
+            }
+
+            if (forward)
+            {
+                AppendNavigationPoints(
+                    output,
+                    segment.Points);
+            }
+            else
+            {
+                AppendNavigationPoints(
+                    output,
+                    segment.Points.Reverse());
+            }
+        }
+
+        return output.ToArray();
+    }
+
+    private static void AppendNavigationPoints(
+        ICollection<WorldVector3> output,
+        IEnumerable<WorldVector3> points)
+    {
+        foreach (var point in
+                 points)
+        {
+            if (output is
+                    List<WorldVector3> list &&
+                list.Count >
+                    0 &&
+                DistanceSquared(
+                    list[^1],
+                    point) <
+                0.04)
+            {
+                continue;
+            }
+
+            output.Add(
+                point);
+        }
+    }
+
+    private static double DistanceSquared(
+        WorldVector3 first,
+        WorldVector3 second)
+    {
+        var dx =
+            first.X -
+            second.X;
+        var dy =
+            first.Y -
+            second.Y;
+        var dz =
+            first.Z -
+            second.Z;
+
+        return dx *
+                   dx +
+               dy *
+                   dy +
+               dz *
+                   dz;
+    }
+
+    private static double CircularMinuteDistance(
+        double first,
+        double second)
+    {
+        var delta =
+            Math.Abs(
+                first -
+                second) %
+            1440.0;
+
+        return Math.Min(
+            delta,
+            1440.0 -
+            delta);
     }
 
     private void StartMultiplayerSession()
