@@ -63,6 +63,7 @@ internal sealed class RuntimeApplicationContext :
     private double _multiplayerStatusAccumulator;
     private float _multiplayerVehicleLengthMeters;
     private float _multiplayerVehicleWidthMeters;
+    private bool _multiplayerNearRequested;
     private DateTimeOffset? _commsLinkLastRemoteVoiceAt;
     private uint _commsLinkLastRemoteSpeakerId;
     private readonly HashSet<string>
@@ -5341,6 +5342,8 @@ internal sealed class RuntimeApplicationContext :
             0.0f;
         _multiplayerVehicleWidthMeters =
             0.0f;
+        _multiplayerNearRequested =
+            false;
         _sharedWorldCars.Clear();
         _sharedWorldDescriptions.Clear();
         _sharedWorldPeople.Clear();
@@ -6354,6 +6357,44 @@ internal sealed class RuntimeApplicationContext :
             session.Tick(
                 deltaSeconds,
                 localPose);
+
+            if (session.Role ==
+                    OpenOmsiLanRole.Client &&
+                session.Connected &&
+                !_multiplayerNearRequested &&
+                localPose.HasVehicle)
+            {
+                var headingRadians =
+                    localPose.HeadingDegrees *
+                    Math.PI /
+                    180.0;
+
+                var footprint =
+                    new OpenOmsiLanFootprint(
+                        localPose.X +
+                            Math.Sin(
+                                headingRadians) *
+                            localPose.BoxOffsetMeters,
+                        localPose.Y +
+                            Math.Cos(
+                                headingRadians) *
+                            localPose.BoxOffsetMeters,
+                        localPose.Z,
+                        localPose.HeadingDegrees,
+                        Math.Max(
+                            localPose.LengthMeters,
+                            1.0f),
+                        Math.Max(
+                            localPose.WidthMeters,
+                            1.0f));
+
+                if (session.RequestNear(
+                        footprint))
+                {
+                    _multiplayerNearRequested =
+                        true;
+                }
+            }
 
             while (_commsLinkVoice.TryDequeueOutgoing(
                        out var voicePcm))
