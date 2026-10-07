@@ -22,7 +22,9 @@ public sealed record WorldTrafficAgentState(
     string? ScheduledTour = null,
     string? ScheduledTrip = null,
     string? DepotHofName = null,
-    sbyte AtStation = 0);
+    sbyte AtStation = 0,
+    double HalfLengthMeters = 2.25,
+    double HalfWidthMeters = 1.0);
 
 public sealed record WorldTrafficObstacleState(
     WorldVector3 Position,
@@ -4856,7 +4858,11 @@ public sealed class WorldTrafficSimulation
                 false,
                 false,
                 agent.TraveledDistanceMeters,
-                0.0);
+                0.0,
+                HalfLengthMeters:
+                    agent.HalfLengthMeters,
+                HalfWidthMeters:
+                    agent.HalfWidthMeters);
         }
 
         SampleSegment(
@@ -4907,7 +4913,11 @@ public sealed class WorldTrafficSimulation
             blinkerLeft,
             blinkerRight,
             agent.TraveledDistanceMeters,
-            pathCurvaturePerMeter);
+            pathCurvaturePerMeter,
+            HalfLengthMeters:
+                agent.HalfLengthMeters,
+            HalfWidthMeters:
+                agent.HalfWidthMeters);
     }
 
     private static bool IsRoadVehicle(
