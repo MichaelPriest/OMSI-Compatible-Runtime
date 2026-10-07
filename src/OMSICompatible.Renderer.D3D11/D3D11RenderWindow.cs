@@ -22307,10 +22307,160 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
+        next =
+            ConstrainWalkerAgainstVehicle(
+                _walkerPosition,
+                next);
+
         _walkerPosition =
             next;
 
         SnapCameraToWalker();
+    }
+
+    private Vector3 ConstrainWalkerAgainstVehicle(
+        Vector3 current,
+        Vector3 next)
+    {
+        if (_windowInfo.Vehicle is null ||
+            _vehicleRemoved)
+        {
+            return next;
+        }
+
+        const float walkerRadius =
+            0.28f;
+
+        var wheelBase =
+            (float)(
+                _windowInfo.Vehicle
+                    .Physics
+                    .WheelBaseMeters ??
+                6.0);
+
+        var trackWidth =
+            (float)(
+                _windowInfo.Vehicle
+                    .Physics
+                    .TrackWidthMeters ??
+                2.4);
+
+        var sectionAllowance =
+            (_windowInfo.Vehicle.Sections?
+                 .Count ??
+             0) >
+                0
+                ? 1.75f
+                : 0.0f;
+
+        var halfLength =
+            (float)Math.Clamp(
+                wheelBase *
+                    0.5f +
+                2.8f +
+                sectionAllowance,
+                4.5f,
+                12.0f);
+
+        var halfWidth =
+            (float)Math.Clamp(
+                trackWidth *
+                    0.5f +
+                0.25f,
+                1.15f,
+                1.75f);
+
+        var relativeHeight =
+            next.Y -
+            _vehicle.Position.Y;
+
+        if (relativeHeight <
+                -0.75f ||
+            relativeHeight >
+                3.75f)
+        {
+            return next;
+        }
+
+        bool IntersectsBody(
+            Vector3 world)
+        {
+            var heading =
+                _vehicle.HeadingRadians;
+
+            var forward =
+                new Vector2(
+                    MathF.Sin(
+                        heading),
+                    MathF.Cos(
+                        heading));
+
+            var right =
+                new Vector2(
+                    forward.Y,
+                    -forward.X);
+
+            var delta =
+                new Vector2(
+                    world.X -
+                        _vehicle.Position.X,
+                    world.Z -
+                        _vehicle.Position.Z);
+
+            var lateral =
+                Vector2.Dot(
+                    delta,
+                    right);
+
+            var longitudinal =
+                Vector2.Dot(
+                    delta,
+                    forward);
+
+            return MathF.Abs(
+                       lateral) <
+                   halfWidth +
+                       walkerRadius &&
+                   MathF.Abs(
+                       longitudinal) <
+                   halfLength +
+                       walkerRadius;
+        }
+
+        if (!IntersectsBody(
+                next))
+        {
+            return next;
+        }
+
+        var xOnly =
+            new Vector3(
+                next.X,
+                next.Y,
+                current.Z);
+
+        if (!IntersectsBody(
+                xOnly))
+        {
+            return xOnly;
+        }
+
+        var zOnly =
+            new Vector3(
+                current.X,
+                next.Y,
+                next.Z);
+
+        if (!IntersectsBody(
+                zOnly))
+        {
+            return zOnly;
+        }
+
+        return new Vector3(
+            current.X,
+            next.Y,
+            current.Z);
     }
 
     private void SnapCameraToWalker()
