@@ -1036,6 +1036,8 @@ public sealed class D3D11RenderWindow : Form
     private bool _vehicleThumbnailCaptured;
 
     // A dedicated preview run can save the actual D3D11 frame as a still.
+    [System.ComponentModel.DesignerSerializationVisibility(
+        System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public string? VehicleThumbnailOutputPath { get; set; }
 
     private float _previewYaw = 0.62f;
@@ -8051,7 +8053,7 @@ public sealed class D3D11RenderWindow : Form
         // Read the real rendered O3D vehicle and materials from the GPU.
         _deviceContext.CopyResource(staging, _backBuffer);
         var mapped = _deviceContext.Map(
-            staging, 0, MapMode.Read, MapFlags.None);
+            staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
 
         using var bitmap = new Bitmap(
             width, height, PixelFormat.Format32bppArgb);
