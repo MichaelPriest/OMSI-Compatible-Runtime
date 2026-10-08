@@ -96,8 +96,10 @@
                                 <TextBlock Text="Veículos" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
-                        <Button Height="46"
-                                HorizontalContentAlignment="Left">
+                        <Button x:Name="AddonsNavButton"
+                                Height="46"
+                                HorizontalContentAlignment="Left"
+                                Click="AddonsNavButton_Click">
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE710;"/>
                                 <TextBlock Text="Add-ons" VerticalAlignment="Center"/>
@@ -658,6 +660,97 @@
                             </DataTemplate>
                         </GridView.ItemTemplate>
                     </GridView>
+                </Grid>
+            </Grid>
+
+            <Grid x:Name="AddonsView"
+                  Grid.Column="1"
+                  Visibility="Collapsed"
+                  Background="#0A1420">
+                <Grid Margin="28">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon FontFamily="Segoe MDL2 Assets"
+                                      Glyph="&#xE710;"
+                                      FontSize="28"
+                                      Foreground="#8DB7FF"/>
+                            <TextBlock Text="Add-ons e conteúdo instalado"
+                                       Foreground="White"
+                                       FontSize="30"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="Mapas e veículos encontrados na instalação OMSI, incluindo conteúdo original e extensões de terceiros."
+                                   Foreground="#9BAFC8"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Border Grid.Row="1"
+                            Background="#111E2D"
+                            CornerRadius="10"
+                            Padding="16"
+                            Margin="0,16,0,10">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="18">
+                            <TextBlock x:Name="AddonsMapCountText"
+                                       Text="0 mapas"
+                                       Foreground="#C7DAF2"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock x:Name="AddonsVehicleCountText"
+                                       Text="0 veículos dirigíveis"
+                                       Foreground="#C7DAF2"
+                                       FontWeight="SemiBold"/>
+                            <Button Content="Atualizar conteúdo"
+                                    Click="RefreshButton_Click"/>
+                        </StackPanel>
+                    </Border>
+                    <Grid Grid.Row="2"
+                          Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="AddonsSearchBox"
+                                 PlaceholderText="Pesquisar mapa, veículo ou pasta"
+                                 TextChanged="AddonsSearchBox_TextChanged"/>
+                        <TextBlock x:Name="AddonsResultCountText"
+                                   Grid.Column="1"
+                                   Margin="12,0,0,0"
+                                   Text="0 itens"
+                                   VerticalAlignment="Center"
+                                   Foreground="#9BAFC8"/>
+                    </Grid>
+                    <ListView x:Name="AddonsList"
+                              Grid.Row="3"
+                              SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#30465C"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="12,9">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding Name}"
+                                                   Foreground="White"
+                                                   FontSize="15"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Kind}"
+                                                   Foreground="#8DB7FF"
+                                                   FontSize="12"/>
+                                        <TextBlock Text="{Binding Detail}"
+                                                   Foreground="#9BAFC8"
+                                                   FontSize="12"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxLines="2"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
                 </Grid>
             </Grid>
 
