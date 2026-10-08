@@ -23,6 +23,9 @@ internal enum RuntimeOmsiMenuCommand
     Refuel,
     DirectionSigns,
     LiveBoard,
+    MiniMap,
+    FullMap,
+    GroundArrows,
     PerformanceCenter,
     ReplayOps,
     Pause,
@@ -217,7 +220,28 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             flow,
             RuntimeOmsiMenuCommand.LiveBoard,
             "\uE9D2",
-            "LiveBoard — HUD operacional compacto",
+            "LiveBoard — HUD opcional (ativar/desativar)",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.MiniMap,
+            "\uE80F",
+            "Mini mapa opcional — ruas, rota e tráfego",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.FullMap,
+            "\uE774",
+            "Mapa ampliado — abrir/fechar via ESC",
+            true);
+
+        AddButton(
+            flow,
+            RuntimeOmsiMenuCommand.GroundArrows,
+            "\uE72A",
+            "Setas opcionais sobre a rota nas ruas — estilo Forza",
             true);
 
         AddButton(
@@ -347,6 +371,18 @@ internal sealed class RuntimeOmsiMenuBar : Panel
         SetButtonActive(
             RuntimeOmsiMenuCommand.GameController,
             active);
+    }
+
+    public void SetNavigationOverlayState(
+        bool miniMapEnabled,
+        bool fullMapOpen,
+        bool liveBoardEnabled,
+        bool groundArrowsEnabled)
+    {
+        SetButtonActive(RuntimeOmsiMenuCommand.MiniMap, miniMapEnabled);
+        SetButtonActive(RuntimeOmsiMenuCommand.FullMap, fullMapOpen);
+        SetButtonActive(RuntimeOmsiMenuCommand.LiveBoard, liveBoardEnabled);
+        SetButtonActive(RuntimeOmsiMenuCommand.GroundArrows, groundArrowsEnabled);
     }
 
     private void AddButton(

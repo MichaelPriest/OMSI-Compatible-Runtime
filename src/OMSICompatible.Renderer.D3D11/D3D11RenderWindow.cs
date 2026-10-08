@@ -655,6 +655,8 @@ public sealed class D3D11RenderWindow : Form
     private RuntimeControlHubSettings _controlHubSettings =
         RuntimeControlHubSettings.Load();
     private RuntimeControlHubSettingsForm? _controlHubSettingsForm;
+    private RuntimeNavigationOverlaySettings _navigationOverlaySettings =
+        RuntimeNavigationOverlaySettings.Load();
     private readonly RuntimeNavPulsePanel? _navPulsePanel;
     private readonly RuntimeVehiclePanel? _vehiclePanel;
     private readonly RuntimeLiveBoardPanel? _liveBoardPanel;
@@ -744,8 +746,7 @@ public sealed class D3D11RenderWindow : Form
     private uint _navigationGuidanceVertexCount;
     private RuntimeObjectBatch[] _navigationGuidanceBatches =
         [];
-    private bool _navigationGuidanceEnabled =
-        true;
+    private bool _navigationGuidanceEnabled;
 
     private ID3D11Buffer? _remoteWalkerVertexBuffer;
     private uint _remoteWalkerVertexCount;
@@ -1720,11 +1721,17 @@ public sealed class D3D11RenderWindow : Form
                 {
                     _navigationGuidanceEnabled =
                         _navPulsePanel.GuidanceEnabled;
+                    SaveNavigationOverlaySettings();
+                    SyncOmsiMenuState();
                     Invalidate();
                 };
 
+            _navPulsePanel.SetGuidanceEnabled(
+                _navigationOverlaySettings.GroundArrowsEnabled);
             _navigationGuidanceEnabled =
                 _navPulsePanel.GuidanceEnabled;
+            _navPulsePanel.Visible =
+                _navigationOverlaySettings.MiniMapEnabled;
 
             Controls.Add(
                 _navPulsePanel);
@@ -1755,6 +1762,8 @@ public sealed class D3D11RenderWindow : Form
 
         if (_liveBoardPanel is not null)
         {
+            _liveBoardPanel.Visible =
+                _navigationOverlaySettings.LiveBoardEnabled;
             Controls.Add(
                 _liveBoardPanel);
             LayoutLiveBoardPanel();
@@ -6621,12 +6630,12 @@ public sealed class D3D11RenderWindow : Form
         }
 
         if (!_vehiclePreviewMode &&
-            _omsiMenuBar?.Visible ==
-                true &&
-            (keyData & Keys.KeyCode) ==
-            Keys.Escape)
+            (keyData & Keys.KeyCode) == Keys.Escape &&
+            (keyData & (Keys.Control | Keys.Alt | Keys.Shift)) == Keys.None)
         {
-            _omsiMenuBar.HideMenu();
+            // ESC is the in-game entry point, without reserving extra OMSI
+            // driving shortcuts. ESC again closes the menu.
+            ToggleOmsiMenu();
             return true;
         }
 
@@ -7054,6 +7063,23 @@ public sealed class D3D11RenderWindow : Form
             _mouseDriveMode);
         _omsiMenuBar.SetControllerActive(
             _controllerInputEnabled);
+        _omsiMenuBar.SetNavigationOverlayState(
+            _navPulsePanel?.Visible == true && !_navPulsePanel.Expanded,
+            _navPulsePanel?.Visible == true && _navPulsePanel.Expanded,
+            _liveBoardPanel?.Visible == true,
+            _navigationGuidanceEnabled);
+    }
+
+    private void SaveNavigationOverlaySettings()
+    {
+        _navigationOverlaySettings = _navigationOverlaySettings with
+        {
+            MiniMapEnabled =
+                _navPulsePanel?.Visible == true && !_navPulsePanel.Expanded,
+            LiveBoardEnabled = _liveBoardPanel?.Visible == true,
+            GroundArrowsEnabled = _navigationGuidanceEnabled
+        };
+        _navigationOverlaySettings.Save();
     }
 
     private void OnOmsiMenuCommandInvoked(
@@ -7119,6 +7145,7 @@ public sealed class D3D11RenderWindow : Form
                 {
                     LayoutNavPulsePanel();
                     _navPulsePanel.TogglePanel();
+                    SaveNavigationOverlaySettings();
                 }
 
                 break;
@@ -7128,6 +7155,57 @@ public sealed class D3D11RenderWindow : Form
                 {
                     LayoutLiveBoardPanel();
                     _liveBoardPanel.TogglePanel();
+                    SaveNavigationOverlaySettings();
+                }
+
+                break;
+
+            case RuntimeOmsiMenuCommand.MiniMap:
+                if (_navPulsePanel is not null)
+                {
+                    if (_navPulsePanel.Expanded)
+                    {
+                        _navPulsePanel.SetExpanded(false);
+                        _navPulsePanel.Visible = true;
+                    }
+                    else
+                    {
+                        _navPulsePanel.TogglePanel();
+                    }
+
+                    LayoutNavPulsePanel();
+                    SaveNavigationOverlaySettings();
+                }
+
+                break;
+
+            case RuntimeOmsiMenuCommand.FullMap:
+                if (_navPulsePanel is not null)
+                {
+                    if (_navPulsePanel.Visible && _navPulsePanel.Expanded)
+                    {
+                        _navPulsePanel.Visible = false;
+                        _navPulsePanel.SetExpanded(false);
+                    }
+                    else
+                    {
+                        _navPulsePanel.SetExpanded(true);
+                        _navPulsePanel.Visible = true;
+                        _navPulsePanel.BringToFront();
+                    }
+
+                    LayoutNavPulsePanel();
+                    SaveNavigationOverlaySettings();
+                }
+
+                break;
+
+            case RuntimeOmsiMenuCommand.GroundArrows:
+                if (_navPulsePanel is not null)
+                {
+                    _navPulsePanel.SetGuidanceEnabled(
+                        !_navPulsePanel.GuidanceEnabled);
+                    SaveNavigationOverlaySettings();
                 }
 
                 break;

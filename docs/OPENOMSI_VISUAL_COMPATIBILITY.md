@@ -39,3 +39,26 @@ Este documento **não** significa que a compatibilidade de visualização é 100
 - Manter smoke tests do repositório passando; **não** substituir teste real do OMSI com mocks.
 
 Referência de termos e licença: [openOMSI / LICENSE](https://github.com/openOMSI-Project/openOMSI/blob/main/LICENSE).
+
+## ESC: navegação opcional, sem alterar a essência do OMSI
+
+A entrada `ESC` agora abre e fecha o menu OMSI do Runtime (a tecla Alt
+permanece compatível). Foram acrescentadas ações diretas para:
+
+- Mini mapa NavPulse (ativo/inativo)
+- Mapa ampliado (abre ou fecha a visualização existente)
+- LiveBoard (ativo/inativo)
+- Setas sobre o percurso, estilo Forza (ativo/inativo, **desligado por padrão**)
+
+As preferências de mini mapa, LiveBoard e setas ficam em
+`%LOCALAPPDATA%/OMSI-Compatible-Runtime/navigation-overlays.json`.
+O sistema usa a rota real recebida pelo `WorldNavigationAssist` para
+gerar a geometria 3D existente, próxima da superfície da via; quando
+não há rota, não desenha setas fictícias. A geometria e seus eixos ainda
+precisam ser testados com asfalto, bifurcações e pontes de mapas reais.
+
+**Ainda não é paridade total com openOMSI:** o mapa NavPulse atual é uma
+visualização própria do Runtime. Zoom no cursor, deslocamento livre,
+rede de faixas validada e navegação recalculada do `Navigator` Rust
+precisam ser adaptados e validados em etapas; não estão declarados
+concluídos só por essas opções aparecerem no ESC.

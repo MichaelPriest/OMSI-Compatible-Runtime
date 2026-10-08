@@ -42,8 +42,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
         RuntimeFuelTrackState.Unknown;
     private bool _circleMode;
     private bool _expanded;
-    private bool _guidanceEnabled =
-        true;
+    private bool _guidanceEnabled;
     private float _rangeMeters =
         450.0f;
 
@@ -183,16 +182,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
         _guidanceButton.Click +=
             (_, _) =>
             {
-                _guidanceEnabled =
-                    !_guidanceEnabled;
-                _guidanceButton.Text =
-                    _guidanceEnabled
-                        ? "SETAS"
-                        : "SEM SETA";
-
-                GuidanceVisibilityChanged?.Invoke(
-                    this,
-                    EventArgs.Empty);
+                SetGuidanceEnabled(!_guidanceEnabled);
             };
 
         _expandButton.FlatAppearance.BorderColor =
@@ -203,27 +193,10 @@ internal sealed class RuntimeNavPulsePanel : Panel
         _expandButton.Click +=
             (_, _) =>
             {
-                _expanded =
-                    !_expanded;
-
-                if (_expanded)
-                {
-                    _circleMode =
-                        false;
-                    _modeButton.Text =
-                        "○";
-                }
-
-                _expandButton.Text =
-                    _expanded
-                        ? "MIN"
-                        : "MAX";
-
-                DisplayModeChanged?.Invoke(
-                    this,
-                    EventArgs.Empty);
-                Invalidate();
+                SetExpanded(!_expanded);
             };
+
+        _guidanceButton.Text = "SEM SETA";
 
         Controls.Add(
             _modeButton);
@@ -260,14 +233,44 @@ internal sealed class RuntimeNavPulsePanel : Panel
 
     public void TogglePanel()
     {
-        Visible =
-            !Visible;
-
+        Visible = !Visible;
         if (Visible)
         {
             BringToFront();
             Invalidate();
         }
+    }
+
+    public void SetGuidanceEnabled(bool enabled)
+    {
+        if (_guidanceEnabled == enabled)
+        {
+            return;
+        }
+
+        _guidanceEnabled = enabled;
+        _guidanceButton.Text = enabled ? "SETAS" : "SEM SETA";
+        GuidanceVisibilityChanged?.Invoke(this, EventArgs.Empty);
+        Invalidate();
+    }
+
+    public void SetExpanded(bool expanded)
+    {
+        if (_expanded == expanded)
+        {
+            return;
+        }
+
+        _expanded = expanded;
+        if (expanded)
+        {
+            _circleMode = false;
+            _modeButton.Text = "○";
+        }
+
+        _expandButton.Text = expanded ? "MIN" : "MAX";
+        DisplayModeChanged?.Invoke(this, EventArgs.Empty);
+        Invalidate();
     }
 
     public void SetRoute(
