@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Security.Cryptography;
+using System.Text;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using Microsoft.UI.Windowing;
@@ -172,6 +174,14 @@ public sealed partial class MainWindow :
     private int _entryPointLoadVersion;
     private bool _refreshing;
     private bool _restartRuntimeAfterInGameBusSelection;
+    private readonly Queue<VehicleLibraryCard>
+        _vehicleThumbnailQueue = [];
+    private readonly HashSet<string>
+        _queuedVehicleThumbnailPaths =
+            new(StringComparer.OrdinalIgnoreCase);
+    private readonly CancellationTokenSource
+        _vehicleThumbnailCancellation = new();
+    private bool _vehicleThumbnailWorkerRunning;
     private CancellationTokenSource? _embeddedPreviewCancellation;
     private nint _embeddedPreviewWindow;
     private string? _embeddedPreviewKey;
@@ -245,6 +255,7 @@ public sealed partial class MainWindow :
         Closed +=
             (_, _) =>
             {
+                _vehicleThumbnailCancellation.Cancel();
                 StopEmbeddedVehiclePreview();
                 _runtime.Dispose();
             };
@@ -326,6 +337,12 @@ public sealed partial class MainWindow :
         ShowView(
             VehiclesView,
             VehiclesNavButton);
+
+        foreach (var card in
+                 _vehicleLibraryCards.Take(8))
+        {
+            QueueVehicleThumbnail(card);
+        }
     }
 
     private void MultiplayerNavButton_Click(
@@ -2465,6 +2482,209 @@ public sealed partial class MainWindow :
     {
         EnsureLibraryCards();
         UpdateLibraryViews();
+    }
+
+    private void VehiclesGrid_ContainerContentChanging(
+        ListViewBase sender,
+        ContainerContentChangingEventArgs args)
+    {
+        if (args.InRecycleQueue ||
+            args.Item is not VehicleLibraryCard card)
+        {
+            return;
+        }
+
+        QueueVehicleThumbnail(card);
+    }
+
+    private void QueueVehicleThumbnail(
+        VehicleLibraryCard card)
+    {
+        if (card.Preview is not null ||
+            card.ThumbnailFailed)
+        {
+            return;
+        }
+
+        var contentPath =
+            ContentPathBox.Text?.Trim();
+
+        if (string.IsNullOrWhiteSpace(contentPath) ||
+            !Directory.Exists(contentPath))
+        {
+            return;
+        }
+
+        var path =
+            ResolveVehicleThumbnailCachePath(
+                contentPath,
+                card.Bus);
+
+        if (path is null)
+        {
+            return;
+        }
+
+        if (File.Exists(path))
+        {
+            card.SetPreview(
+                CreateBitmapImage(path));
+            return;
+        }
+
+        if (!_queuedVehicleThumbnailPaths.Add(path))
+        {
+            return;
+        }
+
+        _vehicleThumbnailQueue.Enqueue(card);
+
+        if (!_vehicleThumbnailWorkerRunning)
+        {
+            _ = ProcessVehicleThumbnailQueueAsync();
+        }
+    }
+
+    private async Task ProcessVehicleThumbnailQueueAsync()
+    {
+        if (_vehicleThumbnailWorkerRunning)
+        {
+            return;
+        }
+
+        _vehicleThumbnailWorkerRunning =
+            true;
+
+        try
+        {
+            while (_vehicleThumbnailQueue.TryDequeue(
+                       out var card))
+            {
+                var contentPath =
+                    ContentPathBox.Text?.Trim();
+
+                if (string.IsNullOrWhiteSpace(
+                        contentPath))
+                {
+                    continue;
+                }
+
+                var path =
+                    ResolveVehicleThumbnailCachePath(
+                        contentPath,
+                        card.Bus);
+
+                if (path is null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    // Real D3D11 mesh render, not a synthetic bus icon.
+                    var ready =
+                        File.Exists(path) ||
+                        await _runtime.CreateVehicleThumbnailAsync(
+                            contentPath,
+                            card.Bus.RelativePath,
+                            path,
+                            _vehicleThumbnailCancellation.Token);
+
+                    if (ready)
+                    {
+                        card.SetPreview(
+                            CreateBitmapImage(path));
+                    }
+                    else if (!_vehicleThumbnailCancellation.IsCancellationRequested)
+                    {
+                        card.MarkThumbnailFailed();
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    card.MarkThumbnailFailed();
+                    Debug.WriteLine(
+                        $"Vehicle thumbnail failed for {card.Bus.RelativePath}: {exception}");
+                }
+                finally
+                {
+                    _queuedVehicleThumbnailPaths.Remove(
+                        path);
+                }
+
+                if (_vehicleThumbnailCancellation.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _vehicleThumbnailWorkerRunning =
+                false;
+        }
+    }
+
+    private static string? ResolveVehicleThumbnailCachePath(
+        string contentPath,
+        OmsiBusInfo bus)
+    {
+        try
+        {
+            var busPath =
+                Path.Combine(
+                    contentPath,
+                    bus.RelativePath.Replace(
+                        '\\',
+                        Path.DirectorySeparatorChar)
+                        .Replace(
+                            '/',
+                            Path.DirectorySeparatorChar));
+
+            // A different installation or updated model gets a different
+            // cache key. The key never contains unsanitized add-on names.
+            var key =
+                string.Join(
+                    "|",
+                    Path.GetFullPath(contentPath),
+                    bus.RelativePath,
+                    bus.Skin,
+                    File.Exists(busPath)
+                        ? File.GetLastWriteTimeUtc(busPath).Ticks
+                        : 0,
+                    File.Exists(bus.ModelConfigPath)
+                        ? File.GetLastWriteTimeUtc(bus.ModelConfigPath).Ticks
+                        : 0);
+
+            var hash =
+                Convert.ToHexString(
+                    SHA256.HashData(
+                        Encoding.UTF8.GetBytes(key)));
+
+            var cacheDirectory =
+                Path.Combine(
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.LocalApplicationData),
+                    "OMSI-Compatible-Runtime",
+                    "vehicle-thumbnails-v1");
+
+            Directory.CreateDirectory(
+                cacheDirectory);
+
+            return Path.Combine(
+                cacheDirectory,
+                hash + ".png");
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(
+                $"Unable to prepare vehicle thumbnail cache: {exception.Message}");
+            return null;
+        }
     }
 
     private void MapLibraryItem_Click(
