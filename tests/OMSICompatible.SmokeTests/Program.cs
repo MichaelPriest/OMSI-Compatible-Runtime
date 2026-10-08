@@ -485,6 +485,19 @@ try
             out _),
         "OMSI content-relative scenery texture must never escape its category root.");
 
+    if (string.Equals(
+            Environment.GetEnvironmentVariable("OMSI_REQUIRE_RUST_CORE"),
+            "1",
+            StringComparison.Ordinal))
+    {
+        Require(
+            OmsiTextureAssetPathResolver.RustCoreAvailable,
+            "Rust native compatibility core DLL/ABI is missing.");
+        Require(
+            OmsiTextureAssetPathResolver.RustNativeResolvedCount >= 3,
+            "Texture smoke tests did not exercise the real Rust native resolver.");
+    }
+
     var trainDirectory =
         Path.Combine(
             root,

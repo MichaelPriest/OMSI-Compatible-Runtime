@@ -134,6 +134,21 @@ jobs:
           path: native/win-x64/ode_single.dll
           key: ode-win-x64-single-0.16.6-windows-2022-v1
 
+      - name: Install Rust MSVC toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Rust unit tests
+        run: cargo test --manifest-path native/omsi-compat-core/Cargo.toml --locked
+
+      - name: Build native Rust x64 core
+        run: cargo build --release --manifest-path native/omsi-compat-core/Cargo.toml --locked
+
       - name: Verify preinstalled .NET
         run: dotnet --info
 
@@ -150,9 +165,18 @@ jobs:
           New-Item -ItemType Directory -Force $target | Out-Null
           Copy-Item "native/win-x64/ode_single.dll" (Join-Path $target "ode_single.dll") -Force
 
+      - name: Stage Rust core x64 for smoke test
+        shell: pwsh
+        run: |
+          $source = "native/omsi-compat-core/target/release/omsi_compat_core.dll"
+          $target = "tests/OMSICompatible.SmokeTests/bin/Release/net10.0"
+          if (-not (Test-Path $source)) { throw "Rust x64 core DLL missing." }
+          Copy-Item $source (Join-Path $target "omsi_compat_core.dll") -Force
+
       - name: Run synthetic world smoke test
         env:
           OMSI_REQUIRE_ODE: "1"
+          OMSI_REQUIRE_RUST_CORE: "1"
         run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
 
       - name: Publish legacy Launcher x64
@@ -257,6 +281,16 @@ jobs:
         run: |
           Copy-Item "native/win-x64/ode_single.dll" "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/ode_single.dll" -Force
           Copy-Item "native/win-x64/ode_single.dll" "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64/Runtime/ode_single.dll" -Force
+
+      - name: Package Rust x64 core for launchers and runtime
+        shell: pwsh
+        run: |
+          $dll = "native/omsi-compat-core/target/release/omsi_compat_core.dll"
+          $root = "artifacts/OMSI-Compatible-Runtime-alpha-ui-win-x64"
+          if (-not (Test-Path $dll)) { throw "Rust core DLL missing from release output." }
+          Copy-Item $dll (Join-Path $root "omsi_compat_core.dll") -Force
+          Copy-Item $dll (Join-Path $root "Runtime/omsi_compat_core.dll") -Force
+          Copy-Item $dll (Join-Path $root "Launcher-Legacy/omsi_compat_core.dll") -Force
 
       - name: Add test instructions
         shell: pwsh

@@ -1,0 +1,12 @@
+[package]
+name = "omsi-compat-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "omsi_compat_core"
+crate-type = ["cdylib", "rlib"]
+
+# Independent compatibility implementation. openOMSI (MIT) is a behavioral
+# reference; no GPL source from neoOMSI is embedded in this crate.

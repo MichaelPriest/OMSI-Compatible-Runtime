@@ -7,17 +7,30 @@ This repository is the game/runtime only. It does not contain the OMSI Map Studi
 ## Execution model
 
 ```text
-Launcher x64
-    |
-    v
-Runtime x64
-    |
-    v
-OmsiCompat
-    |
-    v
-User-provided compatible content
+Launcher WinUI 3 (C#) / legacy launcher (C#)
+           |
+           v
+Standalone runtime x64 (C# host + D3D11)
+           |
+           +-- OmsiCompat managed compatibility layer (staged fallback)
+           |
+           +-- omsi_compat_core.dll (Rust x64, stable C ABI v1)
+           |     OMSI texture and add-on path lookup (live)
+           |
+           v
+User-provided compatible OMSI 2 content
 ```
+
+The native Rust library is built with Cargo on Windows x64 and packaged
+beside both launchers and the runtime executable. C# first invokes the
+versioned native texture resolver; unresolved paths still fall through to the
+existing managed implementation until real content validates parity.
+The Windows CI requires Rust DLL loading and a minimum of three successful
+native texture resolutions during smoke tests.
+
+The x86 OMSI plugin host remains an independent x86 process. Never load
+the Rust x64 DLL into that host. Physics/ODE, scripts, and rendering are not
+replaced by placeholders during this migration.
 
 The runtime does not require `Omsi.exe` to execute.
 
@@ -81,3 +94,21 @@ The x64 runtime is free to modernize the implementation underneath that compatib
 - modern audio/input backends.
 
 The guiding rule is: **preserve observable OMSI behavior where compatibility matters; optimize the implementation behind it.**
+
+
+## Rust migration plan (incremental, no main merge)
+
+1. **Texture/content path lookup**: live Rust native x64 core + FFI and regression
+   tests; retained managed fallback for add-on equivalence.
+2. **Content parsers**: compare O3D, maps and splines against stock and add-on
+   data, moving one format at a time behind explicit compatibility tests.
+3. **Script VM and dynamics**: prove OMSI script variables, engine torque,
+   gearbox and braking traces match real buses before replacing C# paths.
+4. **Rendering**: evaluate a wgpu renderer separately, keeping D3D11 active
+   until transparent panels, scenery, mirrors and frame diagnostics agree.
+5. **UI and plugins**: retain WinUI 3; keep OMSI plugin host x86 isolated.
+
+openOMSI (MIT) is the implementation reference. neoOMSI (GPL-3.0-or-later)
+may inform comparison tests and ideas; no neoOMSI GPL implementation is copied
+into the existing runtime. The repository must keep copyright notices for
+any third-party source incorporated in future phases.

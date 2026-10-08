@@ -2,6 +2,11 @@ namespace OmsiCompat.Models;
 
 public static class OmsiTextureAssetPathResolver
 {
+    // Diagnostics for Windows CI: it must exercise real Rust code, not only
+    // the retained C# fallback.
+    public static bool RustCoreAvailable => OmsiRustTextureResolver.IsAvailable;
+    public static long RustNativeResolvedCount => OmsiRustTextureResolver.NativeResolvedCount;
+
     private static readonly HashSet<string> SupportedExtensions =
         new(
             [
@@ -296,6 +301,15 @@ public static class OmsiTextureAssetPathResolver
         out string fullPath)
     {
         fullPath = string.Empty;
+
+        // Rust is the first live subsystem of the replacement engine.
+        // Until parity with installed OMSI 2 add-ons is established, C#
+        // handles any unresolved case rather than silently losing assets.
+        if (OmsiRustTextureResolver.TryResolve(
+                allowedRoot, textureName, baseDirectories, out fullPath))
+        {
+            return true;
+        }
 
         var trimmed =
             textureName.Trim().Trim('"');
