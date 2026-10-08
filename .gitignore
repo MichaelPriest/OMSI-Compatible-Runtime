@@ -9,4 +9,3 @@ logs/
 content/
 local/
 native/omsi-compat-core/target/
-native/omsi-compat-core/Cargo.lock
