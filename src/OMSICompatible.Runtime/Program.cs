@@ -68,10 +68,17 @@ internal static class Program
                 args,
                 "--headless");
 
+        var thumbnailOutputPath =
+            GetOption(
+                args,
+                "--vehicle-thumbnail");
+
         var vehiclePreview =
             HasFlag(
                 args,
-                "--vehicle-preview");
+                "--vehicle-preview") ||
+            !string.IsNullOrWhiteSpace(
+                thumbnailOutputPath);
 
         if (!OmsiContentRoot.TryCreate(
                 contentPath,
@@ -158,7 +165,8 @@ internal static class Program
                     contentRoot,
                     previewBus,
                     repaintName,
-                    repaintCtiRelativePath);
+                    repaintCtiRelativePath,
+                    thumbnailOutputPath);
 
             Application.Run(
                 previewContext);
