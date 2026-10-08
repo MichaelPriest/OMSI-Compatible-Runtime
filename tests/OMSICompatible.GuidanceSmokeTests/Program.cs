@@ -106,10 +106,10 @@ var pedestrian = lane with { Index = 72, Type = 1 };
 var rail = lane with { Index = 73, Type = 2 };
 var network = new RuntimeTrafficPathNetworkInfo(
     [lane, pedestrian, rail], 1, 1, 1, 0, 0, 0, 0, 0);
-var road = RuntimeNavTrafficMap.Build(network);
-Require(road.Length == 2 && road.All(s => s.SegmentIndex == 71),
+var roadSections = RuntimeNavTrafficMap.Build(network);
+Require(roadSections.Length == 2 && roadSections.All(s => s.SegmentIndex == 71),
     "City map included pedestrian/rail paths or missed a real motor lane.");
-var roadIndex = new RuntimeNavRoadIndex(road);
+var roadIndex = new RuntimeNavRoadIndex(roadSections);
 Require(roadIndex.Count == 2 &&
         roadIndex.Nearby(new Vector2(20, 0), 40).Count() == 2 &&
         !roadIndex.Nearby(new Vector2(900, 900), 40).Any(),

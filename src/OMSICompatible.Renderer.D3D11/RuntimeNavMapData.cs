@@ -153,7 +153,7 @@ internal static class RuntimeNavTrafficMap
 /// geometry. Distances are normalized to its actual length, never guessed
 /// from a name or generated at arbitrary map coordinates.
 /// </summary>
-internal static class RuntimeNavStopProjector
+public static class RuntimeNavStopProjector
 {
     public static RuntimeNavigationStopInfo[] Place(
         IReadOnlyList<RuntimeTrafficPathPointInfo> route,
