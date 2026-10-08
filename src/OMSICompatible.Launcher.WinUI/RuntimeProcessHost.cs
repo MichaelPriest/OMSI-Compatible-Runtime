@@ -429,6 +429,82 @@ internal sealed class RuntimeProcessHost :
         return true;
     }
 
+    public async Task<bool> CreateVehicleThumbnailAsync(
+        string contentPath,
+        string busRelativePath,
+        string outputPath,
+        CancellationToken cancellationToken)
+    {
+        if (File.Exists(outputPath))
+        {
+            return true;
+        }
+
+        var runtimePath =
+            ResolveRuntimePath();
+
+        if (!File.Exists(runtimePath))
+        {
+            return false;
+        }
+
+        var startInfo =
+            new ProcessStartInfo
+            {
+                FileName = runtimePath,
+                WorkingDirectory =
+                    Path.GetDirectoryName(runtimePath)
+                    ?? AppContext.BaseDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+        Add(startInfo, "--content", contentPath);
+        Add(startInfo, "--bus", busRelativePath);
+        Add(startInfo, "--vehicle-thumbnail", outputPath);
+
+        using var process = new Process
+        {
+            StartInfo = startInfo
+        };
+
+        if (!process.Start())
+        {
+            return false;
+        }
+
+        using var timeout =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+        timeout.CancelAfter(
+            TimeSpan.FromSeconds(75));
+
+        try
+        {
+            await process.WaitForExitAsync(
+                timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
+
+        return process.ExitCode == 0 &&
+               File.Exists(outputPath) &&
+               new FileInfo(outputPath).Length > 0;
+    }
+
     public void StopVehiclePreview()
     {
         var process =
