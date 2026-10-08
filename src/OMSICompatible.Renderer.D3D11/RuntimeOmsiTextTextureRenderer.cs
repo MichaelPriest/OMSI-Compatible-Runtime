@@ -68,7 +68,10 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
             new(
                 StringComparer.OrdinalIgnoreCase);
 
-    private readonly Dictionary<int, TextTextureState>
+    // Coupled vehicle sections can reuse the same OMSI text texture index.
+    // Keep a separate GPU texture per (section,index); otherwise one panel
+    // overwrites/disposes a texture still bound by another section.
+    private readonly Dictionary<(int SectionIndex, int TextureIndex), TextTextureState>
         _states =
             [];
 
@@ -88,13 +91,17 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
     public RuntimeGpuTexture?
         GetOrCreate(
             RuntimeVehicleTextTextureInfo definition,
-            string value)
+            string value,
+            int sectionIndex = 0)
     {
         value ??=
             string.Empty;
 
+        var stateKey =
+            (SectionIndex: sectionIndex, TextureIndex: definition.Index);
+
         if (_states.TryGetValue(
-                definition.Index,
+                stateKey,
                 out var state) &&
             string.Equals(
                 state.Value,
@@ -131,14 +138,14 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
                     definition.Height);
 
         if (!_states.TryGetValue(
-                definition.Index,
+                stateKey,
                 out state))
         {
             state =
                 new TextTextureState();
 
             _states[
-                definition.Index] =
+                stateKey] =
                 state;
         }
 
