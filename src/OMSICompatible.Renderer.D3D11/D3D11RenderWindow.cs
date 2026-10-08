@@ -2859,6 +2859,25 @@ public sealed class D3D11RenderWindow : Form
                     Add(
                         paths,
                         material.BumpMapTexturePath);
+
+                    // Alternative material sets can switch at runtime,
+                    // including lamps/signs; preload every referenced map
+                    // so a material change does not render untextured.
+                    if (material.MaterialChangeSets is { } changeSets)
+                    {
+                        foreach (var changeSet in changeSets)
+                        {
+                            foreach (var item in changeSet.Items)
+                            {
+                                Add(paths, item.TransMapTexturePath);
+                                Add(paths, item.LightMapTexturePath);
+                                Add(paths, item.MaterialChangeTexturePath);
+                                Add(paths, item.EnvMapTexturePath);
+                                Add(paths, item.EnvMapMaskTexturePath);
+                                Add(paths, item.BumpMapTexturePath);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2885,8 +2904,32 @@ public sealed class D3D11RenderWindow : Form
                             batch.TexturePath,
                             batch.TransMapTexturePath,
                             batch.LightMapTexturePath,
-                            batch.MaterialChangeTexturePath
+                            batch.MaterialChangeTexturePath,
+                            batch.EnvMapTexturePath,
+                            batch.EnvMapMaskTexturePath,
+                            batch.BumpMapTexturePath
                         })
+                .Concat(
+                    objects.Batches
+                        .Concat(splines.Batches)
+                        .SelectMany(
+                            static batch =>
+                                batch.MaterialChangeSets is
+                                    { } sets
+                                    ? sets.SelectMany(
+                                        static set =>
+                                            set.Items.SelectMany(
+                                                static item =>
+                                                    new[]
+                                                    {
+                                                        item.TransMapTexturePath,
+                                                        item.LightMapTexturePath,
+                                                        item.MaterialChangeTexturePath,
+                                                        item.EnvMapTexturePath,
+                                                        item.EnvMapMaskTexturePath,
+                                                        item.BumpMapTexturePath
+                                                    }))
+                                    : Enumerable.Empty<string?>()))
                 .Concat(
                     terrain.Batches
                         .SelectMany(
