@@ -1720,6 +1720,11 @@ public sealed class D3D11RenderWindow : Form
         {
             // Restore preferences before subscribing to change events:
             // initialization must never overwrite saved LiveBoard/map choices.
+            _navPulsePanel.RestoreMapPreferences(
+                _navigationOverlaySettings.MapNorthUp,
+                _navigationOverlaySettings.MapShowTraffic,
+                _navigationOverlaySettings.MapFollowVehicle,
+                _navigationOverlaySettings.FullMapRangeMeters);
             _navPulsePanel.SetGuidanceEnabled(
                 _navigationOverlaySettings.GroundArrowsEnabled);
             _navigationGuidanceEnabled =
@@ -1733,6 +1738,8 @@ public sealed class D3D11RenderWindow : Form
                     LayoutNavPulsePanel();
                     SyncOmsiMenuState();
                 };
+            _navPulsePanel.MapPreferencesChanged +=
+                (_, _) => SaveNavigationOverlaySettings();
             _navPulsePanel.GuidanceVisibilityChanged +=
                 (_, _) =>
                 {
@@ -2714,6 +2721,10 @@ public sealed class D3D11RenderWindow : Form
 
         _windowInfo =
             windowInfo;
+
+        // A streamed map window replaces its roads and traffic. The city
+        // map must not remain frozen at the entry-point splines.
+        _navPulsePanel?.SetRoadNetwork(windowInfo.Splines);
 
         RebuildRuntimeTrafficSegmentLookup();
 
@@ -7138,7 +7149,15 @@ public sealed class D3D11RenderWindow : Form
             MiniMapEnabled =
                 _navPulsePanel?.Visible == true && !_navPulsePanel.Expanded,
             LiveBoardEnabled = _liveBoardPanel?.Visible == true,
-            GroundArrowsEnabled = _navigationGuidanceEnabled
+            GroundArrowsEnabled = _navigationGuidanceEnabled,
+            MapNorthUp = _navPulsePanel?.NorthUp ??
+                _navigationOverlaySettings.MapNorthUp,
+            MapShowTraffic = _navPulsePanel?.ShowTraffic ??
+                _navigationOverlaySettings.MapShowTraffic,
+            MapFollowVehicle = _navPulsePanel?.FollowingVehicle ??
+                _navigationOverlaySettings.MapFollowVehicle,
+            FullMapRangeMeters = _navPulsePanel?.FullMapRangeMeters ??
+                _navigationOverlaySettings.FullMapRangeMeters
         };
         _navigationOverlaySettings.Save();
     }

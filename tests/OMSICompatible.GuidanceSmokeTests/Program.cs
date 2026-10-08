@@ -59,3 +59,37 @@ Require(RuntimeNavigationGuidanceGeometry.Build(
 
 Console.WriteLine(
     $"Forza-style guidance smoke passed; vertices={verts.Length}; roadTriangles={sampler.TriangleCount}");
+
+
+// openOMSI-style city-map interactions: cursor-point invariant under
+// heading-up/north-up projection, drag and zoom.
+foreach (var heading in new[] { 0.0f, 0.71f, -2.2f })
+{
+    var origin = new Vector2(1234.5f, -455.0f);
+    var point = new Vector2(1377.0f, -280.25f);
+    var screenCenter = new System.Drawing.PointF(350, 260);
+    var screen = RuntimeNavMapProjection.ToScreen(
+        point, origin, screenCenter, 0.43f, heading);
+    var inverse = RuntimeNavMapProjection.ToWorld(
+        screen, origin, screenCenter, 0.43f, heading);
+    Require(Vector2.Distance(point, inverse) < 0.001f,
+        "Map projection did not round-trip in heading-up/north-up mode.");
+
+    var movedCenter = RuntimeNavMapProjection.Pan(
+        origin, screen, new System.Drawing.PointF(
+            screen.X + 65, screen.Y - 45), 0.43f, heading);
+    var movedScreen = RuntimeNavMapProjection.ToScreen(
+        point, movedCenter, screenCenter, 0.43f, heading);
+    Require(Math.Abs(movedScreen.X - screen.X - 65.0f) < 0.01f &&
+            Math.Abs(movedScreen.Y - screen.Y + 45.0f) < 0.01f,
+        "Dragging the full map did not move the scene with the cursor.");
+
+    var zoomCenter = RuntimeNavMapProjection.ZoomAtCursor(
+        origin, screen, screenCenter, 0.43f, 0.86f, heading);
+    var zoomedScreen = RuntimeNavMapProjection.ToScreen(
+        point, zoomCenter, screenCenter, 0.86f, heading);
+    Require(Math.Abs(zoomedScreen.X - screen.X) < 0.01f &&
+            Math.Abs(zoomedScreen.Y - screen.Y) < 0.01f,
+        "Wheel zoom moved the world point under the mouse cursor.");
+}
+Console.WriteLine("Navigation city-map pan/zoom/follow projection tests passed.");

@@ -123,3 +123,30 @@ existente na próxima atualização. Rotas sem arquivo de timetable/track
 não são inventadas. O IBIS físico ainda depende da lógica real do
 script e de seu teclado, não é tratado como já sincronizado com o
 seletor de GPS.
+
+
+## openOMSI navigator: mapa livre / zoom / veículos reais
+
+Paridade incremental com o conceito de `navigator.rs` e
+`launcher/mapview.rs` do openOMSI, implementada com desenho original
+em WinForms sobre o D3D11 (sem copiar código ou assets de terceiros):
+
+- **Mapa completo**: arrastar com mouse para mover, roda do mouse para
+  zoom ancorado no cursor e controles +/-.
+- **Seguir ônibus / livre**: alterna entre acompanhar o veículo e
+  inspecionar uma região sem retornar automaticamente à posição do jogador.
+- **Norte / direção**: alterna entre mapa fixo com norte para cima
+  e mapa orientado pelo ônibus.
+- **IA ON / OFF**: desenha os veículos reais da simulação com orientação
+  e cor distinta dos jogadores de sessão. Sem veículos fictícios.
+- **Streaming**: quando entram novas tiles, as ruas do mapa são
+  reconstruídas a partir das splines carregadas, em vez de permanecerem
+  presas à região inicial.
+- Preferências: `MapNorthUp`, `MapShowTraffic`,
+  `MapFollowVehicle`, `FullMapRangeMeters` salvas no mesmo arquivo
+  dos overlays; mini mapa e Live Board continuam opcionais.
+- Testes CI de projeção X/Z para norte/direção e invariantes de pan/zoom
+  sobre a posição do cursor.
+
+A rede de faixas completa, as paradas rotuladas e o reroute automático
+por Dijkstra do openOMSI ainda **não** foram integrados nesta etapa.

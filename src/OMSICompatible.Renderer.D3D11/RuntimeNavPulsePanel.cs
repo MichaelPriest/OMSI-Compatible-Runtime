@@ -28,14 +28,23 @@ internal sealed class RuntimeNavPulsePanel : Panel
         Vector2 B,
         Vector2 Midpoint);
 
-    private readonly RoadSegment[] _roads;
+    private RoadSegment[] _roads;
     private readonly Button _modeButton;
     private readonly Button _expandButton;
     private readonly Button _guidanceButton;
+    private readonly Button _followButton;
+    private readonly Button _northButton;
+    private readonly Button _trafficButton;
+    private readonly Button _zoomInButton;
+    private readonly Button _zoomOutButton;
     private Vector3 _position;
     private float _headingRadians;
-    private Vector2[] _remoteVehicles =
-        Array.Empty<Vector2>();
+    private readonly record struct MapVehicle(
+        Vector2 Position,
+        float HeadingRadians,
+        bool IsPeer);
+
+    private MapVehicle[] _mapVehicles = [];
     private Vector2[] _route =
         Array.Empty<Vector2>();
     private RuntimeFuelTrackState _fuel =
@@ -43,15 +52,27 @@ internal sealed class RuntimeNavPulsePanel : Panel
     private bool _circleMode;
     private bool _expanded;
     private bool _guidanceEnabled;
+    private bool _following = true;
+    private bool _northUp;
+    private bool _showTraffic = true;
+    private bool _hasFreeCenter;
+    private Vector2 _freeCenter;
+    private float _fullMapRangeMeters = 1350.0f;
+    private PointF? _panAnchor;
+    private Vector2 _panStartCenter;
     private float _rangeMeters =
         450.0f;
 
     public bool Expanded =>
         _expanded;
 
-    public bool GuidanceEnabled =>
-        _guidanceEnabled;
+    public bool GuidanceEnabled => _guidanceEnabled;
+    public bool FollowingVehicle => _following;
+    public bool NorthUp => _northUp;
+    public bool ShowTraffic => _showTraffic;
+    public float FullMapRangeMeters => _fullMapRangeMeters;
 
+    public event EventHandler? MapPreferencesChanged;
     public event EventHandler?
         DisplayModeChanged;
 
@@ -198,6 +219,29 @@ internal sealed class RuntimeNavPulsePanel : Panel
 
         _guidanceButton.Text = "SEM SETA";
 
+        _followButton = MapControl("SEGUIR", 53);
+        _northButton = MapControl("GIRO", 50);
+        _trafficButton = MapControl("IA ON", 50);
+        _zoomInButton = MapControl("+", 27);
+        _zoomOutButton = MapControl("−", 27);
+
+        _followButton.Click += (_, _) => SetFollowing(!_following);
+        _northButton.Click += (_, _) =>
+        {
+            _northUp = !_northUp;
+            RefreshMapOptions();
+        };
+        _trafficButton.Click += (_, _) =>
+        {
+            _showTraffic = !_showTraffic;
+            RefreshMapOptions();
+        };
+        _zoomInButton.Click += (_, _) => ZoomAtCenter(0.75f);
+        _zoomOutButton.Click += (_, _) => ZoomAtCenter(1.3333334f);
+
+        Controls.AddRange(
+            [_followButton, _northButton, _trafficButton,
+             _zoomInButton, _zoomOutButton]);
         Controls.Add(
             _modeButton);
         Controls.Add(
@@ -228,7 +272,215 @@ internal sealed class RuntimeNavPulsePanel : Panel
                         _expandButton.Left -
                         _guidanceButton.Width -
                         4);
+
+                LayoutMapControls();
             };
+        UpdateMapButtons();
+        LayoutMapControls();
+    }
+
+    private static Button MapControl(string text, int width)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Width = width,
+            Height = 24,
+            Top = 4,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(45, 61, 81),
+            ForeColor = Color.FromArgb(217, 235, 249),
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            TabStop = false
+        };
+        button.FlatAppearance.BorderColor =
+            Color.FromArgb(90, 126, 152);
+        return button;
+    }
+
+    private void LayoutMapControls()
+    {
+        var left = _guidanceButton.Left - 4;
+        foreach (var control in new[]
+        {
+            _trafficButton, _northButton, _followButton,
+            _zoomOutButton, _zoomInButton
+        })
+        {
+            control.Visible = _expanded;
+            left -= control.Width + 4;
+            control.Left = Math.Max(4, left);
+        }
+    }
+
+    private void UpdateMapButtons()
+    {
+        _followButton.Text = _following ? "SEGUIR" : "LIVRE";
+        _northButton.Text = _northUp ? "NORTE" : "GIRO";
+        _trafficButton.Text = _showTraffic ? "IA ON" : "IA OFF";
+        _zoomOutButton.Enabled = _fullMapRangeMeters < 11999.0f;
+        _zoomInButton.Enabled = _fullMapRangeMeters > 120.01f;
+    }
+
+    private void RefreshMapOptions()
+    {
+        UpdateMapButtons();
+        Invalidate();
+        MapPreferencesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RestoreMapPreferences(
+        bool northUp,
+        bool showTraffic,
+        bool following,
+        float rangeMeters)
+    {
+        _northUp = northUp;
+        _showTraffic = showTraffic;
+        _following = following;
+        _fullMapRangeMeters = float.IsFinite(rangeMeters)
+            ? Math.Clamp(rangeMeters, 120.0f, 12000.0f)
+            : 1350.0f;
+        UpdateMapButtons();
+        Invalidate();
+    }
+
+    public void SetRoadNetwork(IReadOnlyList<RuntimeSplineInfo> splines)
+    {
+        ArgumentNullException.ThrowIfNull(splines);
+        // Called on the UI thread when a streaming generation is committed,
+        // not during OnPaint or every frame. No stale startup-only roads.
+        _roads = BuildRoadSegments(splines);
+        if (Visible)
+        {
+            Invalidate();
+        }
+    }
+
+    private Vector2 ViewCenter =>
+        !_expanded || _following || !_hasFreeCenter
+            ? new Vector2(_position.X, _position.Z)
+            : _freeCenter;
+
+    private float ViewRange =>
+        _expanded ? _fullMapRangeMeters : _rangeMeters;
+
+    private float MapHeading =>
+        _expanded && _northUp ? 0.0f : _headingRadians;
+
+    private RectangleF MapArea => new(
+        5.0f, 31.0f,
+        Math.Max(80.0f, Width - 10.0f),
+        Math.Max(80.0f, Height - 31.0f - 45.0f - 5.0f));
+
+    private float MapScale(RectangleF bounds) =>
+        Math.Min(bounds.Width, bounds.Height) /
+        (ViewRange * 2.0f);
+
+    private void SetFollowing(bool following)
+    {
+        if (_following == following)
+        {
+            return;
+        }
+
+        if (!following)
+        {
+            _freeCenter = ViewCenter;
+            _hasFreeCenter = true;
+        }
+        _following = following;
+        RefreshMapOptions();
+    }
+
+    private void ZoomAtCenter(float factor)
+    {
+        if (!_expanded || !float.IsFinite(factor))
+        {
+            return;
+        }
+        _fullMapRangeMeters = Math.Clamp(
+            _fullMapRangeMeters * factor, 120.0f, 12000.0f);
+        RefreshMapOptions();
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (!_expanded || e.Button != MouseButtons.Left ||
+            !MapArea.Contains(e.Location))
+        {
+            return;
+        }
+
+        if (_following)
+        {
+            _freeCenter = ViewCenter;
+            _hasFreeCenter = true;
+            _following = false;
+        }
+
+        _panAnchor = e.Location;
+        _panStartCenter = ViewCenter;
+        Capture = true;
+        UpdateMapButtons();
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (!_expanded || _panAnchor is not { } start ||
+            (e.Button & MouseButtons.Left) == 0)
+        {
+            return;
+        }
+
+        _freeCenter = RuntimeNavMapProjection.Pan(
+            _panStartCenter, start, e.Location,
+            MapScale(MapArea), MapHeading);
+        Invalidate();
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (!_expanded || e.Button != MouseButtons.Left ||
+            !_panAnchor.HasValue)
+        {
+            return;
+        }
+        _panAnchor = null;
+        Capture = false;
+        RefreshMapOptions();
+    }
+
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        if (!_expanded || e.Delta == 0)
+        {
+            return;
+        }
+
+        var map = MapArea;
+        var factor = MathF.Pow(0.82f, e.Delta / 120.0f);
+        var previousRange = _fullMapRangeMeters;
+        _fullMapRangeMeters = Math.Clamp(
+            previousRange * factor, 120.0f, 12000.0f);
+
+        if (map.Contains(e.Location))
+        {
+            var center = new PointF(
+                map.Left + map.Width / 2.0f,
+                map.Top + map.Height / 2.0f);
+            _freeCenter = RuntimeNavMapProjection.ZoomAtCursor(
+                ViewCenter, e.Location, center,
+                Math.Min(map.Width, map.Height) / (previousRange * 2.0f),
+                MapScale(map), MapHeading);
+            _hasFreeCenter = true;
+            _following = false;
+        }
+        RefreshMapOptions();
     }
 
     public void TogglePanel()
@@ -269,6 +521,12 @@ internal sealed class RuntimeNavPulsePanel : Panel
         }
 
         _expandButton.Text = expanded ? "MIN" : "MAX";
+        if (expanded && !_hasFreeCenter)
+        {
+            _freeCenter = new Vector2(_position.X, _position.Z);
+            _hasFreeCenter = true;
+        }
+        LayoutMapControls();
         DisplayModeChanged?.Invoke(this, EventArgs.Empty);
         Invalidate();
     }
@@ -310,22 +568,33 @@ internal sealed class RuntimeNavPulsePanel : Panel
                     speedMetersPerSecond) *
                 3.6f);
 
-        _remoteVehicles =
-            traffic
-                .Where(
-                    static agent =>
-                        (
-                            unchecked(
-                                (uint)agent.AgentIndex) &
-                            0x60000000u
-                        ) ==
-                        0x60000000u)
-                .Select(
-                    static agent =>
-                        new Vector2(
-                            (float)agent.X,
-                            (float)agent.Z))
-                .ToArray();
+        if (!_hasFreeCenter)
+        {
+            _freeCenter = new Vector2(_position.X, _position.Z);
+            _hasFreeCenter = true;
+        }
+
+        // openOMSI-style moving vehicle icons: use actual sim/peer agents
+        // and their heading, not a peer-only circle list or placeholder AI.
+        var effectiveRange = Math.Max(_fullMapRangeMeters, _rangeMeters);
+        var maximumDistanceSquared = (effectiveRange + 300.0f) *
+                                     (effectiveRange + 300.0f);
+        _mapVehicles = traffic
+            .Where(agent =>
+                double.IsFinite(agent.X) &&
+                double.IsFinite(agent.Z) &&
+                double.IsFinite(agent.HeadingRadians) &&
+                (agent.X - _position.X) * (agent.X - _position.X) +
+                (agent.Z - _position.Z) * (agent.Z - _position.Z)
+                    <= maximumDistanceSquared)
+            .Take(400)
+            .Select(agent =>
+                new MapVehicle(
+                    new Vector2((float)agent.X, (float)agent.Z),
+                    (float)agent.HeadingRadians,
+                    (unchecked((uint)agent.AgentIndex) & 0x60000000u)
+                        == 0x60000000u))
+            .ToArray();
 
         if (Visible)
         {
@@ -374,11 +643,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
                 10.0f);
 
         var mapRect =
-            new RectangleF(
-                5.0f,
-                mapTop,
-                mapWidth,
-                mapHeight);
+            MapArea;
 
         var previousClip =
             graphics.Clip.Clone();
@@ -436,11 +701,9 @@ internal sealed class RuntimeNavPulsePanel : Panel
                 mapRect.Height /
                 2.0f);
 
-        var scale =
-            Math.Min(
-                mapRect.Width,
-                mapRect.Height) /
-            (_rangeMeters * 2.0f);
+        var scale = MapScale(mapRect);
+        var viewCenter = ViewCenter;
+        var range = ViewRange;
 
         using var roadPen =
             new Pen(
@@ -455,15 +718,15 @@ internal sealed class RuntimeNavPulsePanel : Panel
         {
             var dx =
                 road.Midpoint.X -
-                _position.X;
+                viewCenter.X;
             var dz =
                 road.Midpoint.Y -
-                _position.Z;
+                viewCenter.Y;
 
             if (dx * dx +
                 dz * dz >
-                (_rangeMeters + 80.0f) *
-                (_rangeMeters + 80.0f))
+                (range + 80.0f) *
+                (range + 80.0f))
             {
                 continue;
             }
@@ -520,12 +783,12 @@ internal sealed class RuntimeNavPulsePanel : Panel
                 var delta =
                     midpoint -
                     new Vector2(
-                        _position.X,
-                        _position.Z);
+                        viewCenter.X,
+                        viewCenter.Y);
 
                 if (delta.LengthSquared() >
-                    (_rangeMeters + 120.0f) *
-                    (_rangeMeters + 120.0f))
+                    (range + 120.0f) *
+                    (range + 120.0f))
                 {
                     continue;
                 }
@@ -543,67 +806,35 @@ internal sealed class RuntimeNavPulsePanel : Panel
             }
         }
 
-        using var peerBrush =
-            new SolidBrush(
-                Color.FromArgb(
-                    87,
-                    174,
-                    221));
-
-        foreach (var peer in
-                 _remoteVehicles)
+        if (_showTraffic)
         {
-            var delta =
-                peer -
-                new Vector2(
-                    _position.X,
-                    _position.Z);
-
-            if (delta.LengthSquared() >
-                _rangeMeters *
-                _rangeMeters)
+            foreach (var vehicle in _mapVehicles)
             {
-                continue;
+                if (Vector2.DistanceSquared(vehicle.Position, viewCenter) >
+                    range * range * 2.0f)
+                {
+                    continue;
+                }
+
+                DrawVehicleMarker(
+                    graphics,
+                    ToScreen(vehicle.Position, center, scale),
+                    vehicle.HeadingRadians - MapHeading,
+                    vehicle.IsPeer
+                        ? Color.FromArgb(87, 174, 221)
+                        : Color.FromArgb(240, 182, 83),
+                    5.0f);
             }
-
-            var p =
-                ToScreen(
-                    peer,
-                    center,
-                    scale);
-
-            graphics.FillEllipse(
-                peerBrush,
-                p.X - 4.0f,
-                p.Y - 4.0f,
-                8.0f,
-                8.0f);
         }
 
-        using var playerBrush =
-            new SolidBrush(
-                Color.FromArgb(
-                    245,
-                    245,
-                    245));
-
-        var triangle =
-            new[]
-            {
-                new PointF(
-                    center.X,
-                    center.Y - 9.0f),
-                new PointF(
-                    center.X - 6.0f,
-                    center.Y + 6.0f),
-                new PointF(
-                    center.X + 6.0f,
-                    center.Y + 6.0f)
-            };
-
-        graphics.FillPolygon(
-            playerBrush,
-            triangle);
+        // The bus belongs at its actual world position, not permanently
+        // at the map centre when follow mode is off.
+        DrawVehicleMarker(
+            graphics,
+            ToScreen(new Vector2(_position.X, _position.Z), center, scale),
+            _headingRadians - MapHeading,
+            Color.FromArgb(245, 245, 245),
+            9.0f);
 
         graphics.Clip =
             previousClip;
@@ -626,7 +857,10 @@ internal sealed class RuntimeNavPulsePanel : Panel
                     233));
 
         graphics.DrawString(
-            $"NAVPULSE · {_rangeMeters:0} m",
+            _expanded
+                ? $"MAPA · {(_following ? "SEGUIR" : "LIVRE")} · " +
+                  $"{(_northUp ? "NORTE" : "DIREÇÃO")} · {range:0} m"
+                : $"NAVPULSE · {_rangeMeters:0} m",
             titleFont,
             titleBrush,
             8.0f,
@@ -653,40 +887,33 @@ internal sealed class RuntimeNavPulsePanel : Panel
     private PointF ToScreen(
         Vector2 world,
         PointF center,
-        float scale)
+        float scale) =>
+        RuntimeNavMapProjection.ToScreen(
+            world, ViewCenter, center, scale, MapHeading);
+
+    private static void DrawVehicleMarker(
+        Graphics graphics,
+        PointF center,
+        float heading,
+        Color color,
+        float size)
     {
-        var dx =
-            world.X -
-            _position.X;
-        var dz =
-            world.Y -
-            _position.Z;
-
-        var sin =
-            MathF.Sin(
-                _headingRadians);
-        var cos =
-            MathF.Cos(
-                _headingRadians);
-
-        var right =
-            dx *
-                cos -
-            dz *
-                sin;
-        var forward =
-            dx *
-                sin +
-            dz *
-                cos;
-
-        return new PointF(
-            center.X +
-            right *
-                scale,
-            center.Y -
-            forward *
-                scale);
+        var sin = MathF.Sin(heading);
+        var cos = MathF.Cos(heading);
+        var forward = new PointF(sin * size, -cos * size);
+        var right = new PointF(cos * size * 0.58f, sin * size * 0.58f);
+        var points = new[]
+        {
+            new PointF(center.X + forward.X, center.Y + forward.Y),
+            new PointF(center.X + right.X - forward.X * 0.65f,
+                       center.Y + right.Y - forward.Y * 0.65f),
+            new PointF(center.X - right.X - forward.X * 0.65f,
+                       center.Y - right.Y - forward.Y * 0.65f)
+        };
+        using var brush = new SolidBrush(color);
+        using var outline = new Pen(Color.FromArgb(22, 28, 36), 1.0f);
+        graphics.FillPolygon(brush, points);
+        graphics.DrawPolygon(outline, points);
     }
 
     private void DrawFuelTrack(

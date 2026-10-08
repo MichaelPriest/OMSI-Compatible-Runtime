@@ -11,6 +11,10 @@ internal sealed record RuntimeNavigationOverlaySettings
     public bool MiniMapEnabled { get; init; }
     public bool LiveBoardEnabled { get; init; }
     public bool GroundArrowsEnabled { get; init; }
+    public bool MapNorthUp { get; init; }
+    public bool MapShowTraffic { get; init; } = true;
+    public bool MapFollowVehicle { get; init; } = true;
+    public float FullMapRangeMeters { get; init; } = 1350.0f;
 
     private static string SettingsPath =>
         Path.Combine(
