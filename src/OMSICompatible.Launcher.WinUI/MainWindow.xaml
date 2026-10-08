@@ -616,7 +616,7 @@
                                                 <FontIcon Glyph="&#xE804;"
                                                           FontSize="38"
                                                           Foreground="#7391B4"/>
-                                                <TextBlock Text="Preparando miniatura 3D"
+                                                <TextBlock Text="{Binding ThumbnailStatus}"
                                                            Foreground="#AFC1D6"
                                                            FontSize="12"/>
                                             </StackPanel>
