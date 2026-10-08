@@ -112,6 +112,11 @@ public sealed partial class MainWindow :
         }
     }
 
+    public sealed record AddonInventoryItem(
+        string Kind,
+        string Name,
+        string Detail);
+
     private sealed record KeyboardDisplayRow(
         string Trigger,
         string Key,
@@ -356,6 +361,77 @@ public sealed partial class MainWindow :
         }
     }
 
+    private void AddonsNavButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        UpdateAddonsView();
+
+        ShowView(
+            AddonsView,
+            AddonsNavButton);
+    }
+
+    private void AddonsSearchBox_TextChanged(
+        object sender,
+        TextChangedEventArgs e) =>
+        UpdateAddonsView();
+
+    private void UpdateAddonsView()
+    {
+        var search =
+            AddonsSearchBox.Text?.Trim();
+
+        AddonsMapCountText.Text =
+            $"{_maps.Count:N0} mapa(s)";
+
+        AddonsVehicleCountText.Text =
+            $"{_buses.Count:N0} veículo(s) dirigível(is)";
+
+        // All entries come from the scanned OMSI installation.
+        // Stock assets are listed too; directory conventions alone cannot
+        // reliably distinguish a commercial add-on from original content.
+        var items =
+            _maps
+                .Select(
+                    map =>
+                        new AddonInventoryItem(
+                            "Mapa instalado",
+                            map.FolderName,
+                            map.DirectoryPath))
+                .Concat(
+                    _buses.Select(
+                        bus =>
+                            new AddonInventoryItem(
+                                "Veículo dirigível",
+                                bus.SelectionLabel,
+                                bus.RelativePath)))
+                .Where(
+                    item =>
+                        string.IsNullOrWhiteSpace(search) ||
+                        item.Name.Contains(
+                            search,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        item.Kind.Contains(
+                            search,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        item.Detail.Contains(
+                            search,
+                            StringComparison.OrdinalIgnoreCase))
+                .OrderBy(
+                    static item => item.Kind,
+                    StringComparer.OrdinalIgnoreCase)
+                .ThenBy(
+                    static item => item.Name,
+                    StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+
+        AddonsList.ItemsSource = items;
+
+        AddonsResultCountText.Text =
+            $"{items.Length:N0} item(ns)";
+    }
+
     private void MultiplayerNavButton_Click(
         object sender,
         RoutedEventArgs e)
@@ -505,6 +581,7 @@ public sealed partial class MainWindow :
             SessionView,
             MapsView,
             VehiclesView,
+            AddonsView,
             MultiplayerView,
             ControlsView,
             SettingsView,
@@ -546,6 +623,7 @@ public sealed partial class MainWindow :
             PlayNavButton,
             MapsNavButton,
             VehiclesNavButton,
+            AddonsNavButton,
             MultiplayerNavButton,
             ControlsNavButton,
             SettingsNavButton,
@@ -799,6 +877,7 @@ public sealed partial class MainWindow :
             UpdateHomeSummary();
             UpdateControlsView();
             UpdateCompatibilityAndDiagnostics();
+            UpdateAddonsView();
 
             SetStatus(
                 $"{_maps.Count:N0} mapa(s) · {_buses.Count:N0} ônibus.");
@@ -2366,6 +2445,7 @@ public sealed partial class MainWindow :
         FooterObjectCountText.Text = "0";
 
         UpdateLibraryViews();
+        UpdateAddonsView();
         UpdateHero(null);
         UpdateControlsView();
         UpdateCompatibilityAndDiagnostics();
