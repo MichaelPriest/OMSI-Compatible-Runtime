@@ -5427,15 +5427,22 @@ public sealed class D3D11RenderWindow : Form
             _device.CreateRasterizerState(
                 RasterizerDescription.CullNone);
 
+        // OMSI O3D diffuse alpha is often metadata (glass tint, masks),
+        // not a command to blend the complete mesh. Only explicit model.cfg
+        // [matl_alpha] / [matl_transmap] should control transparency.
+        // Traffic vehicles already force opaque vertex alpha by default;
+        // the player's bus and launcher preview must use the same rule.
         _vehicleExteriorGeometry =
             RuntimeVehicleGeometry.Build(
                 _windowInfo.Vehicle,
-                viewpointBit: 1);
+                viewpointBit: 1,
+                forceMaterialAlphaOpaque: true);
 
         _vehicleInteriorGeometry =
             RuntimeVehicleGeometry.Build(
                 _windowInfo.Vehicle,
-                viewpointBit: 2);
+                viewpointBit: 2,
+                forceMaterialAlphaOpaque: true);
 
         _pinnedVehicleTexturePaths =
             _vehicleExteriorGeometry.Batches
