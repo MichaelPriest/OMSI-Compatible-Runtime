@@ -651,6 +651,10 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeOmsiMenuBar? _omsiMenuBar;
     private readonly RuntimeBusSelectorPanel? _busSelectorPanel;
     private readonly RuntimeDriveOpsPanel? _driveOpsPanel;
+    private readonly Form? _driveOpsOverlay;
+    private RuntimeControlHubSettings _controlHubSettings =
+        RuntimeControlHubSettings.Load();
+    private RuntimeControlHubSettingsForm? _controlHubSettingsForm;
     private readonly RuntimeNavPulsePanel? _navPulsePanel;
     private readonly RuntimeVehiclePanel? _vehiclePanel;
     private readonly RuntimeLiveBoardPanel? _liveBoardPanel;
@@ -1641,10 +1645,63 @@ public sealed class D3D11RenderWindow : Form
                 OnDriveOpsMessageRequested;
             _driveOpsPanel.CommsLinkTransmitRequested +=
                 OnCommsLinkTransmitRequested;
+            _driveOpsPanel.PanelVisibilityRequested +=
+                OnDriveOpsPanelVisibilityRequested;
+            _driveOpsPanel.SettingsRequested +=
+                ShowControlHubSettings;
 
-            Controls.Add(
+            // WinForms child controls cannot blend through their parent's
+            // Direct3D swapchain. A separate owned layered Form provides
+            // actual per-window alpha over the live game instead.
+            _driveOpsOverlay =
+                new Form
+                {
+                    FormBorderStyle =
+                        FormBorderStyle.None,
+                    ShowInTaskbar =
+                        false,
+                    StartPosition =
+                        FormStartPosition.Manual,
+                    BackColor =
+                        Color.FromArgb(18, 29, 44),
+                    Opacity =
+                        _controlHubSettings.WindowOpacity,
+                    KeyPreview =
+                        true
+                };
+            _driveOpsOverlay.KeyDown +=
+                (_, e) =>
+                {
+                    if (e.KeyCode ==
+                        Keys.Escape)
+                    {
+                        _driveOpsPanel.HidePanel();
+                        e.Handled = true;
+                    }
+                };
+            _driveOpsOverlay.FormClosing +=
+                (_, e) =>
+                {
+                    if (e.CloseReason ==
+                        CloseReason.UserClosing)
+                    {
+                        e.Cancel = true;
+                        _driveOpsPanel.HidePanel();
+                    }
+                };
+
+            _driveOpsPanel.Dock =
+                DockStyle.Fill;
+            _driveOpsOverlay.Controls.Add(
                 _driveOpsPanel);
+
+            _driveOpsPanel.ConfigureControlHub(
+                _controlHubSettings.ControlHubEnabled);
             LayoutDriveOpsPanel();
+
+            Move +=
+                (_, _) =>
+                    LayoutDriveOpsPanel();
         }
 
         _navPulsePanel =
@@ -6729,36 +6786,115 @@ public sealed class D3D11RenderWindow : Form
 
     private void LayoutDriveOpsPanel()
     {
-        if (_driveOpsPanel is null)
+        if (_driveOpsPanel is null ||
+            _driveOpsOverlay is null)
         {
             return;
         }
 
-        _driveOpsPanel.Width =
+        var width =
             Math.Min(
                 760,
                 Math.Max(
                     620,
                     ClientSize.Width - 48));
-        _driveOpsPanel.Height =
+        var height =
             Math.Min(
                 470,
                 Math.Max(
                     390,
                     ClientSize.Height - 48));
 
-        _driveOpsPanel.Left =
-            Math.Max(
-                12,
-                (ClientSize.Width -
-                 _driveOpsPanel.Width) /
-                2);
-        _driveOpsPanel.Top =
-            Math.Max(
-                12,
-                (ClientSize.Height -
-                 _driveOpsPanel.Height) /
-                2);
+        _driveOpsOverlay.ClientSize =
+            new Size(width, height);
+
+        if (IsHandleCreated)
+        {
+            _driveOpsOverlay.Location =
+                PointToScreen(
+                    new Point(
+                        Math.Max(
+                            12,
+                            (ClientSize.Width - width) / 2),
+                        Math.Max(
+                            12,
+                            (ClientSize.Height - height) / 2)));
+        }
+    }
+
+    private void OnDriveOpsPanelVisibilityRequested(bool visible)
+    {
+        if (_driveOpsOverlay is null ||
+            _driveOpsPanel is null)
+        {
+            return;
+        }
+
+        if (visible)
+        {
+            LayoutDriveOpsPanel();
+            if (!_driveOpsOverlay.Visible)
+            {
+                _driveOpsOverlay.Show(this);
+            }
+
+            _driveOpsOverlay.BringToFront();
+            _driveOpsPanel.Focus();
+        }
+        else
+        {
+            _driveOpsOverlay.Hide();
+            Focus();
+        }
+    }
+
+    private void ShowControlHubSettings()
+    {
+        if (_controlHubSettingsForm is
+            { IsDisposed: false } existing)
+        {
+            existing.BringToFront();
+            existing.Focus();
+            return;
+        }
+
+        var window =
+            new RuntimeControlHubSettingsForm(
+                _controlHubSettings);
+
+        _controlHubSettingsForm = window;
+
+        window.PreferencesChanged +=
+            ApplyControlHubSettings;
+
+        window.FormClosed +=
+            (_, _) =>
+                _controlHubSettingsForm = null;
+
+        window.Show(this);
+        window.BringToFront();
+    }
+
+    private void ApplyControlHubSettings(
+        RuntimeControlHubSettings settings)
+    {
+        _controlHubSettings =
+            settings.Normalized();
+
+        _driveOpsPanel?.ConfigureControlHub(
+            _controlHubSettings.ControlHubEnabled);
+
+        if (_driveOpsOverlay is not null)
+        {
+            _driveOpsOverlay.Opacity =
+                _controlHubSettings.WindowOpacity;
+        }
+
+        if (!_controlHubSettings.DriveOpsEnabled &&
+            _driveOpsPanel?.IsOpen == true)
+        {
+            _driveOpsPanel.HidePanel();
+        }
     }
 
     private void LayoutVehiclePanel()
@@ -6955,12 +7091,22 @@ public sealed class D3D11RenderWindow : Form
             case RuntimeOmsiMenuCommand.Personnel:
                 _omsiMenuBar?.HideMenu();
 
-                if (_driveOpsPanel is not null)
+                if (_driveOpsPanel is not null &&
+                    _controlHubSettings.DriveOpsEnabled)
                 {
                     LayoutDriveOpsPanel();
                     _driveOpsPanel.TogglePanel();
                 }
+                else
+                {
+                    ShowControlHubSettings();
+                }
 
+                break;
+
+            case RuntimeOmsiMenuCommand.Options:
+                _omsiMenuBar?.HideMenu();
+                ShowControlHubSettings();
                 break;
 
             case RuntimeOmsiMenuCommand.Schedule:
@@ -26814,7 +26960,14 @@ public sealed class D3D11RenderWindow : Form
                     OnDriveOpsMessageRequested;
                 _driveOpsPanel.CommsLinkTransmitRequested -=
                     OnCommsLinkTransmitRequested;
+                _driveOpsPanel.PanelVisibilityRequested -=
+                    OnDriveOpsPanelVisibilityRequested;
+                _driveOpsPanel.SettingsRequested -=
+                    ShowControlHubSettings;
             }
+
+            _controlHubSettingsForm?.Dispose();
+            _driveOpsOverlay?.Dispose();
 
             if (_scriptRuntime is not null)
             {
