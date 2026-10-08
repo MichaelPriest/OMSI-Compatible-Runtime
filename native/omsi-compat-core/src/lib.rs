@@ -265,9 +265,12 @@ mod tests {
             )
         };
         assert!(length > 0);
+        // Windows PathBuf normalizes separators when joining, while a
+        // literal fixture path may contain forward slashes. Compare paths
+        // after component normalization, not byte-for-byte spellings.
         assert_eq!(
-            std::str::from_utf8(&buffer[..length as usize]).unwrap(),
-            found.to_str().unwrap()
+            PathBuf::from(std::str::from_utf8(&buffer[..length as usize]).unwrap()),
+            normalized(&found)
         );
         assert_eq!(omsi_core_abi_version(), 1);
         let mut tiny = [0_u8; 1];
