@@ -751,21 +751,51 @@ public static class WorldLoader
             OmsiGroundTextureReader.ReadFile(
                 map.GlobalConfigPath);
 
+        // openOMSI's ground base falls back to Texture/gras.bmp when
+        // global.cfg has no valid first [groundtex] texture. The height
+        // color fallback remains in place if the installed OMSI folder
+        // genuinely has no grass texture either.
+        var stockGrass =
+            ResolveGroundTexturePath(
+                contentRoot.RootPath,
+                map.DirectoryPath,
+                "Texture/gras.bmp");
+
+        if (source.Count == 0)
+        {
+            return
+            [
+                new WorldGroundTexture(
+                    0,
+                    stockGrass,
+                    null,
+                    1.0,
+                    1.0)
+            ];
+        }
+
         return source
             .Select(
                 (ground, index) =>
-                    new WorldGroundTexture(
-                        index,
+                {
+                    var mainTexture =
                         ResolveGroundTexturePath(
                             contentRoot.RootPath,
                             map.DirectoryPath,
-                            ground.MainTexturePath),
+                            ground.MainTexturePath);
+
+                    return new WorldGroundTexture(
+                        index,
+                        index == 0
+                            ? mainTexture ?? stockGrass
+                            : mainTexture,
                         ResolveGroundTexturePath(
                             contentRoot.RootPath,
                             map.DirectoryPath,
                             ground.DetailTexturePath),
                         ground.MainTextureRepeating,
-                        ground.DetailTextureRepeating))
+                        ground.DetailTextureRepeating);
+                })
             .ToArray();
     }
 
