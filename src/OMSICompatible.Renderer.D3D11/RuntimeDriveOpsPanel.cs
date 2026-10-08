@@ -419,10 +419,11 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         _routeLine.Text = (line ?? string.Empty).Trim();
         _routeCode.Text = (routeCode ?? string.Empty).Trim();
         _routeDestination.Text = (destination ?? string.Empty).Trim();
-        _routeMessages.AppendText(
+        _routeMessages.Items.Add(
             $"Rota selecionada: {_routeLine.Text} | " +
-            $"{_routeCode.Text} | {_routeDestination.Text}" +
-            Environment.NewLine);
+            $"{_routeCode.Text} | {_routeDestination.Text}");
+        _routeMessages.TopIndex =
+            _routeMessages.Items.Count - 1;
     }
 
     public void TogglePanel()
