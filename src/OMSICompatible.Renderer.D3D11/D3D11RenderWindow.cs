@@ -8071,7 +8071,9 @@ public sealed class D3D11RenderWindow : Form
             for (var y = 0; y < height; y++)
             {
                 Marshal.Copy(
-                    mapped.DataPointer + y * mapped.RowPitch,
+                    new IntPtr(
+                        (long)mapped.DataPointer +
+                        y * (long)mapped.RowPitch),
                     rgba, 0, rgba.Length);
 
                 for (var x = 0; x < rgba.Length; x += 4)
