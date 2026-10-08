@@ -1713,9 +1713,21 @@ public sealed class D3D11RenderWindow : Form
 
         if (_navPulsePanel is not null)
         {
+            // Restore preferences before subscribing to change events:
+            // initialization must never overwrite saved LiveBoard/map choices.
+            _navPulsePanel.SetGuidanceEnabled(
+                _navigationOverlaySettings.GroundArrowsEnabled);
+            _navigationGuidanceEnabled =
+                _navPulsePanel.GuidanceEnabled;
+            _navPulsePanel.Visible =
+                _navigationOverlaySettings.MiniMapEnabled;
+
             _navPulsePanel.DisplayModeChanged +=
                 (_, _) =>
+                {
                     LayoutNavPulsePanel();
+                    SyncOmsiMenuState();
+                };
             _navPulsePanel.GuidanceVisibilityChanged +=
                 (_, _) =>
                 {
@@ -1725,13 +1737,6 @@ public sealed class D3D11RenderWindow : Form
                     SyncOmsiMenuState();
                     Invalidate();
                 };
-
-            _navPulsePanel.SetGuidanceEnabled(
-                _navigationOverlaySettings.GroundArrowsEnabled);
-            _navigationGuidanceEnabled =
-                _navPulsePanel.GuidanceEnabled;
-            _navPulsePanel.Visible =
-                _navigationOverlaySettings.MiniMapEnabled;
 
             Controls.Add(
                 _navPulsePanel);
