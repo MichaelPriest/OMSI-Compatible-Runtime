@@ -80,3 +80,22 @@ asset, shader or a claim of pixel-exact reproduction. The dedicated CI
 geometry smoke test covers sloped surfaces, missing meshes and overpasses.
 Real-world add-on testing is still needed for junctions, multi-level roads,
 and render transparency under night lighting.
+
+
+## Regression pass — buses / IBIS / AI / map texture assets
+
+- **Engine startup:** an OMSI local variable is authoritative only when
+  its VM writes it. If `engine_on` is merely declared, the host EngineStart/
+  EngineOff controls keep working. Actual scripts still control their engine.
+- **Unscheduled AI:** valid terminal OMSI roads can spawn real catalogued
+  vehicles; vehicles recycle upon reaching their terminal. Zero AI when
+  there is no valid real .bus/.ovh asset remains a correct diagnostic, not a
+  reason to spawn fake vehicles.
+- **Vehicle/dashboard:** scoped lookup includes vehicle Texture/IBIS and
+  shared pack folders, with optimized DDS support for OMSI fonts.
+- **Road/scenery:** root and asset-category Texture folders are checked as
+  ordered fallbacks. No files are synthesized; existing texture decoding
+  diagnostics are still relevant for unsupported formats.
+- **Unverified:** precise NG IBIS textures, actual engine movement, and local
+  installed map scenery still require the specific OMSI assets and runtime
+  logs from the reported installation. CI uses non-proprietary fixtures.

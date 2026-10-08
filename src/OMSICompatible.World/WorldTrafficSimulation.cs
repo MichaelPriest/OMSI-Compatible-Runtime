@@ -441,9 +441,12 @@ public sealed class WorldTrafficSimulation
                                 segment,
                                 groupIndex,
                                 defaultDensityClassIndex) &&
-                            (!spawnExclusionCenter.HasValue ||
-                             HasUsableTrafficExit(
-                                 segment)))
+                            // A road with no outgoing edge is still a real
+                            // spawnable OMSI road. Terminal AI is recycled
+                            // at the end of that road; rejecting it here
+                            // caused maps with disconnected paths to spawn
+                            // literally zero road vehicles.
+                            SegmentLength(segment) >= 14.0)
                     .ToArray();
 
             if (allowedSegments.Length ==
@@ -1460,8 +1463,7 @@ public sealed class WorldTrafficSimulation
                     segment,
                     agent.GroupIndex,
                     agent.DefaultDensityClassIndex) ||
-                !HasUsableTrafficExit(
-                    segment) ||
+                SegmentLength(segment) < 14.0 ||
                 IsCriticalRespawnApproach(
                     agent,
                     segment))

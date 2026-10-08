@@ -56,7 +56,13 @@ public static class OmsiTextureAssetPathResolver
             Path.Combine(modelDirectory, "Texture"),
             meshDirectory,
             Path.Combine(meshDirectory, "Texture"),
-            Path.GetFullPath(Path.Combine(meshDirectory, "..", "Texture"))
+            Path.GetFullPath(Path.Combine(meshDirectory, "..", "Texture")),
+            // IBIS/dashboard display textures may live in a shared OMSI
+            // vehicle pack rather than alongside the current model.cfg.
+            Path.Combine(vehiclesRoot, "Texture"),
+            Path.Combine(vehicleDirectory, "texture", "common"),
+            Path.Combine(vehicleDirectory, "Texture", "IBIS"),
+            Path.Combine(modelDirectory, "Texture", "IBIS")
         ];
 
         if (TryResolve(
@@ -152,7 +158,10 @@ public static class OmsiTextureAssetPathResolver
             textureName,
             [
                 mapRoot,
-                root
+                Path.Combine(mapRoot, "texture"),
+                root,
+                Path.Combine(root, "Texture"),
+                Path.Combine(root, "maps", "Texture")
             ],
             out fullPath);
     }
@@ -201,6 +210,7 @@ public static class OmsiTextureAssetPathResolver
                 Path.Combine(
                     objectDirectory,
                     "Texture"),
+                Path.Combine(sceneryRoot, "Texture"),
                 meshDirectory,
                 Path.Combine(
                     meshDirectory,
@@ -289,7 +299,8 @@ public static class OmsiTextureAssetPathResolver
                 splineDirectory,
                 Path.Combine(
                     splineDirectory,
-                    "Texture")
+                    "Texture"),
+                Path.Combine(splinesRoot, "Texture")
             ],
             out fullPath);
     }

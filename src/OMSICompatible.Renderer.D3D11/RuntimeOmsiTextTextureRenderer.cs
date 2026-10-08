@@ -528,14 +528,39 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
         }
 
         var path =
-            Path.Combine(
-                directory,
-                fileName);
+            Path.GetFullPath(
+                Path.Combine(
+                    directory,
+                    fileName));
 
-        return File.Exists(
-                path)
-            ? path
-            : null;
+        // IBIS and instrument fonts from older MAN NG add-ons may
+        // reference a BMP that was replaced with an optimized DDS, or
+        // an atlas in the font package's Texture subdirectory. The
+        // image decoder already supports these real formats.
+        var candidates = new List<string>
+        {
+            path,
+            Path.ChangeExtension(path, ".dds"),
+            Path.ChangeExtension(path, ".png"),
+            Path.ChangeExtension(path, ".tga")
+        };
+
+        var baseName = Path.GetFileName(fileName);
+        if (!string.IsNullOrWhiteSpace(baseName))
+        {
+            var texturePath = Path.Combine(directory, "Texture", baseName);
+            candidates.Add(texturePath);
+            candidates.Add(Path.ChangeExtension(texturePath, ".dds"));
+            candidates.Add(Path.ChangeExtension(texturePath, ".png"));
+        }
+
+        var root = Path.GetFullPath(directory);
+        var rootPrefix = root.TrimEnd(
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return candidates.FirstOrDefault(candidate =>
+            candidate.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(candidate));
     }
 
     private static bool TryReadValue(

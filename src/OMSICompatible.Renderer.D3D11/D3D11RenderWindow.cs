@@ -24769,7 +24769,11 @@ public sealed class D3D11RenderWindow : Form
                 break;
 
             case RuntimeOmsiHostInputAction.EngineToggle:
-                if (_scriptRuntime?.HasLocalVariable(
+                // A declared-but-never-written engine_on local is not
+                // an authoritative startup signal. On such add-ons,
+                // the OMSI trigger may exist but never write this local.
+                // Preserve the real script when it does write engine_on.
+                if (_scriptRuntime?.WritesLocalVariable(
                         "engine_on") == true)
                 {
                     _vehicle.SetEngineRunning(
@@ -24785,7 +24789,7 @@ public sealed class D3D11RenderWindow : Form
 
             case RuntimeOmsiHostInputAction.EngineStart:
             case RuntimeOmsiHostInputAction.EngineOff:
-                if (_scriptRuntime?.HasLocalVariable(
+                if (_scriptRuntime?.WritesLocalVariable(
                         "engine_on") == true)
                 {
                     _vehicle.SetEngineRunning(
