@@ -24645,7 +24645,13 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
-        if (_omsiKeyboardBindings.Count > 0)
+        // A partially configured OMSI keyboard.cfg must not disable all
+        // built-in driving controls. Only suppress the legacy fallback key
+        // for actions that actually have a configured binding.
+        if (_omsiKeyboardBindings.Any(
+                binding =>
+                    binding.HostAction ==
+                    action))
         {
             return false;
         }
