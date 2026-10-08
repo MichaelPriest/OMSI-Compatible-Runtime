@@ -8005,6 +8005,93 @@ public sealed class D3D11RenderWindow : Form
             .CheckError();
     }
 
+    private void SaveVehicleThumbnail(string path)
+    {
+        if (_device is null ||
+            _deviceContext is null ||
+            _backBuffer is null)
+        {
+            throw new InvalidOperationException(
+                "The D3D11 render target is unavailable.");
+        }
+
+        var width = Math.Max(ClientSize.Width, 1);
+        var height = Math.Max(ClientSize.Height, 1);
+
+        using var staging = _device.CreateTexture2D(
+            Format.R8G8B8A8_UNorm,
+            (uint)width,
+            (uint)height,
+            mipLevels: 1,
+            bindFlags: BindFlags.None,
+            usage: ResourceUsage.Staging,
+            cpuAccessFlags: CpuAccessFlags.Read);
+
+        // Read the real rendered O3D vehicle and materials from the GPU.
+        _deviceContext.CopyResource(staging, _backBuffer);
+        var mapped = _deviceContext.Map(
+            staging, 0, MapMode.Read, MapFlags.None);
+
+        using var bitmap = new Bitmap(
+            width, height, PixelFormat.Format32bppArgb);
+
+        var locked = bitmap.LockBits(
+            new Rectangle(0, 0, width, height),
+            ImageLockMode.WriteOnly,
+            PixelFormat.Format32bppArgb);
+
+        try
+        {
+            var rgba = new byte[width * 4];
+            var bgra = new byte[width * 4];
+
+            for (var y = 0; y < height; y++)
+            {
+                Marshal.Copy(
+                    mapped.DataPointer + y * mapped.RowPitch,
+                    rgba, 0, rgba.Length);
+
+                for (var x = 0; x < rgba.Length; x += 4)
+                {
+                    bgra[x] = rgba[x + 2];
+                    bgra[x + 1] = rgba[x + 1];
+                    bgra[x + 2] = rgba[x];
+                    bgra[x + 3] = 255;
+                }
+
+                Marshal.Copy(
+                    bgra, 0,
+                    locked.Scan0 + y * locked.Stride,
+                    bgra.Length);
+            }
+        }
+        finally
+        {
+            bitmap.UnlockBits(locked);
+            _deviceContext.Unmap(staging, 0);
+        }
+
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var temporaryPath = path + ".tmp";
+        try
+        {
+            bitmap.Save(temporaryPath, ImageFormat.Png);
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+    }
+
     private void RenderReflectionTargets()
     {
         if (_deviceContext is null ||
