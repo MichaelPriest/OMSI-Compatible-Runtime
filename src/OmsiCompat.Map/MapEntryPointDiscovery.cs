@@ -78,7 +78,7 @@ public static class MapEntryPointDiscovery
 
         if (officialNames.Count > 0)
         {
-            points =
+            var matched =
                 points
                     .Where(
                         point =>
@@ -92,6 +92,14 @@ public static class MapEntryPointDiscovery
                                     officialNames[point.ObjectId]
                             })
                     .ToList();
+
+            // Malformed add-ons may have a global.cfg entry point list
+            // whose object IDs no longer match the placed markers.
+            // Never erase all launch locations because of stale IDs.
+            if (matched.Count > 0)
+            {
+                points = matched;
+            }
         }
 
         return points
