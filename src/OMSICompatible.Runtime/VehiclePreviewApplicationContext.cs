@@ -14,7 +14,8 @@ internal sealed class VehiclePreviewApplicationContext :
         OmsiContentRoot contentRoot,
         OmsiBusInfo bus,
         string? repaintName = null,
-        string? repaintCtiRelativePath = null)
+        string? repaintCtiRelativePath = null,
+        string? thumbnailOutputPath = null)
     {
         ArgumentNullException.ThrowIfNull(
             contentRoot);
@@ -153,13 +154,23 @@ internal sealed class VehiclePreviewApplicationContext :
         _previewWindow.Text =
             $"Prévia 3D · {bus.SelectionLabel}";
 
-        _previewWindow.StartPosition =
-            FormStartPosition.CenterScreen;
+        _previewWindow.VehicleThumbnailOutputPath =
+            thumbnailOutputPath;
 
-        _previewWindow.ClientSize =
-            new Size(
-                1100,
-                700);
+        if (!string.IsNullOrWhiteSpace(thumbnailOutputPath))
+        {
+            // Dedicated one-frame render stays outside the visible desktop.
+            _previewWindow.ShowInTaskbar = false;
+            _previewWindow.FormBorderStyle = FormBorderStyle.None;
+            _previewWindow.StartPosition = FormStartPosition.Manual;
+            _previewWindow.Location = new Point(-32000, -32000);
+            _previewWindow.ClientSize = new Size(512, 288);
+        }
+        else
+        {
+            _previewWindow.StartPosition = FormStartPosition.CenterScreen;
+            _previewWindow.ClientSize = new Size(1100, 700);
+        }
 
         _previewWindow.FormClosed +=
             (_, _) =>
