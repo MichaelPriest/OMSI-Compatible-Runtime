@@ -93,3 +93,60 @@ foreach (var heading in new[] { 0.0f, 0.71f, -2.2f })
         "Wheel zoom moved the world point under the mouse cursor.");
 }
 Console.WriteLine("Navigation city-map pan/zoom/follow projection tests passed.");
+
+
+// Real OMSI path types and their indexed road geometry.
+var lane = new RuntimeTrafficPathSegmentInfo(
+    71, 999, 0, 0, 0, 3.5,
+    [new RuntimeTrafficPathPointInfo(0, 0, 0),
+     new RuntimeTrafficPathPointInfo(30, 0, 0),
+     new RuntimeTrafficPathPointInfo(60, 0, 0)],
+    [], [], 40.0);
+var pedestrian = lane with { Index = 72, Type = 1 };
+var rail = lane with { Index = 73, Type = 2 };
+var network = new RuntimeTrafficPathNetworkInfo(
+    [lane, pedestrian, rail], 1, 1, 1, 0, 0, 0, 0, 0);
+var road = RuntimeNavTrafficMap.Build(network);
+Require(road.Length == 2 && road.All(s => s.SegmentIndex == 71),
+    "City map included pedestrian/rail paths or missed a real motor lane.");
+var roadIndex = new RuntimeNavRoadIndex(road);
+Require(roadIndex.Count == 2 &&
+        roadIndex.Nearby(new Vector2(20, 0), 40).Count() == 2 &&
+        !roadIndex.Nearby(new Vector2(900, 900), 40).Any(),
+    "Spatially indexed full-map road lookup returned invalid geometry.");
+
+// A lone AI waiting at a light does not justify a red traffic warning.
+var car1 = new RuntimeTrafficAgentInfo(
+    11, 71, 10.0, 0.4, "Vehicles/Test/car.bus", 10, 0, 0, 0);
+var car2 = car1 with { AgentIndex = 12, X = 25 };
+var limits = new Dictionary<int, double> { [71] = 40.0 };
+Require(RuntimeNavTrafficMap.EstimateCongestion([car1], limits).Count == 0,
+    "A single stopped AI vehicle was incorrectly reported as congestion.");
+var congested = RuntimeNavTrafficMap.EstimateCongestion(
+    [car1, car2], limits);
+Require(congested.TryGetValue(71, out var level) && level > 0.7f,
+    "Two slow real AI vehicles did not mark their OMSI lane as congested.");
+var fastCar1 = car1 with { SpeedMetersPerSecond = 11.0 };
+var fastCar2 = car2 with { SpeedMetersPerSecond = 11.0 };
+Require(RuntimeNavTrafficMap.EstimateCongestion(
+    [fastCar1, fastCar2], limits).Count == 0,
+    "Fast vehicles should not produce a congestion warning.");
+
+// Timetable stop markers belong to authored route geometry and names.
+var stopRoute = new[]
+{
+    new RuntimeTrafficPathPointInfo(0, 0, 0),
+    new RuntimeTrafficPathPointInfo(50, 0, 0),
+    new RuntimeTrafficPathPointInfo(100, 0, 0)
+};
+var positioned = RuntimeNavStopProjector.Place(stopRoute,
+    [new RuntimeNavigationStopDistanceInfo("Terminal A", 0, true),
+     new RuntimeNavigationStopDistanceInfo("Intermediária", 30, true),
+     new RuntimeNavigationStopDistanceInfo("Terminal B", 60, true)]);
+Require(positioned.Length == 3 &&
+        positioned[1].Name == "Intermediária" &&
+        Math.Abs(positioned[1].X - 50) < 0.01 &&
+        positioned[2].IsTerminus &&
+        Math.Abs(positioned[2].X - 100) < 0.01,
+    "Timetable stop interpolation diverged from the selected OMSI route.");
+Console.WriteLine("OMSI road network / real AI congestion / named stop tests passed.");

@@ -137,6 +137,17 @@ public sealed record RuntimeNavigationGuidancePointInfo(
     double DistanceAheadMeters,
     string Kind);
 
+public sealed record RuntimeNavigationStopDistanceInfo(
+    string Name,
+    double RouteDistanceMeters,
+    bool Stops);
+
+public sealed record RuntimeNavigationStopInfo(
+    string Name,
+    double X,
+    double Z,
+    bool IsTerminus);
+
 public sealed record RuntimeTrafficPathNetworkInfo(
     IReadOnlyList<RuntimeTrafficPathSegmentInfo> Segments,
     int RoadVehicleSegmentCount,
