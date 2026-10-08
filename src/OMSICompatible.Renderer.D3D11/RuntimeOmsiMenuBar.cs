@@ -182,8 +182,8 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             flow,
             RuntimeOmsiMenuCommand.Options,
             "\uE713",
-            "Opções",
-            false);
+            "Telas e CCO — ativar módulos e ajustar transparência",
+            true);
 
         AddButton(
             flow,
