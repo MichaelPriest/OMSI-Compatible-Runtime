@@ -14814,7 +14814,8 @@ public sealed class D3D11RenderWindow : Form
             _vehicleTextTextureRenderer
                 .GetOrCreate(
                     definition,
-                    value);
+                    value,
+                    sectionIndex);
 
         if (texture is null)
         {
