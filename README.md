@@ -8,6 +8,8 @@ Independent Windows x64 runtime intended to load compatible OMSI content without
 
 The DRAFT runtime branch also includes experimental openOMSI-compatible LAN protocol v6 work: session invite codes, shared AI traffic/light states, on-foot `Walker` synchronization, and decoding of openOMSI `WORLD` people/passenger states. The on-foot controls are `Ctrl+Shift+G` to leave the bus, `W/A/S/D` to walk, `Shift` to run, `Space` to jump, `C` to crouch, and `G` near the bus to return.
 
+For real-peer acceptance, use [the openOMSI ↔ Runtime passenger interoperability procedure](docs/OPENOMSI_REAL_PASSENGER_INTEROP.md); passing the synthetic smoke tests alone does not validate it.
+
 ## Initial goal
 
 The first milestone is a native x64 **World Runtime** capable of:

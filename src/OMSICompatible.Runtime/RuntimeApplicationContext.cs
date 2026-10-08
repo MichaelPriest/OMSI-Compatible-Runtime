@@ -4747,8 +4747,15 @@ internal sealed class RuntimeApplicationContext :
             {
                 _sharedWorldPeople.Remove(
                     removed.Id);
-                _sharedWorldPersonDescriptions.Remove(
-                    removed.Id);
+
+                // A GONE may overtake the GRANT for a pending hand-over.
+                // Preserve its DESC until the authority reply is resolved.
+                if (!_pendingWorldPassengerClaims.ContainsKey(
+                        removed.Id))
+                {
+                    _sharedWorldPersonDescriptions.Remove(
+                        removed.Id);
+                }
             }
             else
             {
@@ -4841,17 +4848,23 @@ internal sealed class RuntimeApplicationContext :
 
             _sharedWorldPeople.Remove(
                 removed.Id);
-            _sharedWorldPersonDescriptions.Remove(
-                removed.Id);
-            _pendingWorldPassengerClaims.Remove(
-                removed.Id);
-            _worldPassengerClaimAttemptedAt.Remove(
-                removed.Id);
-            _sharedWorldWantRequestedAt.Remove(
-                (
-                    true,
-                    removed.Id
-                ));
+
+            // UDP can deliver GONE before GRANT. The host has removed
+            // its copy precisely because ownership may be transferring.
+            // Do not discard the pending passenger pose or description.
+            if (!_pendingWorldPassengerClaims.ContainsKey(
+                    removed.Id))
+            {
+                _sharedWorldPersonDescriptions.Remove(
+                    removed.Id);
+                _worldPassengerClaimAttemptedAt.Remove(
+                    removed.Id);
+                _sharedWorldWantRequestedAt.Remove(
+                    (
+                        true,
+                        removed.Id
+                    ));
+            }
         }
 
         RequestMissingWorldDescriptions(
@@ -4869,6 +4882,27 @@ internal sealed class RuntimeApplicationContext :
         _sharedWorldPersonDescriptions[
             description.Id] =
             description;
+
+        if (_pendingWorldPassengerClaims.TryGetValue(
+                description.Id,
+                out var pending))
+        {
+            _pendingWorldPassengerClaims[
+                description.Id] =
+                (
+                    pending.State,
+                    description.HumanPath
+                );
+        }
+
+        // DESC may be delivered after GRANT on an unordered UDP link.
+        if (_ownedWorldPassengers.TryGetValue(
+                description.Id,
+                out var owned))
+        {
+            owned.UpdateHumanPath(
+                description.HumanPath);
+        }
 
         _sharedWorldWantRequestedAt.Remove(
             (
@@ -5416,6 +5450,16 @@ internal sealed class RuntimeApplicationContext :
                         humanPath =
                             description.HumanPath;
                     }
+                }
+
+                if (string.IsNullOrWhiteSpace(
+                        humanPath) &&
+                    _sharedWorldPersonDescriptions.TryGetValue(
+                        id,
+                        out var latestDescription))
+                {
+                    humanPath =
+                        latestDescription.HumanPath;
                 }
 
                 if (state is not null)
@@ -6379,15 +6423,7 @@ internal sealed class RuntimeApplicationContext :
     {
         if (session.Role !=
                 OpenOmsiLanRole.Client ||
-            !session.Connected ||
-            _bus is null ||
-            _vehicleAsset?.PassengerCabin?.Entries.Count <=
-                0 ||
-            Math.Abs(
-                localPose.SpeedKph) >
-                1.5 ||
-            !IsPassengerEntryOpen(
-                localPose))
+            !session.Connected)
         {
             return;
         }
@@ -6412,6 +6448,33 @@ internal sealed class RuntimeApplicationContext :
                 stale);
             _pendingWorldPassengerClaims.Remove(
                 stale);
+
+            if (!_sharedWorldPeople.ContainsKey(
+                    stale) &&
+                !_ownedWorldPassengers.ContainsKey(
+                    stale))
+            {
+                _sharedWorldPersonDescriptions.Remove(
+                    stale);
+                _sharedWorldWantRequestedAt.Remove(
+                    (
+                        true,
+                        stale
+                    ));
+            }
+        }
+
+        // Expire unanswered hand-overs even when the doors have closed.
+        if (_bus is null ||
+            _vehicleAsset?.PassengerCabin?.Entries.Count <=
+                0 ||
+            Math.Abs(
+                localPose.SpeedKph) >
+                1.5 ||
+            !IsPassengerEntryOpen(
+                localPose))
+        {
+            return;
         }
 
         var candidates =

@@ -48,7 +48,19 @@ internal sealed class RuntimeWorldPassengerSimulation
     }
 
     public OpenOmsiLanWorldPersonState State { get; private set; }
-    public string HumanPath { get; }
+    public string HumanPath { get; private set; }
+
+    public void UpdateHumanPath(
+        string? humanPath)
+    {
+        if (!string.IsNullOrWhiteSpace(
+                humanPath))
+        {
+            HumanPath =
+                humanPath;
+        }
+    }
+
     public int? ReservedPlaceIndex => _place?.FileIndex;
     public bool Completed =>
         _disembarked &&
