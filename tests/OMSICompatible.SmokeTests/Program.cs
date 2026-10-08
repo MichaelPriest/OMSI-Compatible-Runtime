@@ -351,6 +351,62 @@ try
     Directory.CreateDirectory(vehicleModelDirectory);
     Directory.CreateDirectory(programDirectory);
 
+    // Real OMSI texture lookup convention: a same-stem DDS in the same
+    // vehicle pack overrides its BMP, while paths from old model layouts
+    // recover under that vehicle's Texture directory.
+    var resolverTextureDirectory =
+        Path.Combine(vehicleDirectory, "Texture");
+    Directory.CreateDirectory(resolverTextureDirectory);
+    var resolverBmpPath =
+        Path.Combine(resolverTextureDirectory, "resolver_panel.bmp");
+    var resolverDdsPath =
+        Path.Combine(resolverTextureDirectory, "resolver_panel.dds");
+    File.WriteAllBytes(resolverBmpPath, [(byte)0x42]);
+    File.WriteAllBytes(resolverDdsPath, [(byte)0x44]);
+
+    var resolverModelConfigPath =
+        Path.Combine(vehicleModelDirectory, "model.cfg");
+    var resolverMeshPath =
+        Path.Combine(vehicleModelDirectory, "panel.o3d");
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+            root,
+            vehicleDirectory,
+            resolverModelConfigPath,
+            resolverMeshPath,
+            "resolver_panel.bmp",
+            out var resolverPreferredPath) &&
+        string.Equals(
+            resolverPreferredPath,
+            resolverDdsPath,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI DDS replacement was not prioritized in the local vehicle texture directory.");
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+            root,
+            vehicleDirectory,
+            resolverModelConfigPath,
+            resolverMeshPath,
+            @"..\..\Texture\resolver_panel.bmp",
+            out var resolverRecoveredPath) &&
+        string.Equals(
+            resolverRecoveredPath,
+            resolverDdsPath,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI vehicle freetex Texture-component fallback failed.");
+
+    Require(
+        !OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+            root,
+            vehicleDirectory,
+            resolverModelConfigPath,
+            resolverMeshPath,
+            @"..\..\..\outside.bmp",
+            out _),
+        "OMSI vehicle texture path traversal must remain rejected.");
+
     var trainDirectory =
         Path.Combine(
             root,

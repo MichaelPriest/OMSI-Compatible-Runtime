@@ -43,18 +43,66 @@ public static class OmsiTextureAssetPathResolver
             Path.GetDirectoryName(Path.GetFullPath(meshFullPath))
             ?? modelDirectory;
 
+        string[] textureSearchDirectories =
+        [
+            vehicleDirectory,
+            Path.Combine(vehicleDirectory, "Texture"),
+            modelDirectory,
+            Path.Combine(modelDirectory, "Texture"),
+            meshDirectory,
+            Path.Combine(meshDirectory, "Texture"),
+            Path.GetFullPath(Path.Combine(meshDirectory, "..", "Texture"))
+        ];
+
+        if (TryResolve(
+                vehiclesRoot,
+                textureName,
+                textureSearchDirectories,
+                out fullPath))
+        {
+            return true;
+        }
+
+        // Some OMSI add-ons author freetex names relative to an old model
+        // layout ("..\\..\\Texture\\panel.bmp"). Follow openOMSI's
+        // Texture-component fallback, but only for relative paths and only
+        // inside the permitted Vehicles tree.
+        var rawName = textureName.Trim().Trim('"');
+        if (Path.IsPathRooted(rawName) ||
+            rawName.Contains(':', StringComparison.Ordinal) ||
+            rawName.StartsWith(@"\", StringComparison.Ordinal) ||
+            rawName.StartsWith("//", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var components = rawName
+            .Replace('\\', '/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        var textureComponent = Array.FindIndex(
+            components,
+            static component => string.Equals(
+                component,
+                "Texture",
+                StringComparison.OrdinalIgnoreCase));
+
+        if (textureComponent < 0 ||
+            textureComponent == components.Length - 1)
+        {
+            return false;
+        }
+
+        // The common resolver enforces extension validation and the allowed
+        // root on this second lookup too; it never accepts escaped paths.
+        var textureRelativeName = string.Join(
+            Path.DirectorySeparatorChar,
+            components[(textureComponent + 1)..]);
+
         return TryResolve(
             vehiclesRoot,
-            textureName,
-            [
-                vehicleDirectory,
-                Path.Combine(vehicleDirectory, "Texture"),
-                modelDirectory,
-                Path.Combine(modelDirectory, "Texture"),
-                meshDirectory,
-                Path.Combine(meshDirectory, "Texture"),
-                Path.GetFullPath(Path.Combine(meshDirectory, "..", "Texture"))
-            ],
+            textureRelativeName,
+            textureSearchDirectories,
             out fullPath);
     }
 
@@ -372,6 +420,25 @@ public static class OmsiTextureAssetPathResolver
         out string fullPath)
     {
         fullPath = string.Empty;
+
+        // OMSI (and openOMSI's find_texture_in_dir) prefers a same-stem
+        // optimized DDS in this very directory before the authored BMP,
+        // TGA or PNG. Never let a DDS in a later/global directory override
+        // a local texture.
+        var ddsCandidate =
+            Path.GetFullPath(
+                Path.Combine(
+                    baseDirectory,
+                    Path.ChangeExtension(normalizedTextureName, ".dds")));
+
+        if (TryAcceptCandidate(
+                root,
+                requiredPrefix,
+                ddsCandidate,
+                out fullPath))
+        {
+            return true;
+        }
 
         var exactCandidate =
             Path.GetFullPath(
