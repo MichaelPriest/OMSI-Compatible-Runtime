@@ -485,6 +485,53 @@ try
             out _),
         "OMSI content-relative scenery texture must never escape its category root.");
 
+    // Missing map and MAN NG IBIS atlas regressions: legitimate textures
+    // may be shared by a category or placed in a nested instrument folder.
+    var ibisAtlasDirectory =
+        Path.Combine(vehicleDirectory, "Texture", "IBIS");
+    Directory.CreateDirectory(ibisAtlasDirectory);
+    var ibisAtlas =
+        Path.Combine(ibisAtlasDirectory, "ibis_screen.dds");
+    File.WriteAllBytes(ibisAtlas, [(byte)0x44]);
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+            root, vehicleDirectory, resolverModelConfigPath, resolverMeshPath,
+            "ibis_screen.bmp", out var ibisAtlasResolved) &&
+        string.Equals(ibisAtlasResolved, ibisAtlas,
+            StringComparison.OrdinalIgnoreCase),
+        "MAN NG IBIS shared DDS atlas was not found in Texture/IBIS.");
+
+    var globalMapTextureDirectory =
+        Path.Combine(root, "Texture");
+    Directory.CreateDirectory(globalMapTextureDirectory);
+    var globalMapTexture =
+        Path.Combine(globalMapTextureDirectory, "road_ground.dds");
+    File.WriteAllBytes(globalMapTexture, [(byte)0x44]);
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveGroundTexture(
+            root, mapDirectory, "road_ground.bmp",
+            out var globalMapResolved) &&
+        string.Equals(globalMapResolved, globalMapTexture,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI content-root shared map ground texture lookup failed.");
+
+    var sharedObjectTextureDirectory =
+        Path.Combine(root, "Sceneryobjects", "Texture");
+    Directory.CreateDirectory(sharedObjectTextureDirectory);
+    var sharedObjectTexture =
+        Path.Combine(sharedObjectTextureDirectory, "sign_background.dds");
+    File.WriteAllBytes(sharedObjectTexture, [(byte)0x44]);
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveSceneryTexture(
+            root, sceneryObjectPath, sceneryMeshPath, "sign_background.bmp",
+            out var sharedObjectResolved) &&
+        string.Equals(sharedObjectResolved, sharedObjectTexture,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI shared Sceneryobjects/Texture fallback failed.");
+
     if (string.Equals(
             Environment.GetEnvironmentVariable("OMSI_REQUIRE_RUST_CORE"),
             "1",
@@ -5551,6 +5598,31 @@ try
                 45.0,
             spawnIntervalSeconds:
                 0.25);
+
+    // A terminal road with genuine OMSI path points is a legal AI spawn:
+    // the agent can drive to its end and then recycle. It must not cause
+    // all random traffic to disappear solely because a linked next road
+    // was missing from a streamed map window.
+    var terminalRoadNetwork =
+        new WorldTrafficPathNetwork(
+            [longRoadNetwork.Segments[1]],
+            1, 0, 0, 0, 0, 0, 1, 0);
+    var terminalRoadTraffic =
+        new WorldTrafficSimulation(
+            terminalRoadNetwork,
+            new OmsiMapAiCatalog(
+                [new OmsiAiVehicleDefinition(
+                    "NormalCars", @"Vehicles\Synthetic\traffic.bus",
+                    syntheticAiVehiclePath, 1.0)],
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>(),
+                Array.Empty<OmsiAiFileReference>()),
+            maximumAgents: 2,
+            spawnExclusionCenter: new WorldVector3(5000, 0, 5000),
+            spawnIntervalSeconds: 0.25);
+    terminalRoadTraffic.Step(2.0);
+    Require(terminalRoadTraffic.Snapshot().Count > 0,
+        "Unscheduled OMSI traffic must spawn on a real terminal road even when its successor is not streamed.");
 
     longRoadSimulation.Step(
         2.0);
