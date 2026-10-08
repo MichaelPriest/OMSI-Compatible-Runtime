@@ -6,6 +6,17 @@ internal readonly record struct RuntimeNavRoadSection(
     Vector2 A, Vector2 B, int SegmentIndex)
 {
     public Vector2 Midpoint => (A + B) * 0.5f;
+
+    public float DistanceSquaredTo(Vector2 point)
+    {
+        var delta = B - A;
+        var lengthSquared = delta.LengthSquared();
+        if (lengthSquared <= float.Epsilon)
+            return Vector2.DistanceSquared(point, A);
+        var t = Math.Clamp(
+            Vector2.Dot(point - A, delta) / lengthSquared, 0.0f, 1.0f);
+        return Vector2.DistanceSquared(point, A + delta * t);
+    }
 }
 
 /// <summary>
@@ -21,18 +32,24 @@ internal sealed class RuntimeNavRoadIndex
     {
         foreach (var section in roads)
         {
-            var midpoint = section.Midpoint;
-            if (!float.IsFinite(midpoint.X) || !float.IsFinite(midpoint.Y))
+            if (!float.IsFinite(section.A.X) || !float.IsFinite(section.A.Y) ||
+                !float.IsFinite(section.B.X) || !float.IsFinite(section.B.Y))
                 continue;
 
-            var key = Cell(midpoint);
-            if (!_cells.TryGetValue(key, out var list))
+            // Index all cells along genuine junction traversals, not just
+            // their midpoint, which may be outside the visible map.
+            var from = Cell(Vector2.Min(section.A, section.B));
+            var to = Cell(Vector2.Max(section.A, section.B));
+            for (var x = from.X; x <= to.X; x++)
+            for (var y = from.Y; y <= to.Y; y++)
             {
-                list = [];
-                _cells.Add(key, list);
+                if (!_cells.TryGetValue((x, y), out var list))
+                {
+                    list = [];
+                    _cells.Add((x, y), list);
+                }
+                list.Add(section);
             }
-
-            list.Add(section);
             Count++;
         }
     }
@@ -52,6 +69,7 @@ internal sealed class RuntimeNavRoadIndex
         var radius = Math.Clamp(radiusMeters, 0.0f, 12080.0f);
         var from = Cell(center - new Vector2(radius));
         var to = Cell(center + new Vector2(radius));
+        var seen = new HashSet<RuntimeNavRoadSection>();
         for (var x = from.X; x <= to.X; x++)
         for (var z = from.Y; z <= to.Y; z++)
         {
@@ -59,7 +77,8 @@ internal sealed class RuntimeNavRoadIndex
                 continue;
 
             foreach (var road in list)
-                yield return road;
+                if (seen.Add(road))
+                    yield return road;
         }
     }
 }
@@ -184,6 +203,19 @@ public static class RuntimeNavStopProjector
             lastStop <= 0.01)
             return [];
 
+        // The final timing entry may be an actual pass-through, not a stop.
+        var terminusIndex = -1;
+        for (var i = stops.Count - 1; i >= 0; i--)
+        {
+            if (stops[i].Stops &&
+                !string.IsNullOrWhiteSpace(stops[i].Name) &&
+                double.IsFinite(stops[i].RouteDistanceMeters))
+            {
+                terminusIndex = i;
+                break;
+            }
+        }
+
         var result = new List<RuntimeNavigationStopInfo>();
         for (var i = 0; i < stops.Count; i++)
         {
@@ -210,7 +242,7 @@ public static class RuntimeNavStopProjector
             if (double.IsFinite(x) && double.IsFinite(z))
             {
                 result.Add(new RuntimeNavigationStopInfo(
-                    stop.Name.Trim(), x, z, i == stops.Count - 1));
+                    stop.Name.Trim(), x, z, i == terminusIndex));
             }
         }
 

@@ -4003,6 +4003,9 @@ internal sealed class RuntimeApplicationContext :
         var line =
             window.CurrentOperationLine
                 .Trim();
+        var routeCode =
+            window.CurrentOperationRouteCode
+                .Trim();
         var destination =
             window.CurrentOperationDestination
                 .Trim();
@@ -4048,9 +4051,26 @@ internal sealed class RuntimeApplicationContext :
                         ))
                 .ToArray();
 
+        // The ESC selector provides an authored track, not just a line.
+        if (!string.IsNullOrWhiteSpace(routeCode))
+        {
+            candidates = candidates
+                .Where(trip =>
+                    trip.Route!.TrackName.Equals(
+                        routeCode,
+                        StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+
         if (candidates.Length ==
             0)
         {
+            // Do not continue displaying stops from a previously valid track.
+            _navigationRouteKey = string.Empty;
+            _navigationRuntimeRoute = [];
+            _navigationAssist.ClearRoute();
+            window.SetNavigationGuidance([], []);
+            window.SetNavigationStops([]);
             window.SetTeleMatrixState(
                 RuntimeTeleMatrixState.Unavailable);
             return;

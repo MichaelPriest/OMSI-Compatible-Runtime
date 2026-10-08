@@ -1866,6 +1866,9 @@ public sealed class D3D11RenderWindow : Form
         }
     }
 
+    public string CurrentOperationRouteCode =>
+        _driveOpsPanel?.CurrentRouteCode ?? string.Empty;
+
     public string CurrentOperationDestination
     {
         get

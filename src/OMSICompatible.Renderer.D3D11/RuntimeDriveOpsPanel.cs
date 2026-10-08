@@ -408,6 +408,9 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     public string CurrentLine =>
         _routeLine.Text.Trim();
 
+    public string CurrentRouteCode =>
+        _routeCode.Text.Trim();
+
     public string CurrentDestination =>
         _routeDestination.Text.Trim();
 

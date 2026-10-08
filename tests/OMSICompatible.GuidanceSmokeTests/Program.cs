@@ -149,4 +149,27 @@ Require(positioned.Length == 3 &&
         positioned[2].IsTerminus &&
         Math.Abs(positioned[2].X - 100) < 0.01,
     "Timetable stop interpolation diverged from the selected OMSI route.");
+// Long loaded OMSI junction paths must not disappear at the viewport edge
+// or get emitted more than once because they cross multiple grid cells.
+var longLane = new RuntimeNavRoadSection(
+    new Vector2(-750, 0), new Vector2(750, 0), 88);
+var longIndex = new RuntimeNavRoadIndex([longLane]);
+Require(longIndex.Count == 1 &&
+        longIndex.Nearby(new Vector2(-700, 0), 35).Single() == longLane &&
+        longIndex.Nearby(new Vector2(0, 0), 500).Count() == 1 &&
+        longLane.DistanceSquaredTo(new Vector2(-700, 5)) < 25.01f &&
+        longLane.DistanceSquaredTo(new Vector2(-700, 200)) > 39999f,
+    "Long authentic junction road segments disappeared or were duplicated.");
+
+// Some schedules finish with a non-stopping deadhead section.
+var finalPassengerStop = RuntimeNavStopProjector.Place(stopRoute,
+    [new RuntimeNavigationStopDistanceInfo("Terminal A", 0, true),
+     new RuntimeNavigationStopDistanceInfo("Terminal B", 60, true),
+     new RuntimeNavigationStopDistanceInfo("Deadhead", 80, false)]);
+Require(finalPassengerStop.Length == 2 &&
+        finalPassengerStop[^1].IsTerminus &&
+        finalPassengerStop[^1].Name == "Terminal B" &&
+        Math.Abs(finalPassengerStop[^1].X - 75) < 0.01,
+    "The final passenger stop was not identified as the terminus.");
+
 Console.WriteLine("OMSI road network / real AI congestion / named stop tests passed.");

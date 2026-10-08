@@ -613,7 +613,9 @@ internal sealed class RuntimeNavPulsePanel : Panel
 
         // openOMSI-style moving vehicle icons: use actual sim/peer agents
         // and their heading, not a peer-only circle list or placeholder AI.
-        var effectiveRange = Math.Max(_fullMapRangeMeters, _rangeMeters);
+        // When panning the full map, show AI around the camera, not the bus.
+        var mapCenter = ViewCenter;
+        var effectiveRange = ViewRange;
         var maximumDistanceSquared = (effectiveRange + 300.0f) *
                                      (effectiveRange + 300.0f);
         // Smooth congestion rather than flashing red every time an AI
@@ -637,9 +639,12 @@ internal sealed class RuntimeNavPulsePanel : Panel
                 double.IsFinite(agent.X) &&
                 double.IsFinite(agent.Z) &&
                 double.IsFinite(agent.HeadingRadians) &&
-                (agent.X - _position.X) * (agent.X - _position.X) +
-                (agent.Z - _position.Z) * (agent.Z - _position.Z)
+                (agent.X - mapCenter.X) * (agent.X - mapCenter.X) +
+                (agent.Z - mapCenter.Y) * (agent.Z - mapCenter.Y)
                     <= maximumDistanceSquared)
+            .OrderBy(agent =>
+                (agent.X - mapCenter.X) * (agent.X - mapCenter.X) +
+                (agent.Z - mapCenter.Y) * (agent.Z - mapCenter.Y))
             .Take(400)
             .Select(agent =>
                 new MapVehicle(
@@ -776,15 +781,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
         foreach (var road in
                  _roads.Nearby(viewCenter, range + 150.0f))
         {
-            var dx =
-                road.Midpoint.X -
-                viewCenter.X;
-            var dz =
-                road.Midpoint.Y -
-                viewCenter.Y;
-
-            if (dx * dx +
-                dz * dz >
+            if (road.DistanceSquaredTo(viewCenter) >
                 (range + 80.0f) *
                 (range + 80.0f))
             {
