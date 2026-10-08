@@ -72,30 +72,45 @@ public static class OmsiO3dGeometryReader
 
             var version = reader.ReadByte();
             detectedVersion = version;
-            var longHeader = version > 3;
+            // openOMSI / original OMSI: version 3 already adds a flag
+            // byte and 32-bit section counts. Version 4 additionally
+            // adds the protection key. Treating v3 as v1/v2 made valid
+            // stock and add-on meshes fail with bogus section tags.
+            var wideCounts = version >= 3;
+            var hasProtectionKey = version >= 4;
             var longTriangleIndices = false;
             var extendedOptions = (byte)0;
             var protectionKey = uint.MaxValue;
 
-            if (longHeader)
+            if (wideCounts)
             {
-                if (!HasRemaining(stream, 5))
+                if (!HasRemaining(stream, 1))
                 {
                     return Fail(
                         "truncatedExtendedHeader");
                 }
 
                 extendedOptions = reader.ReadByte();
-                protectionKey = reader.ReadUInt32();
                 detectedOptions = extendedOptions;
-                detectedProtectionKey = protectionKey;
 
                 longTriangleIndices =
                     (extendedOptions & 0x01) != 0;
             }
 
+            if (hasProtectionKey)
+            {
+                if (!HasRemaining(stream, 4))
+                {
+                    return Fail(
+                        "truncatedExtendedHeader");
+                }
+
+                protectionKey = reader.ReadUInt32();
+                detectedProtectionKey = protectionKey;
+            }
+
             var encryptedVertices =
-                longHeader &&
+                hasProtectionKey &&
                 protectionKey != uint.MaxValue;
 
             detectedProtectedVertices =
@@ -125,7 +140,7 @@ public static class OmsiO3dGeometryReader
                     case VertexSection:
                         if (!TryReadCount(
                                 reader,
-                                longHeader,
+                                wideCounts,
                                 out vertexCount) ||
                             vertexCount > MaxVertices)
                         {
@@ -208,7 +223,7 @@ public static class OmsiO3dGeometryReader
                     case TriangleSection:
                         if (!TryReadCount(
                                 reader,
-                                longHeader,
+                                wideCounts,
                                 out var triangleCount) ||
                             triangleCount > MaxTriangles)
                         {
@@ -324,8 +339,11 @@ public static class OmsiO3dGeometryReader
                         break;
 
                     default:
-                        return Fail(
-                            $"unexpectedSection_{section:X2}");
+                        // The original OMSI O3D loader and openOMSI skip
+                        // unrecognised tag bytes, including the padding
+                        // present inside protected v7 transforms. A strict
+                        // error here rejected entire otherwise valid buses.
+                        break;
                 }
             }
 
@@ -339,13 +357,62 @@ public static class OmsiO3dGeometryReader
                     "noRenderableGeometry");
             }
 
-            foreach (var index in indices)
+            // Follow openOMSI's drop_bad_triangles: a damaged triangle
+            // must not cause all the correctly indexed body/panel meshes
+            // from the same add-on file to disappear.
+            var validTriangleCount = 0;
+            for (var triangle = 0;
+                 triangle < triangleMaterialIndices.Length;
+                 triangle++)
             {
-                if (index >= vertexCount)
+                var start = triangle * 3;
+                if (indices[start] < vertexCount &&
+                    indices[start + 1] < vertexCount &&
+                    indices[start + 2] < vertexCount)
                 {
-                    return Fail(
-                        "triangleIndexOutOfRange");
+                    validTriangleCount++;
                 }
+            }
+
+            if (validTriangleCount != triangleMaterialIndices.Length)
+            {
+                Console.WriteLine(
+                    $"[o3d] {path}: dropped {triangleMaterialIndices.Length - validTriangleCount} invalid triangles.");
+
+                var validIndices =
+                    new uint[validTriangleCount * 3];
+                var validMaterials =
+                    new ushort[validTriangleCount];
+                var destination = 0;
+
+                for (var triangle = 0;
+                     triangle < triangleMaterialIndices.Length;
+                     triangle++)
+                {
+                    var start = triangle * 3;
+                    if (indices[start] >= vertexCount ||
+                        indices[start + 1] >= vertexCount ||
+                        indices[start + 2] >= vertexCount)
+                    {
+                        continue;
+                    }
+
+                    var destStart = destination * 3;
+                    validIndices[destStart] = indices[start];
+                    validIndices[destStart + 1] = indices[start + 1];
+                    validIndices[destStart + 2] = indices[start + 2];
+                    validMaterials[destination] =
+                        triangleMaterialIndices[triangle];
+                    destination++;
+                }
+
+                indices = validIndices;
+                triangleMaterialIndices = validMaterials;
+            }
+
+            if (validTriangleCount == 0)
+            {
+                return Fail("noRenderableGeometry");
             }
 
             if (encryptedVertices)
