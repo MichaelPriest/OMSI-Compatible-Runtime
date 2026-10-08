@@ -1012,6 +1012,15 @@ public sealed class D3D11RenderWindow : Form
         2.5;
     private const int MaximumReflectionUpdatesPerFrame =
         2;
+
+    // openOMSI confirms [matl_noZcheck] is a stencil/rain-mask hint
+    // in the original OMSI renderer, not permission to draw through
+    // the entire scene. Old interpretation can be selected explicitly.
+    private static readonly bool LegacyNoZCheckDisablesDepth =
+        string.Equals(
+            Environment.GetEnvironmentVariable("OMSI_NOZCHECK_BIAS"),
+            "1",
+            StringComparison.Ordinal);
     private const float ReflectionMinimumVisibilityRadiusMeters =
         0.3f;
     private readonly List<RuntimeReflectionTarget>
@@ -9793,6 +9802,7 @@ public sealed class D3D11RenderWindow : Form
             }
 
             var desiredDepthState =
+                LegacyNoZCheckDisablesDepth &&
                 batch.NoZCheck
                     ? _objectDepthDisabledState
                     : batch.NoZWrite ||
@@ -11412,13 +11422,13 @@ public sealed class D3D11RenderWindow : Form
         }
 
         var desiredDepthState =
-            batch.AlphaBlend
-                ? _vehicleDepthReadState
-                : batch.NoZCheck
-                    ? _vehicleDepthDisabledState
-                    : batch.NoZWrite
-                        ? _vehicleDepthReadState
-                        : null;
+            LegacyNoZCheckDisablesDepth &&
+            batch.NoZCheck
+                ? _vehicleDepthDisabledState
+                : batch.AlphaBlend ||
+                  batch.NoZWrite
+                    ? _vehicleDepthReadState
+                    : null;
 
         if (!ReferenceEquals(
                 bindingState.DepthState,
@@ -12308,10 +12318,11 @@ public sealed class D3D11RenderWindow : Form
                     desiredBlendState;
             }
 
-            // Honor explicit OMSI [matl_noZcheck] even on alpha-blended
-            // cockpit decals; otherwise the depth test toggles visibility
-            // against coincident dashboard surfaces as the camera moves.
+            // openOMSI and OMSI's observed draw state keep depth testing
+            // for [matl_noZcheck]. Turning it off lets dashboard/glass
+            // meshes bleed through the body and look like flickering.
             var desiredDepthState =
+                LegacyNoZCheckDisablesDepth &&
                 materialState.NoZCheck
                     ? _vehicleDepthDisabledState
                     : materialState.NoZWrite ||
