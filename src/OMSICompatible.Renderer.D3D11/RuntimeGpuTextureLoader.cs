@@ -961,14 +961,63 @@ internal sealed class RuntimeGpuTextureLoader
     public RuntimeGpuTexture? TryLoad(
         string path)
     {
-        if (
-            string.IsNullOrWhiteSpace(
-                path) ||
+        if (string.IsNullOrWhiteSpace(path) ||
             !File.Exists(path))
         {
             return null;
         }
 
+        var original =
+            TryLoadExistingFile(path);
+
+        if (original is not null)
+        {
+            return original;
+        }
+
+        // Some OMSI add-ons retain an old/unreadable DDS alongside a
+        // valid raster version with the same stem. Path discovery finds
+        // the DDS first, so recover at decoding time rather than leaving
+        // an otherwise available map material permanently untextured.
+        foreach (var extension in
+                 new[] { ".png", ".tga", ".bmp", ".jpg", ".jpeg", ".dds" })
+        {
+            if (string.Equals(
+                    extension,
+                    Path.GetExtension(path),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var alternative =
+                Path.ChangeExtension(
+                    path,
+                    extension);
+
+            if (!File.Exists(alternative))
+            {
+                continue;
+            }
+
+            var recovered =
+                TryLoadExistingFile(alternative);
+
+            if (recovered is not null)
+            {
+                Console.WriteLine(
+                    $"[texture-fallback] {path} -> {alternative}");
+
+                return recovered;
+            }
+        }
+
+        return null;
+    }
+
+    private RuntimeGpuTexture? TryLoadExistingFile(
+        string path)
+    {
         if (
             string.Equals(
                 Path.GetExtension(path),
