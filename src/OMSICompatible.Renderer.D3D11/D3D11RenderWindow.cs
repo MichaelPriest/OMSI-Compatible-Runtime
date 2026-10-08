@@ -12308,14 +12308,16 @@ public sealed class D3D11RenderWindow : Form
                     desiredBlendState;
             }
 
+            // Honor explicit OMSI [matl_noZcheck] even on alpha-blended
+            // cockpit decals; otherwise the depth test toggles visibility
+            // against coincident dashboard surfaces as the camera moves.
             var desiredDepthState =
-                materialState.AlphaBlend
-                    ? _vehicleDepthReadState
-                    : materialState.NoZCheck
-                        ? _vehicleDepthDisabledState
-                        : materialState.NoZWrite
-                            ? _vehicleDepthReadState
-                            : null;
+                materialState.NoZCheck
+                    ? _vehicleDepthDisabledState
+                    : materialState.NoZWrite ||
+                      materialState.AlphaBlend
+                        ? _vehicleDepthReadState
+                        : null;
 
             if (!ReferenceEquals(
                     activeVehicleDepthState,
@@ -14891,6 +14893,19 @@ public sealed class D3D11RenderWindow : Form
                         value,
                         out var resolved))
                 {
+                    continue;
+                }
+
+                // The new free-texture path can exist on disk but still be
+                // waiting for its asynchronous GPU upload. Keep drawing
+                // the previous/base OMSI material instead of hiding the
+                // whole panel mesh for a frame (visible as flickering).
+                if (!_reflectionTargets.ContainsKey(resolved!) &&
+                    !_objectTextureCache.ContainsKey(resolved!))
+                {
+                    TryGetVehicleTextureView(
+                        resolved,
+                        out _);
                     continue;
                 }
 
