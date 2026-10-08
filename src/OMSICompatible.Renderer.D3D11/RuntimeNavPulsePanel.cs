@@ -23,18 +23,14 @@ public readonly record struct RuntimeFuelTrackState(
 
 internal sealed class RuntimeNavPulsePanel : Panel
 {
-    private readonly record struct RoadSegment(
-        Vector2 A,
-        Vector2 B,
-        Vector2 Midpoint);
-
-    private RoadSegment[] _roads;
+    private RuntimeNavRoadIndex _roads;
     private readonly Button _modeButton;
     private readonly Button _expandButton;
     private readonly Button _guidanceButton;
     private readonly Button _followButton;
     private readonly Button _northButton;
     private readonly Button _trafficButton;
+    private readonly Button _stopsButton;
     private readonly Button _zoomInButton;
     private readonly Button _zoomOutButton;
     private Vector3 _position;
@@ -45,6 +41,10 @@ internal sealed class RuntimeNavPulsePanel : Panel
         bool IsPeer);
 
     private MapVehicle[] _mapVehicles = [];
+    private RuntimeNavigationStopInfo[] _stops = [];
+    private readonly Dictionary<int, double> _roadSpeedLimits = [];
+    private readonly Dictionary<int, float> _jamLevels = [];
+    private bool _showStops = true;
     private Vector2[] _route =
         Array.Empty<Vector2>();
     private RuntimeFuelTrackState _fuel =
@@ -70,6 +70,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
     public bool FollowingVehicle => _following;
     public bool NorthUp => _northUp;
     public bool ShowTraffic => _showTraffic;
+    public bool ShowStops => _showStops;
     public float FullMapRangeMeters => _fullMapRangeMeters;
 
     public event EventHandler? MapPreferencesChanged;
@@ -93,9 +94,8 @@ internal sealed class RuntimeNavPulsePanel : Panel
         BorderStyle =
             BorderStyle.FixedSingle;
 
-        _roads =
-            BuildRoadSegments(
-                splines);
+        _roads = new RuntimeNavRoadIndex(
+            BuildRoadSegments(splines));
 
         _modeButton =
             new Button
@@ -222,6 +222,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
         _followButton = MapControl("SEGUIR", 53);
         _northButton = MapControl("GIRO", 50);
         _trafficButton = MapControl("IA ON", 50);
+        _stopsButton = MapControl("PARADAS", 71);
         _zoomInButton = MapControl("+", 27);
         _zoomOutButton = MapControl("−", 27);
 
@@ -236,12 +237,17 @@ internal sealed class RuntimeNavPulsePanel : Panel
             _showTraffic = !_showTraffic;
             RefreshMapOptions();
         };
+        _stopsButton.Click += (_, _) =>
+        {
+            _showStops = !_showStops;
+            RefreshMapOptions();
+        };
         _zoomInButton.Click += (_, _) => ZoomAtCenter(0.75f);
         _zoomOutButton.Click += (_, _) => ZoomAtCenter(1.3333334f);
 
         Controls.AddRange(
             [_followButton, _northButton, _trafficButton,
-             _zoomInButton, _zoomOutButton]);
+             _stopsButton, _zoomInButton, _zoomOutButton]);
         Controls.Add(
             _modeButton);
         Controls.Add(
@@ -303,7 +309,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
         var left = _guidanceButton.Left - 4;
         foreach (var control in new[]
         {
-            _trafficButton, _northButton, _followButton,
+            _stopsButton, _trafficButton, _northButton, _followButton,
             _zoomOutButton, _zoomInButton
         })
         {
@@ -318,6 +324,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
         _followButton.Text = _following ? "SEGUIR" : "LIVRE";
         _northButton.Text = _northUp ? "NORTE" : "GIRO";
         _trafficButton.Text = _showTraffic ? "IA ON" : "IA OFF";
+        _stopsButton.Text = _showStops ? "PARADAS" : "SEM PTS";
         _zoomOutButton.Enabled = _fullMapRangeMeters < 11999.0f;
         _zoomInButton.Enabled = _fullMapRangeMeters > 120.01f;
     }
@@ -333,10 +340,12 @@ internal sealed class RuntimeNavPulsePanel : Panel
         bool northUp,
         bool showTraffic,
         bool following,
-        float rangeMeters)
+        float rangeMeters,
+        bool showStops = true)
     {
         _northUp = northUp;
         _showTraffic = showTraffic;
+        _showStops = showStops;
         _following = following;
         _fullMapRangeMeters = float.IsFinite(rangeMeters)
             ? Math.Clamp(rangeMeters, 120.0f, 12000.0f)
@@ -345,16 +354,44 @@ internal sealed class RuntimeNavPulsePanel : Panel
         Invalidate();
     }
 
-    public void SetRoadNetwork(IReadOnlyList<RuntimeSplineInfo> splines)
+    public void SetRoadNetwork(
+        IReadOnlyList<RuntimeSplineInfo> splines,
+        RuntimeTrafficPathNetworkInfo? trafficPaths = null)
     {
         ArgumentNullException.ThrowIfNull(splines);
-        // Called on the UI thread when a streaming generation is committed,
-        // not during OnPaint or every frame. No stale startup-only roads.
-        _roads = BuildRoadSegments(splines);
-        if (Visible)
+        // The actual [path] geometry includes junction pieces and curves
+        // from scenery objects. Keep a spline fallback for maps without paths.
+        var lanes = trafficPaths is null
+            ? [] : RuntimeNavTrafficMap.Build(trafficPaths);
+        _roads = new RuntimeNavRoadIndex(
+            lanes.Length > 0 ? lanes : BuildRoadSegments(splines));
+        _roadSpeedLimits.Clear();
+        _jamLevels.Clear();
+
+        if (lanes.Length > 0 && trafficPaths is not null)
         {
-            Invalidate();
+            foreach (var segment in trafficPaths.Segments)
+            {
+                if (segment.Type == 0)
+                {
+                    _roadSpeedLimits[segment.Index] =
+                        segment.SpeedLimitKilometersPerHour ?? 35.0;
+                }
+            }
         }
+
+        if (Visible) Invalidate();
+    }
+
+    public void SetStops(IReadOnlyList<RuntimeNavigationStopInfo> stops)
+    {
+        ArgumentNullException.ThrowIfNull(stops);
+        _stops = stops
+            .Where(stop => !string.IsNullOrWhiteSpace(stop.Name) &&
+                           double.IsFinite(stop.X) &&
+                           double.IsFinite(stop.Z))
+            .ToArray();
+        if (Visible) Invalidate();
     }
 
     private Vector2 ViewCenter =>
@@ -579,6 +616,22 @@ internal sealed class RuntimeNavPulsePanel : Panel
         var effectiveRange = Math.Max(_fullMapRangeMeters, _rangeMeters);
         var maximumDistanceSquared = (effectiveRange + 300.0f) *
                                      (effectiveRange + 300.0f);
+        // Smooth congestion rather than flashing red every time an AI
+        // brakes at a traffic light. An empty observation fades to grey.
+        var currentJam =
+            RuntimeNavTrafficMap.EstimateCongestion(traffic, _roadSpeedLimits);
+        foreach (var index in _jamLevels.Keys.ToArray())
+        {
+            var target = currentJam.GetValueOrDefault(index);
+            var smooth = _jamLevels[index] * 0.88f + target * 0.12f;
+            if (smooth < 0.03f)
+                _jamLevels.Remove(index);
+            else
+                _jamLevels[index] = smooth;
+        }
+        foreach (var (index, value) in currentJam)
+            _jamLevels.TryAdd(index, value * 0.12f);
+
         _mapVehicles = traffic
             .Where(agent =>
                 double.IsFinite(agent.X) &&
@@ -713,8 +766,15 @@ internal sealed class RuntimeNavPulsePanel : Panel
                     130),
                 1.25f);
 
+        using var amberPen =
+            new Pen(Color.FromArgb(225, 208, 164, 65), 2.0f);
+        using var redPen =
+            new Pen(Color.FromArgb(235, 231, 99, 56), 2.5f);
+        using var heavyPen =
+            new Pen(Color.FromArgb(245, 188, 47, 54), 2.8f);
+
         foreach (var road in
-                 _roads)
+                 _roads.Nearby(viewCenter, range + 150.0f))
         {
             var dx =
                 road.Midpoint.X -
@@ -742,8 +802,13 @@ internal sealed class RuntimeNavPulsePanel : Panel
                     center,
                     scale);
 
+            var level = _showTraffic
+                ? _jamLevels.GetValueOrDefault(road.SegmentIndex)
+                : 0.0f;
             graphics.DrawLine(
-                roadPen,
+                level >= 0.70f ? heavyPen :
+                level >= 0.45f ? redPen :
+                level >= 0.20f ? amberPen : roadPen,
                 a,
                 b);
         }
@@ -803,6 +868,39 @@ internal sealed class RuntimeNavPulsePanel : Panel
                         bWorld,
                         center,
                         scale));
+            }
+        }
+
+        if (_showStops)
+        {
+            using var stopBrush =
+                new SolidBrush(Color.FromArgb(235, 240, 246));
+            using var terminusBrush =
+                new SolidBrush(Color.FromArgb(65, 203, 159));
+            using var stopOutline =
+                new Pen(Color.FromArgb(20, 32, 45), 1.25f);
+            using var stopFont =
+                new Font("Segoe UI", 8.0f, FontStyle.Bold);
+            using var stopLabel =
+                new SolidBrush(Color.FromArgb(230, 235, 241));
+
+            foreach (var stop in _stops)
+            {
+                var point = new Vector2((float)stop.X, (float)stop.Z);
+                if (Vector2.DistanceSquared(point, viewCenter) >
+                    range * range * 2.0f)
+                    continue;
+
+                var p = ToScreen(point, center, scale);
+                graphics.FillEllipse(
+                    stop.IsTerminus ? terminusBrush : stopBrush,
+                    p.X - 4.0f, p.Y - 4.0f, 8.0f, 8.0f);
+                graphics.DrawEllipse(
+                    stopOutline, p.X - 4.0f, p.Y - 4.0f, 8.0f, 8.0f);
+                if (_expanded && range <= 4500.0f)
+                    graphics.DrawString(
+                        stop.Name, stopFont, stopLabel,
+                        p.X + 7.0f, p.Y - 10.0f);
             }
         }
 
@@ -957,11 +1055,11 @@ internal sealed class RuntimeNavPulsePanel : Panel
             y);
     }
 
-    private static RoadSegment[] BuildRoadSegments(
+    private static RuntimeNavRoadSection[] BuildRoadSegments(
         IReadOnlyList<RuntimeSplineInfo> splines)
     {
         var result =
-            new List<RoadSegment>();
+            new List<RuntimeNavRoadSection>();
 
         foreach (var spline in
                  splines)
@@ -1000,14 +1098,10 @@ internal sealed class RuntimeNavPulsePanel : Panel
                         distance);
 
                 result.Add(
-                    new RoadSegment(
+                    new RuntimeNavRoadSection(
                         previous,
                         current,
-                        (
-                            previous +
-                            current
-                        ) /
-                        2.0f));
+                        -1));
 
                 previous =
                     current;

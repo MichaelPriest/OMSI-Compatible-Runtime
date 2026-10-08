@@ -1724,7 +1724,8 @@ public sealed class D3D11RenderWindow : Form
                 _navigationOverlaySettings.MapNorthUp,
                 _navigationOverlaySettings.MapShowTraffic,
                 _navigationOverlaySettings.MapFollowVehicle,
-                _navigationOverlaySettings.FullMapRangeMeters);
+                _navigationOverlaySettings.FullMapRangeMeters,
+                _navigationOverlaySettings.MapShowStops);
             _navPulsePanel.SetGuidanceEnabled(
                 _navigationOverlaySettings.GroundArrowsEnabled);
             _navigationGuidanceEnabled =
@@ -1750,6 +1751,9 @@ public sealed class D3D11RenderWindow : Form
                     Invalidate();
                 };
 
+            _navPulsePanel.SetRoadNetwork(
+                _windowInfo.Splines,
+                _windowInfo.TrafficPaths);
             Controls.Add(
                 _navPulsePanel);
             LayoutNavPulsePanel();
@@ -1982,6 +1986,12 @@ public sealed class D3D11RenderWindow : Form
         }
 
         return null;
+    }
+
+    public void SetNavigationStops(
+        IReadOnlyList<RuntimeNavigationStopInfo> stops)
+    {
+        _navPulsePanel?.SetStops(stops);
     }
 
     public void SetNavigationGuidance(
@@ -2724,7 +2734,8 @@ public sealed class D3D11RenderWindow : Form
 
         // A streamed map window replaces its roads and traffic. The city
         // map must not remain frozen at the entry-point splines.
-        _navPulsePanel?.SetRoadNetwork(windowInfo.Splines);
+        _navPulsePanel?.SetRoadNetwork(
+            windowInfo.Splines, windowInfo.TrafficPaths);
 
         RebuildRuntimeTrafficSegmentLookup();
 
@@ -7154,6 +7165,8 @@ public sealed class D3D11RenderWindow : Form
                 _navigationOverlaySettings.MapNorthUp,
             MapShowTraffic = _navPulsePanel?.ShowTraffic ??
                 _navigationOverlaySettings.MapShowTraffic,
+            MapShowStops = _navPulsePanel?.ShowStops ??
+                _navigationOverlaySettings.MapShowStops,
             MapFollowVehicle = _navPulsePanel?.FollowingVehicle ??
                 _navigationOverlaySettings.MapFollowVehicle,
             FullMapRangeMeters = _navPulsePanel?.FullMapRangeMeters ??

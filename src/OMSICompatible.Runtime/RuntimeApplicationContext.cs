@@ -4023,6 +4023,7 @@ internal sealed class RuntimeApplicationContext :
                 window.SetNavigationGuidance(
                     [],
                     []);
+                window.SetNavigationStops([]);
                 window.SetTeleMatrixState(
                     RuntimeTeleMatrixState.Unavailable);
             }
@@ -4125,6 +4126,17 @@ internal sealed class RuntimeApplicationContext :
                                 point.Y,
                                 point.Z))
                     .ToArray();
+
+            window.SetNavigationStops(
+                RuntimeNavStopProjector.Place(
+                    _navigationRuntimeRoute,
+                    selected.Timing?.Stops
+                        .Select(stop =>
+                            new RuntimeNavigationStopDistanceInfo(
+                                stop.StopName,
+                                stop.RouteDistanceMeters,
+                                stop.Stops))
+                        .ToArray() ?? []));
         }
 
         var navigationPosition =

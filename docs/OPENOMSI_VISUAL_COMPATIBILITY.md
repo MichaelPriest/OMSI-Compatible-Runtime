@@ -150,3 +150,29 @@ em WinForms sobre o D3D11 (sem copiar código ou assets de terceiros):
 
 A rede de faixas completa, as paradas rotuladas e o reroute automático
 por Dijkstra do openOMSI ainda **não** foram integrados nesta etapa.
+
+
+## openOMSI-inspired map: real road traffic paths, congestion and stops
+
+The optional navigator now draws the active loaded OMSI **road-vehicle
+[path] network** rather than treating every visual spline as a traffic
+lane. It includes mapped road objects and junctions; pedestrian paths,
+tram rails and aircraft routes are excluded. Maps with no [path]
+metadata retain a spline-based fallback. A 240 m spatial grid limits
+the per-frame drawing work, even when the whole map is loaded.
+
+The map colours affected road paths amber/red where at least two
+**actual** simulated AI vehicles are slow relative to their road
+speed limit. A single stationary car at a red light is not marked as
+a traffic jam, and congestion levels are smoothed to avoid flicker.
+
+The selected real timetable route contributes its authored stop names
+and distance along the route. The corresponding map markers are
+interpolated on the route's own road geometry; the final stop has a
+different colour. Stop display has an optional toggle, and is saved
+with the other navigator options.
+
+The map's network coverage remains scoped to **loaded map windows**:
+whole-map background road discovery and full Dijkstra rerouting are
+still separate future increments. CI smoke covers road-type selection,
+spatial indexing, live AI congestion and authored stop placement.
