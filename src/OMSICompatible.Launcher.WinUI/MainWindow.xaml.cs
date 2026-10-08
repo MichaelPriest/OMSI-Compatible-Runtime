@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using Microsoft.UI.Windowing;
@@ -38,18 +39,65 @@ public sealed partial class MainWindow :
         public override string ToString() => Name;
     }
 
-    private sealed record MapLibraryCard(
+    public sealed record MapLibraryCard(
         OmsiMapInfo Map,
         string Title,
         string Detail,
-        BitmapImage? Preview);
+        BitmapImage? Preview)
+    {
+        public Visibility MissingPreviewVisibility =>
+            Preview is null
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+    }
 
-    private sealed record VehicleLibraryCard(
-        OmsiBusInfo Bus,
-        string Title,
-        string Subtitle,
-        string Detail,
-        BitmapImage? Preview);
+    public sealed class VehicleLibraryCard :
+        INotifyPropertyChanged
+    {
+        public VehicleLibraryCard(
+            OmsiBusInfo bus,
+            string title,
+            string subtitle,
+            string detail,
+            BitmapImage? preview)
+        {
+            Bus = bus;
+            Title = title;
+            Subtitle = subtitle;
+            Detail = detail;
+            Preview = preview;
+        }
+
+        public OmsiBusInfo Bus { get; }
+        public string Title { get; }
+        public string Subtitle { get; }
+        public string Detail { get; }
+        public BitmapImage? Preview { get; private set; }
+        public bool ThumbnailFailed { get; private set; }
+
+        public Visibility MissingPreviewVisibility =>
+            Preview is null
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public void SetPreview(BitmapImage? image)
+        {
+            Preview = image;
+            PropertyChanged?.Invoke(
+                this,
+                new PropertyChangedEventArgs(
+                    nameof(Preview)));
+            PropertyChanged?.Invoke(
+                this,
+                new PropertyChangedEventArgs(
+                    nameof(MissingPreviewVisibility)));
+        }
+
+        public void MarkThumbnailFailed() =>
+            ThumbnailFailed = true;
+    }
 
     private sealed record KeyboardDisplayRow(
         string Trigger,
@@ -2301,13 +2349,18 @@ public sealed partial class MainWindow :
             _maps
                 .Select(
                     map =>
-                        new MapLibraryCard(
+                    {
+                        var presentation =
+                            OMSICompatible.Launcher.MapPresentationReader.Read(
+                                map);
+
+                        return new MapLibraryCard(
                             map,
-                            map.FolderName,
-                            $"global.cfg · {FormatBytes(map.GlobalConfigBytes)}",
+                            presentation.Title,
+                            $"{map.FolderName} · {presentation.Description}",
                             CreateBitmapImage(
-                                ResolveMapImage(
-                                    map.DirectoryPath))))
+                                presentation.ImagePath));
+                    })
                 .ToArray();
 
         _vehicleLibraryCards =
@@ -2348,6 +2401,9 @@ public sealed partial class MainWindow :
                         string.IsNullOrWhiteSpace(
                             mapQuery) ||
                         item.Title.Contains(
+                            mapQuery,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        item.Detail.Contains(
                             mapQuery,
                             StringComparison.OrdinalIgnoreCase) ||
                         item.Map.DirectoryPath.Contains(

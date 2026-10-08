@@ -20,6 +20,8 @@
   <ItemGroup>
     <Compile Include="../OMSICompatible.Launcher/OmsiInputConfiguration.cs"
              Link="Shared/OmsiInputConfiguration.cs" />
+    <Compile Include="../OMSICompatible.Launcher/MapPresentation.cs"
+             Link="Shared/MapPresentation.cs" />
   </ItemGroup>
 
   <ItemGroup>

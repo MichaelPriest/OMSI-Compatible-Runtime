@@ -486,7 +486,62 @@
                               Grid.Row="2"
                               IsItemClickEnabled="True"
                               SelectionMode="None"
-                              ItemClick="MapLibraryItem_Click"/>
+                              ItemClick="MapLibraryItem_Click">
+                        <GridView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsWrapGrid Orientation="Horizontal"
+                                               ItemWidth="302"
+                                               ItemHeight="310"/>
+                            </ItemsPanelTemplate>
+                        </GridView.ItemsPanel>
+                        <GridView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="278" Height="286"
+                                        Background="#142338"
+                                        BorderBrush="#2B4059"
+                                        BorderThickness="1"
+                                        CornerRadius="12">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="174"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid Background="#1B314B">
+                                            <Image Source="{Binding Preview}"
+                                                   Stretch="UniformToFill"/>
+                                            <StackPanel Visibility="{Binding MissingPreviewVisibility}"
+                                                        VerticalAlignment="Center"
+                                                        HorizontalAlignment="Center"
+                                                        Spacing="8">
+                                                <FontIcon Glyph="&#xE707;"
+                                                          FontSize="38"
+                                                          Foreground="#7391B4"/>
+                                                <TextBlock Text="Sem imagem no mapa OMSI"
+                                                           Foreground="#AFC1D6"
+                                                           FontSize="12"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <StackPanel Grid.Row="1"
+                                                    Padding="14,10"
+                                                    Spacing="5">
+                                            <TextBlock Text="{Binding Title}"
+                                                       Foreground="White"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="16"
+                                                       MaxLines="1"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Detail}"
+                                                       Foreground="#9BAFC8"
+                                                       FontSize="12"
+                                                       TextWrapping="Wrap"
+                                                       MaxLines="2"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
                 </Grid>
             </Grid>
 
@@ -530,7 +585,79 @@
                               Grid.Row="2"
                               IsItemClickEnabled="True"
                               SelectionMode="None"
-                              ItemClick="VehicleLibraryItem_Click"/>
+                              ContainerContentChanging="VehiclesGrid_ContainerContentChanging"
+                              ItemClick="VehicleLibraryItem_Click">
+                        <GridView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsWrapGrid Orientation="Horizontal"
+                                               ItemWidth="302"
+                                               ItemHeight="334"/>
+                            </ItemsPanelTemplate>
+                        </GridView.ItemsPanel>
+                        <GridView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="278" Height="310"
+                                        Background="#142338"
+                                        BorderBrush="#2B4059"
+                                        BorderThickness="1"
+                                        CornerRadius="12">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="172"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid Background="#111E2D">
+                                            <Image Source="{Binding Preview}"
+                                                   Stretch="UniformToFill"/>
+                                            <StackPanel Visibility="{Binding MissingPreviewVisibility}"
+                                                        VerticalAlignment="Center"
+                                                        HorizontalAlignment="Center"
+                                                        Spacing="8">
+                                                <FontIcon Glyph="&#xE804;"
+                                                          FontSize="38"
+                                                          Foreground="#7391B4"/>
+                                                <TextBlock Text="Preparando miniatura 3D"
+                                                           Foreground="#AFC1D6"
+                                                           FontSize="12"/>
+                                            </StackPanel>
+                                            <Border Background="#C5142538"
+                                                    CornerRadius="6"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
+                                                    Margin="10"
+                                                    Padding="8,4">
+                                                <TextBlock Text="MODELO OMSI"
+                                                           FontSize="10"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#DCEAFF"/>
+                                            </Border>
+                                        </Grid>
+                                        <StackPanel Grid.Row="1"
+                                                    Padding="14,10"
+                                                    Spacing="6">
+                                            <TextBlock Text="{Binding Title}"
+                                                       Foreground="White"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="16"
+                                                       MaxLines="1"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Subtitle}"
+                                                       Foreground="#B1C6DE"
+                                                       FontSize="12"
+                                                       MaxLines="1"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Detail}"
+                                                       Foreground="#819BB7"
+                                                       FontSize="11"
+                                                       TextWrapping="Wrap"
+                                                       MaxLines="2"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
                 </Grid>
             </Grid>
 
