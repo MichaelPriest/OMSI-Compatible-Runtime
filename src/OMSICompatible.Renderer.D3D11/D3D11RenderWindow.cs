@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Drawing.Imaging;
 using OMSICompatible.Renderer.Common;
 using System.Globalization;
 using System.Numerics;
@@ -1032,6 +1033,11 @@ public sealed class D3D11RenderWindow : Form
     private bool _reflectionRenderingEnabled;
     private bool _renderingReflectionPass;
     private readonly bool _vehiclePreviewMode;
+    private bool _vehicleThumbnailCaptured;
+
+    // A dedicated preview run can save the actual D3D11 frame as a still.
+    public string? VehicleThumbnailOutputPath { get; set; }
+
     private float _previewYaw = 0.62f;
     private float _previewPitch = 0.16f;
     private float _previewDistance = 14.0f;
