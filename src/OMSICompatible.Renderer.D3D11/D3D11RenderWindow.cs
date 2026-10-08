@@ -1663,7 +1663,7 @@ public sealed class D3D11RenderWindow : Form
                     StartPosition =
                         FormStartPosition.Manual,
                     BackColor =
-                        Color.FromArgb(18, 29, 44),
+                        System.Drawing.Color.FromArgb(18, 29, 44),
                     Opacity =
                         _controlHubSettings.WindowOpacity,
                     KeyPreview =
@@ -6806,7 +6806,7 @@ public sealed class D3D11RenderWindow : Form
                     ClientSize.Height - 48));
 
         _driveOpsOverlay.ClientSize =
-            new Size(width, height);
+            new System.Drawing.Size(width, height);
 
         if (IsHandleCreated)
         {
