@@ -3037,6 +3037,100 @@ try
     var bus = buses[0];
 
     Require(
+        BusDiscovery.IsPlayerSelectable(bus) &&
+        !BusDiscovery.IsPlayerSelectable(
+            bus with
+            {
+                FilePath =
+                    Path.Combine(
+                        vehicleDirectory,
+                        "AI_camera.bus"),
+                RelativePath =
+                    @"Vehicles\Synthetic\AI_camera.bus"
+            }) &&
+        !BusDiscovery.IsPlayerSelectable(
+            bus with
+            {
+                FilePath =
+                    Path.Combine(
+                        vehicleDirectory,
+                        "Classic_AI.bus"),
+                RelativePath =
+                    @"Vehicles\Synthetic\Classic_AI.bus"
+            }),
+        "Launcher must hide AI-only .bus names even if they inherit a driver camera.");
+
+    var namedEntryMapDirectory =
+        Path.Combine(
+            root,
+            "entrypoint-name-fixture");
+
+    Directory.CreateDirectory(
+        namedEntryMapDirectory);
+
+    var namedEntryGlobalPath =
+        Path.Combine(
+            namedEntryMapDirectory,
+            "global.cfg");
+
+    File.WriteAllText(
+        namedEntryGlobalPath,
+        Lines(
+            "[entrypoints]",
+            "1",
+            "0",
+            "99",
+            "0",
+            "12",
+            "0",
+            "22",
+            "0",
+            "0",
+            "0",
+            "1",
+            "0",
+            "Terminal Central"),
+        Encoding.Unicode);
+
+    File.WriteAllText(
+        Path.Combine(
+            namedEntryMapDirectory,
+            "tile_0_0.map"),
+        Lines(
+            "[version]",
+            "14",
+            "[object]",
+            "0",
+            @"Sceneryobjects\entrypoint_bus.sco",
+            "99",
+            "12",
+            "22",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "Object Nr. 7"),
+        Encoding.Unicode);
+
+    var namedEntryGroups =
+        MapEntryPointDiscovery.Discover(
+            new OmsiMapInfo(
+                "EntryPoint Fixture",
+                namedEntryMapDirectory,
+                namedEntryGlobalPath,
+                new FileInfo(
+                    namedEntryGlobalPath).Length));
+
+    Require(
+        namedEntryGroups.Count == 1 &&
+        namedEntryGroups[0].Name ==
+            "Terminal Central" &&
+        namedEntryGroups[0].Alternatives.Count == 1 &&
+        namedEntryGroups[0].Alternatives[0].ObjectId == 99,
+        "Launcher spawn selection must use global.cfg [entrypoints] names, not Object Nr. editor labels.");
+
+    Require(
         bus.Carroceria == "Synthetic Coachworks" &&
         bus.Modelo == "Camera Bus" &&
         bus.Skin == "Test Skin" &&
