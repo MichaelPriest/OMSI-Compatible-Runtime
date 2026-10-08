@@ -7925,7 +7925,28 @@ public sealed class D3D11RenderWindow : Form
             DrawVehicle();
 
             ResolveMainSceneTarget();
-        DrawPostProcess();
+            DrawPostProcess();
+
+            if (!_vehicleThumbnailCaptured &&
+                !string.IsNullOrWhiteSpace(VehicleThumbnailOutputPath) &&
+                _renderFrameSequence >= 60)
+            {
+                _vehicleThumbnailCaptured = true;
+
+                try
+                {
+                    SaveVehicleThumbnail(VehicleThumbnailOutputPath!);
+                    Console.WriteLine(
+                        $"[vehicle-thumbnail] saved {VehicleThumbnailOutputPath}");
+                }
+                catch (Exception exception)
+                {
+                    Console.Error.WriteLine(
+                        $"[vehicle-thumbnail] failed: {exception}");
+                }
+
+                BeginInvoke(new Action(Close));
+            }
 
             _swapChain.Present(
                 _vsync
