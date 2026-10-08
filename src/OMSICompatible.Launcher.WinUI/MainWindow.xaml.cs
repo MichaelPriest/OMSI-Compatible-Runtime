@@ -77,6 +77,11 @@ public sealed partial class MainWindow :
         public BitmapImage? Preview { get; private set; }
         public bool ThumbnailFailed { get; private set; }
 
+        public string ThumbnailStatus =>
+            ThumbnailFailed
+                ? "Modelo 3D indisponível"
+                : "Gerando prévia 3D...";
+
         public Visibility MissingPreviewVisibility =>
             Preview is null
                 ? Visibility.Visible
@@ -97,8 +102,14 @@ public sealed partial class MainWindow :
                     nameof(MissingPreviewVisibility)));
         }
 
-        public void MarkThumbnailFailed() =>
+        public void MarkThumbnailFailed()
+        {
             ThumbnailFailed = true;
+            PropertyChanged?.Invoke(
+                this,
+                new PropertyChangedEventArgs(
+                    nameof(ThumbnailStatus)));
+        }
     }
 
     private sealed record KeyboardDisplayRow(
@@ -738,6 +749,17 @@ public sealed partial class MainWindow :
             // opened the map library. Force a lazy card rebuild with the full
             // data set on the next library access.
             _libraryCardsDirty = true;
+
+            // Refresh a library that was opened before the vehicle scan
+            // completed; the user should not need to leave and return.
+            if (MapsView.Visibility ==
+                    Visibility.Visible ||
+                VehiclesView.Visibility ==
+                    Visibility.Visible)
+            {
+                EnsureLibraryCards();
+                UpdateLibraryViews();
+            }
 
             _refreshing = true;
 
@@ -2400,7 +2422,9 @@ public sealed partial class MainWindow :
                             $"{bus.Carroceria} · {bus.Skin}",
                             $"{bus.Physics.Axles.Count:N0} eixo(s) · {scriptDetail}{couplingDetail}",
                             CreateBitmapImage(
-                                bus.PreviewImagePath));
+                                ResolveVehicleThumbnailCachePath(
+                                    ContentPathBox.Text?.Trim() ?? string.Empty,
+                                    bus)));
                     })
                 .ToArray();
     }
