@@ -319,6 +319,10 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         AddModuleButton(navigation, "PASSENGERFLOW", ShowPassengerFlow);
         AddModuleButton(navigation, "SHIFTFLOW", ShowShiftFlow);
         AddModuleButton(navigation, "INCIDENTLOG", ShowIncidentLog);
+        AddModuleButton(
+            navigation,
+            "TELAS / CCO",
+            () => SettingsRequested?.Invoke());
 
         Controls.Add(_contentHost);
         Controls.Add(navigation);
@@ -378,6 +382,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     // The control is hosted in a layered owned window, not in the D3D11
     // client hierarchy. Keep visibility explicit even when the owner is hidden.
     public event Action<bool>? PanelVisibilityRequested;
+    public event Action? SettingsRequested;
 
     public bool IsOpen => _panelOpen;
 
