@@ -69,6 +69,31 @@ public static class MapEntryPointDiscovery
             }
         }
 
+        // Unlike the editor's object labels, [entrypoints] in global.cfg
+        // carries the actual named spawn list. "Object Nr." is only a map
+        // editor comment and must never be offered as the starting point.
+        var officialNames =
+            ReadGlobalEntryPointNames(
+                map.GlobalConfigPath);
+
+        if (officialNames.Count > 0)
+        {
+            points =
+                points
+                    .Where(
+                        point =>
+                            officialNames.ContainsKey(
+                                point.ObjectId))
+                    .Select(
+                        point =>
+                            point with
+                            {
+                                Name =
+                                    officialNames[point.ObjectId]
+                            })
+                    .ToList();
+        }
+
         return points
             .GroupBy(static point => point.Name, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
@@ -81,6 +106,105 @@ public static class MapEntryPointDiscovery
                         .ToArray()))
             .OrderBy(static group => group.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
+    }
+
+    private static IReadOnlyDictionary<long, string>
+        ReadGlobalEntryPointNames(string globalConfigPath)
+    {
+        var names =
+            new Dictionary<long, string>();
+
+        OmsiSectionDocument document;
+
+        try
+        {
+            document =
+                OmsiSectionDocument.ParseFile(
+                    globalConfigPath);
+        }
+        catch (IOException)
+        {
+            return names;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return names;
+        }
+
+        foreach (var section in document.Sections)
+        {
+            if (!section.Name.Equals(
+                    "entrypoints",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values =
+                section.Lines
+                    .Select(
+                        static line =>
+                            line.Value.Trim().Trim('"'))
+                    .Where(
+                        static value =>
+                            value.Length > 0 &&
+                            !value.StartsWith(
+                                "//",
+                                StringComparison.Ordinal) &&
+                            !value.StartsWith(
+                                "Object Nr",
+                                StringComparison.OrdinalIgnoreCase) &&
+                            !value.StartsWith(
+                                '\\'))
+                    .ToArray();
+
+            if (values.Length == 0 ||
+                !int.TryParse(
+                    values[0],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var count) ||
+                count <= 0)
+            {
+                continue;
+            }
+
+            // openOMSI's global.cfg layout: count, then [index, object ID,
+            // unknown, x, z, y, quat x4, group, human-readable name].
+            // Each record contains exactly 12 lines, including the name.
+            var cursor = 1;
+
+            for (var record = 0;
+                 record < count &&
+                 cursor + 11 < values.Length;
+                 record++, cursor += 12)
+            {
+                if (!long.TryParse(
+                        values[cursor + 1],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var objectId))
+                {
+                    continue;
+                }
+
+                var name =
+                    values[cursor + 11]
+                        .Trim();
+
+                if (name.Length == 0 ||
+                    name.StartsWith(
+                        "Object Nr",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                names[objectId] = name;
+            }
+        }
+
+        return names;
     }
 
     private static bool IsBusEntryPoint(string assetPath)
@@ -111,6 +235,16 @@ public static class MapEntryPointDiscovery
 
             if (value.Length == 0 ||
                 value.Length > 160)
+            {
+                continue;
+            }
+
+            if (value.StartsWith(
+                    "Object Nr",
+                    StringComparison.OrdinalIgnoreCase) ||
+                value.StartsWith(
+                    "//",
+                    StringComparison.Ordinal))
             {
                 continue;
             }
