@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>OMSICompatible.GuidanceSmokeTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/OMSICompatible.Renderer.D3D11/OMSICompatible.Renderer.D3D11.csproj" />
+  </ItemGroup>
+</Project>

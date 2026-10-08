@@ -746,6 +746,10 @@ public sealed class D3D11RenderWindow : Form
     private uint _navigationGuidanceVertexCount;
     private RuntimeObjectBatch[] _navigationGuidanceBatches =
         [];
+    private RuntimeSplineSurfaceSampler _guidanceSplineRoad =
+        RuntimeSplineSurfaceSampler.Empty;
+    private RuntimeSplineSurfaceSampler _guidanceSceneryRoad =
+        RuntimeSplineSurfaceSampler.Empty;
     private bool _navigationGuidanceEnabled;
 
     private ID3D11Buffer? _remoteWalkerVertexBuffer;
@@ -1977,7 +1981,9 @@ public sealed class D3D11RenderWindow : Form
 
         var vertices =
             RuntimeNavigationGuidanceGeometry.Build(
-                guidance);
+                guidance,
+                _guidanceSplineRoad,
+                _guidanceSceneryRoad);
 
         if (vertices.Length ==
             0)
@@ -3361,6 +3367,12 @@ public sealed class D3D11RenderWindow : Form
 
         _splineGeometry =
             prepared.Splines;
+        // Guidance follows the exact streamed mesh surfaces, including
+        // grade changes and the mesh geometry of road-surface objects.
+        _guidanceSplineRoad =
+            prepared.SplineSurfaceSampler;
+        _guidanceSceneryRoad =
+            prepared.ScenerySurfaceSampler;
 
         _splineVertexCount =
             (uint)_splineGeometry.Vertices.Length;

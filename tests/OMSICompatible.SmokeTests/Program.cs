@@ -4650,15 +4650,23 @@ try
                 false);
 
     Require(
-        gradedNavigation.GroundArrows.Count >
-            0 &&
+        gradedNavigation.GroundArrows.Count >=
+            8 &&
         gradedNavigation.GroundArrows.All(
             static arrow =>
                 arrow.PitchDegrees >
                     10.0 &&
                 arrow.PitchDegrees <
-                    20.0),
-        "NavBR ground arrows no longer follow the vertical grade of the route.");
+                    20.0) &&
+        gradedNavigation.GroundArrows.Zip(
+            gradedNavigation.GroundArrows.Skip(1),
+            static (previous, next) =>
+                next.DistanceAheadMeters - previous.DistanceAheadMeters)
+            .All(
+                static distance =>
+                    distance >= 5.4 &&
+                    distance <= 5.6),
+        "Forza-style ground chevrons must be closely spaced and follow the route's vertical grade.");
 
     var navigationOffRoute =
         navigationAssist.Build(

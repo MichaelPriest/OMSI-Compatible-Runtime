@@ -62,3 +62,21 @@ visualização própria do Runtime. Zoom no cursor, deslocamento livre,
 rede de faixas validada e navegação recalculada do `Navigator` Rust
 precisam ser adaptados e validados em etapas; não estão declarados
 concluídos só por essas opções aparecerem no ESC.
+
+
+## Forza-inspired surface-aligned route chevrons
+
+The ground guide now uses short cyan V-shaped chevrons, a narrow bright center,
+subtle outer glow, and close 5.5 m spacing (up to 175 m ahead).
+Unlike the original long floating arrows, each stroke vertex is projected
+onto the **actual streamed spline/scenery road triangles**, preserving road
+camber/grade while rejecting bridges with mismatched vertical level. The
+decals retain depth testing, sit a few centimeters above the asphalt, and
+only appear for an active OMSI route. On leaving the route they turn orange.
+They are disabled by default and controlled through the ESC menu.
+
+This is an independently drawn **Forza-inspired visual**, not a copied Forza
+asset, shader or a claim of pixel-exact reproduction. The dedicated CI
+geometry smoke test covers sloped surfaces, missing meshes and overpasses.
+Real-world add-on testing is still needed for junctions, multi-level roads,
+and render transparency under night lighting.

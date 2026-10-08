@@ -54,7 +54,11 @@ public sealed class WorldNavigationAssist
     private const double RejoinLookAheadMeters = 60.0;
     private const double WaypointSpacingMeters = 18.0;
     private const double WaypointLookAheadMeters = 260.0;
-    private const double GroundArrowLookAheadMeters = 220.0;
+    // Forza-inspired: repeated low chevrons, not large isolated markers.
+    private const double GroundArrowSpacingMeters = 5.5;
+    private const double GroundArrowStartMeters = 8.0;
+    private const double GroundArrowLookAheadMeters = 175.0;
+    private const int MaximumGroundArrows = 32;
     private const double CongestionSampleRadiusMeters = 350.0;
     private const int MaximumWaypoints = 24;
     private const int FreeProgressWindowSegments = 24;
@@ -218,36 +222,12 @@ public sealed class WorldNavigationAssist
                 total);
 
         var arrows =
-            waypoints
-                .Where(
-                    static point =>
-                        point.DistanceAheadMeters <=
-                        GroundArrowLookAheadMeters)
-                .Select(
-                    point =>
-                    {
-                        var kind =
-                            offRoute
-                                ? "rejoin"
-                                : maneuverDistanceMeters.HasValue &&
-                                  Math.Abs(
-                                      point.DistanceAheadMeters -
-                                      maneuverDistanceMeters.Value) <=
-                                      22.0
-                                    ? string.IsNullOrWhiteSpace(
-                                          maneuverKind)
-                                        ? "route"
-                                        : maneuverKind!
-                                    : "route";
-
-                        return new WorldNavigationGroundArrow(
-                            point.Position,
-                            point.HeadingDegrees,
-                            point.PitchDegrees,
-                            point.DistanceAheadMeters,
-                            kind);
-                    })
-                .ToArray();
+            BuildGroundArrows(
+                progress,
+                total,
+                offRoute,
+                maneuverDistanceMeters,
+                maneuverKind);
 
         return new WorldNavigationAssistState(
             true,
@@ -466,6 +446,57 @@ public sealed class WorldNavigationAssist
         }
 
         return best;
+    }
+
+    // Ground decals must follow the same path projection as the route but
+    // use their own close spacing. The old 18-metre waypoint spacing is
+    // retained for map/UI waypoints (these are separate display concepts).
+    private WorldNavigationGroundArrow[] BuildGroundArrows(
+        double progress,
+        double total,
+        bool offRoute,
+        double? maneuverDistanceMeters,
+        string? maneuverKind)
+    {
+        var results =
+            new List<WorldNavigationGroundArrow>(MaximumGroundArrows);
+        var maximum =
+            Math.Min(total, progress + GroundArrowLookAheadMeters);
+
+        for (var distance = progress + GroundArrowStartMeters;
+             distance <= maximum &&
+             results.Count < MaximumGroundArrows;
+             distance += GroundArrowSpacingMeters)
+        {
+            var sample = PointAtDistance(distance);
+            if (!double.IsFinite(sample.X) ||
+                !double.IsFinite(sample.Y) ||
+                !double.IsFinite(sample.Z) ||
+                !double.IsFinite(sample.HeadingDegrees) ||
+                !double.IsFinite(sample.PitchDegrees))
+            {
+                continue;
+            }
+
+            var ahead = distance - progress;
+            var kind =
+                offRoute
+                    ? "rejoin"
+                    : maneuverDistanceMeters.HasValue &&
+                      Math.Abs(ahead - maneuverDistanceMeters.Value) <= 22.0 &&
+                      !string.IsNullOrWhiteSpace(maneuverKind)
+                        ? maneuverKind!
+                        : "route";
+
+            results.Add(new WorldNavigationGroundArrow(
+                new WorldVector3(sample.X, sample.Y, sample.Z),
+                sample.HeadingDegrees,
+                sample.PitchDegrees,
+                Math.Round(ahead, 1),
+                kind));
+        }
+
+        return results.ToArray();
     }
 
     private WorldNavigationGuidanceWaypoint[]

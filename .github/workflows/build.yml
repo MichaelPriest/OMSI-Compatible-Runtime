@@ -179,6 +179,9 @@ jobs:
           OMSI_REQUIRE_RUST_CORE: "1"
         run: dotnet run --project tests/OMSICompatible.SmokeTests/OMSICompatible.SmokeTests.csproj -c Release --no-build
 
+      - name: Verify Forza-style ground guidance geometry
+        run: dotnet run --project tests/OMSICompatible.GuidanceSmokeTests/OMSICompatible.GuidanceSmokeTests.csproj -c Release
+
       - name: Publish legacy Launcher x64
         run: >
           dotnet publish src/OMSICompatible.Launcher/OMSICompatible.Launcher.csproj
