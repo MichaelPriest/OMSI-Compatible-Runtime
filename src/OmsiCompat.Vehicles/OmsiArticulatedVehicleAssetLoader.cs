@@ -144,7 +144,12 @@ public static class OmsiArticulatedVehicleAssetLoader
                     repaint:
                         childRepaint);
 
+            // A coupled .bus with no local text texture declarations
+            // can reference displays supplied by the lead section
+            // ([scriptshare] compatibility in openOMSI). Do not shift
+            // those references into nonexistent indices.
             var textTextureOffset =
+                child.TextTextures.Count == 0 ||
                 textTextures.Count == 0
                     ? 0
                     : textTextures.Max(
