@@ -16,6 +16,7 @@ Este documento **não** significa que a compatibilidade de visualização é 100
 | Texturas dinâmicas `[matl_freetex]` | `crates/omsi-app/src/scene/vehicle_materials.rs` | Resolução da parte após `Texture/` em caminhos de scripts |
 | Partes acopladas e índices de texto | `crates/omsi-app/src/scene/vehicles.rs` | Mantém referências da seção principal onde não há declaração local |
 | Base do solo | `crates/omsi-app/src/scene/upload.rs` | `Texture/gras.bmp` como fallback original quando disponível |
+| Texturas de add-ons relativas a `Splines/` e `Sceneryobjects/` | `crates/omsi-texture/src/lib.rs` (`find_texture_in_season` e `find_texture_in_dir`) | Resolve caminhos com prefixo de categoria OMSI e mantém escopo, fallback de extensão e prioridade DDS local; smoke tests adicionados. |
 | Carregamento incremental de texturas de mapa | `crates/omsi-app/src/scene/upload.rs` | D3D11 por lotes já existente; coleta estendida a materiais alternativos |
 | Prévia 3D do launcher | `crates/omsi-app/src/launcher/showroom.rs` | Captura D3D11 local e cache PNG; validar posições, texturas e add-ons reais |
 

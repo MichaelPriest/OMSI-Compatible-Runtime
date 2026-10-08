@@ -407,6 +407,84 @@ try
             out _),
         "OMSI vehicle texture path traversal must remain rejected.");
 
+    // OMSI map add-ons may reference a texture by its path relative to the
+    // content root, not to the referencing .sco or .sli. Check both
+    // categories and prove that crossing categories remains disallowed.
+    var sharedSceneryTextureDirectory =
+        Path.Combine(root, "Sceneryobjects", "SharedTextures", "Texture");
+    var sharedSplineTextureDirectory =
+        Path.Combine(root, "Splines", "SharedRoads", "Texture");
+    Directory.CreateDirectory(sharedSceneryTextureDirectory);
+    Directory.CreateDirectory(sharedSplineTextureDirectory);
+
+    var sharedSceneryTexture =
+        Path.Combine(sharedSceneryTextureDirectory, "station.dds");
+    var sharedSplineTexture =
+        Path.Combine(sharedSplineTextureDirectory, "asphalt.dds");
+    File.WriteAllBytes(sharedSceneryTexture, [(byte)0x44]);
+    File.WriteAllBytes(sharedSplineTexture, [(byte)0x44]);
+
+    var sceneryObjectPath =
+        Path.Combine(sceneryDirectory, "stop.sco");
+    var sceneryMeshPath =
+        Path.Combine(sceneryDirectory, "stop.o3d");
+    var splineAssetPath =
+        Path.Combine(splineDirectory, "road.sli");
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveSceneryTexture(
+            root,
+            sceneryObjectPath,
+            sceneryMeshPath,
+            @"Sceneryobjects\SharedTextures\Texture\station.bmp",
+            out var sharedSceneryResult) &&
+        string.Equals(
+            sharedSceneryResult,
+            sharedSceneryTexture,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI content-root-relative scenery texture should find the same-stem DDS.");
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveSceneryObjectTexture(
+            root,
+            sceneryObjectPath,
+            @"Sceneryobjects\SharedTextures\Texture\station.bmp",
+            out var sceneryObjectResult) &&
+        string.Equals(
+            sceneryObjectResult,
+            sharedSceneryTexture,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI root-relative scenery object material lookup failed.");
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveSplineTexture(
+            root,
+            splineAssetPath,
+            @"Splines\SharedRoads\Texture\asphalt.bmp",
+            out var sharedSplineResult) &&
+        string.Equals(
+            sharedSplineResult,
+            sharedSplineTexture,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI content-root-relative spline texture should find the same-stem DDS.");
+
+    Require(
+        !OmsiTextureAssetPathResolver.TryResolveSplineTexture(
+            root,
+            splineAssetPath,
+            @"Sceneryobjects\SharedTextures\Texture\station.bmp",
+            out _),
+        "OMSI spline texture resolution must not cross into scenery assets.");
+
+    Require(
+        !OmsiTextureAssetPathResolver.TryResolveSceneryTexture(
+            root,
+            sceneryObjectPath,
+            sceneryMeshPath,
+            @"Sceneryobjects\..\..\Vehicles\Synthetic\Texture\resolver_panel.bmp",
+            out _),
+        "OMSI content-relative scenery texture must never escape its category root.");
+
     var trainDirectory =
         Path.Combine(
             root,

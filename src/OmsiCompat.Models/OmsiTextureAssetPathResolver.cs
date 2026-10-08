@@ -341,6 +341,30 @@ public static class OmsiTextureAssetPathResolver
                 root +
                 Path.DirectorySeparatorChar;
 
+            // openOMSI resolves authored paths such as
+            // "Splines\OtherPack\Texture\road.bmp" relative to the OMSI
+            // content root. This resolver is deliberately scoped to its
+            // asset category, so strip only that exact category prefix and
+            // resolve against the category root. Do not search outside it.
+            var categoryName = Path.GetFileName(root);
+            var categoryPrefix =
+                categoryName +
+                Path.DirectorySeparatorChar;
+
+            if ((string.Equals(categoryName, "Splines", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(categoryName, "Sceneryobjects", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(categoryName, "Vehicles", StringComparison.OrdinalIgnoreCase)) &&
+                normalized.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase) &&
+                TryResolveFromBaseDirectory(
+                    root,
+                    requiredPrefix,
+                    root,
+                    normalized[categoryPrefix.Length..],
+                    out fullPath))
+            {
+                return true;
+            }
+
             foreach (var baseDirectory in baseDirectories)
             {
                 if (TryResolveFromBaseDirectory(
