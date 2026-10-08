@@ -446,7 +446,7 @@ public sealed class WorldTrafficSimulation
                             // at the end of that road; rejecting it here
                             // caused maps with disconnected paths to spawn
                             // literally zero road vehicles.
-                            SegmentLength(segment) >= 14.0)
+                            SegmentLength(segment) > 0.01)
                     .ToArray();
 
             if (allowedSegments.Length ==
@@ -1463,7 +1463,7 @@ public sealed class WorldTrafficSimulation
                     segment,
                     agent.GroupIndex,
                     agent.DefaultDensityClassIndex) ||
-                SegmentLength(segment) < 14.0 ||
+                SegmentLength(segment) <= 0.01 ||
                 IsCriticalRespawnApproach(
                     agent,
                     segment))
