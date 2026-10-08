@@ -150,8 +150,8 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             flow,
             RuntimeOmsiMenuCommand.RouteDestination,
             "\uE8F1",
-            "Rota e destino",
-            false);
+            "Selecionar rapidamente linha, rota e destino do mapa",
+            true);
 
         AddButton(
             flow,

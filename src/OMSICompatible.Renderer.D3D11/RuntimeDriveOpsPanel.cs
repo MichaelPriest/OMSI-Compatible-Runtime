@@ -411,6 +411,20 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     public string CurrentDestination =>
         _routeDestination.Text.Trim();
 
+    public void SetRouteConfiguration(
+        string line,
+        string routeCode,
+        string destination)
+    {
+        _routeLine.Text = (line ?? string.Empty).Trim();
+        _routeCode.Text = (routeCode ?? string.Empty).Trim();
+        _routeDestination.Text = (destination ?? string.Empty).Trim();
+        _routeMessages.AppendText(
+            $"Rota selecionada: {_routeLine.Text} | " +
+            $"{_routeCode.Text} | {_routeDestination.Text}" +
+            Environment.NewLine);
+    }
+
     public void TogglePanel()
     {
         if (_panelOpen)

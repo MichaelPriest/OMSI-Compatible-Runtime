@@ -674,8 +674,17 @@ internal sealed class RuntimeDriveVehicle :
         _collisionScenerySurfaces =
             collisionScenerySurfaces;
 
-        SnapRuntimePositionToDrivingSurface();
-        SynchronizeOdeBodyFromRuntime();
+        // A spline/tile boundary is a geometry change, not a vehicle
+        // teleport. Preserve ODE position, linear/angular velocities and
+        // articulation constraints while driving across streamed tiles.
+        // Snap only on the first stationary placement; surface contact
+        // will then be handled normally by the suspension each frame.
+        if (Math.Abs(SpeedMetersPerSecond) <= 0.03f &&
+            !_odeSuspensionActive)
+        {
+            SnapRuntimePositionToDrivingSurface();
+            SynchronizeOdeBodyFromRuntime();
+        }
     }
 
     private void SnapRuntimePositionToDrivingSurface()

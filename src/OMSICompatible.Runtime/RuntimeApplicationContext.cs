@@ -872,6 +872,19 @@ internal sealed class RuntimeApplicationContext :
                     reflectionMode:
                         _options.RealTimeReflections);
 
+            _runtimeWindow.SetAvailableRouteDestinations(
+                _lineAiSchedule.Trips
+                    .Where(trip =>
+                        trip.Ready &&
+                        trip.Route is not null &&
+                        trip.Trip is not null)
+                    .Select(trip =>
+                        new RuntimeQuickRouteOption(
+                            trip.LineName,
+                            trip.Route!.TrackName,
+                            trip.Trip!.Destination))
+                    .Distinct());
+
             _runtimeWindow.DriveOpsMessageRequested +=
                 OnDriveOpsMessageRequested;
             _runtimeWindow.CommsLinkTransmitRequested +=

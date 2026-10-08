@@ -651,6 +651,7 @@ public sealed class D3D11RenderWindow : Form
     private readonly RuntimeOmsiMenuBar? _omsiMenuBar;
     private readonly RuntimeBusSelectorPanel? _busSelectorPanel;
     private readonly RuntimeDriveOpsPanel? _driveOpsPanel;
+    private RuntimeQuickRouteOption[] _quickRouteOptions = [];
     private readonly Form? _driveOpsOverlay;
     private RuntimeControlHubSettings _controlHubSettings =
         RuntimeControlHubSettings.Load();
@@ -1818,6 +1819,25 @@ public sealed class D3D11RenderWindow : Form
 
         Shown += OnWindowShown;
         ClientSizeChanged += OnClientSizeChanged;
+    }
+
+    /// <summary>
+    /// Real navigable OMSI routes resolved from the loaded timetable and
+    /// road graph. No synthetic destinations are inserted.
+    /// </summary>
+    public void SetAvailableRouteDestinations(
+        IEnumerable<RuntimeQuickRouteOption> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        _quickRouteOptions = options
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.Line) &&
+                !string.IsNullOrWhiteSpace(item.Destination))
+            .Distinct()
+            .OrderBy(item => item.Line, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Destination, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.RouteCode, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     public string CurrentOperationLine
@@ -7087,6 +7107,30 @@ public sealed class D3D11RenderWindow : Form
             _navigationGuidanceEnabled);
     }
 
+    private void ShowQuickRouteSelector()
+    {
+        using var picker =
+            new RuntimeQuickRouteDialog(_quickRouteOptions);
+        if (picker.ShowDialog(this) != DialogResult.OK ||
+            picker.SelectedRoute is not { } selected)
+        {
+            return;
+        }
+
+        _driveOpsPanel?.SetRouteConfiguration(
+            selected.Line,
+            selected.RouteCode,
+            selected.Destination);
+
+        // Script consoles continue to own their authentic OMSI input.
+        // Publishing a route here supplies GPS/RouteCore immediately;
+        // we do not synthesize a vehicle's IBIS keystroke protocol.
+        Console.WriteLine(
+            $"[quick-route] selected line={selected.Line}; " +
+            $"route={selected.RouteCode}; destination={selected.Destination}");
+        Focus();
+    }
+
     private void SaveNavigationOverlaySettings()
     {
         _navigationOverlaySettings = _navigationOverlaySettings with
@@ -7129,6 +7173,11 @@ public sealed class D3D11RenderWindow : Form
 
             case RuntimeOmsiMenuCommand.RemoveBus:
                 RemoveCurrentVehicle();
+                break;
+
+            case RuntimeOmsiMenuCommand.RouteDestination:
+                _omsiMenuBar?.HideMenu();
+                ShowQuickRouteSelector();
                 break;
 
             case RuntimeOmsiMenuCommand.Personnel:
@@ -16532,6 +16581,16 @@ public sealed class D3D11RenderWindow : Form
 
             if (asset.CollisionBounds is null &&
                 !hasRenderableVisual)
+            {
+                continue;
+            }
+
+            // Legacy OMSI scenery sometimes supplies [boundingbox] for
+            // thin road plates, kerbs and junction covers without [surface].
+            // Unlike an explicit collision mesh, a thin inferred box must
+            // not become a full-width solid wall at a spline boundary.
+            if (asset.CollisionBounds is null &&
+                asset.BoundingBox is { HeightZ: <= 0.35 })
             {
                 continue;
             }

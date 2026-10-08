@@ -99,3 +99,27 @@ and render transparency under night lighting.
 - **Unverified:** precise NG IBIS textures, actual engine movement, and local
   installed map scenery still require the specific OMSI assets and runtime
   logs from the reported installation. CI uses non-proprietary fixtures.
+
+## Mapa/splines — travadas ao entrar na próxima tile
+
+Ao trocar malhas em streaming, `ReplacePreparedDrivingSurfaces` agora
+atualiza os samplers sem ressituar/sincronizar o ônibus em movimento com
+ODE. A posição/velocidade e o estado articulado devem continuar sendo
+integrados pelo próprio corpo físico. Só permite a correção inicial quando
+o veículo está parado e a suspensão ODE ainda não possui contato.
+
+Objetos OMSI sem `[surface]`, mas com `[boundingbox]` extremamente
+plana (até 0,35 m de altura), não recebem uma parede 3D substituta.
+Meshes de colisão explícitos continuam valendo. O objetivo é não bloquear
+a transição de splines por placas de asfalto/crossings do cenário.
+
+## ESC → Rota e destino
+
+O comando que já existia no menu ESC, mas estava desativado, abre um
+seletor pesquisável da **lista de rotas reais resolvidas**, contendo
+linha, track e destino da tabela OMSI. Escolher define imediatamente
+os campos operacionais do RouteCore, que alimentam a navegação 3D
+existente na próxima atualização. Rotas sem arquivo de timetable/track
+não são inventadas. O IBIS físico ainda depende da lógica real do
+script e de seu teclado, não é tratado como já sincronizado com o
+seletor de GPS.
