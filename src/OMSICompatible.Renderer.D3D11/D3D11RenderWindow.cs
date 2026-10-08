@@ -15041,6 +15041,57 @@ public sealed class D3D11RenderWindow : Form
                                     "Texture",
                                     normalized));
                         }
+
+                        // openOMSI find_vehicle_freetex: OMSI scripts can
+                        // publish e.g. "..\\Texture\\mb_pmon\\warning.bmp".
+                        // If the path's parent is from another model
+                        // directory, resolve the suffix *after* Texture
+                        // against the actual bus texture search folders.
+                        var components =
+                            normalized.Split(
+                                Path.DirectorySeparatorChar,
+                                StringSplitOptions.RemoveEmptyEntries);
+
+                        var textureIndex =
+                            Array.FindIndex(
+                                components,
+                                static component =>
+                                    component.Equals(
+                                        "Texture",
+                                        StringComparison.OrdinalIgnoreCase));
+
+                        if (textureIndex >= 0 &&
+                            textureIndex < components.Length - 1)
+                        {
+                            var textureRelative =
+                                Path.Combine(
+                                    components[
+                                        (textureIndex + 1)..]);
+
+                            candidates.Add(
+                                Path.Combine(
+                                    vehicleDirectory,
+                                    "Texture",
+                                    textureRelative));
+
+                            candidates.Add(
+                                Path.Combine(
+                                    vehicleDirectory,
+                                    textureRelative));
+
+                            var vehicleParent =
+                                Directory.GetParent(
+                                    vehicleDirectory)?.FullName;
+
+                            if (vehicleParent is not null)
+                            {
+                                candidates.Add(
+                                    Path.Combine(
+                                        vehicleParent,
+                                        "Texture",
+                                        textureRelative));
+                            }
+                        }
                     }
                 }
                 catch
