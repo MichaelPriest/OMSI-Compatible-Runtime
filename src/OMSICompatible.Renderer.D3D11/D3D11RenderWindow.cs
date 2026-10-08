@@ -20933,7 +20933,6 @@ public sealed class D3D11RenderWindow : Form
 
         _scriptRuntime.ExecuteFrame();
         SynchronizeHostVehicleStateFromScripts();
-        SynchronizeOmsiScriptDynamics();
         AcknowledgeOmsiStringRefresh();
 
         foreach (var pair in
@@ -20959,6 +20958,11 @@ public sealed class D3D11RenderWindow : Form
             AcknowledgeOmsiStringRefresh(
                 pair.Value);
         }
+
+        // The driven axle may live in the rear articulated section. Read
+        // M_Wheel and per-axle brake outputs only after all section scripts
+        // have executed this frame, not from the previous frame's values.
+        SynchronizeOmsiScriptDynamics();
 
         if (!_vehiclePanelAuditWritten &&
             absoluteSeconds >= 1.0)
