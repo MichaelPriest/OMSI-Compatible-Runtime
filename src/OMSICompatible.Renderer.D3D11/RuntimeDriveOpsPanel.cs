@@ -63,6 +63,10 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     private readonly TextBox _role;
     private readonly CheckBox _requireForStart;
     private readonly Button _insertBadgeButton;
+    private readonly Button _controlHubNavigationButton;
+    private bool _controlHubEnabled = true;
+    private bool _controlHubPageVisible;
+    private bool _panelOpen;
 
     private readonly ListBox _fleetMessages =
         OmsiListBox();
@@ -308,7 +312,8 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         AddModuleButton(navigation, "FLEETLINK", ShowFleetLink);
         AddModuleButton(navigation, "COMMSLINK", ShowCommsLink);
         AddModuleButton(navigation, "ASSISTLINK", ShowAssistLink);
-        AddModuleButton(navigation, "CONTROLHUB", ShowControlHub);
+        _controlHubNavigationButton =
+            AddModuleButton(navigation, "CONTROLHUB", ShowControlHub);
         AddModuleButton(navigation, "ROUTECORE", ShowRouteCore);
         AddModuleButton(navigation, "FLEETCARE", ShowFleetCare);
         AddModuleButton(navigation, "PASSENGERFLOW", ShowPassengerFlow);
@@ -370,6 +375,24 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     public event Action<bool>?
         CommsLinkTransmitRequested;
 
+    // The control is hosted in a layered owned window, not in the D3D11
+    // client hierarchy. Keep visibility explicit even when the owner is hidden.
+    public event Action<bool>? PanelVisibilityRequested;
+
+    public bool IsOpen => _panelOpen;
+
+    public void ConfigureControlHub(bool enabled)
+    {
+        _controlHubEnabled = enabled;
+        _controlHubNavigationButton.Enabled = enabled;
+
+        if (!enabled && _controlHubPageVisible)
+        {
+            _controlHubPageVisible = false;
+            ShowDriverPass();
+        }
+    }
+
     public bool StartAuthorized =>
         !_profile.RequireForStart ||
         _badgeInserted;
@@ -385,7 +408,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
     public void TogglePanel()
     {
-        if (Visible)
+        if (_panelOpen)
         {
             HidePanel();
         }
@@ -397,14 +420,20 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
     public void ShowPanel()
     {
+        _panelOpen = true;
         Visible = true;
+        PanelVisibilityRequested?.Invoke(true);
         BringToFront();
         Focus();
         RefreshDriverPassStatus();
     }
 
-    public void HidePanel() =>
+    public void HidePanel()
+    {
+        _panelOpen = false;
         Visible = false;
+        PanelVisibilityRequested?.Invoke(false);
+    }
 
     public void SetNetworkState(
         string role,
@@ -689,7 +718,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         }
     }
 
-    private void AddModuleButton(
+    private Button AddModuleButton(
         Control parent,
         string text,
         Action action)
@@ -699,12 +728,19 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 text,
                 140,
                 (_, _) =>
-                    action());
+                {
+                    _controlHubPageVisible =
+                        text.Equals(
+                            "CONTROLHUB",
+                            StringComparison.OrdinalIgnoreCase);
+                    action();
+                });
 
         button.Height = 38;
         button.Margin =
             new Padding(0, 0, 0, 5);
         parent.Controls.Add(button);
+        return button;
     }
 
     private Panel ModuleRoot(
@@ -1070,6 +1106,13 @@ internal sealed class RuntimeDriveOpsPanel : Panel
 
     private void ShowControlHub()
     {
+        if (!_controlHubEnabled)
+        {
+            _controlHubPageVisible = false;
+            ShowDriverPass();
+            return;
+        }
+
         _contentHost.Controls.Clear();
         var root =
             ModuleRoot(
@@ -1101,6 +1144,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 });
 
         dispatch.Enabled =
+            _controlHubEnabled &&
             HasControlHubPermission();
         dispatch.SetBounds(
             368, 274, 160, 32);
