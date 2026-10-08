@@ -2867,14 +2867,14 @@ public sealed class D3D11RenderWindow : Form
                     {
                         foreach (var changeSet in changeSets)
                         {
-                            foreach (var item in changeSet.Items)
+                            foreach (var changeTexture in changeSet.Items)
                             {
-                                Add(paths, item.TransMapTexturePath);
-                                Add(paths, item.LightMapTexturePath);
-                                Add(paths, item.MaterialChangeTexturePath);
-                                Add(paths, item.EnvMapTexturePath);
-                                Add(paths, item.EnvMapMaskTexturePath);
-                                Add(paths, item.BumpMapTexturePath);
+                                Add(paths, changeTexture.TransMapTexturePath);
+                                Add(paths, changeTexture.LightMapTexturePath);
+                                Add(paths, changeTexture.MaterialChangeTexturePath);
+                                Add(paths, changeTexture.EnvMapTexturePath);
+                                Add(paths, changeTexture.EnvMapMaskTexturePath);
+                                Add(paths, changeTexture.BumpMapTexturePath);
                             }
                         }
                     }
