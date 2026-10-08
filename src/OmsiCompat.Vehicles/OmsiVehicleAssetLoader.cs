@@ -152,11 +152,12 @@ public static class OmsiVehicleAssetLoader
                     }
 
                     var materialOverride =
-                        matchingOverrides
-                            .FirstOrDefault(
-                                static item =>
-                                    string.IsNullOrWhiteSpace(
-                                        item.MaterialChangeVariable));
+                        MergePlainMaterialOverrides(
+                            matchingOverrides
+                                .Where(
+                                    static item =>
+                                        string.IsNullOrWhiteSpace(
+                                            item.MaterialChangeVariable)));
 
                     var materialChangeOverrides =
                         matchingOverrides
@@ -743,6 +744,97 @@ public static class OmsiVehicleAssetLoader
         }
 
         return occurrence;
+    }
+
+    // openOMSI material_alpha: several [matl] blocks targeting one O3D
+    // slot are cumulative. The last explicit [matl_alpha] wins, but an
+    // alpha override must not erase the preceding transmap, freetex or
+    // panel colour state. [matl_change] variants remain separate.
+    private static OmsiVehicleMaterialOverride? MergePlainMaterialOverrides(
+        IEnumerable<OmsiVehicleMaterialOverride> overrides)
+    {
+        OmsiVehicleMaterialOverride? merged = null;
+
+        foreach (var current in overrides)
+        {
+            if (merged is null)
+            {
+                merged = current;
+                continue;
+            }
+
+            var freeTextures =
+                merged.FreeTextures
+                    .Concat(current.FreeTextures)
+                    .GroupBy(
+                        static item => item.SourceTextureName,
+                        StringComparer.OrdinalIgnoreCase)
+                    .Select(
+                        static group => group.Last())
+                    .ToArray();
+
+            merged = merged with
+            {
+                AlphaMode =
+                    current.AlphaMode ?? merged.AlphaMode,
+                TransMapSource =
+                    current.HasTransMapDirective
+                        ? current.TransMapSource
+                        : merged.TransMapSource,
+                HasTransMapDirective =
+                    current.HasTransMapDirective ||
+                    merged.HasTransMapDirective,
+                NoZWrite =
+                    merged.NoZWrite || current.NoZWrite,
+                NoZCheck =
+                    merged.NoZCheck || current.NoZCheck,
+                AlphaScaleVariable =
+                    current.AlphaScaleVariable ??
+                    merged.AlphaScaleVariable,
+                LightMapSource =
+                    current.LightMapSource ??
+                    merged.LightMapSource,
+                LightMapVariable =
+                    current.LightMapVariable ??
+                    merged.LightMapVariable,
+                MaterialChangeMapSource =
+                    current.MaterialChangeMapSource ??
+                    merged.MaterialChangeMapSource,
+                AllColor =
+                    current.AllColor ??
+                    merged.AllColor,
+                EnvMapSource =
+                    current.EnvMapSource ??
+                    merged.EnvMapSource,
+                EnvMapStrength =
+                    current.EnvMapSource is not null
+                        ? current.EnvMapStrength
+                        : merged.EnvMapStrength,
+                EnvMapMaskSource =
+                    current.EnvMapMaskSource ??
+                    merged.EnvMapMaskSource,
+                BumpMapSource =
+                    current.BumpMapSource ??
+                    merged.BumpMapSource,
+                BumpMapStrength =
+                    current.BumpMapSource is not null
+                        ? current.BumpMapStrength
+                        : merged.BumpMapStrength,
+                FreeTextures =
+                    freeTextures,
+                TextTextureIndex =
+                    current.TextTextureIndex ??
+                    merged.TextTextureIndex,
+                TextureCoordinateXVariable =
+                    current.TextureCoordinateXVariable ??
+                    merged.TextureCoordinateXVariable,
+                TextureCoordinateYVariable =
+                    current.TextureCoordinateYVariable ??
+                    merged.TextureCoordinateYVariable
+            };
+        }
+
+        return merged;
     }
 
     private static bool MaterialTextureMatches(
