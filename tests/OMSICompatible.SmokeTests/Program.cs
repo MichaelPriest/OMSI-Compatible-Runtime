@@ -2305,6 +2305,39 @@ try
         includeBones:
             true);
 
+    var v3O3dPath =
+        Path.Combine(
+            vehicleModelDirectory,
+            "triangle-v3.o3d");
+
+    WriteSyntheticO3d(
+        v3O3dPath,
+        versionThree: true);
+
+    // OMSI's O3D reader skips unrecognised tag bytes instead of failing
+    // the entire asset; protected add-ons can contain padding/junk.
+    using (var padding =
+           new FileStream(
+               v3O3dPath,
+               FileMode.Append,
+               FileAccess.Write))
+    {
+        padding.WriteByte(0xD7);
+        padding.WriteByte(0xE4);
+    }
+
+    var v3Geometry =
+        OmsiO3dGeometryReader.ReadFile(
+            v3O3dPath);
+
+    Require(
+        v3Geometry.IsLoaded &&
+        v3Geometry.ErrorCode is null &&
+        v3Geometry.Positions.Length == 9 &&
+        v3Geometry.Indices.Length == 3 &&
+        v3Geometry.TriangleMaterialIndices.Length == 1,
+        "OMSI O3D v3 flags/32-bit counts and trailing unknown tags must load.");
+
     var zeroKeyO3dPath =
         Path.Combine(
             vehicleModelDirectory,
@@ -11089,7 +11122,8 @@ static void WriteSyntheticCollisionO3d(
 
     writer.Write((byte)0x84);
     writer.Write((byte)0x19);
-    writer.Write((byte)3);
+    // Legacy 16-bit counts are v1/v2. Version 3 has flags and 32-bit counts.
+    writer.Write((byte)2);
 
     writer.Write((byte)0x17);
     writer.Write((ushort)4);
@@ -11174,7 +11208,8 @@ static void WriteSyntheticO3d(
     string path,
     bool extendedHeader = false,
     uint protectionKey = uint.MaxValue,
-    bool includeBones = false)
+    bool includeBones = false,
+    bool versionThree = false)
 {
     using var stream =
         File.Create(path);
@@ -11191,14 +11226,19 @@ static void WriteSyntheticO3d(
         writer.Write((byte)0);
         writer.Write(protectionKey);
     }
-    else
+    else if (versionThree)
     {
         writer.Write((byte)3);
+        writer.Write((byte)0); // v3 option flags
+    }
+    else
+    {
+        writer.Write((byte)2); // v1/v2 use 16-bit counts
     }
 
     writer.Write((byte)0x17);
 
-    if (extendedHeader)
+    if (extendedHeader || versionThree)
     {
         writer.Write((uint)3);
     }
@@ -11254,7 +11294,7 @@ static void WriteSyntheticO3d(
 
     writer.Write((byte)0x49);
 
-    if (extendedHeader)
+    if (extendedHeader || versionThree)
     {
         writer.Write((uint)1);
     }
