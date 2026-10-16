@@ -930,6 +930,30 @@ mod tests {
     }
 
     #[test]
+    fn o3d_decoder_rejects_truncated_material_texture_name() {
+        let mut bytes = minimal_o3d(false);
+        let material_start = 4 + 1 + 4 + 32 + 1 + 4 + 8 + 1;
+        // The material record's texture length claims five bytes, but only
+        // the three-byte "mat" payload remains before the next section.
+        bytes[material_start + 2 + 44] = 5;
+        assert!(matches!(
+            decode_o3d(&bytes),
+            Err(O3dError::Truncated { .. })
+        ));
+    }
+
+    #[test]
+    fn o3d_decoder_rejects_truncated_transform_matrix() {
+        let mut bytes = minimal_o3d(false);
+        // The matrix section starts after the vertex, triangle and material sections.
+        bytes.truncate(bytes.len() - 64 + 20);
+        assert!(matches!(
+            decode_o3d(&bytes),
+            Err(O3dError::Truncated { .. })
+        ));
+    }
+
+    #[test]
     fn o3d_decoder_maps_windows_1252_material_text() {
         let mut bytes = minimal_o3d(false);
         let material_start = 4 + 1 + 4 + 32 + 1 + 4 + 8;
