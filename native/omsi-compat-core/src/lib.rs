@@ -758,6 +758,34 @@ mod tests {
         bytes
     }
 
+    fn minimal_o3d_v1() -> Vec<u8> {
+        let mut bytes = vec![0x84, 0x19, 1];
+        bytes.push(0x17); // v1 uses 16-bit section counts
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&[0; 32]);
+        bytes.push(0x49);
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&[0; 8]); // three u16 indices + material
+        bytes.push(0x26);
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&[0; 44]);
+        bytes.push(3);
+        bytes.extend_from_slice(b"mat");
+        bytes.push(0x79);
+        bytes.extend_from_slice(&[0; 64]);
+        bytes
+    }
+
+    #[test]
+    fn o3d_decoder_supports_legacy_version_one_narrow_counts() {
+        let mesh = decode_o3d(&minimal_o3d_v1()).unwrap();
+        assert_eq!(mesh.version, 1);
+        assert_eq!(mesh.vertices.len(), 1);
+        assert_eq!(mesh.triangles, vec![O3dTriangle { indices: [0, 0, 0], material: 0 }]);
+        assert_eq!(mesh.materials[0].texture, "mat");
+        assert_eq!(mesh.matrix, Some([0.0; 16]));
+    }
+
     #[test]
     fn o3d_decoder_rejects_bad_magic_and_unsupported_version() {
         let mut bad_magic = minimal_o3d(false);
