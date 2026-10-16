@@ -770,6 +770,29 @@ mod tests {
     }
 
     #[test]
+    fn o3d_decoder_accepts_version_four_with_unscrambled_key() {
+        let original = minimal_o3d(false);
+        let mut bytes = vec![0x84, 0x19, 4, 0];
+        bytes.extend_from_slice(&0xffff_ffffu32.to_le_bytes());
+        bytes.extend_from_slice(&original[4..]);
+        let mesh = decode_o3d(&bytes).unwrap();
+        assert_eq!(mesh.version, 4);
+        assert_eq!(mesh.vertices.len(), 1);
+        assert_eq!(mesh.triangles.len(), 1);
+        assert_eq!(mesh.materials[0].texture, "mat");
+    }
+
+    #[test]
+    fn o3d_decoder_maps_windows_1252_material_text() {
+        let mut bytes = minimal_o3d(false);
+        let material_start = 4 + 1 + 4 + 32 + 1 + 4 + 8;
+        // Tag + count + 44 bytes of material properties + string length.
+        bytes[material_start + 1 + 2 + 44 + 1] = 0x80;
+        let mesh = decode_o3d(&bytes).unwrap();
+        assert_eq!(mesh.materials[0].texture, "€at");
+    }
+
+    #[test]
     fn o3d_inspector_c_abi_returns_a_fixed_summary() {
         let bytes = minimal_o3d(false);
         let mut output = O3dSummaryC::default();
