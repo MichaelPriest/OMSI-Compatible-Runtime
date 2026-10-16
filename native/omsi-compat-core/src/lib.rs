@@ -377,8 +377,11 @@ pub struct O3dMesh {
 }
 
 fn o3d_fraction_byte(position: [f32; 3]) -> u32 {
-    let fraction = |value: f32| (value as f64) - (value as f64).trunc();
-    let product = (fraction(position[0]) * fraction(position[1]) * fraction(position[2])).abs() * 600.0;
+    // Preserve the managed decoder's single-precision operation order:
+    // rounding at the product boundaries affects the byte seed for some
+    // protected vertices, so widening these operations to f64 is not equivalent.
+    let fraction = |value: f32| value - value.trunc();
+    let product = (fraction(position[0]) * fraction(position[1]) * fraction(position[2])).abs() * 600.0_f32;
     (product.trunc() as i64).rem_euclid(256) as u32
 }
 
@@ -824,6 +827,15 @@ mod tests {
     fn o3d_decoder_rejects_impossible_vertex_count_before_allocation() {
         let bytes = [0x84, 0x19, 3, 0, 0x17, 0xff, 0xff, 0xff, 0xff];
         assert!(matches!(decode_o3d(&bytes), Err(O3dError::Truncated { .. })));
+    }
+
+    #[test]
+    fn o3d_fraction_seed_uses_managed_single_precision_and_truncation() {
+        assert_eq!(o3d_fraction_byte([1.5, 2.5, 3.5]), 75);
+        assert_eq!(o3d_fraction_byte([-1.5, 2.5, 3.5]), 75);
+        // Truncate toward zero for negative coordinates, then take absolute
+        // product, matching MathF.Truncate in the managed compatibility path.
+        assert_eq!(o3d_fraction_byte([-1.25, 2.5, 3.5]), 37);
     }
 
     #[test]
