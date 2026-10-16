@@ -936,6 +936,9 @@ mod tests {
         // The material record's texture length claims five bytes, but only
         // the three-byte "mat" payload remains before the next section.
         bytes[material_start + 2 + 44] = 5;
+        // Remove the following sections so the decoder cannot consume their
+        // bytes as if they were part of the texture name.
+        bytes.truncate(material_start + 2 + 44 + 1 + 3);
         assert!(matches!(
             decode_o3d(&bytes),
             Err(O3dError::Truncated { .. })
