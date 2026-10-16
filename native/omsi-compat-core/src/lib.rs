@@ -335,7 +335,7 @@ pub unsafe extern "C" fn omsi_o3d_inspect(
     output: *mut O3dSummaryC,
 ) -> i32 {
     std::panic::catch_unwind(|| {
-        if input.is_null() || output.is_null() || length == 0 {
+        if input.is_null() || output.is_null() || length == 0 || length > isize::MAX as usize {
             return -1;
         }
         // SAFETY: caller promises input references length readable bytes
