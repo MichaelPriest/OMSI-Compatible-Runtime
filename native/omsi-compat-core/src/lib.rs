@@ -270,6 +270,8 @@ pub enum O3dError {
     BadMagic,
     UnsupportedVersion(u8),
     CountOverflow,
+    InvalidVertexIndex { index: u32, vertex_count: u32 },
+    InvalidMaterialIndex { index: u16, material_count: u16 },
 }
 
 struct O3dCursor<'a> {
@@ -382,6 +384,7 @@ pub fn inspect_o3d(bytes: &[u8]) -> Result<O3dSummary, O3dError> {
         version, flags, vertex_count: 0, triangle_count: 0,
         material_count: 0, has_matrix: false, bone_count: 0,
     };
+    let mut largest_material_index: Option<u16> = None;
 
     while cursor.offset < bytes.len() {
         let tag = cursor.u8()?;
@@ -394,11 +397,21 @@ pub fn inspect_o3d(bytes: &[u8]) -> Result<O3dSummary, O3dError> {
             }
             0x49 => {
                 let count = cursor.count(wide_count)?;
-                let index_bytes = if wide_index { 4usize } else { 2usize };
-                let per_triangle = index_bytes.checked_mul(3).and_then(|n| n.checked_add(2))
-                    .ok_or(O3dError::CountOverflow)?;
-                let byte_count = (count as usize).checked_mul(per_triangle).ok_or(O3dError::CountOverflow)?;
-                cursor.take(byte_count)?;
+                for _ in 0..count {
+                    for _ in 0..3 {
+                        let index = if wide_index { cursor.u32()? } else { cursor.u16()? as u32 };
+                        if index >= summary.vertex_count {
+                            return Err(O3dError::InvalidVertexIndex {
+                                index,
+                                vertex_count: summary.vertex_count,
+                            });
+                        }
+                    }
+                    let material_index = cursor.u16()?;
+                    largest_material_index = Some(
+                        largest_material_index.map_or(material_index, |current| current.max(material_index))
+                    );
+                }
                 summary.triangle_count = count;
             }
             0x26 => {
@@ -418,16 +431,30 @@ pub fn inspect_o3d(bytes: &[u8]) -> Result<O3dSummary, O3dError> {
                 for _ in 0..count {
                     cursor.string8()?;
                     let weights = cursor.u16()?;
-                    let index_bytes = if wide_index { 4usize } else { 2usize };
-                    let per_weight = index_bytes.checked_add(4).ok_or(O3dError::CountOverflow)?;
-                    let byte_count = (weights as usize).checked_mul(per_weight).ok_or(O3dError::CountOverflow)?;
-                    cursor.take(byte_count)?;
+                    for _ in 0..weights {
+                        let index = if wide_index { cursor.u32()? } else { cursor.u16()? as u32 };
+                        if index >= summary.vertex_count {
+                            return Err(O3dError::InvalidVertexIndex {
+                                index,
+                                vertex_count: summary.vertex_count,
+                            });
+                        }
+                        cursor.take(4)?; // weight
+                    }
                 }
                 summary.bone_count = count;
             }
             _ => {
                 // OMSI's loader ignores unrecognized bytes and advances by one.
             }
+        }
+    }
+    if let Some(index) = largest_material_index {
+        if index >= summary.material_count {
+            return Err(O3dError::InvalidMaterialIndex {
+                index,
+                material_count: summary.material_count,
+            });
         }
     }
     Ok(summary)
@@ -514,6 +541,31 @@ mod tests {
         assert_eq!(inspect_o3d(&[0x84, 0x19, 2]), Err(O3dError::UnsupportedVersion(2)));
         assert!(matches!(inspect_o3d(&[0x84, 0x19, 3, 0, 0x17, 1, 0, 0]), Err(O3dError::Truncated { .. })));
     }
+
+    #[test]
+    fn o3d_inspector_rejects_triangle_indices_outside_vertex_buffer() {
+        let mut bytes = minimal_o3d(false);
+        // In the minimal fixture, the first triangle index follows the 4-byte
+        // vertex section header and 32-byte vertex record.
+        let triangle_start = 4 + 1 + 4 + 32 + 1 + 4;
+        bytes[triangle_start..triangle_start + 2].copy_from_slice(&1u16.to_le_bytes());
+        assert!(matches!(
+            inspect_o3d(&bytes),
+            Err(O3dError::InvalidVertexIndex { index: 1, vertex_count: 1 })
+        ));
+    }
+
+    #[test]
+    fn o3d_inspector_rejects_triangle_material_outside_material_table() {
+        let mut bytes = minimal_o3d(false);
+        let triangle_start = 4 + 1 + 4 + 32 + 1 + 4;
+        bytes[triangle_start + 6..triangle_start + 8].copy_from_slice(&1u16.to_le_bytes());
+        assert!(matches!(
+            inspect_o3d(&bytes),
+            Err(O3dError::InvalidMaterialIndex { index: 1, material_count: 1 })
+        ));
+    }
+
 
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
