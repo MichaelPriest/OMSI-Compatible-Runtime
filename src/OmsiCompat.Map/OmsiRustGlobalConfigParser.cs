@@ -64,6 +64,14 @@ internal static class OmsiRustGlobalConfigParser
             return false;
         }
 
+        // UTF-16 text without a BOM can be valid UTF-8 containing NULs. The
+        // native C ABI receives a NUL-terminated string, so fall back rather
+        // than silently parsing only the prefix before the first NUL.
+        if (content.Contains('\0'))
+        {
+            return false;
+        }
+
         int capacity;
         try
         {
