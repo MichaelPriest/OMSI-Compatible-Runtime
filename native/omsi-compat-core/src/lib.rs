@@ -249,6 +249,142 @@ pub unsafe extern "C" fn omsi_globalcfg_parse_tiles_utf8(
     }).unwrap_or(-1)
 }
 
+
+/// Structural summary of an OMSI binary O3D mesh. This validates section
+/// boundaries before renderer integration; it does not decode vertices or
+/// apply the version 4/5 scrambling transform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct O3dSummary {
+    pub version: u8,
+    pub flags: u8,
+    pub vertex_count: u32,
+    pub triangle_count: u32,
+    pub material_count: u16,
+    pub has_matrix: bool,
+    pub bone_count: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum O3dError {
+    Truncated { offset: usize },
+    BadMagic,
+    UnsupportedVersion(u8),
+    InvalidSection { tag: u8, offset: usize },
+    CountOverflow,
+}
+
+struct O3dCursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> O3dCursor<'a> {
+    fn take(&mut self, count: usize) -> Result<&'a [u8], O3dError> {
+        let end = self.offset.checked_add(count).ok_or(O3dError::CountOverflow)?;
+        if end > self.bytes.len() {
+            return Err(O3dError::Truncated { offset: self.offset });
+        }
+        let value = &self.bytes[self.offset..end];
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn u8(&mut self) -> Result<u8, O3dError> {
+        Ok(self.take(1)?[0])
+    }
+
+    fn u16(&mut self) -> Result<u16, O3dError> {
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().unwrap()))
+    }
+
+    fn u32(&mut self) -> Result<u32, O3dError> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+    }
+
+    fn count(&mut self, wide: bool) -> Result<u32, O3dError> {
+        if wide { self.u32() } else { Ok(self.u16()? as u32) }
+    }
+
+    fn string8(&mut self) -> Result<(), O3dError> {
+        let length = self.u8()? as usize;
+        self.take(length)?;
+        Ok(())
+    }
+}
+
+/// Validate the binary structure of one OMSI O3D mesh and report its declared
+/// geometry counts. Unknown section bytes are skipped one at a time, matching
+/// the original loader's permissive tag dispatch.
+pub fn inspect_o3d(bytes: &[u8]) -> Result<O3dSummary, O3dError> {
+    let mut cursor = O3dCursor { bytes, offset: 0 };
+    if cursor.take(2)? != [0x84, 0x19] {
+        return Err(O3dError::BadMagic);
+    }
+    let version = cursor.u8()?;
+    if !matches!(version, 1 | 3 | 4 | 5 | 7) {
+        return Err(O3dError::UnsupportedVersion(version));
+    }
+    let flags = if version >= 3 { cursor.u8()? } else { 0 };
+    let _key = if version >= 4 { cursor.u32()? } else { 0 };
+    let wide_count = version >= 3;
+    let wide_index = version >= 3 && flags & 1 != 0;
+    let mut summary = O3dSummary {
+        version, flags, vertex_count: 0, triangle_count: 0,
+        material_count: 0, has_matrix: false, bone_count: 0,
+    };
+
+    while cursor.offset < bytes.len() {
+        let tag_offset = cursor.offset;
+        let tag = cursor.u8()?;
+        match tag {
+            0x17 => {
+                let count = cursor.count(wide_count)?;
+                let byte_count = (count as usize).checked_mul(32).ok_or(O3dError::CountOverflow)?;
+                cursor.take(byte_count)?;
+                summary.vertex_count = count;
+            }
+            0x49 => {
+                let count = cursor.count(wide_count)?;
+                let index_bytes = if wide_index { 4usize } else { 2usize };
+                let per_triangle = index_bytes.checked_mul(3).and_then(|n| n.checked_add(2))
+                    .ok_or(O3dError::CountOverflow)?;
+                let byte_count = (count as usize).checked_mul(per_triangle).ok_or(O3dError::CountOverflow)?;
+                cursor.take(byte_count)?;
+                summary.triangle_count = count;
+            }
+            0x26 => {
+                let count = cursor.u16()?;
+                for _ in 0..count {
+                    cursor.take(44)?;
+                    cursor.string8()?;
+                }
+                summary.material_count = count;
+            }
+            0x79 => {
+                cursor.take(64)?;
+                summary.has_matrix = true;
+            }
+            0x54 => {
+                let count = cursor.u16()?;
+                for _ in 0..count {
+                    cursor.string8()?;
+                    let weights = cursor.u16()?;
+                    let index_bytes = if wide_index { 4usize } else { 2usize };
+                    let per_weight = index_bytes.checked_add(4).ok_or(O3dError::CountOverflow)?;
+                    let byte_count = (weights as usize).checked_mul(per_weight).ok_or(O3dError::CountOverflow)?;
+                    cursor.take(byte_count)?;
+                }
+                summary.bone_count = count;
+            }
+            _ => {
+                // OMSI's loader ignores unrecognized bytes and advances by one.
+                let _ = tag_offset;
+            }
+        }
+    }
+    Ok(summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
