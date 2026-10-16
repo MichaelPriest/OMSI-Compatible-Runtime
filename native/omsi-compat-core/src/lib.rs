@@ -173,6 +173,79 @@ pub unsafe extern "C" fn omsi_texture_resolve_utf8(
     .unwrap_or(-1)
 }
 
+
+/// Parse [map] tile declarations from already-decoded UTF-8 global.cfg text.
+/// Output is UTF-8 TSV: x<TAB>y<TAB>filename<TAB>source_line<LF>.
+/// A filename containing tabs/newlines is rejected so the result is unambiguous.
+pub fn parse_global_cfg_tiles(input: &str) -> Vec<(i32, i32, String, usize)> {
+    let mut declarations = Vec::new();
+    let mut in_map = false;
+    let mut values: Vec<(String, usize)> = Vec::new();
+    let flush = |values: &mut Vec<(String, usize)>,
+                 declarations: &mut Vec<(i32, i32, String, usize)>| {
+        if values.len() < 3 { values.clear(); return; }
+        let x = values[0].0.trim().parse::<i32>();
+        let y = values[1].0.trim().parse::<i32>();
+        let filename = values[2].0.trim().trim_matches('"').trim().to_owned();
+        if let (Ok(x), Ok(y)) = (x, y) {
+            if !filename.is_empty() && !filename.contains(['\t', '\r', '\n']) {
+                declarations.push((x, y, filename, values[0].1.saturating_sub(1)));
+            }
+        }
+        values.clear();
+    };
+
+    for (index, raw) in input.lines().enumerate() {
+        let line_number = index + 1;
+        let line = raw.trim().trim_start_matches('\u{feff}').trim();
+        if line.starts_with('[') && line.ends_with(']') && line.len() >= 3 {
+            if in_map {
+                flush(&mut values, &mut declarations);
+            }
+            in_map = line[1..line.len() - 1].trim().eq_ignore_ascii_case("map");
+            continue;
+        }
+        if in_map && !line.is_empty() {
+            values.push((line.to_owned(), line_number));
+        }
+    }
+    if in_map {
+        flush(&mut values, &mut declarations);
+    }
+    declarations
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omsi_globalcfg_parse_tiles_utf8(
+    input: *const c_char,
+    output: *mut u8,
+    capacity: usize,
+) -> i32 {
+    std::panic::catch_unwind(|| {
+        if input.is_null() || output.is_null() || capacity == 0 { return -1; }
+        // SAFETY: caller supplies a valid NUL-terminated UTF-8 input and writable output.
+        let input = match unsafe { CStr::from_ptr(input) }.to_str() {
+            Ok(value) => value,
+            Err(_) => return -1,
+        };
+        let mut encoded = String::new();
+        for (x, y, filename, source_line) in parse_global_cfg_tiles(input) {
+            use std::fmt::Write as _;
+            if writeln!(&mut encoded, "{x}\t{y}\t{filename}\t{source_line}").is_err() {
+                return -1;
+            }
+        }
+        let bytes = encoded.as_bytes();
+        if bytes.len() >= capacity || bytes.len() > i32::MAX as usize { return -2; }
+        // SAFETY: capacity guard reserves one byte for the trailing NUL.
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), output, bytes.len());
+            *output.add(bytes.len()) = 0;
+        }
+        bytes.len() as i32
+    }).unwrap_or(-1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,6 +273,37 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+
+    #[test]
+    fn parses_global_cfg_map_sections_case_insensitively_and_keeps_source_line() {
+        let input = "\u{feff}[header]\r\n1\r\n[MaP]\r\n-2\r\n7\r\nTile -2 7.map\r\n[other]\r\nignored\r\n[map]\r\n0\r\n0\r\nsecond.map\r\n";
+        assert_eq!(parse_global_cfg_tiles(input), vec![
+            (-2, 7, "Tile -2 7.map".to_owned(), 3),
+            (0, 0, "second.map".to_owned(), 9),
+        ]);
+    }
+
+    #[test]
+    fn skips_malformed_or_incomplete_global_cfg_map_declarations() {
+        let input = "[map]\nnot-x\n2\nbad.map\n[map]\n1\n2\n\n[other]\n3\n4\nwrong.map\n";
+        assert!(parse_global_cfg_tiles(input).is_empty());
+    }
+
+    #[test]
+    fn global_cfg_abi_reports_capacity_and_emits_tsv() {
+        use std::ffi::CString;
+        let input = CString::new("[map]\n1\n-3\nTile.map\n").unwrap();
+        let mut output = [0_u8; 128];
+        let length = unsafe {
+            omsi_globalcfg_parse_tiles_utf8(input.as_ptr(), output.as_mut_ptr(), output.len())
+        };
+        assert_eq!(std::str::from_utf8(&output[..length as usize]).unwrap(), "1\t-3\tTile.map\t1\n");
+        let mut tiny = [0_u8; 1];
+        assert_eq!(unsafe {
+            omsi_globalcfg_parse_tiles_utf8(input.as_ptr(), tiny.as_mut_ptr(), tiny.len())
+        }, -2);
     }
 
     #[test]
