@@ -180,37 +180,40 @@ pub unsafe extern "C" fn omsi_texture_resolve_utf8(
 pub fn parse_global_cfg_tiles(input: &str) -> Vec<(i32, i32, String, usize)> {
     let mut declarations = Vec::new();
     let mut in_map = false;
-    let mut values: Vec<(String, usize)> = Vec::new();
-    let flush = |values: &mut Vec<(String, usize)>,
+    let mut header_line = 0usize;
+    let mut values: Vec<String> = Vec::new();
+
+    let flush = |values: &mut Vec<String>,
+                 header_line: usize,
                  declarations: &mut Vec<(i32, i32, String, usize)>| {
         if values.len() < 3 { values.clear(); return; }
-        let x = values[0].0.trim().parse::<i32>();
-        let y = values[1].0.trim().parse::<i32>();
-        let filename = values[2].0.trim().trim_matches('"').trim().to_owned();
+        let x = values[0].trim().parse::<i32>();
+        let y = values[1].trim().parse::<i32>();
+        let filename = values[2].trim().trim_matches('"').trim().to_owned();
         if let (Ok(x), Ok(y)) = (x, y) {
             if !filename.is_empty() && !filename.contains(['\t', '\r', '\n']) {
-                declarations.push((x, y, filename, values[0].1.saturating_sub(1)));
+                declarations.push((x, y, filename, header_line));
             }
         }
         values.clear();
     };
 
     for (index, raw) in input.lines().enumerate() {
-        let line_number = index + 1;
         let line = raw.trim().trim_start_matches('\u{feff}').trim();
         if line.starts_with('[') && line.ends_with(']') && line.len() >= 3 {
             if in_map {
-                flush(&mut values, &mut declarations);
+                flush(&mut values, header_line, &mut declarations);
             }
             in_map = line[1..line.len() - 1].trim().eq_ignore_ascii_case("map");
+            header_line = if in_map { index + 1 } else { 0 };
             continue;
         }
         if in_map && !line.is_empty() {
-            values.push((line.to_owned(), line_number));
+            values.push(line.to_owned());
         }
     }
     if in_map {
-        flush(&mut values, &mut declarations);
+        flush(&mut values, header_line, &mut declarations);
     }
     declarations
 }
