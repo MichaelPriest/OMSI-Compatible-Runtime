@@ -311,6 +311,57 @@ impl<'a> O3dCursor<'a> {
     }
 }
 
+/// Stable C representation used by the future C# mesh-loader bridge.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct O3dSummaryC {
+    pub version: u8,
+    pub flags: u8,
+    pub has_matrix: u8,
+    pub reserved: u8,
+    pub vertex_count: u32,
+    pub triangle_count: u32,
+    pub material_count: u16,
+    pub bone_count: u16,
+}
+
+/// Inspect a mesh buffer through the native ABI.
+/// Returns 0 on success, -1 for invalid pointers/length, -2 for malformed
+/// or unsupported O3D data, and -3 if an unexpected panic is caught.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omsi_o3d_inspect(
+    input: *const u8,
+    length: usize,
+    output: *mut O3dSummaryC,
+) -> i32 {
+    std::panic::catch_unwind(|| {
+        if input.is_null() || output.is_null() || length == 0 {
+            return -1;
+        }
+        // SAFETY: caller promises input references length readable bytes
+        // and output points to a writable O3dSummaryC.
+        let bytes = unsafe { std::slice::from_raw_parts(input, length) };
+        let summary = match inspect_o3d(bytes) {
+            Ok(value) => value,
+            Err(_) => return -2,
+        };
+        unsafe {
+            output.write(O3dSummaryC {
+                version: summary.version,
+                flags: summary.flags,
+                has_matrix: u8::from(summary.has_matrix),
+                reserved: 0,
+                vertex_count: summary.vertex_count,
+                triangle_count: summary.triangle_count,
+                material_count: summary.material_count,
+                bone_count: summary.bone_count,
+            });
+        }
+        0
+    })
+    .unwrap_or(-3)
+}
+
 /// Validate the binary structure of one OMSI O3D mesh and report its declared
 /// geometry counts. Unknown section bytes are skipped one at a time, matching
 /// the original loader's permissive tag dispatch.
@@ -424,6 +475,20 @@ mod tests {
         }
         bytes.extend_from_slice(&1.0f32.to_le_bytes());
         bytes
+    }
+
+    #[test]
+    fn o3d_inspector_c_abi_returns_a_fixed_summary() {
+        let bytes = minimal_o3d(false);
+        let mut output = O3dSummaryC::default();
+        let result = unsafe { omsi_o3d_inspect(bytes.as_ptr(), bytes.len(), &mut output) };
+        assert_eq!(result, 0);
+        assert_eq!(output.version, 3);
+        assert_eq!(output.vertex_count, 1);
+        assert_eq!(output.triangle_count, 1);
+        assert_eq!(output.material_count, 1);
+        assert_eq!(output.bone_count, 1);
+        assert_eq!(output.has_matrix, 1);
     }
 
     #[test]
