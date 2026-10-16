@@ -64,7 +64,16 @@ internal static class OmsiRustGlobalConfigParser
             return false;
         }
 
-        var capacity = Math.Max(InitialCapacity, checked(source.Length * 4 + 1024));
+        int capacity;
+        try
+        {
+            capacity = Math.Max(InitialCapacity, checked(source.Length * 4 + 1024));
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+
         var buffer = ArrayPool<byte>.Shared.Rent(capacity);
         try
         {
