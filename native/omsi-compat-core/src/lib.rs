@@ -787,6 +787,26 @@ mod tests {
     }
 
     #[test]
+    fn o3d_decoder_supports_versions_five_and_seven_with_legacy_sentinels() {
+        // Versions 5 and 7 use the version >= 3 section-count format. Exercise
+        // both narrow and wide indices without applying protected-vertex scrambling.
+        for (version, wide_indices) in [(5u8, false), (7u8, true)] {
+            let original = minimal_o3d(wide_indices);
+            let mut bytes = vec![0x84, 0x19, version, if wide_indices { 1 } else { 0 }];
+            bytes.extend_from_slice(&0xffff_ffffu32.to_le_bytes());
+            bytes.extend_from_slice(&original[4..]);
+
+            let mesh = decode_o3d(&bytes).unwrap();
+            assert_eq!(mesh.version, version);
+            assert_eq!(mesh.vertices.len(), 1);
+            assert_eq!(mesh.triangles[0].indices, [0, 0, 0]);
+            assert_eq!(mesh.triangles[0].material, 0);
+            assert_eq!(mesh.materials[0].texture, "mat");
+            assert_eq!(mesh.bones[0].weights[0].vertex, 0);
+        }
+    }
+
+    #[test]
     fn o3d_decoder_rejects_bad_magic_and_unsupported_version() {
         let mut bad_magic = minimal_o3d(false);
         bad_magic[0] = 0;
