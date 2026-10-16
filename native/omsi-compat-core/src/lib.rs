@@ -467,6 +467,15 @@ pub fn decode_o3d(bytes: &[u8]) -> Result<O3dMesh, O3dError> {
             }
             0x49 => {
                 let count = cursor.count(wide_count)? as usize;
+                let index_bytes = if wide_index { 4usize } else { 2usize };
+                let triangle_bytes = index_bytes.checked_mul(3)
+                    .and_then(|n| n.checked_add(2))
+                    .and_then(|n| count.checked_mul(n))
+                    .ok_or(O3dError::CountOverflow)?;
+                let end = cursor.offset.checked_add(triangle_bytes).ok_or(O3dError::CountOverflow)?;
+                if end > bytes.len() {
+                    return Err(O3dError::Truncated { offset: cursor.offset });
+                }
                 for _ in 0..count {
                     let mut indices = [0u32; 3];
                     for index in &mut indices {
@@ -746,6 +755,17 @@ mod tests {
         assert_eq!(mesh.matrix.unwrap(), [0.0; 16]);
         assert_eq!(mesh.bones.len(), 1);
         assert_eq!(mesh.bones[0].weights[0].weight, 1.0);
+    }
+
+    #[test]
+    fn o3d_decoder_rejects_truncated_triangle_section_before_iteration() {
+        let mut bytes = minimal_o3d(false);
+        let triangle_start = 4 + 1 + 4 + 32;
+        bytes.truncate(triangle_start + 1 + 4 + 2);
+        assert!(matches!(
+            decode_o3d(&bytes),
+            Err(O3dError::Truncated { .. })
+        ));
     }
 
     #[test]
