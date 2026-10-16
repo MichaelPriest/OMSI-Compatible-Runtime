@@ -397,9 +397,9 @@ fn o3d_unscramble(state: u16, vertex: &mut O3dVertex) {
     if s < 600 {
         vertex.normal.swap(1, 2);
     } else if s > 4500 {
+        // The managed OMSI decoder uses this mutually-exclusive branch;
+        // values above 6500 are already covered by the >4500 condition.
         vertex.normal.swap(0, 1);
-    } else if s > 6500 {
-        vertex.normal.swap(0, 2);
     }
     if s % 5 == 0 {
         let m = (s % 100) as f32;
@@ -427,11 +427,15 @@ pub fn decode_o3d(bytes: &[u8]) -> Result<O3dMesh, O3dError> {
     let key = if version >= 4 { cursor.u32()? } else { 0 };
     let wide_count = version >= 3;
     let wide_index = version >= 3 && flags & 1 != 0;
-    let scrambled = version >= 4 && key != 0xffff_ffff;
+    // Match the managed loader's protected-vertex sentinel and seed
+    // arithmetic exactly. The sentinel is 0x0000FFFF (not 0xFFFFFFFF);
+    // the initial seed wraps to u16 before the alternative offset is applied.
+    let scrambled = version >= 4 && key != 0x0000_ffff;
     let alt = flags & 2 != 0;
     let mut state = if scrambled {
-        let k = key as i64 + (version as i64 - 4) + if alt { 0x17d } else { 0 };
-        k.rem_euclid(0xfde8) as u16
+        let version_offset = if version > 3 { (version - 4) as u32 } else { 0 };
+        let initial = key.wrapping_add(version_offset) as u16;
+        ((initial as u32 + if alt { 381 } else { 0 }) % 65_000) as u16
     } else { 0 };
     let mut mesh = O3dMesh {
         version, flags, vertices: Vec::new(), triangles: Vec::new(),
@@ -826,7 +830,7 @@ mod tests {
     fn o3d_decoder_accepts_version_four_with_unscrambled_key() {
         let original = minimal_o3d(false);
         let mut bytes = vec![0x84, 0x19, 4, 0];
-        bytes.extend_from_slice(&0xffff_ffffu32.to_le_bytes());
+        bytes.extend_from_slice(&0x0000_ffffu32.to_le_bytes());
         bytes.extend_from_slice(&original[4..]);
         let mesh = decode_o3d(&bytes).unwrap();
         assert_eq!(mesh.version, 4);
