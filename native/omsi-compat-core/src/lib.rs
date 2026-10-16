@@ -191,7 +191,7 @@ pub fn parse_global_cfg_tiles(input: &str) -> Vec<(i32, i32, String, usize)> {
         let y = values[1].trim().parse::<i32>();
         let filename = values[2].trim().trim_matches('"').trim().to_owned();
         if let (Ok(x), Ok(y)) = (x, y) {
-            if !filename.is_empty() && !filename.contains(['\t', '\r', '\n']) {
+            if !filename.is_empty() && !filename.contains('\t') && !filename.contains('\r') && !filename.contains('\n') {
                 declarations.push((x, y, filename, header_line));
             }
         }
