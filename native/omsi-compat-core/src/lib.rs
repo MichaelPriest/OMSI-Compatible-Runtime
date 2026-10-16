@@ -388,6 +388,71 @@ pub fn inspect_o3d(bytes: &[u8]) -> Result<O3dSummary, O3dError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn push_u32(bytes: &mut Vec<u8>, value: u32) {
+        bytes.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn minimal_o3d(long_indices: bool) -> Vec<u8> {
+        let mut bytes = vec![0x84, 0x19, 3, if long_indices { 1 } else { 0 }];
+        bytes.push(0x17); // one vertex
+        push_u32(&mut bytes, 1);
+        bytes.extend_from_slice(&[0; 32]);
+        bytes.push(0x49); // one triangle
+        push_u32(&mut bytes, 1);
+        if long_indices {
+            push_u32(&mut bytes, 0);
+            push_u32(&mut bytes, 0);
+            push_u32(&mut bytes, 0);
+        } else {
+            bytes.extend_from_slice(&[0; 6]);
+        }
+        bytes.extend_from_slice(&[0; 2]); // material index
+        bytes.push(0x26); // one material
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&[0; 44]);
+        bytes.push(3);
+        bytes.extend_from_slice(b"mat");
+        bytes.push(0x79); // matrix
+        bytes.extend_from_slice(&[0; 64]);
+        bytes.push(0x54); // one bone with one weight
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.push(1);
+        bytes.push(b'b');
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        if long_indices {
+            push_u32(&mut bytes, 0);
+        } else {
+            bytes.extend_from_slice(&0u16.to_le_bytes());
+        }
+        bytes.extend_from_slice(&1.0f32.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn o3d_inspector_reads_standard_sections_and_geometry_counts() {
+        let summary = inspect_o3d(&minimal_o3d(false)).unwrap();
+        assert_eq!(summary, O3dSummary {
+            version: 3, flags: 0, vertex_count: 1, triangle_count: 1,
+            material_count: 1, has_matrix: true, bone_count: 1,
+        });
+    }
+
+    #[test]
+    fn o3d_inspector_handles_32_bit_indices() {
+        let summary = inspect_o3d(&minimal_o3d(true)).unwrap();
+        assert_eq!(summary.flags & 1, 1);
+        assert_eq!(summary.triangle_count, 1);
+        assert_eq!(summary.bone_count, 1);
+    }
+
+    #[test]
+    fn o3d_inspector_rejects_bad_magic_unsupported_version_and_truncation() {
+        assert_eq!(inspect_o3d(&[0, 0, 3, 0]), Err(O3dError::BadMagic));
+        assert_eq!(inspect_o3d(&[0x84, 0x19, 2]), Err(O3dError::UnsupportedVersion(2)));
+        assert!(matches!(inspect_o3d(&[0x84, 0x19, 3, 0, 0x17, 1, 0, 0]), Err(O3dError::Truncated { .. })));
+    }
+
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
 
