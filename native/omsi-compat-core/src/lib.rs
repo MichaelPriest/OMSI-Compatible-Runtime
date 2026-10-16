@@ -442,7 +442,10 @@ pub fn decode_o3d(bytes: &[u8]) -> Result<O3dMesh, O3dError> {
             0x17 => {
                 let count = cursor.count(wide_count)? as usize;
                 let byte_count = count.checked_mul(32).ok_or(O3dError::CountOverflow)?;
-                cursor.take(byte_count)?;
+                let end = cursor.offset.checked_add(byte_count).ok_or(O3dError::CountOverflow)?;
+                if end > bytes.len() {
+                    return Err(O3dError::Truncated { offset: cursor.offset });
+                }
                 mesh.vertices.reserve(count);
                 let n16 = (count as i64).rem_euclid(0xfde8) as u32;
                 let mut fb = 0u32;
