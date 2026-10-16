@@ -877,6 +877,30 @@ mod tests {
     }
 
     #[test]
+    fn o3d_decoder_rejects_triangle_material_outside_material_table() {
+        let mut bytes = minimal_o3d(false);
+        let triangle_start = 4 + 1 + 4 + 32 + 1 + 4;
+        bytes[triangle_start + 6..triangle_start + 8]
+            .copy_from_slice(&1u16.to_le_bytes());
+        assert!(matches!(
+            decode_o3d(&bytes),
+            Err(O3dError::InvalidMaterialIndex { index: 1, material_count: 1 })
+        ));
+    }
+
+    #[test]
+    fn o3d_decoder_rejects_bone_weight_outside_vertex_buffer() {
+        let mut bytes = minimal_o3d(false);
+        // Final section is one bone with one (u16 index, f32 weight) entry.
+        let weight_index = bytes.len() - 6;
+        bytes[weight_index..weight_index + 2].copy_from_slice(&1u16.to_le_bytes());
+        assert!(matches!(
+            decode_o3d(&bytes),
+            Err(O3dError::InvalidVertexIndex { index: 1, vertex_count: 1 })
+        ));
+    }
+
+    #[test]
     fn o3d_decoder_accepts_version_four_with_unscrambled_key() {
         let original = minimal_o3d(false);
         let mut bytes = vec![0x84, 0x19, 4, 0];
