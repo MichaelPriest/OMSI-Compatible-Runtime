@@ -269,7 +269,6 @@ pub enum O3dError {
     Truncated { offset: usize },
     BadMagic,
     UnsupportedVersion(u8),
-    InvalidSection { tag: u8, offset: usize },
     CountOverflow,
 }
 
@@ -334,7 +333,6 @@ pub fn inspect_o3d(bytes: &[u8]) -> Result<O3dSummary, O3dError> {
     };
 
     while cursor.offset < bytes.len() {
-        let tag_offset = cursor.offset;
         let tag = cursor.u8()?;
         match tag {
             0x17 => {
@@ -378,7 +376,6 @@ pub fn inspect_o3d(bytes: &[u8]) -> Result<O3dSummary, O3dError> {
             }
             _ => {
                 // OMSI's loader ignores unrecognized bytes and advances by one.
-                let _ = tag_offset;
             }
         }
     }
