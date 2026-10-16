@@ -508,6 +508,18 @@ pub fn decode_o3d(bytes: &[u8]) -> Result<O3dMesh, O3dError> {
                 for _ in 0..count {
                     let name = cursor.string8()?;
                     let weight_count = cursor.u16()? as usize;
+                    // Validate the complete weight payload before allocating from
+                    // an untrusted file-declared count. Each entry contains an
+                    // index (16- or 32-bit) and one f32 weight.
+                    let index_bytes = if wide_index { 4usize } else { 2usize };
+                    let weight_bytes = index_bytes.checked_add(4)
+                        .and_then(|size| size.checked_mul(weight_count))
+                        .ok_or(O3dError::CountOverflow)?;
+                    let end = cursor.offset.checked_add(weight_bytes)
+                        .ok_or(O3dError::CountOverflow)?;
+                    if end > bytes.len() {
+                        return Err(O3dError::Truncated { offset: cursor.offset });
+                    }
                     let mut weights = Vec::with_capacity(weight_count);
                     for _ in 0..weight_count {
                         let vertex = if wide_index { cursor.u32()? } else { cursor.u16()? as u32 };
@@ -786,6 +798,17 @@ mod tests {
             decode_o3d(&bytes),
             Err(O3dError::Truncated { .. })
         ));
+    }
+
+    #[test]
+    fn o3d_decoder_rejects_truncated_bone_weights_before_allocation() {
+        let mut bytes = minimal_o3d(false);
+        // Remove the valid bone's weight payload and declare the maximum
+        // 16-bit weight count. Decoder must return a bounds error before Vec allocation.
+        bytes.truncate(bytes.len() - 6);
+        let count_offset = bytes.len() - 2;
+        bytes[count_offset..count_offset + 2].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert!(matches!(decode_o3d(&bytes), Err(O3dError::Truncated { .. })));
     }
 
     #[test]
