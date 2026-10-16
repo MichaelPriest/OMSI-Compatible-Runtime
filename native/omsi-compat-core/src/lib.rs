@@ -313,6 +313,229 @@ impl<'a> O3dCursor<'a> {
     }
 }
 
+/// Decoded vertex in OMSI coordinates (X right, Y forward, Z up).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct O3dVertex {
+    pub position: [f32; 3],
+    pub normal: [f32; 3],
+    pub uv: [f32; 2],
+}
+
+/// Decoded triangle and its zero-based material index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct O3dTriangle {
+    pub indices: [u32; 3],
+    pub material: u16,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct O3dMaterial {
+    pub diffuse: [f32; 4],
+    pub specular: [f32; 3],
+    pub emissive: [f32; 3],
+    pub specular_power: f32,
+    pub texture: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct O3dBoneWeight {
+    pub vertex: u32,
+    pub weight: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct O3dBone {
+    pub name: String,
+    pub weights: Vec<O3dBoneWeight>,
+}
+
+/// Fully decoded mesh data. The matrix is kept in the file's original 16-float order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct O3dMesh {
+    pub version: u8,
+    pub flags: u8,
+    pub vertices: Vec<O3dVertex>,
+    pub triangles: Vec<O3dTriangle>,
+    pub materials: Vec<O3dMaterial>,
+    pub matrix: Option<[f32; 16]>,
+    pub bones: Vec<O3dBone>,
+}
+
+impl O3dCursor<'_> {
+    fn f32(&mut self) -> Result<f32, O3dError> {
+        Ok(f32::from_bits(self.u32()?))
+    }
+
+    fn string8(&mut self) -> Result<String, O3dError> {
+        let length = self.u8()? as usize;
+        let raw = self.take(length)?;
+        // O3D text uses the Windows legacy code page for stock content. Keep
+        // ASCII intact and map unsupported high bytes deterministically.
+        Ok(raw.iter().map(|byte| char::from(*byte)).collect())
+    }
+}
+
+fn o3d_fraction_byte(position: [f32; 3]) -> u32 {
+    let fraction = |value: f32| (value as f64) - (value as f64).trunc();
+    let product = (fraction(position[0]) * fraction(position[1]) * fraction(position[2])).abs() * 600.0;
+    (product.trunc() as i64).rem_euclid(256) as u32
+}
+
+fn o3d_unscramble(state: u16, vertex: &mut O3dVertex) {
+    let s = state;
+    if s < 1000 {
+        vertex.position.swap(0, 1);
+    } else if s < 3000 {
+        vertex.position.swap(0, 2);
+    } else if s > 7000 {
+        vertex.position.swap(1, 2);
+    }
+    if s & 3 == 0 { vertex.normal[0] = -vertex.normal[0]; }
+    if s % 6 == 0 { vertex.normal[1] = -vertex.normal[1]; }
+    if s % 7 == 0 { vertex.normal[2] = -vertex.normal[2]; }
+    if s < 600 {
+        vertex.normal.swap(1, 2);
+    } else if s > 4500 {
+        vertex.normal.swap(0, 1);
+    } else if s > 6500 {
+        vertex.normal.swap(0, 2);
+    }
+    if s % 5 == 0 {
+        let m = (s % 100) as f32;
+        vertex.uv[0] -= m * m / 10000.0;
+    }
+    if s % 3 == 0 {
+        let m = (s % 50) as f32;
+        vertex.uv[1] -= m * m / 2500.0;
+    }
+}
+
+/// Decode vertices, normals, UVs, triangle indices, materials, transform and bones.
+/// This is not wired into the renderer yet; callers should continue using the
+/// established loader until parity is checked against real installed models.
+pub fn decode_o3d(bytes: &[u8]) -> Result<O3dMesh, O3dError> {
+    let mut cursor = O3dCursor { bytes, offset: 0 };
+    if cursor.take(2)? != [0x84, 0x19] {
+        return Err(O3dError::BadMagic);
+    }
+    let version = cursor.u8()?;
+    if !matches!(version, 1 | 3 | 4 | 5 | 7) {
+        return Err(O3dError::UnsupportedVersion(version));
+    }
+    let flags = if version >= 3 { cursor.u8()? } else { 0 };
+    let key = if version >= 4 { cursor.u32()? } else { 0 };
+    let wide_count = version >= 3;
+    let wide_index = version >= 3 && flags & 1 != 0;
+    let scrambled = version >= 4 && key != 0xffff_ffff;
+    let alt = flags & 2 != 0;
+    let mut state = if scrambled {
+        let k = key as i64 + (version as i64 - 4) + if alt { 0x17d } else { 0 };
+        k.rem_euclid(0xfde8) as u16
+    } else { 0 };
+    let mut mesh = O3dMesh {
+        version, flags, vertices: Vec::new(), triangles: Vec::new(),
+        materials: Vec::new(), matrix: None, bones: Vec::new(),
+    };
+
+    while cursor.offset < bytes.len() {
+        match cursor.u8()? {
+            0x17 => {
+                let count = cursor.count(wide_count)? as usize;
+                let byte_count = count.checked_mul(32).ok_or(O3dError::CountOverflow)?;
+                cursor.take(byte_count)?;
+                mesh.vertices.reserve(count);
+                let n16 = (count as i64).rem_euclid(0xfde8) as u32;
+                let mut fb = 0u32;
+                for _ in 0..count {
+                    let mut vertex = O3dVertex {
+                        position: [cursor.f32()?, cursor.f32()?, cursor.f32()?],
+                        normal: [cursor.f32()?, cursor.f32()?, cursor.f32()?],
+                        uv: [cursor.f32()?, cursor.f32()?],
+                    };
+                    if scrambled {
+                        if key == 0 { state = if alt { 0x130 } else { 0 }; }
+                        state = ((state as u32 * n16 + n16 * fb) % 8000) as u16;
+                        fb = o3d_fraction_byte(vertex.position);
+                        o3d_unscramble(state, &mut vertex);
+                    }
+                    mesh.vertices.push(vertex);
+                }
+            }
+            0x49 => {
+                let count = cursor.count(wide_count)? as usize;
+                for _ in 0..count {
+                    let mut indices = [0u32; 3];
+                    for index in &mut indices {
+                        *index = if wide_index { cursor.u32()? } else { cursor.u16()? as u32 };
+                    }
+                    let material = cursor.u16()?;
+                    mesh.triangles.push(O3dTriangle { indices, material });
+                }
+            }
+            0x26 => {
+                let count = cursor.u16()? as usize;
+                for _ in 0..count {
+                    let diffuse = [cursor.f32()?, cursor.f32()?, cursor.f32()?, cursor.f32()?];
+                    let specular = [cursor.f32()?, cursor.f32()?, cursor.f32()?];
+                    let emissive = [cursor.f32()?, cursor.f32()?, cursor.f32()?];
+                    let specular_power = cursor.f32()?;
+                    let texture = cursor.string8()?;
+                    mesh.materials.push(O3dMaterial {
+                        diffuse, specular, emissive, specular_power, texture,
+                    });
+                }
+            }
+            0x79 => {
+                let mut matrix = [0.0f32; 16];
+                for value in &mut matrix { *value = cursor.f32()?; }
+                mesh.matrix = Some(matrix);
+            }
+            0x54 => {
+                let count = cursor.u16()? as usize;
+                for _ in 0..count {
+                    let name = cursor.string8()?;
+                    let weight_count = cursor.u16()? as usize;
+                    let mut weights = Vec::with_capacity(weight_count);
+                    for _ in 0..weight_count {
+                        let vertex = if wide_index { cursor.u32()? } else { cursor.u16()? as u32 };
+                        let weight = cursor.f32()?;
+                        weights.push(O3dBoneWeight { vertex, weight });
+                    }
+                    mesh.bones.push(O3dBone { name, weights });
+                }
+            }
+            // Keep the original loader's permissive unknown-tag behavior.
+            _ => {}
+        }
+    }
+
+    for triangle in &mesh.triangles {
+        for index in triangle.indices {
+            if index as usize >= mesh.vertices.len() {
+                return Err(O3dError::InvalidVertexIndex {
+                    index, vertex_count: mesh.vertices.len().min(u32::MAX as usize) as u32,
+                });
+            }
+        }
+        if !mesh.materials.is_empty() && triangle.material as usize >= mesh.materials.len() {
+            return Err(O3dError::InvalidMaterialIndex {
+                index: triangle.material,
+                material_count: mesh.materials.len().min(u16::MAX as usize) as u16,
+            });
+        }
+    }
+    for bone in &mesh.bones {
+        for weight in &bone.weights {
+            if weight.vertex as usize >= mesh.vertices.len() {
+                return Err(O3dError::InvalidVertexIndex {
+                    index: weight.vertex, vertex_count: mesh.vertices.len().min(u32::MAX as usize) as u32,
+                });
+            }
+        }
+    }
+    Ok(mesh)
+}
+
 /// Stable C representation used by the future C# mesh-loader bridge.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -502,6 +725,34 @@ mod tests {
         }
         bytes.extend_from_slice(&1.0f32.to_le_bytes());
         bytes
+    }
+
+    #[test]
+    fn o3d_decoder_returns_geometry_material_and_transform() {
+        let bytes = minimal_o3d(false);
+        let mesh = decode_o3d(&bytes).unwrap();
+        assert_eq!(mesh.version, 3);
+        assert_eq!(mesh.vertices.len(), 1);
+        assert_eq!(mesh.vertices[0].position, [0.0, 0.0, 0.0]);
+        assert_eq!(mesh.vertices[0].normal, [0.0, 0.0, 0.0]);
+        assert_eq!(mesh.vertices[0].uv, [0.0, 0.0]);
+        assert_eq!(mesh.triangles, vec![O3dTriangle { indices: [0, 0, 0], material: 0 }]);
+        assert_eq!(mesh.materials.len(), 1);
+        assert_eq!(mesh.materials[0].texture, "mat");
+        assert_eq!(mesh.matrix.unwrap(), [0.0; 16]);
+        assert_eq!(mesh.bones.len(), 1);
+        assert_eq!(mesh.bones[0].weights[0].weight, 1.0);
+    }
+
+    #[test]
+    fn o3d_decoder_rejects_bad_geometry_references() {
+        let mut bytes = minimal_o3d(false);
+        let triangle_start = 4 + 1 + 4 + 32 + 1 + 4;
+        bytes[triangle_start..triangle_start + 2].copy_from_slice(&1u16.to_le_bytes());
+        assert!(matches!(
+            decode_o3d(&bytes),
+            Err(O3dError::InvalidVertexIndex { index: 1, vertex_count: 1 })
+        ));
     }
 
     #[test]
