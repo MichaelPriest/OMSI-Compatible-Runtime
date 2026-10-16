@@ -13,6 +13,11 @@ public static class GlobalConfigMapParser
     {
         ArgumentNullException.ThrowIfNull(map);
 
+        if (OmsiRustGlobalConfigParser.TryReadTileDeclarations(map.GlobalConfigPath, out var nativeDeclarations))
+        {
+            return nativeDeclarations;
+        }
+
         var document = OmsiSectionDocument.ParseFile(map.GlobalConfigPath);
         var declarations = new List<OmsiGlobalTileDeclaration>();
 
