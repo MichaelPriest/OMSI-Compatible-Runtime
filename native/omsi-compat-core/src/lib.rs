@@ -741,6 +741,26 @@ mod tests {
     }
 
     #[test]
+    fn o3d_decoder_rejects_bad_magic_and_unsupported_version() {
+        let mut bad_magic = minimal_o3d(false);
+        bad_magic[0] = 0;
+        assert!(matches!(decode_o3d(&bad_magic), Err(O3dError::BadMagic)));
+
+        let mut unsupported = minimal_o3d(false);
+        unsupported[2] = 2;
+        assert!(matches!(
+            decode_o3d(&unsupported),
+            Err(O3dError::UnsupportedVersion(2))
+        ));
+    }
+
+    #[test]
+    fn o3d_decoder_rejects_impossible_vertex_count_before_allocation() {
+        let bytes = [0x84, 0x19, 3, 0, 0x17, 0xff, 0xff, 0xff, 0xff];
+        assert!(matches!(decode_o3d(&bytes), Err(O3dError::Truncated { .. })));
+    }
+
+    #[test]
     fn o3d_decoder_returns_geometry_material_and_transform() {
         let bytes = minimal_o3d(false);
         let mesh = decode_o3d(&bytes).unwrap();
