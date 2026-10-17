@@ -641,22 +641,18 @@ public sealed partial class MainWindow :
             button.Background =
                 new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Windows.UI.Color.FromArgb(
-                        selected
-                            ? (byte)255
-                            : (byte)0,
-                        23,
-                        71,
-                        153));
+                        255,
+                        selected ? (byte)23 : (byte)13,
+                        selected ? (byte)71 : (byte)27,
+                        selected ? (byte)153 : (byte)42));
 
             button.BorderBrush =
                 new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Windows.UI.Color.FromArgb(
-                        selected
-                            ? (byte)255
-                            : (byte)0,
-                        36,
-                        87,
-                        175));
+                        255,
+                        selected ? (byte)56 : (byte)27,
+                        selected ? (byte)189 : (byte)48,
+                        selected ? (byte)248 : (byte)69));
 
             button.BorderThickness =
                 selected
