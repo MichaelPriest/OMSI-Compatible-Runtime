@@ -42,20 +42,6 @@ VertexOutput VSMain(VertexInput input)
     return output;
 }
 
-float3 ComposeDetail(
-    float3 baseRgb,
-    float3 detailRgb)
-{
-    float3 modulation =
-        lerp(
-            float3(1.0f, 1.0f, 1.0f),
-            saturate(detailRgb * 2.0f),
-            0.35f);
-
-    return saturate(
-        baseRgb * modulation);
-}
-
 float4 PSColor(VertexOutput input) : SV_TARGET
 {
     return input.Color;
@@ -77,16 +63,18 @@ float4 PSBaseDetail(VertexOutput input) : SV_TARGET
             DiffuseSampler,
             input.Uv);
 
-    float4 detail =
+    float3 detail =
         DetailTexture.Sample(
             DiffuseSampler,
-            input.DetailUv);
+            input.DetailUv).rgb;
 
+    // OMSI/openOMSI ground detail is multiplied directly. Do not remap it
+    // around mid-grey: stock detail textures are bright and the old
+    // modulation made roads and terrain noticeably washed out.
     return float4(
-        ComposeDetail(
-            baseColor.rgb,
-            detail.rgb) *
-            input.Color.rgb,
+        baseColor.rgb *
+        detail *
+        input.Color.rgb,
         1.0f);
 }
 
@@ -117,10 +105,10 @@ float4 PSLayerDetail(VertexOutput input) : SV_TARGET
             DiffuseSampler,
             input.Uv);
 
-    float4 detail =
+    float3 detail =
         DetailTexture.Sample(
             DiffuseSampler,
-            input.DetailUv);
+            input.DetailUv).rgb;
 
     float mask =
         MaskTexture.Sample(
@@ -128,10 +116,9 @@ float4 PSLayerDetail(VertexOutput input) : SV_TARGET
             input.MaskUv).a;
 
     return float4(
-        ComposeDetail(
-            baseColor.rgb,
-            detail.rgb) *
-            input.Color.rgb,
+        baseColor.rgb *
+        detail *
+        input.Color.rgb,
         baseColor.a *
         input.Color.a *
         mask);
