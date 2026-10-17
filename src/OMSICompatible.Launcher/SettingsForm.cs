@@ -82,6 +82,7 @@ internal sealed class SettingsForm : Form
             OnSettingsKeyDown;
 
         BuildInterface();
+        ApplyGameUiTheme(this);
         LoadPresetList();
         LoadInputFiles();
         RebuildOptionTabs();
@@ -135,6 +136,77 @@ internal sealed class SettingsForm : Form
 
         Controls.Add(
             root);
+    }
+
+    private static void ApplyGameUiTheme(Control root)
+    {
+        foreach (Control control in root.Controls)
+        {
+            switch (control)
+            {
+                case Button button:
+                    button.FlatStyle = FlatStyle.Flat;
+                    button.BackColor = Color.FromArgb(28, 43, 59);
+                    button.ForeColor = Color.FromArgb(232, 240, 248);
+                    button.Cursor = Cursors.Hand;
+                    button.Padding = new Padding(8, 4, 8, 4);
+                    button.FlatAppearance.BorderColor = Color.FromArgb(57, 78, 99);
+                    button.FlatAppearance.MouseOverBackColor = Color.FromArgb(39, 62, 83);
+                    button.FlatAppearance.BorderSize = 1;
+                    button.MinimumSize = new Size(0, 34);
+                    break;
+
+                case DataGridView grid:
+                    grid.BackgroundColor = Color.FromArgb(13, 20, 30);
+                    grid.BorderStyle = BorderStyle.None;
+                    grid.GridColor = Color.FromArgb(39, 54, 70);
+                    grid.EnableHeadersVisualStyles = false;
+                    grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(24, 39, 55);
+                    grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(210, 225, 239);
+                    grid.DefaultCellStyle.BackColor = Color.FromArgb(17, 29, 42);
+                    grid.DefaultCellStyle.ForeColor = Color.FromArgb(225, 235, 245);
+                    grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(8, 105, 145);
+                    grid.DefaultCellStyle.SelectionForeColor = Color.White;
+                    grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(20, 34, 48);
+                    grid.RowHeadersDefaultCellStyle.BackColor = Color.FromArgb(24, 39, 55);
+                    grid.RowHeadersDefaultCellStyle.ForeColor = Color.FromArgb(180, 198, 216);
+                    break;
+
+                case TextBox textBox:
+                    textBox.BackColor = Color.FromArgb(17, 29, 42);
+                    textBox.ForeColor = Color.FromArgb(238, 244, 250);
+                    textBox.BorderStyle = BorderStyle.FixedSingle;
+                    break;
+
+                case RichTextBox richTextBox:
+                    richTextBox.BackColor = Color.FromArgb(10, 20, 32);
+                    richTextBox.ForeColor = Color.FromArgb(221, 232, 243);
+                    richTextBox.BorderStyle = BorderStyle.FixedSingle;
+                    richTextBox.Font = new Font("Cascadia Mono", 9.5f);
+                    break;
+
+                case ComboBox comboBox:
+                    comboBox.BackColor = Color.FromArgb(17, 29, 42);
+                    comboBox.ForeColor = Color.FromArgb(238, 244, 250);
+                    comboBox.FlatStyle = FlatStyle.Flat;
+                    break;
+
+                case CheckBox checkBox:
+                    checkBox.ForeColor = Color.FromArgb(214, 226, 239);
+                    checkBox.Padding = new Padding(3);
+                    break;
+
+                case TabControl tabs:
+                    tabs.BackColor = Color.FromArgb(13, 20, 30);
+                    tabs.ForeColor = Color.FromArgb(232, 240, 248);
+                    break;
+            }
+
+            if (control is not DataGridView)
+            {
+                ApplyGameUiTheme(control);
+            }
+        }
     }
 
     private Control BuildHeader()
