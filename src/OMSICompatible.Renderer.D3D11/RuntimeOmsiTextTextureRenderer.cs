@@ -191,9 +191,15 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
                 out var alphaWidth,
                 out var alphaHeight))
         {
-            _fontPixels[
-                fontName] =
-                null;
+            // Content roots can be mounted after the renderer is created
+            // (for example when the OMSI installation is selected during
+            // startup). Do not permanently cache a miss while Fonts is absent;
+            // retry once the directory becomes available.
+            if (Directory.Exists(_fontsDirectory))
+            {
+                _fontPixels[fontName] = null;
+            }
+
             return null;
         }
 
@@ -249,9 +255,8 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
         if (!Directory.Exists(
                 _fontsDirectory))
         {
-            _fontDefinitions[
-                fontName] =
-                null;
+            // The installation/content root may still be initializing.
+            // Leave this uncached so a later frame can retry when Fonts exists.
             return null;
         }
 
