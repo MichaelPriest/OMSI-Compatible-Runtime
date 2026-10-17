@@ -22,9 +22,10 @@
             <StackPanel Orientation="Horizontal"
                         VerticalAlignment="Center"
                         Spacing="10">
-                <Border Width="30"
-                        Height="30"
-                        Background="#F58B22">
+                <Border Width="34"
+                        Height="34"
+                        Background="#F58B22"
+                        CornerRadius="9">
                     <TextBlock Text="O"
                                Foreground="#08111C"
                                FontWeight="Bold"
@@ -34,7 +35,7 @@
                 </Border>
                 <TextBlock Text="OMSI Compatible Runtime"
                            Foreground="White"
-                           FontSize="15"
+                           FontSize="16"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"/>
             </StackPanel>
@@ -47,7 +48,7 @@
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="236"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
@@ -59,8 +60,15 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <StackPanel Spacing="6">
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="MENU PRINCIPAL"
+                                   Margin="10,2,0,5"
+                                   Foreground="#607A94"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   CharacterSpacing="1000"/>
                         <Button x:Name="HomeNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="HomeNavButton_Click">
@@ -70,6 +78,7 @@
                             </StackPanel>
                         </Button>
                         <Button x:Name="PlayNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="NewSessionButton_Click">
@@ -78,7 +87,14 @@
                                 <TextBlock Text="Jogar" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
+                        <TextBlock Text="BIBLIOTECA"
+                                   Margin="10,10,0,2"
+                                   Foreground="#607A94"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   CharacterSpacing="1000"/>
                         <Button x:Name="MapsNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="MapsNavButton_Click">
@@ -88,6 +104,7 @@
                             </StackPanel>
                         </Button>
                         <Button x:Name="VehiclesNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="VehiclesNavButton_Click">
@@ -97,6 +114,7 @@
                             </StackPanel>
                         </Button>
                         <Button x:Name="AddonsNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="AddonsNavButton_Click">
@@ -106,6 +124,7 @@
                             </StackPanel>
                         </Button>
                         <Button x:Name="MultiplayerNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="MultiplayerNavButton_Click">
@@ -114,7 +133,14 @@
                                 <TextBlock Text="Multiplayer" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
+                        <TextBlock Text="SISTEMA"
+                                   Margin="10,10,0,2"
+                                   Foreground="#607A94"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   CharacterSpacing="1000"/>
                         <Button x:Name="CompatibilityNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="CompatibilityNavButton_Click">
@@ -124,6 +150,7 @@
                             </StackPanel>
                         </Button>
                         <Button x:Name="ControlsNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="ControlsNavButton_Click">
@@ -133,6 +160,7 @@
                             </StackPanel>
                         </Button>
                         <Button x:Name="SettingsNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="SettingsNavButton_Click">
@@ -142,6 +170,7 @@
                             </StackPanel>
                         </Button>
                         <Button x:Name="DiagnosticsNavButton"
+                                Style="{StaticResource NavButtonStyle}"
                                 Height="46"
                                 HorizontalContentAlignment="Left"
                                 Click="DiagnosticsNavButton_Click">
