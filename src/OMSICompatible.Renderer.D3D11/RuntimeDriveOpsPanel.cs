@@ -155,13 +155,13 @@ internal sealed class RuntimeDriveOpsPanel : Panel
     private bool? _lastEngineState;
 
     private static readonly Color OmsiPanel =
-        Color.FromArgb(214, 218, 224);
+        Color.FromArgb(13, 20, 30);
     private static readonly Color OmsiDark =
-        Color.FromArgb(52, 62, 72);
+        Color.FromArgb(9, 21, 34);
     private static readonly Color OmsiBlue =
-        Color.FromArgb(67, 108, 143);
+        Color.FromArgb(8, 126, 164);
     private static readonly Color OmsiText =
-        Color.FromArgb(27, 31, 36);
+        Color.FromArgb(232, 240, 248);
 
     public RuntimeDriveOpsPanel()
     {
@@ -1907,7 +1907,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         {
             Text = text,
             BorderStyle = BorderStyle.FixedSingle,
-            BackColor = Color.White,
+            BackColor = Color.FromArgb(17, 29, 42),
             ForeColor = OmsiText,
             Font = new Font("Segoe UI", 9.0f)
         };
@@ -1932,10 +1932,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             AutoSize = false,
             Text = text,
             BackColor =
-                Color.FromArgb(
-                    238,
-                    241,
-                    244),
+                Color.FromArgb(17, 29, 42),
             ForeColor = OmsiText,
             BorderStyle =
                 BorderStyle.FixedSingle,
@@ -1956,7 +1953,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
         {
             DropDownStyle =
                 ComboBoxStyle.DropDownList,
-            BackColor = Color.White,
+            BackColor = Color.FromArgb(17, 29, 42),
             ForeColor = OmsiText,
             Font = new Font("Segoe UI", 9.0f)
         };
@@ -1974,7 +1971,7 @@ internal sealed class RuntimeDriveOpsPanel : Panel
                 Height = 32,
                 FlatStyle = FlatStyle.Flat,
                 BackColor =
-                    Color.FromArgb(238, 241, 244),
+                    Color.FromArgb(24, 39, 55),
                 ForeColor = OmsiText,
                 Font =
                     new Font(
@@ -1985,7 +1982,10 @@ internal sealed class RuntimeDriveOpsPanel : Panel
             };
 
         button.FlatAppearance.BorderColor =
-            Color.FromArgb(140, 148, 157);
+            Color.FromArgb(57, 78, 99);
+        button.FlatAppearance.MouseOverBackColor =
+            Color.FromArgb(39, 62, 83);
+        button.FlatAppearance.BorderSize = 1;
         button.Click += handler;
         return button;
     }
