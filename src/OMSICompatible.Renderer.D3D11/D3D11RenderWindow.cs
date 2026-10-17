@@ -8976,7 +8976,11 @@ public sealed class D3D11RenderWindow : Form
 
     private static bool IsTerrainBatchVisible(
         RuntimeTerrainBatch batch,
-        Matrix4x4 viewProjection)
+        Matrix4x4 viewProjection,
+        float radiusXScale,
+        float radiusYScale,
+        float radiusZScale,
+        float radiusWScale)
     {
         if (batch.Radius <=
             0.0f)
@@ -8984,9 +8988,8 @@ public sealed class D3D11RenderWindow : Form
             return true;
         }
 
-        // Conservative clip-space sphere test. It mirrors openOMSI's
-        // frustum-culling approach while retaining this renderer's D3D11
-        // pipeline and OMSI terrain/material semantics.
+        // Conservative clip-space sphere test. Matrix-dependent scales are
+        // computed once per frame in DrawTerrain, not once per terrain batch.
         var center =
             Vector4.Transform(
                 new Vector4(
@@ -8996,34 +8999,14 @@ public sealed class D3D11RenderWindow : Form
 
         var radius =
             batch.Radius;
-
         var radiusX =
-            radius *
-            MathF.Sqrt(
-                viewProjection.M11 * viewProjection.M11 +
-                viewProjection.M21 * viewProjection.M21 +
-                viewProjection.M31 * viewProjection.M31);
-
+            radius * radiusXScale;
         var radiusY =
-            radius *
-            MathF.Sqrt(
-                viewProjection.M12 * viewProjection.M12 +
-                viewProjection.M22 * viewProjection.M22 +
-                viewProjection.M32 * viewProjection.M32);
-
+            radius * radiusYScale;
         var radiusZ =
-            radius *
-            MathF.Sqrt(
-                viewProjection.M13 * viewProjection.M13 +
-                viewProjection.M23 * viewProjection.M23 +
-                viewProjection.M33 * viewProjection.M33);
-
+            radius * radiusZScale;
         var radiusW =
-            radius *
-            MathF.Sqrt(
-                viewProjection.M14 * viewProjection.M14 +
-                viewProjection.M24 * viewProjection.M24 +
-                viewProjection.M34 * viewProjection.M34);
+            radius * radiusWScale;
 
         var horizontalExtent =
             radiusX + radiusW;
@@ -9154,6 +9137,30 @@ public sealed class D3D11RenderWindow : Form
         var terrainViewProjection =
             CurrentSceneViewProjection;
 
+        // These four scale factors depend only on the camera matrix. Compute
+        // them once per frame instead of performing four square roots for
+        // every terrain layer/batch.
+        var terrainCullRadiusXScale =
+            MathF.Sqrt(
+                terrainViewProjection.M11 * terrainViewProjection.M11 +
+                terrainViewProjection.M21 * terrainViewProjection.M21 +
+                terrainViewProjection.M31 * terrainViewProjection.M31);
+        var terrainCullRadiusYScale =
+            MathF.Sqrt(
+                terrainViewProjection.M12 * terrainViewProjection.M12 +
+                terrainViewProjection.M22 * terrainViewProjection.M22 +
+                terrainViewProjection.M32 * terrainViewProjection.M32);
+        var terrainCullRadiusZScale =
+            MathF.Sqrt(
+                terrainViewProjection.M13 * terrainViewProjection.M13 +
+                terrainViewProjection.M23 * terrainViewProjection.M23 +
+                terrainViewProjection.M33 * terrainViewProjection.M33);
+        var terrainCullRadiusWScale =
+            MathF.Sqrt(
+                terrainViewProjection.M14 * terrainViewProjection.M14 +
+                terrainViewProjection.M24 * terrainViewProjection.M24 +
+                terrainViewProjection.M34 * terrainViewProjection.M34);
+
         foreach (var batch in
             _terrainGeometry.Batches)
         {
@@ -9161,7 +9168,11 @@ public sealed class D3D11RenderWindow : Form
                     0 ||
                 !IsTerrainBatchVisible(
                     batch,
-                    terrainViewProjection))
+                    terrainViewProjection,
+                    terrainCullRadiusXScale,
+                    terrainCullRadiusYScale,
+                    terrainCullRadiusZScale,
+                    terrainCullRadiusWScale))
             {
                 continue;
             }
