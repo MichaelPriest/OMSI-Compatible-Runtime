@@ -2412,7 +2412,13 @@ public sealed class D3D11RenderWindow : Form
                             useNativeOmsiModelSpace:
                                 true,
                             isolatedObjectIds:
-                                windowInfo.DynamicSceneryObjectIds));
+                                windowInfo.DynamicSceneryObjectIds,
+                            // O3D diffuse alpha is not an OMSI transparency
+                            // directive. Keep scenery/parked-car base color
+                            // opaque; explicit [matl_alpha] and transmap
+                            // directives still select their own render path.
+                            forceMaterialAlphaOpaque:
+                                true));
 
             var terrainSamplerTask =
                 Task.Run(
