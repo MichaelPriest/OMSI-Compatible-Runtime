@@ -345,15 +345,55 @@ public static class OmsiTextureAssetPathResolver
             return false;
         }
 
+        var searchDirectories = new[]
+        {
+            splineDirectory,
+            Path.Combine(splineDirectory, "Texture"),
+            Path.Combine(splinesRoot, "Texture")
+        };
+
+        if (TryResolve(
+                splinesRoot,
+                textureName,
+                searchDirectories,
+                out fullPath))
+        {
+            return true;
+        }
+
+        // A number of legacy spline packs retain an obsolete editor-folder
+        // prefix in the material name even though the installed texture is
+        // in the spline's Texture directory. Retry by basename only after
+        // normal relative resolution fails, and never search outside Splines.
+        var rawName = textureName.Trim().Trim('"');
+        var normalizedName = rawName
+            .Replace('\\\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
+
+        if (Path.IsPathRooted(normalizedName) ||
+            normalizedName.Contains(':', StringComparison.Ordinal) ||
+            normalizedName.StartsWith(
+                Path.DirectorySeparatorChar.ToString(),
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var fileName = Path.GetFileName(normalizedName);
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            !SupportedExtensions.Contains(Path.GetExtension(fileName)))
+        {
+            return false;
+        }
+
         return TryResolve(
             splinesRoot,
-            textureName,
+            fileName,
             [
+                Path.Combine(splineDirectory, "Texture"),
                 splineDirectory,
-                Path.Combine(
-                    splineDirectory,
-                    "Texture"),
-                Path.Combine(splinesRoot, "Texture")
+                Path.Combine(splinesRoot, "Texture"),
+                splinesRoot
             ],
             out fullPath);
     }
