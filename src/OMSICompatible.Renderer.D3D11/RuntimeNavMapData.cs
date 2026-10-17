@@ -36,17 +36,15 @@ internal sealed class RuntimeNavRoadIndex
                 !float.IsFinite(section.B.X) || !float.IsFinite(section.B.Y))
                 continue;
 
-            // Index all cells along genuine junction traversals, not just
-            // their midpoint, which may be outside the visible map.
-            var from = Cell(Vector2.Min(section.A, section.B));
-            var to = Cell(Vector2.Max(section.A, section.B));
-            for (var x = from.X; x <= to.X; x++)
-            for (var y = from.Y; y <= to.Y; y++)
+            // Traverse only grid cells crossed by the road segment. Indexing
+            // the entire bounding rectangle makes long diagonal junctions
+            // allocate O(width * height) entries and can stall map loading.
+            foreach (var cell in CellsAlong(section.A, section.B))
             {
-                if (!_cells.TryGetValue((x, y), out var list))
+                if (!_cells.TryGetValue(cell, out var list))
                 {
                     list = [];
-                    _cells.Add((x, y), list);
+                    _cells.Add(cell, list);
                 }
                 list.Add(section);
             }
@@ -59,6 +57,53 @@ internal sealed class RuntimeNavRoadIndex
     private static (int X, int Y) Cell(Vector2 p) =>
         ((int)MathF.Floor(p.X / CellSize),
          (int)MathF.Floor(p.Y / CellSize));
+
+    private static IEnumerable<(int X, int Y)> CellsAlong(Vector2 a, Vector2 b)
+    {
+        var cell = Cell(a);
+        var end = Cell(b);
+        yield return cell;
+        if (cell == end)
+            yield break;
+
+        var delta = b - a;
+        var stepX = Math.Sign(delta.X);
+        var stepY = Math.Sign(delta.Y);
+        var tDeltaX = stepX == 0 ? float.PositiveInfinity : CellSize / MathF.Abs(delta.X);
+        var tDeltaY = stepY == 0 ? float.PositiveInfinity : CellSize / MathF.Abs(delta.Y);
+        var boundaryX = stepX > 0
+            ? (cell.X + 1) * CellSize
+            : cell.X * CellSize;
+        var boundaryY = stepY > 0
+            ? (cell.Y + 1) * CellSize
+            : cell.Y * CellSize;
+        var tMaxX = stepX == 0 ? float.PositiveInfinity : (boundaryX - a.X) / delta.X;
+        var tMaxY = stepY == 0 ? float.PositiveInfinity : (boundaryY - a.Y) / delta.Y;
+
+        // Amanatides-Woo grid traversal: work is proportional to the number
+        // of cells crossed, not the area of the segment's bounding rectangle.
+        while (cell != end)
+        {
+            if (tMaxX < tMaxY)
+            {
+                cell = (cell.X + stepX, cell.Y);
+                tMaxX += tDeltaX;
+            }
+            else if (tMaxY < tMaxX)
+            {
+                cell = (cell.X, cell.Y + stepY);
+                tMaxY += tDeltaY;
+            }
+            else
+            {
+                cell = (cell.X + stepX, cell.Y + stepY);
+                tMaxX += tDeltaX;
+                tMaxY += tDeltaY;
+            }
+
+            yield return cell;
+        }
+    }
 
     public IEnumerable<RuntimeNavRoadSection> Nearby(Vector2 center, float radiusMeters)
     {
