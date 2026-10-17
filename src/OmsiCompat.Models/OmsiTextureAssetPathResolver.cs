@@ -354,7 +354,10 @@ public static class OmsiTextureAssetPathResolver
         {
             splineDirectory,
             Path.Combine(splineDirectory, "Texture"),
-            Path.Combine(splinesRoot, "Texture")
+            // Shared spline packs are often referenced relative to Splines
+            // (for example "SharedRoads\\Texture\\asphalt.bmp").
+            Path.Combine(splinesRoot, "Texture"),
+            splinesRoot
         };
 
         if (TryResolve(
