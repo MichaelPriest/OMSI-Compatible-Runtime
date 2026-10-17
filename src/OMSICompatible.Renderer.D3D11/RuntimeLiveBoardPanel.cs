@@ -47,10 +47,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
         BorderStyle =
             BorderStyle.FixedSingle;
         BackColor =
-            Color.FromArgb(
-                214,
-                218,
-                224);
+            Color.FromArgb(15, 23, 34);
         TabStop = false;
 
         var header =
@@ -59,10 +56,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                 Dock = DockStyle.Top,
                 Height = 24,
                 BackColor =
-                    Color.FromArgb(
-                        52,
-                        62,
-                        72)
+                    Color.FromArgb(11, 23, 37)
             };
 
         header.Controls.Add(
@@ -101,10 +95,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                 Text =
                     "0 km/h",
                 ForeColor =
-                    Color.FromArgb(
-                        27,
-                        31,
-                        36),
+                    Color.FromArgb(244, 248, 252),
                 Font =
                     new Font(
                         "Segoe UI",
@@ -127,10 +118,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                 Text =
                     "LINHA --  |  SEM DESTINO",
                 ForeColor =
-                    Color.FromArgb(
-                        52,
-                        62,
-                        72),
+                    Color.FromArgb(222, 233, 244),
                 Font =
                     new Font(
                         "Segoe UI",
@@ -153,10 +141,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                 Text =
                     "E OFF · M OFF · DRIVERPASS -- · TURNO --",
                 ForeColor =
-                    Color.FromArgb(
-                        72,
-                        78,
-                        85),
+                    Color.FromArgb(151, 169, 189),
                 Font =
                     new Font(
                         "Segoe UI",
@@ -179,10 +164,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                 Text =
                     "PRÓXIMA PARADA --",
                 ForeColor =
-                    Color.FromArgb(
-                        42,
-                        70,
-                        92),
+                    Color.FromArgb(126, 205, 242),
                 Font =
                     new Font(
                         "Segoe UI",
@@ -233,10 +215,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                 Text =
                     "COMBUSTÍVEL N/D",
                 ForeColor =
-                    Color.FromArgb(
-                        67,
-                        108,
-                        143),
+                    Color.FromArgb(106, 190, 235),
                 Font =
                     new Font(
                         "Segoe UI",
@@ -314,14 +293,8 @@ internal sealed class RuntimeLiveBoardPanel : Panel
 
         _network.ForeColor =
             connected
-                ? Color.FromArgb(
-                    30,
-                    105,
-                    45)
-                : Color.FromArgb(
-                    110,
-                    45,
-                    45);
+                ? Color.FromArgb(87, 220, 150)
+                : Color.FromArgb(255, 125, 125);
     }
 
     public void UpdateTeleMatrix(
@@ -383,10 +356,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
         _punctuality.ForeColor =
             delay >
                 120
-                ? Color.FromArgb(
-                    155,
-                    55,
-                    45)
+                ? Color.FromArgb(255, 125, 125)
                 : delay <
                     -120
                     ? Color.FromArgb(
@@ -436,10 +406,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
                     72,
                     78,
                     85)
-                : Color.FromArgb(
-                    135,
-                    35,
-                    35);
+                : Color.FromArgb(255, 125, 125);
 
         var fuelText =
             fuel.Percent.HasValue
@@ -459,10 +426,7 @@ internal sealed class RuntimeLiveBoardPanel : Panel
 
         _fuel.ForeColor =
             fuel.ReturnToGarageRecommended
-                ? Color.FromArgb(
-                    145,
-                    60,
-                    30)
+                ? Color.FromArgb(255, 177, 102)
                 : Color.FromArgb(
                     67,
                     108,
