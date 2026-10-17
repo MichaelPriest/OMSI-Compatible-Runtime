@@ -96,9 +96,15 @@ internal sealed class RuntimeNavRoadIndex
             }
             else
             {
+                // Supercover the exact corner so a small viewport touching
+                // either adjacent cell can still discover this road segment.
+                yield return (cell.X + stepX, cell.Y);
+                yield return (cell.X, cell.Y + stepY);
                 cell = (cell.X + stepX, cell.Y + stepY);
                 tMaxX += tDeltaX;
                 tMaxY += tDeltaY;
+                yield return cell;
+                continue;
             }
 
             yield return cell;
