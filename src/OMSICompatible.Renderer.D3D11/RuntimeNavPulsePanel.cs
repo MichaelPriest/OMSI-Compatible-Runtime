@@ -86,10 +86,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
         DoubleBuffered = true;
         Visible = false;
         BackColor =
-            Color.FromArgb(
-                35,
-                42,
-                48);
+            Color.FromArgb(13, 20, 30);
         ForeColor = Color.White;
         BorderStyle =
             BorderStyle.FixedSingle;
@@ -107,15 +104,9 @@ internal sealed class RuntimeNavPulsePanel : Panel
                 FlatStyle =
                     FlatStyle.Flat,
                 BackColor =
-                    Color.FromArgb(
-                        205,
-                        210,
-                        216),
+                    Color.FromArgb(28, 43, 59),
                 ForeColor =
-                    Color.FromArgb(
-                        30,
-                        35,
-                        40),
+                    Color.FromArgb(232, 240, 248),
                 Font =
                     new Font(
                         "Segoe UI",
@@ -125,10 +116,7 @@ internal sealed class RuntimeNavPulsePanel : Panel
             };
 
         _modeButton.FlatAppearance.BorderColor =
-            Color.FromArgb(
-                130,
-                138,
-                146);
+            Color.FromArgb(57, 78, 99);
         _modeButton.Click +=
             (_, _) =>
             {
