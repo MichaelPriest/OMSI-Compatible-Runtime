@@ -839,6 +839,17 @@ public sealed class WorldTrafficSimulation
         }
     }
 
+    // Include every planned agent, not only agents whose staggered spawn
+    // time has elapsed. The renderer must preload each vehicle model before
+    // its agent becomes visible, otherwise later AI vehicles can be simulated
+    // but never rendered.
+    public IReadOnlyList<string> RequiredVehiclePaths =>
+        _agents
+            .Select(static agent => agent.VehiclePath)
+            .Where(static path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
     public IReadOnlyList<WorldTrafficAgentState> Snapshot()
     {
         var snapshot =
