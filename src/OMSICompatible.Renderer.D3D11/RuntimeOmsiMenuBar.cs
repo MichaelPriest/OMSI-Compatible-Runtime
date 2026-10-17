@@ -90,11 +90,76 @@ internal sealed class RuntimeOmsiMenuBar : Panel
                 MaximumSize =
                     new Size(
                         780,
+                        0),
+                MinimumSize =
+                    new Size(
+                        760,
                         0)
             };
 
-        Controls.Add(
-            flow);
+        var header =
+            new Panel
+            {
+                Width = 760,
+                Height = 54,
+                Margin = new Padding(0, 0, 0, 6),
+                BackColor = Color.FromArgb(17, 24, 33)
+            };
+
+        var accent =
+            new Panel
+            {
+                Dock = DockStyle.Left,
+                Width = 4,
+                BackColor = Color.FromArgb(56, 189, 248)
+            };
+        header.Controls.Add(accent);
+
+        header.Controls.Add(
+            new Label
+            {
+                AutoSize = true,
+                Left = 14,
+                Top = 6,
+                Text = "CENTRAL DE JOGO",
+                ForeColor = Color.FromArgb(241, 245, 249),
+                Font = new Font("Segoe UI Semibold", 12.0f, FontStyle.Bold)
+            });
+
+        header.Controls.Add(
+            new Label
+            {
+                AutoSize = true,
+                Left = 15,
+                Top = 29,
+                Text = "CONTROLES RÁPIDOS  •  SIMULAÇÃO  •  NAVEGAÇÃO",
+                ForeColor = Color.FromArgb(148, 163, 184),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Regular)
+            });
+
+        var closeMenu =
+            new Button
+            {
+                Text = "×",
+                Width = 34,
+                Height = 32,
+                Left = 716,
+                Top = 10,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(30, 41, 54),
+                ForeColor = Color.FromArgb(226, 232, 240),
+                Font = new Font("Segoe UI", 15.0f, FontStyle.Regular),
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+        closeMenu.FlatAppearance.BorderSize = 0;
+        closeMenu.FlatAppearance.MouseOverBackColor = Color.FromArgb(127, 29, 29);
+        closeMenu.Click += (_, _) => HideMenu();
+        _toolTip.SetToolTip(closeMenu, "Fechar painel (Esc)");
+        header.Controls.Add(closeMenu);
+
+        flow.Controls.Add(header);
+        Controls.Add(flow);
 
         AddButton(
             flow,
@@ -391,18 +456,29 @@ internal sealed class RuntimeOmsiMenuBar : Panel
         string toolTip,
         bool implemented)
     {
+        var tile =
+            new Panel
+            {
+                Width = 70,
+                Height = 68,
+                Margin = new Padding(2),
+                Padding = new Padding(3),
+                BackColor = Color.FromArgb(28, 35, 45),
+                BorderStyle = BorderStyle.FixedSingle,
+                Cursor = implemented ? Cursors.Hand : Cursors.Default
+            };
+
         var button =
             new Button
             {
                 Text =
                     text,
-                Width =
-                    44,
+                Dock =
+                    DockStyle.Top,
                 Height =
-                    42,
+                    40,
                 Margin =
-                    new Padding(
-                        2),
+                    Padding.Empty,
                 Padding =
                     Padding.Empty,
                 FlatStyle =
@@ -459,6 +535,45 @@ internal sealed class RuntimeOmsiMenuBar : Panel
                 52,
                 65,
                 82);
+        button.FlatAppearance.BorderSize = 0;
+
+        var caption =
+            new Label
+            {
+                Dock = DockStyle.Bottom,
+                Height = 19,
+                Text = ShortLabel(command),
+                TextAlign = ContentAlignment.MiddleCenter,
+                AutoEllipsis = true,
+                ForeColor = implemented
+                    ? Color.FromArgb(203, 213, 225)
+                    : Color.FromArgb(100, 116, 139),
+                Font = new Font("Segoe UI", 7.0f, FontStyle.Regular),
+                BackColor = Color.Transparent,
+                Cursor = implemented ? Cursors.Hand : Cursors.Default
+            };
+
+        void Highlight(bool hovered)
+        {
+            tile.BackColor = hovered
+                ? Color.FromArgb(40, 55, 70)
+                : Color.FromArgb(28, 35, 45);
+            tile.BorderStyle = hovered
+                ? BorderStyle.Fixed3D
+                : BorderStyle.FixedSingle;
+        }
+
+        tile.MouseEnter += (_, _) => Highlight(true);
+        tile.MouseLeave += (_, _) => Highlight(false);
+        caption.MouseEnter += (_, _) => Highlight(true);
+        caption.MouseLeave += (_, _) => Highlight(false);
+        caption.Click += (_, _) =>
+        {
+            if (implemented)
+            {
+                CommandInvoked?.Invoke(command);
+            }
+        };
 
         button.Click +=
             (_, _) =>
@@ -478,9 +593,49 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             command] =
             button;
 
-        parent.Controls.Add(
-            button);
+        button.Dock = DockStyle.Top;
+        tile.Controls.Add(caption);
+        tile.Controls.Add(button);
+        parent.Controls.Add(tile);
     }
+
+    private static string ShortLabel(RuntimeOmsiMenuCommand command) =>
+        command switch
+        {
+            RuntimeOmsiMenuCommand.Close => "Fechar",
+            RuntimeOmsiMenuCommand.StartMenu => "Início",
+            RuntimeOmsiMenuCommand.SaveSituation => "Salvar",
+            RuntimeOmsiMenuCommand.NewBus => "Novo ônibus",
+            RuntimeOmsiMenuCommand.RemoveBus => "Remover",
+            RuntimeOmsiMenuCommand.FindBus => "Localizar",
+            RuntimeOmsiMenuCommand.RepositionBus => "Reposicionar",
+            RuntimeOmsiMenuCommand.RouteDestination => "Linha / rota",
+            RuntimeOmsiMenuCommand.Personnel => "DriveOps",
+            RuntimeOmsiMenuCommand.Schedule => "Escala",
+            RuntimeOmsiMenuCommand.TimeDate => "Data / hora",
+            RuntimeOmsiMenuCommand.Weather => "Clima",
+            RuntimeOmsiMenuCommand.Options => "Opções",
+            RuntimeOmsiMenuCommand.Repair => "Reparar",
+            RuntimeOmsiMenuCommand.Wash => "Lavar",
+            RuntimeOmsiMenuCommand.Refuel => "Abastecer",
+            RuntimeOmsiMenuCommand.DirectionSigns => "Navegação",
+            RuntimeOmsiMenuCommand.LiveBoard => "HUD",
+            RuntimeOmsiMenuCommand.MiniMap => "Minimapa",
+            RuntimeOmsiMenuCommand.FullMap => "Mapa",
+            RuntimeOmsiMenuCommand.GroundArrows => "Setas",
+            RuntimeOmsiMenuCommand.PerformanceCenter => "Desempenho",
+            RuntimeOmsiMenuCommand.ReplayOps => "Replay",
+            RuntimeOmsiMenuCommand.Pause => "Pausar",
+            RuntimeOmsiMenuCommand.DriverView => "Motorista",
+            RuntimeOmsiMenuCommand.PassengerView => "Passageiro",
+            RuntimeOmsiMenuCommand.ExteriorView => "Externa",
+            RuntimeOmsiMenuCommand.FreeMapCamera => "Câmera livre",
+            RuntimeOmsiMenuCommand.MouseSteering => "Mouse",
+            RuntimeOmsiMenuCommand.GameController => "Controle",
+            RuntimeOmsiMenuCommand.VehiclePanel => "Comandos",
+            RuntimeOmsiMenuCommand.ResetVehicle => "Reset ônibus",
+            _ => command.ToString()
+        };
 
     private void SetButtonActive(
         RuntimeOmsiMenuCommand command,
