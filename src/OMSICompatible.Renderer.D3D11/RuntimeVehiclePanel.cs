@@ -86,10 +86,7 @@ internal sealed class RuntimeVehiclePanel : Panel
         Height =
             590;
         BackColor =
-            Color.FromArgb(
-                220,
-                224,
-                229);
+            Color.FromArgb(13, 20, 30);
         BorderStyle =
             BorderStyle.FixedSingle;
         TabStop =
@@ -103,10 +100,7 @@ internal sealed class RuntimeVehiclePanel : Panel
                 Height =
                     48,
                 BackColor =
-                    Color.FromArgb(
-                        54,
-                        62,
-                        72)
+                    Color.FromArgb(9, 21, 34)
             };
 
         header.Controls.Add(
@@ -165,10 +159,7 @@ internal sealed class RuntimeVehiclePanel : Panel
                 Height =
                     155,
                 BackColor =
-                    Color.FromArgb(
-                        195,
-                        201,
-                        208)
+                    Color.FromArgb(17, 29, 42)
             };
 
         _cockpit.Paint +=
@@ -803,15 +794,9 @@ internal sealed class RuntimeVehiclePanel : Panel
                 FlatStyle =
                     FlatStyle.Flat,
                 BackColor =
-                    Color.FromArgb(
-                        238,
-                        240,
-                        243),
+                    Color.FromArgb(28, 43, 59),
                 ForeColor =
-                    Color.FromArgb(
-                        31,
-                        36,
-                        43),
+                    Color.FromArgb(232, 240, 248),
                 Font =
                     new Font(
                         "Segoe UI",
@@ -822,12 +807,10 @@ internal sealed class RuntimeVehiclePanel : Panel
             };
 
         button.FlatAppearance.BorderColor =
-            Color.FromArgb(
-                145,
-                151,
-                160);
+            Color.FromArgb(57, 78, 99);
         button.FlatAppearance.BorderSize =
             1;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(39, 62, 83);
         button.Click +=
             handler;
 
@@ -843,9 +826,6 @@ internal sealed class RuntimeVehiclePanel : Panel
             AutoSize =
                 false,
             ForeColor =
-                Color.FromArgb(
-                    31,
-                    36,
-                    43)
+                Color.FromArgb(214, 226, 239)
         };
 }
