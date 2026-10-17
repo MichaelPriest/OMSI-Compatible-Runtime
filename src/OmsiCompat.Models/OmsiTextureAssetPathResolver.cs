@@ -17,6 +17,8 @@ public static class OmsiTextureAssetPathResolver
                 ".jpg",
                 ".png",
                 ".tga",
+                ".tif",
+                ".tiff",
                 ".webp"
             ],
             StringComparer.OrdinalIgnoreCase);
