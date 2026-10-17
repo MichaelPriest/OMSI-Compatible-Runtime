@@ -15545,7 +15545,9 @@ public sealed class D3D11RenderWindow : Form
             ".jpg",
             ".jpeg",
             ".tif",
-            ".tiff"
+            ".tiff",
+            ".webp",
+            ".gif"
         };
 
         var expandedCandidates = new List<string>();
