@@ -62,6 +62,9 @@ public static class OmsiTextureAssetPathResolver
             // IBIS/dashboard display textures may live in a shared OMSI
             // vehicle pack rather than alongside the current model.cfg.
             Path.Combine(vehiclesRoot, "Texture"),
+            // Some vehicle packs place common instrument atlases in a
+            // category-wide IBIS directory, outside each individual bus.
+            Path.Combine(vehiclesRoot, "Texture", "IBIS"),
             Path.Combine(vehicleDirectory, "texture", "common"),
             Path.Combine(vehicleDirectory, "Texture", "IBIS"),
             Path.Combine(modelDirectory, "Texture", "IBIS")
