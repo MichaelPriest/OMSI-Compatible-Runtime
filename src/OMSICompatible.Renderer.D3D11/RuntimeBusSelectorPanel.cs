@@ -26,16 +26,10 @@ internal sealed class RuntimeBusSelectorPanel : Panel
                 contentRoot);
 
         Visible = false;
-        Width = 520;
-        Height = 310;
-        BackColor = Color.FromArgb(
-            245,
-            246,
-            248);
-        ForeColor = Color.FromArgb(
-            32,
-            35,
-            40);
+        Width = 560;
+        Height = 340;
+        BackColor = Color.FromArgb(13, 20, 30);
+        ForeColor = Color.FromArgb(232, 240, 248);
         BorderStyle =
             BorderStyle.FixedSingle;
         Padding =
@@ -46,11 +40,9 @@ internal sealed class RuntimeBusSelectorPanel : Panel
         var title =
             new Label
             {
-                Text = "Selecionar ônibus",
-                Font = new Font(
-                    "Segoe UI",
-                    13.0f,
-                    FontStyle.Bold),
+                Text = "GARAGEM  /  SELECIONAR VEÍCULO",
+                ForeColor = Color.FromArgb(125, 211, 252),
+                Font = new Font("Segoe UI Semibold", 13.0f, FontStyle.Bold),
                 AutoSize = true,
                 Left = 18,
                 Top = 14
@@ -66,20 +58,12 @@ internal sealed class RuntimeBusSelectorPanel : Panel
                     FontStyle.Regular),
                 TextAlign =
                     ContentAlignment.MiddleCenter,
-                BackColor =
-                    Color.FromArgb(
-                        58,
-                        64,
-                        74),
-                ForeColor =
-                    Color.FromArgb(
-                        246,
-                        180,
-                        52),
+                BackColor = Color.FromArgb(24, 39, 55),
+                ForeColor = Color.FromArgb(56, 189, 248),
                 Left = 18,
                 Top = 52,
-                Width = 150,
-                Height = 112
+                Width = 160,
+                Height = 128
             };
 
         _groupBox =
@@ -87,9 +71,12 @@ internal sealed class RuntimeBusSelectorPanel : Panel
             {
                 DropDownStyle =
                     ComboBoxStyle.DropDownList,
-                Left = 186,
-                Top = 54,
-                Width = 306
+                Left = 198,
+                Top = 58,
+                Width = 336,
+                Height = 30,
+                BackColor = Color.FromArgb(24, 35, 49),
+                ForeColor = Color.FromArgb(238, 244, 250)
             };
 
         _busBox =
@@ -97,9 +84,12 @@ internal sealed class RuntimeBusSelectorPanel : Panel
             {
                 DropDownStyle =
                     ComboBoxStyle.DropDownList,
-                Left = 186,
-                Top = 94,
-                Width = 306
+                Left = 198,
+                Top = 105,
+                Width = 336,
+                Height = 30,
+                BackColor = Color.FromArgb(24, 35, 49),
+                ForeColor = Color.FromArgb(238, 244, 250)
             };
 
         _hofBox =
@@ -107,49 +97,56 @@ internal sealed class RuntimeBusSelectorPanel : Panel
             {
                 DropDownStyle =
                     ComboBoxStyle.DropDownList,
-                Left = 186,
-                Top = 134,
-                Width = 306
+                Left = 198,
+                Top = 152,
+                Width = 336,
+                Height = 30,
+                BackColor = Color.FromArgb(24, 35, 49),
+                ForeColor = Color.FromArgb(238, 244, 250)
             };
 
         _details =
             new Label
             {
                 Left = 18,
-                Top = 178,
-                Width = 474,
-                Height = 58,
-                ForeColor =
-                    Color.FromArgb(
-                        76,
-                        82,
-                        92),
+                Top = 198,
+                Width = 516,
+                Height = 45,
+                ForeColor = Color.FromArgb(153, 170, 188),
                 AutoEllipsis = true
             };
 
         var cancel =
             new Button
             {
-                Text = "Cancelar",
-                Left = 326,
-                Top = 252,
-                Width = 80,
-                Height = 32,
-                FlatStyle =
-                    FlatStyle.System
+                Text = "VOLTAR",
+                Left = 340,
+                Top = 286,
+                Width = 88,
+                Height = 36,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(35, 47, 64),
+                ForeColor = Color.FromArgb(226, 232, 240),
+                Cursor = Cursors.Hand
             };
 
         var ok =
             new Button
             {
-                Text = "OK",
-                Left = 412,
-                Top = 252,
-                Width = 80,
-                Height = 32,
-                FlatStyle =
-                    FlatStyle.System
+                Text = "CONFIRMAR",
+                Left = 436,
+                Top = 286,
+                Width = 98,
+                Height = 36,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(8, 126, 164),
+                ForeColor = Color.White,
+                Cursor = Cursors.Hand
             };
+
+        cancel.FlatAppearance.BorderColor = Color.FromArgb(57, 72, 90);
+        cancel.FlatAppearance.MouseOverBackColor = Color.FromArgb(51, 65, 82);
+        ok.FlatAppearance.BorderSize = 0;
 
         Controls.Add(
             title);
@@ -158,9 +155,11 @@ internal sealed class RuntimeBusSelectorPanel : Panel
         Controls.Add(
             new Label
             {
-                Text = "Grupo / fabricante",
-                Left = 186,
-                Top = 37,
+                Text = "GRUPO / FABRICANTE",
+                ForeColor = Color.FromArgb(145, 165, 186),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Left = 198,
+                Top = 39,
                 AutoSize = true
             });
         Controls.Add(
@@ -168,9 +167,11 @@ internal sealed class RuntimeBusSelectorPanel : Panel
         Controls.Add(
             new Label
             {
-                Text = "Modelo",
-                Left = 186,
-                Top = 77,
+                Text = "MODELO",
+                ForeColor = Color.FromArgb(145, 165, 186),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Left = 198,
+                Top = 86,
                 AutoSize = true
             });
         Controls.Add(
@@ -178,9 +179,11 @@ internal sealed class RuntimeBusSelectorPanel : Panel
         Controls.Add(
             new Label
             {
-                Text = "HOF",
-                Left = 186,
-                Top = 117,
+                Text = "ARQUIVO HOF",
+                ForeColor = Color.FromArgb(145, 165, 186),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Left = 198,
+                Top = 133,
                 AutoSize = true
             });
         Controls.Add(
