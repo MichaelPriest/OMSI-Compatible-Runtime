@@ -2050,10 +2050,7 @@ internal sealed class RuntimeApplicationContext :
     {
         var requestedPaths =
             simulation
-                .Snapshot()
-                .Select(
-                    static agent =>
-                        agent.VehiclePath)
+                .RequiredVehiclePaths
                 .Concat(
                     lineSimulation?.RequiredVehiclePaths ??
                     Array.Empty<string>())
