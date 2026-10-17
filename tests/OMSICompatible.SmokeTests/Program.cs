@@ -8262,6 +8262,76 @@ try
         requestStopAgent.AiBrakeLight,
         "OMSI traffic_light_stop did not hold the group while the monitored signal had an active approach.");
 
+    var alternateExitNetwork =
+        new WorldTrafficPathNetwork(
+            [
+                new WorldTrafficPathSegment(
+                    0,
+                    8550,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(0.0, 0.0, 0.0),
+                        new WorldVector3(0.0, 0.0, 5.0)
+                    ],
+                    [1, 2],
+                    Array.Empty<int>()),
+                new WorldTrafficPathSegment(
+                    1,
+                    -1,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(0.0, 0.0, 5.0),
+                        new WorldVector3(0.0, 0.0, 15.0)
+                    ],
+                    Array.Empty<int>(),
+                    [0],
+                    SceneryObjectId: 8551,
+                    TrafficSignal: requestStopSignal),
+                new WorldTrafficPathSegment(
+                    2,
+                    8552,
+                    0,
+                    0,
+                    0,
+                    2.5,
+                    [
+                        new WorldVector3(0.0, 0.0, 5.0),
+                        new WorldVector3(8.0, 0.0, 12.0)
+                    ],
+                    Array.Empty<int>(),
+                    [0])
+            ],
+            3,
+            0,
+            0,
+            0,
+            1,
+            0,
+            2,
+            0);
+
+    var alternateExitSimulation =
+        new WorldTrafficSimulation(
+            alternateExitNetwork,
+            normalGroupCatalog,
+            maximumAgents: 1);
+
+    alternateExitSimulation.Step(3.0);
+
+    var alternateExitAgent =
+        alternateExitSimulation.Snapshot().Single();
+
+    Require(
+        alternateExitAgent.SegmentIndex == 2 &&
+        alternateExitAgent.TraveledDistanceMeters > 5.0,
+        "Unscheduled AI remained stuck on a red-signal branch despite an available legal junction exit.");
+
     var requestStopSignalState =
         requestStopSimulation
             .SnapshotTrafficSignals()
