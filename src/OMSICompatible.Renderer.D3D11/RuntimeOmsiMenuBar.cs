@@ -59,10 +59,9 @@ internal sealed class RuntimeOmsiMenuBar : Panel
             AutoSizeMode.GrowAndShrink;
         BackColor =
             Color.FromArgb(
-                238,
-                214,
-                218,
-                224);
+                22,
+                27,
+                34);
         Padding =
             new Padding(
                 5);
@@ -411,23 +410,23 @@ internal sealed class RuntimeOmsiMenuBar : Panel
                 BackColor =
                     implemented
                         ? Color.FromArgb(
-                            244,
-                            246,
-                            249)
+                            35,
+                            43,
+                            54)
                         : Color.FromArgb(
-                            226,
-                            229,
-                            234),
+                            27,
+                            32,
+                            40),
                 ForeColor =
                     implemented
                         ? Color.FromArgb(
-                            30,
-                            35,
-                            43)
+                            230,
+                            237,
+                            243)
                         : Color.FromArgb(
-                            138,
-                            143,
-                            151),
+                            111,
+                            122,
+                            136),
                 Font =
                     new Font(
                         "Segoe MDL2 Assets",
@@ -448,13 +447,18 @@ internal sealed class RuntimeOmsiMenuBar : Panel
         button.FlatAppearance.BorderColor =
             implemented
                 ? Color.FromArgb(
-                    165,
-                    171,
-                    181)
+                    75,
+                    88,
+                    104)
                 : Color.FromArgb(
-                    198,
-                    202,
-                    209);
+                    55,
+                    62,
+                    73);
+        button.FlatAppearance.MouseOverBackColor =
+            Color.FromArgb(
+                52,
+                65,
+                82);
 
         button.Click +=
             (_, _) =>
@@ -492,23 +496,23 @@ internal sealed class RuntimeOmsiMenuBar : Panel
         button.BackColor =
             active
                 ? Color.FromArgb(
-                    198,
-                    225,
-                    246)
+                    22,
+                    59,
+                    82)
                 : Color.FromArgb(
-                    244,
-                    246,
-                    249);
+                    35,
+                    43,
+                    54);
 
         button.FlatAppearance.BorderColor =
             active
                 ? Color.FromArgb(
-                    65,
-                    124,
-                    171)
+                    56,
+                    189,
+                    248)
                 : Color.FromArgb(
-                    165,
-                    171,
-                    181);
+                    75,
+                    88,
+                    104);
     }
 }
