@@ -476,6 +476,27 @@ try
             out _),
         "OMSI spline texture resolution must not cross into scenery assets.");
 
+    // Legacy spline packs can retain obsolete editor prefixes. Recover by
+    // basename inside Splines while preserving category isolation.
+    var legacySplineTextureDirectory =
+        Path.Combine(splineDirectory, "Texture");
+    Directory.CreateDirectory(legacySplineTextureDirectory);
+    var legacySplineTexture =
+        Path.Combine(legacySplineTextureDirectory, "legacy_road.dds");
+    File.WriteAllBytes(legacySplineTexture, [(byte)0x44]);
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveSplineTexture(
+            root,
+            splineAssetPath,
+            @"old_editor\package\legacy_road.bmp",
+            out var legacySplineResolved) &&
+        string.Equals(
+            legacySplineResolved,
+            legacySplineTexture,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI legacy spline texture basename fallback failed.");
+
     Require(
         !OmsiTextureAssetPathResolver.TryResolveSceneryTexture(
             root,
