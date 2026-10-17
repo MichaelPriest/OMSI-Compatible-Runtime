@@ -39,11 +39,25 @@
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"/>
             </StackPanel>
-            <TextBlock Grid.Column="1"
-                       Text="Runtime x64 · Alpha"
-                       Foreground="#8297AC"
-                       FontSize="11"
-                       VerticalAlignment="Center"/>
+            <Border Grid.Column="1"
+                    Background="#102438"
+                    BorderBrush="#25435A"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="12,6"
+                    VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Ellipse Width="7"
+                             Height="7"
+                             Fill="#F59E0B"
+                             VerticalAlignment="Center"/>
+                    <TextBlock Text="ALPHA  ·  RUNTIME x64"
+                               Foreground="#C4D7E8"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <Grid Grid.Row="1">
