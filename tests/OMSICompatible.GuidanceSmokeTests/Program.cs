@@ -161,6 +161,16 @@ Require(longIndex.Count == 1 &&
         longLane.DistanceSquaredTo(new Vector2(-700, 200)) > 39999f,
     "Long authentic junction road segments disappeared or were duplicated.");
 
+// A long diagonal road must occupy cells along the segment, not its entire
+// bounding rectangle (which grows quadratically and can freeze map loading).
+var diagonal = new RuntimeNavRoadSection(
+    new Vector2(-12000, -12000), new Vector2(12000, 12000), 89);
+var diagonalIndex = new RuntimeNavRoadIndex([diagonal]);
+Require(diagonalIndex.Count == 1 &&
+        diagonalIndex.Nearby(new Vector2(0, 0), 20).Single() == diagonal &&
+        !diagonalIndex.Nearby(new Vector2(0, 5000), 20).Any(),
+    "Diagonal road indexing allocated/returned bounding-box cells instead of traversed road cells.");
+
 // Some schedules finish with a non-stopping deadhead section.
 var finalPassengerStop = RuntimeNavStopProjector.Place(stopRoute,
     [new RuntimeNavigationStopDistanceInfo("Terminal A", 0, true),
