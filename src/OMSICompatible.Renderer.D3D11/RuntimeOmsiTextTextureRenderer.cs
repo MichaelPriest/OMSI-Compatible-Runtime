@@ -542,21 +542,45 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
         // reference a BMP that was replaced with an optimized DDS, or
         // an atlas in the font package's Texture subdirectory. The
         // image decoder already supports these real formats.
-        var candidates = new List<string>
+        var fallbackExtensions = new[]
         {
-            path,
-            Path.ChangeExtension(path, ".dds"),
-            Path.ChangeExtension(path, ".png"),
-            Path.ChangeExtension(path, ".tga")
+            ".dds",
+            ".png",
+            ".tga",
+            ".bmp",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".gif"
         };
+
+        var candidates = new List<string> { path };
+        foreach (var extension in fallbackExtensions)
+        {
+            if (!string.Equals(
+                    Path.GetExtension(path),
+                    extension,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                candidates.Add(Path.ChangeExtension(path, extension));
+            }
+        }
 
         var baseName = Path.GetFileName(fileName);
         if (!string.IsNullOrWhiteSpace(baseName))
         {
             var texturePath = Path.Combine(directory, "Texture", baseName);
             candidates.Add(texturePath);
-            candidates.Add(Path.ChangeExtension(texturePath, ".dds"));
-            candidates.Add(Path.ChangeExtension(texturePath, ".png"));
+            foreach (var extension in fallbackExtensions)
+            {
+                if (!string.Equals(
+                        Path.GetExtension(texturePath),
+                        extension,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    candidates.Add(Path.ChangeExtension(texturePath, extension));
+                }
+            }
         }
 
         var root = Path.GetFullPath(directory);
