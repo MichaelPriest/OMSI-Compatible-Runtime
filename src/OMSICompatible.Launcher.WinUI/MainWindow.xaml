@@ -361,18 +361,35 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="28"
                                 Spacing="14">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon FontFamily="Segoe MDL2 Assets"
-                                      Glyph="&#xE768;"
-                                      FontSize="28"
-                                      Foreground="#8DB7FF"/>
-                            <TextBlock Text="Nova sessão"
-                                       Foreground="White"
-                                       FontSize="32"
-                                       FontWeight="Bold"
-                                       VerticalAlignment="Center"/>
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon FontFamily="Segoe MDL2 Assets"
+                                          Glyph="&#xE768;"
+                                          FontSize="28"
+                                          Foreground="#38BDF8"/>
+                                <TextBlock Text="Nova sessão"
+                                           Foreground="White"
+                                           FontSize="32"
+                                           FontWeight="Bold"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="Configure a biblioteca, o mapa e o veículo antes de iniciar a simulação."
+                                       Foreground="#91A5BA"
+                                       FontSize="14"
+                                       TextWrapping="Wrap"/>
                         </StackPanel>
-                        <TextBox x:Name="ContentPathBox"
+                        <Border Background="#111E2D"
+                                BorderBrush="#26394D"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="BIBLIOTECA DE CONTEÚDO"
+                                           Foreground="#38BDF8"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           CharacterSpacing="1200"/>
+                                <TextBox x:Name="ContentPathBox"
                                  Header="Biblioteca OMSI"
                                  PlaceholderText="Pasta raiz do OMSI"/>
                         <StackPanel Orientation="Horizontal"
@@ -402,6 +419,19 @@
                                            VerticalAlignment="Center"/>
                             </StackPanel>
                         </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#111E2D"
+                                BorderBrush="#26394D"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="CONFIGURAÇÃO DA VIAGEM"
+                                           Foreground="#38BDF8"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           CharacterSpacing="1200"/>
                         <ComboBox x:Name="MapBox"
                                   Header="Mapa"
                                   DisplayMemberPath="FolderName"
@@ -414,7 +444,20 @@
                                   Content="Iniciar sem ônibus"
                                   Checked="NoBusModeChanged"
                                   Unchecked="NoBusModeChanged"/>
+                            </StackPanel>
+                        </Border>
 
+                        <Border Background="#111E2D"
+                                BorderBrush="#26394D"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="VEÍCULO E PRÉVIA"
+                                           Foreground="#38BDF8"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           CharacterSpacing="1200"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -512,6 +555,8 @@
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
