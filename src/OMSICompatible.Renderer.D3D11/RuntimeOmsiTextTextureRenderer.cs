@@ -175,10 +175,16 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
     {
         if (_fontPixels.TryGetValue(
                 fontName,
-                out var cached))
+                out var cached) &&
+            cached is not null)
         {
             return cached;
         }
+
+        // A previous miss may have happened while the selected OMSI content
+        // root was still being mounted. Retry discovery instead of retaining a
+        // permanent negative pixel-cache entry.
+        _fontPixels.Remove(fontName);
 
         var definition =
             FindFont(
@@ -249,7 +255,27 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
                 fontName,
                 out var cached))
         {
-            return cached;
+            if (cached is not null)
+            {
+                return cached;
+            }
+
+            // A font can appear after the renderer is constructed. Only retry
+            // a cached miss when one of the conventional font locations now
+            // contains the requested file, avoiding recursive scans each frame.
+            var lateFontCandidates = new[]
+            {
+                Path.Combine(_fontsDirectory, fontName + ".oft"),
+                Path.Combine(_fontsDirectory, "Fonts", fontName + ".oft"),
+                Path.Combine(_fontsDirectory, "backup", fontName + ".oft")
+            };
+
+            if (!lateFontCandidates.Any(File.Exists))
+            {
+                return null;
+            }
+
+            _fontDefinitions.Remove(fontName);
         }
 
         if (!Directory.Exists(
