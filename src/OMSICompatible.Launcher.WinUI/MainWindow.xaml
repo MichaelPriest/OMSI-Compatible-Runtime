@@ -214,7 +214,7 @@
                     <Border Background="#111E2D"
                             BorderBrush="#26394D"
                             BorderThickness="1"
-                            CornerRadius="12"
+                            CornerRadius="16"
                             Padding="24">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -224,6 +224,11 @@
 
                             <StackPanel Spacing="10"
                                         VerticalAlignment="Center">
+                                <TextBlock Text="CENTRO DE COMANDO"
+                                           Foreground="#38BDF8"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           CharacterSpacing="1400"/>
                                 <TextBlock x:Name="HeroTitle"
                                            Text="Sua próxima viagem começa aqui"
                                            Foreground="White"
@@ -241,8 +246,12 @@
                                             Content="▶  CONTINUAR VIAGEM"
                                             Background="#087EA4"
                                             BorderBrush="#38BDF8"
+                                            CornerRadius="8"
+                                            MinHeight="44"
                                             Click="ContinueButton_Click"/>
                                     <Button Content="＋  NOVA SESSÃO"
+                                            CornerRadius="8"
+                                            MinHeight="44"
                                             Click="NewSessionButton_Click"/>
                                 </StackPanel>
                             </StackPanel>
@@ -251,7 +260,7 @@
                                     Background="#0A1420"
                                     BorderBrush="#26394D"
                                     BorderThickness="1"
-                                    CornerRadius="8"
+                                    CornerRadius="12"
                                     Height="190">
                                 <Image x:Name="HeroImage"
                                        Stretch="UniformToFill"/>
@@ -267,20 +276,20 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Border Grid.Column="0" Margin="0,0,6,0" Background="#111E2D" Padding="12">
-                            <StackPanel><TextBlock Text="Runtime x64" Foreground="#8FA2B7"/><TextBlock x:Name="RuntimeStatusText" Text="Verificando" Foreground="White"/></StackPanel>
+                        <Border Grid.Column="0" Margin="0,0,6,0" Background="#111E2D" BorderBrush="#26394D" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <StackPanel Spacing="6"><TextBlock Text="RUNTIME x64" Foreground="#8FA2B7" FontSize="10" FontWeight="SemiBold"/><TextBlock x:Name="RuntimeStatusText" Text="Verificando" Foreground="White" FontSize="14" FontWeight="SemiBold"/></StackPanel>
                         </Border>
-                        <Border Grid.Column="1" Margin="3,0" Background="#111E2D" Padding="12">
-                            <StackPanel><TextBlock Text="ODE" Foreground="#8FA2B7"/><TextBlock x:Name="OdeStatusText" Text="Verificando" Foreground="White"/></StackPanel>
+                        <Border Grid.Column="1" Margin="3,0" Background="#111E2D" BorderBrush="#26394D" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <StackPanel Spacing="6"><TextBlock Text="FÍSICA · ODE" Foreground="#8FA2B7" FontSize="10" FontWeight="SemiBold"/><TextBlock x:Name="OdeStatusText" Text="Verificando" Foreground="White" FontSize="14" FontWeight="SemiBold"/></StackPanel>
                         </Border>
-                        <Border Grid.Column="2" Margin="3,0" Background="#111E2D" Padding="12">
-                            <StackPanel><TextBlock Text="D3D11" Foreground="#8FA2B7"/><TextBlock x:Name="D3D11StatusText" Text="Verificando" Foreground="White"/></StackPanel>
+                        <Border Grid.Column="2" Margin="3,0" Background="#111E2D" BorderBrush="#26394D" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <StackPanel Spacing="6"><TextBlock Text="GRÁFICOS · D3D11" Foreground="#8FA2B7" FontSize="10" FontWeight="SemiBold"/><TextBlock x:Name="D3D11StatusText" Text="Verificando" Foreground="White" FontSize="14" FontWeight="SemiBold"/></StackPanel>
                         </Border>
-                        <Border Grid.Column="3" Margin="3,0" Background="#111E2D" Padding="12">
-                            <StackPanel><TextBlock Text="Conteúdo" Foreground="#8FA2B7"/><TextBlock x:Name="CompatibilityStatusText" Text="Aguardando" Foreground="White"/></StackPanel>
+                        <Border Grid.Column="3" Margin="3,0" Background="#111E2D" BorderBrush="#26394D" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <StackPanel Spacing="6"><TextBlock Text="CONTEÚDO" Foreground="#8FA2B7" FontSize="10" FontWeight="SemiBold"/><TextBlock x:Name="CompatibilityStatusText" Text="Aguardando" Foreground="White" FontSize="14" FontWeight="SemiBold"/></StackPanel>
                         </Border>
-                        <Border Grid.Column="4" Margin="6,0,0,0" Background="#111E2D" Padding="12">
-                            <StackPanel><TextBlock Text="Canal" Foreground="#8FA2B7"/><TextBlock x:Name="UpdateStatusText" Text="Alpha" Foreground="White"/></StackPanel>
+                        <Border Grid.Column="4" Margin="6,0,0,0" Background="#111E2D" BorderBrush="#26394D" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <StackPanel Spacing="6"><TextBlock Text="CANAL" Foreground="#8FA2B7" FontSize="10" FontWeight="SemiBold"/><TextBlock x:Name="UpdateStatusText" Text="Alpha" Foreground="White" FontSize="14" FontWeight="SemiBold"/></StackPanel>
                         </Border>
                     </Grid>
 
@@ -293,6 +302,9 @@
                         <Border Grid.Column="0"
                                 Margin="0,0,8,0"
                                 Background="#111E2D"
+                                BorderBrush="#26394D"
+                                BorderThickness="1"
+                                CornerRadius="12"
                                 Padding="16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -321,6 +333,9 @@
                         <Border Grid.Column="1"
                                 Margin="8,0,0,0"
                                 Background="#111E2D"
+                                BorderBrush="#26394D"
+                                BorderThickness="1"
+                                CornerRadius="12"
                                 Padding="16">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="Biblioteca"
