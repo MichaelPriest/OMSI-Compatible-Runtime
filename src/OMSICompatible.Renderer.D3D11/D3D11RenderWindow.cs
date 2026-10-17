@@ -15532,8 +15532,56 @@ public sealed class D3D11RenderWindow : Form
             }
         }
 
+        // OMSI add-ons frequently keep a script's legacy texture extension
+        // (for example .bmp) after replacing the actual asset with a DDS/PNG.
+        // Expand each candidate in deterministic order so dynamic displays,
+        // IBIS panels and free-texture bindings can resolve the real file.
+        var textureExtensions = new[]
+        {
+            ".dds",
+            ".png",
+            ".tga",
+            ".bmp",
+            ".jpg",
+            ".jpeg",
+            ".tif",
+            ".tiff"
+        };
+
+        var expandedCandidates = new List<string>();
+        var seenCandidates = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var candidate in candidates)
+        {
+            if (seenCandidates.Add(candidate))
+            {
+                expandedCandidates.Add(candidate);
+            }
+
+            foreach (var extension in textureExtensions)
+            {
+                if (string.Equals(
+                        extension,
+                        Path.GetExtension(candidate),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var alternate = Path.ChangeExtension(
+                    candidate,
+                    extension);
+
+                if (seenCandidates.Add(alternate))
+                {
+                    expandedCandidates.Add(alternate);
+                }
+            }
+        }
+
         foreach (var candidate in
-                 candidates)
+                 expandedCandidates)
         {
             try
             {
