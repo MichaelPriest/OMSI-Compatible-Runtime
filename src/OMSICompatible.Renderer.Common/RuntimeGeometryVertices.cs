@@ -11,7 +11,9 @@ public sealed record RuntimeTerrainBatch(
     string? MaskTexturePath,
     string? DetailTexturePath,
     bool AdditiveLightmap,
-    int? TerrainLayerIndex);
+    int? TerrainLayerIndex,
+    Vector3 Center = default,
+    float Radius = 0.0f);
 
 public sealed record RuntimeTerrainGeometry(
     RuntimeTerrainVertex[] Vertices,
