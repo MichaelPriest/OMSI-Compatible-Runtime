@@ -1320,12 +1320,75 @@ public sealed class WorldTrafficSimulation
                 nextSegment,
                 activeAgentsBySegment))
         {
-            agent.SpeedMetersPerSecond =
-                0.0;
-            agent.BrakeLight =
-                true;
+            // At an unscheduled junction, the weighted first choice can be
+            // temporarily blocked by a red signal or occupied crossing. Try
+            // other legal exits before stopping the vehicle indefinitely on
+            // that one cached choice. Scheduled line AI follows its authored
+            // route in WorldLineAiSimulation and does not use this fallback.
+            var connections =
+                agent.TravelForward
+                    ? segment.ForwardConnections
+                    : segment.ReverseConnections;
 
-            return false;
+            var alternativeFound = false;
+
+            foreach (var candidateIndex in connections
+                         .Where(candidateIndex =>
+                             candidateIndex != next.Value)
+                         .Order())
+            {
+                if (!_segmentsByIndex.TryGetValue(
+                        candidateIndex,
+                        out var candidate) ||
+                    !IsTrafficGroupAllowed(
+                        candidate,
+                        agent.GroupIndex,
+                        agent.DefaultDensityClassIndex) ||
+                    !(agent.TravelForward
+                        ? candidate.AllowsForward
+                        : candidate.AllowsReverse))
+                {
+                    continue;
+                }
+
+                var weight =
+                    ResolveTrafficDensityWeight(
+                        candidate,
+                        agent.GroupIndex,
+                        agent.DefaultDensityClassIndex);
+
+                if (!double.IsFinite(weight) ||
+                    weight <= 0.0 ||
+                    !CanEnterSegment(
+                        agent,
+                        segment,
+                        candidate,
+                        activeAgentsBySegment))
+                {
+                    continue;
+                }
+
+                next = candidateIndex;
+                nextSegment = candidate;
+                _nextSegmentByAgentSegment[
+                    (
+                        AgentIndex: agent.AgentIndex,
+                        SegmentIndex: segment.Index,
+                        TravelForward: agent.TravelForward
+                    )] = candidateIndex;
+                alternativeFound = true;
+                break;
+            }
+
+            if (!alternativeFound)
+            {
+                agent.SpeedMetersPerSecond =
+                    0.0;
+                agent.BrakeLight =
+                    true;
+
+                return false;
+            }
         }
 
         var previousSegmentIndex =
