@@ -367,7 +367,7 @@ public static class OmsiTextureAssetPathResolver
         // normal relative resolution fails, and never search outside Splines.
         var rawName = textureName.Trim().Trim('"');
         var normalizedName = rawName
-            .Replace('\\\\', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar)
             .Replace('/', Path.DirectorySeparatorChar);
 
         if (Path.IsPathRooted(normalizedName) ||
