@@ -175,16 +175,33 @@ internal sealed class RuntimeOmsiTextTextureRenderer :
     {
         if (_fontPixels.TryGetValue(
                 fontName,
-                out var cached) &&
-            cached is not null)
+                out var cached))
         {
-            return cached;
-        }
+            if (cached is not null)
+            {
+                return cached;
+            }
 
-        // A previous miss may have happened while the selected OMSI content
-        // root was still being mounted. Retry discovery instead of retaining a
-        // permanent negative pixel-cache entry.
-        _fontPixels.Remove(fontName);
+            // Do not retry a missing bitmap every frame when the font
+            // definition was found but its alpha atlas has not been installed.
+            if (_fontDefinitions.TryGetValue(
+                    fontName,
+                    out var knownDefinition) &&
+                knownDefinition is not null &&
+                !File.Exists(knownDefinition.AlphaBitmapPath))
+            {
+                return null;
+            }
+
+            // The content root may have been mounted after the initial lookup.
+            // Retry only after FindFont's bounded candidate checks can succeed.
+            if (!Directory.Exists(_fontsDirectory))
+            {
+                return null;
+            }
+
+            _fontPixels.Remove(fontName);
+        }
 
         var definition =
             FindFont(
