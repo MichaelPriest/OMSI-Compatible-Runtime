@@ -523,6 +523,23 @@ try
             StringComparison.OrdinalIgnoreCase),
         "MAN NG IBIS shared DDS atlas was not found in Texture/IBIS.");
 
+    // Some add-on packs share display atlases across Vehicles/Texture/IBIS
+    // rather than shipping a copy under each bus directory.
+    var sharedIbisDirectory =
+        Path.Combine(root, "Vehicles", "Texture", "IBIS");
+    Directory.CreateDirectory(sharedIbisDirectory);
+    var sharedIbisAtlas =
+        Path.Combine(sharedIbisDirectory, "shared_ibis_screen.dds");
+    File.WriteAllBytes(sharedIbisAtlas, [(byte)0x44]);
+
+    Require(
+        OmsiTextureAssetPathResolver.TryResolveVehicleTexture(
+            root, vehicleDirectory, resolverModelConfigPath, resolverMeshPath,
+            "shared_ibis_screen.bmp", out var sharedIbisResolved) &&
+        string.Equals(sharedIbisResolved, sharedIbisAtlas,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI shared Vehicles/Texture/IBIS atlas lookup failed.");
+
     var globalMapTextureDirectory =
         Path.Combine(root, "Texture");
     Directory.CreateDirectory(globalMapTextureDirectory);
