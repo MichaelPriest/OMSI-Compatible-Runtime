@@ -469,6 +469,18 @@ try
         "OMSI content-root-relative spline texture should find the same-stem DDS.");
 
     Require(
+        OmsiTextureAssetPathResolver.TryResolveSplineTexture(
+            root,
+            splineAssetPath,
+            @"SharedRoads\Texture\asphalt.bmp",
+            out var relativeSharedSplineResult) &&
+        string.Equals(
+            relativeSharedSplineResult,
+            sharedSplineTexture,
+            StringComparison.OrdinalIgnoreCase),
+        "OMSI spline texture relative to the Splines root should find shared packs.");
+
+    Require(
         !OmsiTextureAssetPathResolver.TryResolveSplineTexture(
             root,
             splineAssetPath,
