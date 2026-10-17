@@ -583,6 +583,39 @@ public static class RuntimeTerrainGeometryBuilder
             return;
         }
 
+        var minimum =
+            new Vector3(
+                float.PositiveInfinity);
+        var maximum =
+            new Vector3(
+                float.NegativeInfinity);
+
+        for (var index = layerStart;
+             index < vertices.Count;
+             index++)
+        {
+            var position =
+                vertices[index].Position;
+
+            minimum =
+                Vector3.Min(
+                    minimum,
+                    position);
+            maximum =
+                Vector3.Max(
+                    maximum,
+                    position);
+        }
+
+        var center =
+            (minimum + maximum) *
+            0.5f;
+
+        var radius =
+            Vector3.Distance(
+                center,
+                maximum);
+
         batches.Add(
             new RuntimeTerrainBatch(
                 (uint)layerStart,
@@ -591,7 +624,9 @@ public static class RuntimeTerrainGeometryBuilder
                 maskTexturePath,
                 detailTexturePath,
                 additiveLightmap,
-                terrainLayerIndex));
+                terrainLayerIndex,
+                center,
+                radius));
     }
 
     private static float Height(
