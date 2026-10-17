@@ -50,10 +50,7 @@ internal sealed class RuntimeReplayOpsPanel : Panel
         Height =
             520;
         BackColor =
-            Color.FromArgb(
-                217,
-                221,
-                226);
+            Color.FromArgb(13, 20, 30);
         BorderStyle =
             BorderStyle.FixedSingle;
 
@@ -65,10 +62,7 @@ internal sealed class RuntimeReplayOpsPanel : Panel
                 Height =
                     48,
                 BackColor =
-                    Color.FromArgb(
-                        53,
-                        61,
-                        71)
+                    Color.FromArgb(9, 21, 34)
             };
 
         header.Controls.Add(
@@ -123,10 +117,7 @@ internal sealed class RuntimeReplayOpsPanel : Panel
                 Height =
                     270,
                 BackColor =
-                    Color.FromArgb(
-                        239,
-                        241,
-                        244),
+                    Color.FromArgb(17, 29, 42),
                 BorderStyle =
                     BorderStyle.FixedSingle
             };
@@ -315,10 +306,7 @@ internal sealed class RuntimeReplayOpsPanel : Panel
                 Height =
                     78,
                 BackColor =
-                    Color.FromArgb(
-                        239,
-                        241,
-                        244),
+                    Color.FromArgb(28, 43, 59),
                 BorderStyle =
                     BorderStyle.FixedSingle,
                 Padding =
@@ -895,10 +883,7 @@ internal sealed class RuntimeReplayOpsPanel : Panel
 
         using var routePen =
             new Pen(
-                Color.FromArgb(
-                    65,
-                    107,
-                    143),
+                Color.FromArgb(56, 189, 248),
                 2.0f);
 
         for (var index = 1;
@@ -925,10 +910,7 @@ internal sealed class RuntimeReplayOpsPanel : Panel
 
         using var selectedBrush =
             new SolidBrush(
-                Color.FromArgb(
-                    180,
-                    48,
-                    42));
+                Color.FromArgb(248, 113, 113));
 
         e.Graphics.FillEllipse(
             selectedBrush,
@@ -952,10 +934,7 @@ internal sealed class RuntimeReplayOpsPanel : Panel
                 FontStyle.Bold);
         using var brush =
             new SolidBrush(
-                Color.FromArgb(
-                    105,
-                    111,
-                    119));
+                Color.FromArgb(145, 165, 186));
 
         var size =
             graphics.MeasureString(
@@ -993,10 +972,7 @@ internal sealed class RuntimeReplayOpsPanel : Panel
                         241,
                         244),
                 ForeColor =
-                    Color.FromArgb(
-                        31,
-                        36,
-                        43),
+                    Color.FromArgb(232, 240, 248),
                 Font =
                     new Font(
                         "Segoe UI",
@@ -1007,10 +983,8 @@ internal sealed class RuntimeReplayOpsPanel : Panel
             };
 
         button.FlatAppearance.BorderColor =
-            Color.FromArgb(
-                145,
-                151,
-                160);
+            Color.FromArgb(57, 78, 99);
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(39, 62, 83);
         button.Click +=
             handler;
 
