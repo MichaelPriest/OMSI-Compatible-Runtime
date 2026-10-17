@@ -5437,6 +5437,12 @@ try
         trafficSimulation.Snapshot();
 
     Require(
+        trafficSimulation.RequiredVehiclePaths.Contains(
+            syntheticAiVehiclePath,
+            StringComparer.OrdinalIgnoreCase),
+        "Traffic simulation did not expose its planned vehicle asset path.");
+
+    Require(
         initialTraffic.Count ==
             1 &&
         initialTraffic[0].SegmentIndex ==
