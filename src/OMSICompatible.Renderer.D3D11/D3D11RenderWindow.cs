@@ -8974,6 +8974,83 @@ public sealed class D3D11RenderWindow : Form
         _terrainInputLayout is not null &&
         _terrainVertexCount > 0;
 
+    private static bool IsTerrainBatchVisible(
+        RuntimeTerrainBatch batch,
+        Matrix4x4 viewProjection)
+    {
+        if (batch.Radius <=
+            0.0f)
+        {
+            return true;
+        }
+
+        // Conservative clip-space sphere test. It mirrors openOMSI's
+        // frustum-culling approach while retaining this renderer's D3D11
+        // pipeline and OMSI terrain/material semantics.
+        var center =
+            Vector4.Transform(
+                new Vector4(
+                    batch.Center,
+                    1.0f),
+                viewProjection);
+
+        var radius =
+            batch.Radius;
+
+        var radiusX =
+            radius *
+            MathF.Sqrt(
+                viewProjection.M11 * viewProjection.M11 +
+                viewProjection.M21 * viewProjection.M21 +
+                viewProjection.M31 * viewProjection.M31);
+
+        var radiusY =
+            radius *
+            MathF.Sqrt(
+                viewProjection.M12 * viewProjection.M12 +
+                viewProjection.M22 * viewProjection.M22 +
+                viewProjection.M32 * viewProjection.M32);
+
+        var radiusZ =
+            radius *
+            MathF.Sqrt(
+                viewProjection.M13 * viewProjection.M13 +
+                viewProjection.M23 * viewProjection.M23 +
+                viewProjection.M33 * viewProjection.M33);
+
+        var radiusW =
+            radius *
+            MathF.Sqrt(
+                viewProjection.M14 * viewProjection.M14 +
+                viewProjection.M24 * viewProjection.M24 +
+                viewProjection.M34 * viewProjection.M34);
+
+        var horizontalExtent =
+            radiusX + radiusW;
+        var verticalExtent =
+            radiusY + radiusW;
+        var depthExtent =
+            radiusZ + radiusW;
+
+        if (center.X + center.W <
+                -horizontalExtent ||
+            center.W - center.X <
+                -horizontalExtent ||
+            center.Y + center.W <
+                -verticalExtent ||
+            center.W - center.Y <
+                -verticalExtent ||
+            center.Z <
+                -radiusZ ||
+            center.W - center.Z <
+                -depthExtent)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     private void DrawTerrain()
     {
         if (_deviceContext is null ||
@@ -9074,11 +9151,17 @@ public sealed class D3D11RenderWindow : Form
         ID3D11ShaderResourceView? activeDetailView =
             null;
 
+        var terrainViewProjection =
+            CurrentSceneViewProjection;
+
         foreach (var batch in
             _terrainGeometry.Batches)
         {
             if (batch.VertexCount ==
-                0)
+                    0 ||
+                !IsTerrainBatchVisible(
+                    batch,
+                    terrainViewProjection))
             {
                 continue;
             }
