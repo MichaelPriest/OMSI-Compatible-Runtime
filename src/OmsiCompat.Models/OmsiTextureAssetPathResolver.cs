@@ -153,15 +153,68 @@ public static class OmsiTextureAssetPathResolver
             return false;
         }
 
+        var searchDirectories = new[]
+        {
+            mapRoot,
+            Path.Combine(mapRoot, "texture"),
+            Path.Combine(mapRoot, "Texture"),
+            root,
+            Path.Combine(root, "Texture"),
+            Path.Combine(root, "maps", "Texture")
+        };
+
+        if (TryResolve(
+                root,
+                textureName,
+                searchDirectories,
+                out fullPath))
+        {
+            return true;
+        }
+
+        // Some map editor exports preserve a stale relative subdirectory
+        // (for example, an old editor folder) although the actual ground
+        // texture is installed in the map's Texture folder or OMSI's shared
+        // Texture folder. Only retry the basename after exact/relative
+        // resolution failed, preferring map-local textures before shared
+        // textures. Keep the search confined to the OMSI content root.
+        var rawName =
+            textureName.Trim().Trim('"');
+
+        var normalizedName =
+            rawName
+                .Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
+
+        if (Path.IsPathRooted(normalizedName) ||
+            normalizedName.Contains(':', StringComparison.Ordinal) ||
+            normalizedName.StartsWith(
+                Path.DirectorySeparatorChar.ToString(),
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var fileName =
+            Path.GetFileName(normalizedName);
+
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            !SupportedExtensions.Contains(
+                Path.GetExtension(fileName)))
+        {
+            return false;
+        }
+
         return TryResolve(
             root,
-            textureName,
+            fileName,
             [
-                mapRoot,
+                Path.Combine(mapRoot, "Texture"),
                 Path.Combine(mapRoot, "texture"),
-                root,
+                mapRoot,
                 Path.Combine(root, "Texture"),
-                Path.Combine(root, "maps", "Texture")
+                Path.Combine(root, "maps", "Texture"),
+                root
             ],
             out fullPath);
     }
