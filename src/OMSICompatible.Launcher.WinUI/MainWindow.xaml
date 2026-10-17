@@ -4,6 +4,53 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="OMSI Compatible Runtime">
 
+    <Window.Resources>
+        <SolidColorBrush x:Key="UiSurfaceBrush" Color="#111E2D"/>
+        <SolidColorBrush x:Key="UiSurfaceHoverBrush" Color="#1B3045"/>
+        <SolidColorBrush x:Key="UiAccentBrush" Color="#38BDF8"/>
+        <SolidColorBrush x:Key="UiTextBrush" Color="#EAF2FA"/>
+        <SolidColorBrush x:Key="UiMutedBrush" Color="#91A5BA"/>
+
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#192A3D"/>
+            <Setter Property="Foreground" Value="#EAF2FA"/>
+            <Setter Property="BorderBrush" Value="#30465C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,9"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="MinHeight" Value="38"/>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#101D2B"/>
+            <Setter Property="Foreground" Value="#F1F5F9"/>
+            <Setter Property="BorderBrush" Value="#34495E"/>
+            <Setter Property="SelectionHighlightColor" Value="#0E7490"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="Padding" Value="10,7"/>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#101D2B"/>
+            <Setter Property="Foreground" Value="#F1F5F9"/>
+            <Setter Property="BorderBrush" Value="#34495E"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="MinHeight" Value="36"/>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#D6E2EF"/>
+            <Setter Property="MinHeight" Value="30"/>
+        </Style>
+
+        <Style TargetType="TabView">
+            <Setter Property="Background" Value="#0A1420"/>
+            <Setter Property="Foreground" Value="#EAF2FA"/>
+        </Style>
+    </Window.Resources>
+
     <Grid x:Name="RootGrid" Background="#08111C">
         <Grid.RowDefinitions>
             <RowDefinition Height="56"/>
@@ -169,6 +216,9 @@
                 <StackPanel Margin="28"
                             Spacing="16">
                     <Border Background="#111E2D"
+                            BorderBrush="#26394D"
+                            BorderThickness="1"
+                            CornerRadius="12"
                             Padding="24">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -179,26 +229,33 @@
                             <StackPanel Spacing="10"
                                         VerticalAlignment="Center">
                                 <TextBlock x:Name="HeroTitle"
-                                           Text="OMSI Compatible Runtime"
+                                           Text="Sua próxima viagem começa aqui"
                                            Foreground="White"
-                                           FontSize="40"
-                                           FontWeight="Bold"/>
+                                           FontSize="36"
+                                           FontWeight="Bold"
+                                           TextWrapping="Wrap"/>
                                 <TextBlock x:Name="HeroSubtitle"
-                                           Text="Runtime x64 compatível com conteúdo OMSI"
+                                           Text="Escolha um mapa, configure seu ônibus e entre na simulação."
                                            Foreground="#B8C7D7"
-                                           FontSize="15"/>
+                                           FontSize="15"
+                                           TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal"
                                             Spacing="10">
                                     <Button x:Name="ContinueButton"
-                                            Content="Continuar"
+                                            Content="▶  CONTINUAR VIAGEM"
+                                            Background="#087EA4"
+                                            BorderBrush="#38BDF8"
                                             Click="ContinueButton_Click"/>
-                                    <Button Content="Nova sessão"
+                                    <Button Content="＋  NOVA SESSÃO"
                                             Click="NewSessionButton_Click"/>
                                 </StackPanel>
                             </StackPanel>
 
                             <Border Grid.Column="1"
                                     Background="#0A1420"
+                                    BorderBrush="#26394D"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
                                     Height="190">
                                 <Image x:Name="HeroImage"
                                        Stretch="UniformToFill"/>
