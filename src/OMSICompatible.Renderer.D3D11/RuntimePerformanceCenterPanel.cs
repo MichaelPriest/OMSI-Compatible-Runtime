@@ -59,9 +59,9 @@ internal sealed class RuntimePerformanceCenterPanel : Panel
             470;
         BackColor =
             Color.FromArgb(
-                217,
-                221,
-                226);
+                13,
+                17,
+                23);
         BorderStyle =
             BorderStyle.FixedSingle;
 
@@ -74,9 +74,9 @@ internal sealed class RuntimePerformanceCenterPanel : Panel
                     48,
                 BackColor =
                     Color.FromArgb(
-                        53,
-                        61,
-                        71)
+                        22,
+                        27,
+                        34)
             };
 
         header.Controls.Add(
@@ -133,9 +133,13 @@ internal sealed class RuntimePerformanceCenterPanel : Panel
                     "Métricas medidas no frame real. A coleta detalhada fica ativa apenas enquanto este painel estiver aberto ou com OMSI_PROFILE=1.",
                 ForeColor =
                     Color.FromArgb(
-                        70,
-                        76,
-                        84)
+                        154,
+                        164,
+                        178),
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        9.0f)
             };
 
         Controls.Add(
@@ -313,21 +317,19 @@ internal sealed class RuntimePerformanceCenterPanel : Panel
             Text =
                 title,
             BackColor =
-                Color.FromArgb(
-                    239,
-                    241,
-                    244),
+                title == "FRAME"
+                    ? Color.FromArgb(19, 35, 48)
+                    : Color.FromArgb(28, 35, 44),
             ForeColor =
-                Color.FromArgb(
-                    31,
-                    36,
-                    43),
+                title == "FRAME"
+                    ? Color.FromArgb(125, 211, 252)
+                    : Color.FromArgb(230, 237, 243),
             BorderStyle =
                 BorderStyle.FixedSingle,
             Font =
                 new Font(
-                    "Consolas",
-                    9.0f,
+                    title == "FRAME" ? "Segoe UI Semibold" : "Consolas",
+                    title == "FRAME" ? 11.0f : 9.0f,
                     FontStyle.Bold),
             Padding =
                 new Padding(
@@ -350,23 +352,28 @@ internal sealed class RuntimePerformanceCenterPanel : Panel
                     FlatStyle.Flat,
                 BackColor =
                     Color.FromArgb(
-                        239,
-                        241,
-                        244),
+                        35,
+                        43,
+                        54),
                 ForeColor =
                     Color.FromArgb(
-                        31,
-                        36,
-                        43),
+                        230,
+                        237,
+                        243),
                 Cursor =
                     Cursors.Hand
             };
 
         button.FlatAppearance.BorderColor =
             Color.FromArgb(
-                145,
-                151,
-                160);
+                75,
+                88,
+                104);
+        button.FlatAppearance.MouseOverBackColor =
+            Color.FromArgb(
+                52,
+                65,
+                82);
         button.Click +=
             handler;
 
