@@ -3804,6 +3804,29 @@ public sealed class WorldTrafficSimulation
 
         _nextSegmentCandidates.Clear();
 
+        // Signal-aware route choice must happen before the vehicle reaches
+        // the stop line. A fallback only in TryAdvanceSegment is too late:
+        // the approach planner can brake for a red first-choice branch and
+        // never call TryAdvanceSegment. If at least one otherwise-legal exit
+        // is green, exclude red-signal exits from this junction's weighted
+        // choice. If every exit is red, retain the normal choices so the AI
+        // waits for its signal instead of treating the junction as terminal.
+        var hasGreenSignalExit =
+            connections.Any(
+                candidateIndex =>
+                    _segmentsByIndex.TryGetValue(
+                        candidateIndex,
+                        out var candidate) &&
+                    IsTrafficGroupAllowed(
+                        candidate,
+                        agent.GroupIndex,
+                        agent.DefaultDensityClassIndex) &&
+                    (agent.TravelForward
+                        ? candidate.AllowsForward
+                        : candidate.AllowsReverse) &&
+                    IsTrafficSignalGreen(
+                        candidate));
+
         foreach (var candidateIndex in
                  connections)
         {
@@ -3816,7 +3839,10 @@ public sealed class WorldTrafficSimulation
                     agent.DefaultDensityClassIndex) ||
                 !(agent.TravelForward
                     ? candidate.AllowsForward
-                    : candidate.AllowsReverse))
+                    : candidate.AllowsReverse) ||
+                (hasGreenSignalExit &&
+                 !IsTrafficSignalGreen(
+                     candidate)))
             {
                 continue;
             }
