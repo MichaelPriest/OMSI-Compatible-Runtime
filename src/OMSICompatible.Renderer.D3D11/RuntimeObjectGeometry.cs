@@ -767,7 +767,14 @@ public static class RuntimeObjectGeometryBuilder
                     material.DiffuseB),
                 0.0f,
                 1.0f),
-            forceAlphaOpaque
+            // Diffuse alpha in O3D materials is not itself an OMSI
+            // transparency directive. Opaque and alpha-cutout materials must
+            // keep an opaque vertex alpha; otherwise a legacy diffuse alpha
+            // such as 0.5 makes the whole bus/body look ghosted or causes
+            // cutout meshes to disappear. Real translucency is preserved only
+            // for an explicit alpha-blend material (AlphaMode == 2).
+            forceAlphaOpaque ||
+            material.AlphaMode != 2
                 ? 1.0f
                 : Math.Clamp(
                     (float)(allColor?.DiffuseA ??
