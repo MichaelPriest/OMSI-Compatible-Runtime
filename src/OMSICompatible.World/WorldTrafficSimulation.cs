@@ -3790,17 +3790,30 @@ public sealed class WorldTrafficSimulation
                 TravelForward:
                     agent.TravelForward);
 
-        if (_nextSegmentByAgentSegment.TryGetValue(
+        var connections =
+            agent.TravelForward
+                ? segment.ForwardConnections
+                : segment.ReverseConnections;
+
+        // A cached branch can become red after an agent first approaches it.
+        // Junctions with signal-controlled exits must re-evaluate their legal
+        // choices each time; caching by agent/segment alone ignores phase
+        // changes and can leave an unscheduled vehicle braking forever.
+        var hasSignalControlledExit =
+            connections.Any(
+                candidateIndex =>
+                    _segmentsByIndex.TryGetValue(
+                        candidateIndex,
+                        out var candidate) &&
+                    candidate.TrafficSignal is not null);
+
+        if (!hasSignalControlledExit &&
+            _nextSegmentByAgentSegment.TryGetValue(
                 cacheKey,
                 out var cachedNextSegment))
         {
             return cachedNextSegment;
         }
-
-        var connections =
-            agent.TravelForward
-                ? segment.ForwardConnections
-                : segment.ReverseConnections;
 
         _nextSegmentCandidates.Clear();
 
@@ -3870,9 +3883,12 @@ public sealed class WorldTrafficSimulation
         if (_nextSegmentCandidates.Count ==
             0)
         {
-            _nextSegmentByAgentSegment[
-                cacheKey] =
-                null;
+            if (!hasSignalControlledExit)
+            {
+                _nextSegmentByAgentSegment[
+                    cacheKey] =
+                    null;
+            }
 
             return null;
         }
@@ -3897,9 +3913,12 @@ public sealed class WorldTrafficSimulation
             totalWeight <=
                 0.0)
         {
-            _nextSegmentByAgentSegment[
-                cacheKey] =
-                null;
+            if (!hasSignalControlledExit)
+            {
+                _nextSegmentByAgentSegment[
+                    cacheKey] =
+                    null;
+            }
 
             return null;
         }
@@ -3928,9 +3947,12 @@ public sealed class WorldTrafficSimulation
                         .Segment
                         .Index;
 
-                _nextSegmentByAgentSegment[
-                    cacheKey] =
-                    selected;
+                if (!hasSignalControlledExit)
+                {
+                    _nextSegmentByAgentSegment[
+                        cacheKey] =
+                        selected;
+                }
 
                 return selected;
             }
@@ -3941,9 +3963,12 @@ public sealed class WorldTrafficSimulation
                 .Segment
                 .Index;
 
-        _nextSegmentByAgentSegment[
-            cacheKey] =
-            fallback;
+        if (!hasSignalControlledExit)
+        {
+            _nextSegmentByAgentSegment[
+                cacheKey] =
+                fallback;
+        }
 
         return fallback;
     }
