@@ -16475,7 +16475,8 @@ public sealed class D3D11RenderWindow : Form
 
             var engineRunning =
                 ResolveTrafficEngineRunning(
-                    agent.ScriptRuntime);
+                    agent.ScriptRuntime,
+                    agent.SpeedMetersPerSecond);
 
             state.Audio.Update(
                 agent.ScriptRuntime,
@@ -16539,19 +16540,16 @@ public sealed class D3D11RenderWindow : Form
     }
 
     private static bool ResolveTrafficEngineRunning(
-        OmsiScriptRuntime? runtime)
+        OmsiScriptRuntime? runtime,
+        double speedMetersPerSecond)
     {
-        // Never invent an active AI engine. Some lightweight AI vehicles do
-        // not expose engine_on/engine_injection_on at all; treating that as
-        // true makes an engine loop start immediately when the map opens and
-        // sounds like the player's bus is already running. Only an explicit
-        // OMSI script state may enable the propulsion loop.
-        if (runtime is null)
-        {
-            return false;
-        }
-
-        if (runtime.HasLocalVariable(
+        // Explicit OMSI engine state always wins. Some lightweight AI
+        // vehicles do not publish either engine variable; for those vehicles,
+        // motion is the only reliable signal that propulsion is active.
+        // Do not infer an engine at rest, which would create the familiar
+        // "player bus is already running" sound on map startup.
+        if (runtime is not null &&
+            runtime.HasLocalVariable(
                 "engine_on"))
         {
             return runtime.GetLocal(
@@ -16559,7 +16557,8 @@ public sealed class D3D11RenderWindow : Form
                    0.5;
         }
 
-        if (runtime.HasLocalVariable(
+        if (runtime is not null &&
+            runtime.HasLocalVariable(
                 "engine_injection_on"))
         {
             return runtime.GetLocal(
@@ -16567,7 +16566,9 @@ public sealed class D3D11RenderWindow : Form
                    0.5;
         }
 
-        return false;
+        return double.IsFinite(
+                   speedMetersPerSecond) &&
+               speedMetersPerSecond > 0.5;
     }
 
     private void UpdateTrafficCollisionAndRules(
