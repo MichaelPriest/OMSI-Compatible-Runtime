@@ -1333,7 +1333,6 @@ public sealed class WorldTrafficSimulation
             var alternativeCandidates =
                 new List<(
                     WorldTrafficPathSegment Segment,
-                    double Weight,
                     double Score)>();
 
             foreach (var candidateIndex in connections
@@ -1392,7 +1391,7 @@ public sealed class WorldTrafficSimulation
                     -Math.Log(sample) / weight;
 
                 alternativeCandidates.Add(
-                    (candidate, weight, score));
+                    (candidate, score));
             }
 
             var alternativeFound =
