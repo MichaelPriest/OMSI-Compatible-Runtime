@@ -41,22 +41,14 @@ float4 SampleDiffuse(VertexOutput input)
 
 float ResolveTransMapAlpha(VertexOutput input)
 {
-    float4 trans =
+    // Match OMSI's Direct3D material behavior: [matl_transmap] uses the
+    // texture alpha channel. A 24-bit mask has no alpha channel and is
+    // sampled as opaque; treating its RGB luminance as opacity makes black
+    // RGB masks (including transmap_null.tga) erase otherwise solid meshes.
+    return saturate(
         TransMapTexture.Sample(
             DiffuseSampler,
-            input.Uv);
-
-    float luminance =
-        dot(
-            trans.rgb,
-            float3(
-                0.333333f,
-                0.333333f,
-                0.333333f));
-
-    return min(
-        trans.a,
-        luminance);
+            input.Uv).a);
 }
 
 float4 PSColor(VertexOutput input) : SV_TARGET
