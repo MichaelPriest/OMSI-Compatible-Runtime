@@ -1330,11 +1330,16 @@ public sealed class WorldTrafficSimulation
                     ? segment.ForwardConnections
                     : segment.ReverseConnections;
 
-            var alternativeFound = false;
+            var alternativeCandidates =
+                new List<(
+                    WorldTrafficPathSegment Segment,
+                    double Weight,
+                    double Score)>();
 
             foreach (var candidateIndex in connections
                          .Where(candidateIndex =>
                              candidateIndex != next.Value)
+                         .Distinct()
                          .Order())
             {
                 if (!_segmentsByIndex.TryGetValue(
@@ -1368,16 +1373,47 @@ public sealed class WorldTrafficSimulation
                     continue;
                 }
 
-                next = candidateIndex;
-                nextSegment = candidate;
+                // Deterministic weighted ordering: high-density paths are
+                // more likely to be the fallback, while the same agent and
+                // junction make the same choice for reproducible replays.
+                var sample =
+                    (((agent.AgentIndex + 1) *
+                      0.7548776662466927 +
+                      (segment.Index + 1) *
+                      0.5698402909980532 +
+                      (candidateIndex + 1) *
+                      0.4382891234567891) %
+                     1.0);
+
+                sample =
+                    Math.Clamp(sample, 0.000001, 0.999999);
+
+                var score =
+                    -Math.Log(sample) / weight;
+
+                alternativeCandidates.Add(
+                    (candidate, weight, score));
+            }
+
+            var alternativeFound =
+                alternativeCandidates.Count > 0;
+
+            if (alternativeFound)
+            {
+                var alternative =
+                    alternativeCandidates
+                        .OrderBy(static candidate => candidate.Score)
+                        .ThenBy(static candidate => candidate.Segment.Index)
+                        .First();
+
+                next = alternative.Segment.Index;
+                nextSegment = alternative.Segment;
                 _nextSegmentByAgentSegment[
                     (
                         AgentIndex: agent.AgentIndex,
                         SegmentIndex: segment.Index,
                         TravelForward: agent.TravelForward
-                    )] = candidateIndex;
-                alternativeFound = true;
-                break;
+                    )] = alternative.Segment.Index;
             }
 
             if (!alternativeFound)
