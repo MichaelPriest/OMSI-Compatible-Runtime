@@ -8335,7 +8335,7 @@ try
             normalGroupCatalog,
             maximumAgents: 1);
 
-    alternateExitSimulation.Step(3.0);
+    alternateExitSimulation.Step(8.0);
 
     var alternateExitAgent =
         alternateExitSimulation.Snapshot().Single();
