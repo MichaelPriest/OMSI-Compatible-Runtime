@@ -1922,6 +1922,41 @@ internal sealed class RuntimeDriveVehicle :
                 Math.Max(
                     _drivenWheelRadiusMeters,
                     0.05f);
+
+            // Some compatible vehicle scripts enable the OMSI dynamics path
+            // but do not publish M_Wheel (or leave it at zero while driving).
+            // In that case only, provide a guarded fallback so the bus cannot
+            // remain permanently immobilized despite valid host controls.
+            // Real script torque always remains authoritative when non-zero.
+            if (Math.Abs(driveForceNewtons) < 1.0f &&
+                AcceleratorLevel > 0.05f &&
+                ElectricalSystemEnabled &&
+                EngineRunning &&
+                requestedDirection != 0 &&
+                !ParkingBrakeEngaged &&
+                !StopBrakeEngaged)
+            {
+                var fallbackMaximumForceNewtons =
+                    Math.Clamp(
+                        _massKilograms * 2.55f,
+                        18_000.0f,
+                        48_000.0f);
+                var fallbackPowerLimitedForceNewtons =
+                    Math.Clamp(
+                        180_000.0f *
+                            (_massKilograms /
+                             DefaultMassKilograms),
+                        120_000.0f,
+                        300_000.0f) /
+                    Math.Max(absoluteSpeed, 3.0f);
+
+                driveForceNewtons =
+                    AcceleratorLevel *
+                    Math.Min(
+                        fallbackMaximumForceNewtons,
+                        fallbackPowerLimitedForceNewtons) *
+                    (requestedDirection < 0 ? -0.48f : 1.0f);
+            }
         }
         else
         {
