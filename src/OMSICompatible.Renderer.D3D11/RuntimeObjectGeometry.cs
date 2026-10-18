@@ -571,8 +571,7 @@ public static class RuntimeObjectGeometryBuilder
 
             var color =
                 MaterialColor(
-                    material,
-                    forceMaterialAlphaOpaque);
+                    material);
 
             var canGroupStaticScenery =
                 allowStaticSceneryGrouping &&
@@ -736,8 +735,7 @@ public static class RuntimeObjectGeometryBuilder
     }
 
     private static Color4 MaterialColor(
-        RuntimeO3dMaterialInfo? material,
-        bool forceAlphaOpaque)
+        RuntimeO3dMaterialInfo? material)
     {
         if (material is null)
         {
@@ -751,6 +749,13 @@ public static class RuntimeObjectGeometryBuilder
         var allColor =
             material.BaseAllColor;
 
+        // OMSI uses the O3D diffuse alpha as an environment-map
+        // reflectivity mask, not as the mesh's global opacity. Transparency
+        // comes from the material's explicit alpha mode and, where present,
+        // the diffuse texture or [matl_transmap] mask. Keeping vertex alpha
+        // opaque prevents an alpha value such as 0.15 (common on painted bus
+        // bodies with envmaps) from ghosting the entire vehicle. The alpha
+        // value remains available in material metadata for envmap handling.
         return new Color4(
             Math.Clamp(
                 (float)(allColor?.DiffuseR ??
@@ -767,20 +772,7 @@ public static class RuntimeObjectGeometryBuilder
                     material.DiffuseB),
                 0.0f,
                 1.0f),
-            // Diffuse alpha in O3D materials is not itself an OMSI
-            // transparency directive. Opaque and alpha-cutout materials must
-            // keep an opaque vertex alpha; otherwise a legacy diffuse alpha
-            // such as 0.5 makes the whole bus/body look ghosted or causes
-            // cutout meshes to disappear. Real translucency is preserved only
-            // for an explicit alpha-blend material (AlphaMode == 2).
-            forceAlphaOpaque ||
-            material.AlphaMode != 2
-                ? 1.0f
-                : Math.Clamp(
-                    (float)(allColor?.DiffuseA ??
-                        material.DiffuseA),
-                    0.0f,
-                    1.0f));
+            1.0f);
     }
 
     private static void AddVertex(
