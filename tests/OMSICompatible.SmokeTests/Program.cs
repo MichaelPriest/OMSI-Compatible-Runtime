@@ -8262,6 +8262,19 @@ try
         requestStopAgent.AiBrakeLight,
         "OMSI traffic_light_stop did not hold the group while the monitored signal had an active approach.");
 
+    // Keep the signal red for the entire smoke-test window so the
+    // fallback is tested at the junction rather than after the light turns green.
+    var alternateExitSignal =
+        new WorldTrafficSignalProgram(
+            "Main",
+            26.0,
+            [
+                new WorldTrafficSignalPhase(0, 20.0),
+                new WorldTrafficSignalPhase(6, 6.0)
+            ],
+            26.0,
+            SignalIndex: 0);
+
     var alternateExitNetwork =
         new WorldTrafficPathNetwork(
             [
@@ -8292,7 +8305,7 @@ try
                     Array.Empty<int>(),
                     [0],
                     SceneryObjectId: 8551,
-                    TrafficSignal: requestStopSignal),
+                    TrafficSignal: alternateExitSignal),
                 new WorldTrafficPathSegment(
                     2,
                     8552,
